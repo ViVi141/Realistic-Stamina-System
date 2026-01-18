@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Realistic Stamina System (RSS) - 多维度趋势分析脚本
 多维度趋势分析脚本
 从多个维度观测体力-速度系统现象，以30KG战斗负重为基准
 """
@@ -114,7 +115,7 @@ PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
 PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 
 # 参考体重（用于计算相对重量倍数）
-REFERENCE_WEIGHT = 70.0  # kg
+REFERENCE_WEIGHT = 90.0  # kg（用于 Pandolf 模型的参考体重，与角色基准体重一致）
 
 # 能量到体力的转换系数
 ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
@@ -483,7 +484,7 @@ def plot_multi_dimensional_analysis():
     fig = plt.figure(figsize=(20, 14))
     gs = fig.add_gridspec(4, 3, hspace=0.35, wspace=0.3)
     
-    fig.suptitle('拟真体力-速度系统多维度趋势分析\n（以30KG战斗负重为基准）', fontsize=20, fontweight='bold')
+    fig.suptitle('Realistic Stamina System (RSS) - 多维度趋势分析\n（以30KG战斗负重为基准）', fontsize=20, fontweight='bold')
     
     # 30KG战斗负重百分比
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT

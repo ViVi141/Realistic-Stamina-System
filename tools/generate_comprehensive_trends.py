@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Realistic Stamina System (RSS) - 综合趋势图生成器
 综合趋势图生成器
 包含2英里测试、不同负重情况对比、恢复速度分析等
 """
@@ -131,7 +132,7 @@ PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
 PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 
 # 参考体重（用于计算相对重量倍数）
-REFERENCE_WEIGHT = 70.0  # kg
+REFERENCE_WEIGHT = 90.0  # kg（用于 Pandolf 模型的参考体重，与角色基准体重一致）
 
 # 能量到体力的转换系数
 ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
@@ -582,7 +583,7 @@ def plot_comprehensive_trends():
     fig = plt.figure(figsize=(16, 12))
     gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
     
-    fig.suptitle('拟真体力-速度系统综合趋势分析\n（基于医学模型）', fontsize=18, fontweight='bold')
+    fig.suptitle('Realistic Stamina System (RSS) - 综合趋势分析\n（基于医学模型）', fontsize=18, fontweight='bold')
     
     # ========== 图1: 2英里测试 ==========
     ax1 = fig.add_subplot(gs[0, 0])

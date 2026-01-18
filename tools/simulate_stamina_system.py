@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Realistic Stamina System (RSS) - 模拟器
 拟真体力-速度系统模拟器
 基于医学模型模拟角色在最大速度下，体力和其他指标随时间的变化趋势
 """
@@ -173,7 +174,7 @@ PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
 PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 
 # 参考体重（用于计算相对重量倍数）
-REFERENCE_WEIGHT = 70.0  # kg
+REFERENCE_WEIGHT = 90.0  # kg（用于 Pandolf 模型的参考体重，与角色基准体重一致）
 
 # 能量到体力的转换系数
 ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
@@ -724,7 +725,7 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     movement_title = movement_type_names.get(movement_type, movement_type)
     slope_title = f"{slope_angle_degrees:.1f}° ({'上坡' if slope_angle_degrees > 0 else '下坡' if slope_angle_degrees < 0 else '平地'})"
-    fig.suptitle(f'拟真体力-速度系统趋势图\n（{movement_title}，坡度: {slope_title}，精确数学模型，α=0.6）', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Realistic Stamina System (RSS) - 趋势图\n（{movement_title}，坡度: {slope_title}，精确数学模型，α=0.6）', fontsize=16, fontweight='bold')
     
     # 子图1：体力随时间变化
     ax1 = axes[0, 0]
