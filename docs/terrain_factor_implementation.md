@@ -465,5 +465,5 @@ static float CalculatePandolfEnergyExpenditure(
 
 ---
 
-**最后更新**: 2024-12-19  
+**最后更新**: 2026-01-19
 **作者**: ViVi141

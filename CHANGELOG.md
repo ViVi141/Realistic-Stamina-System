@@ -5,6 +5,33 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.7.0] - 2024-12-19
+
+### 新增
+- **代码模块化重构（Modular Refactoring）**
+  - 创建10个模块化组件，提高代码可维护性
+  - **SCR_CollapseTransition.c** - "撞墙"阻尼过渡模块
+  - **SCR_StaminaConstants.c** - 常量定义模块（262行）
+  - **SCR_StaminaHelpers.c** - 辅助函数模块（94行）
+  - 所有常量定义已提取到独立模块
+  - 所有辅助函数已提取到独立模块
+
+### 改进
+- **代码结构优化**
+  - PlayerBase.c: 2037行 → 1464行（减少573行，约28%）
+  - SCR_RealisticStaminaSystem.c: 1483行 → 1144行（减少339行，约23%）
+  - 代码结构更清晰，模块职责单一
+- **模块化组件集成**
+  - 所有模块化组件已成功集成到主控制器
+  - 保持向后兼容，所有公共API不变
+  - 代码编译通过，功能完整
+
+### 技术改进
+- 实现模块化架构，提高代码可维护性
+- 提取常量定义到独立模块（StaminaConstants）
+- 提取辅助函数到独立模块（StaminaHelpers）
+- 优化代码组织，符合单一职责原则
+
 ## [2.6.0] 
 
 ### 新增

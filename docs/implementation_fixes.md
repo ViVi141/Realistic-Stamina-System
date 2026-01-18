@@ -222,5 +222,5 @@ paramGround.LayerMask = EPhysicsLayerPresets.WORLD | EPhysicsLayerPresets.STATIC
 
 ---
 
-**最后更新**: 2024-12-19  
+**最后更新**: 2026-01-19
 **状态**: ✅ 已完成所有修复和优化

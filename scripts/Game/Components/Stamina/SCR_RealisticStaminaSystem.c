@@ -13,427 +13,88 @@
 // 注意：此文件包含辅助类，主要逻辑在 SCR_CharacterControllerComponent 中
 class RealisticStaminaSpeedSystem
 {
-    // ==================== 游戏配置常量 ====================
-    // 游戏最大速度（m/s）- 由游戏引擎提供
-    static const float GAME_MAX_SPEED = 5.2; // m/s
+    // ==================== 常量定义 ====================
+    // 注意：所有常量定义已移至 SCR_StaminaConstants.c 模块
+    // 使用 StaminaConstants.XXX 访问常量
     
-    // ==================== 军事体力系统模型常量（基于速度阈值）====================
-    // 基于速度阈值的分段消耗率系统
-    // 参考：Military Stamina System Model (90kg Male / 22yo)
-    
-    // 速度阈值（m/s）
-    static const float SPRINT_VELOCITY_THRESHOLD = 5.2; // m/s，Sprint速度阈值
-    static const float RUN_VELOCITY_THRESHOLD = 3.7; // m/s，Run速度阈值（匹配15:27的2英里配速）
-    static const float WALK_VELOCITY_THRESHOLD = 3.2; // m/s，Walk速度阈值
-    
-    // 基于负重的动态速度阈值（m/s）
-    static const float RECOVERY_THRESHOLD_NO_LOAD = 2.5; // m/s，空载时恢复体力阈值
-    static const float DRAIN_THRESHOLD_COMBAT_LOAD = 1.5; // m/s，负重30kg时开始消耗体力的阈值
-    static const float COMBAT_LOAD_WEIGHT = 30.0; // kg，战斗负重（用于计算动态阈值）
-    
-    // 基础消耗率（pts/s，每秒消耗的点数）
-    // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
-    static const float SPRINT_BASE_DRAIN_RATE = 0.480; // pts/s（Sprint）
-    static const float RUN_BASE_DRAIN_RATE = 0.075; // pts/s（Run，优化后约22分钟耗尽，支撑20分钟连续运行）
-    static const float WALK_BASE_DRAIN_RATE = 0.060; // pts/s（Walk）
-    static const float REST_RECOVERY_RATE = 0.250; // pts/s（Rest，恢复）
-    
-    // 转换为0.0-1.0范围的消耗率（每0.2秒）
-    // 更新间隔为0.2秒，所以需要将pts/s转换为每0.2秒的消耗
-    // 例如：0.480 pts/s = 0.480 / 100 × 0.2 = 0.00096（每0.2秒消耗0.096%）
-    static const float SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * 0.2; // 每0.2秒
-    
-    // 初始体力状态（满值）
-    static const float INITIAL_STAMINA_AFTER_ACFT = 1.0; // 100.0 / 100.0 = 1.0（100%，满值）
-    
-    // 精疲力尽阈值
-    static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
-    static const float EXHAUSTION_LIMP_SPEED = 1.0; // m/s（跛行速度）
-    static const float SPRINT_ENABLE_THRESHOLD = 0.20; // 0.20（20点），体力≥20时才能Sprint
-    
-    // 坡度修正系数
-    static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
-    static const float GRADE_DOWNHILL_COEFF = 0.05; // 每1%下坡减少5%消耗（假设）
-    static const float HIGH_GRADE_THRESHOLD = 15.0; // 15%（高坡度阈值）
-    static const float HIGH_GRADE_MULTIPLIER = 1.2; // 高坡度额外1.2×乘数
-    
-    // 目标平均速度（m/s）- 基于用户需求：2英里在15分27秒内完成
-    // 2英里 ≈ 3218.7米，时间927秒，平均速度 ≈ 3.47 m/s
-    static const float TARGET_AVERAGE_SPEED = 3.47; // m/s
-    
-    // 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
-    // 对应游戏倍率约为 0.71 (3.7 / 5.2)
-    static const float TARGET_RUN_SPEED = 3.7; // m/s
-    static const float TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED; // 0.7115
-    
-    // 意志力平台期阈值（体力百分比）
-    // 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
-    static const float WILLPOWER_THRESHOLD = 0.25; // 25%
-    
-    // 平滑过渡起点（体力百分比）
-    // 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
-    // 将25%设为"疲劳临界区"的起点，而不是终点
-    static const float SMOOTH_TRANSITION_START = 0.25; // 25%（疲劳临界区起点）
-    static const float SMOOTH_TRANSITION_END = 0.05; // 5%，平滑过渡结束点（真正的力竭点）
-    
-    // 跛行速度倍数（最低速度）
-    static const float MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED; // 1.0 m/s / 5.2 = 0.1923
-    
-    // ==================== 医学模型参数 ====================
-    
-    // 体力下降对速度的影响指数（α）
-    // 基于耐力下降模型：S(E) = S_max * E^α
-    // 根据医学文献（Minetti et al., 2002; Weyand et al., 2010）：
-    // - α = 0.55-0.65 时，更符合实际生理学数据
-    // - α = 0.5 时，体力50%时速度为71%（平方根关系）
-    // - α = 0.6 时，体力50%时速度为66%（更符合实际）
-    // - α = 1.0 时，体力50%时速度为50%（线性，不符合实际）
-    // 使用精确的幂函数实现，不使用近似
-    static const float STAMINA_EXPONENT = 0.6; // 体力影响指数（精确值，基于医学文献）
-    
-    // 负重对速度的惩罚系数（β）- 基于体重的真实模型
-    // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）：
-    // - 负重 0% BM 时：无影响
-    // - 负重 20-30% BM 时：速度下降约 5-10%
-    // - 负重 40-50% BM 时：速度下降约 15-20%（30kg ≈ 40%体重）
-    // - 负重 60-70% BM 时：速度下降约 24-30%
-    // - 负重 100% BM 时：速度下降约 35-40%（外推）
-    // 
-    // 真实模型：速度惩罚基于体重百分比，而不是最大负重百分比
-    // 速度惩罚 = β * (负重/体重)
-    // 其中 β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
-    // 使用线性模型，因为文献显示速度下降与体重百分比基本线性相关
-    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // 基于体重的速度惩罚系数（线性模型）
-    static const float ENCUMBRANCE_SPEED_EXPONENT = 1.0; // 负重速度惩罚指数（1.0 = 线性）
-    
-    // 负重对体力消耗的影响系数（γ）- 基于体重的真实模型
-    // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）：
-    // - 负重 0% BM 时：1.0×（基准）
-    // - 负重 20-30% BM 时：1.3-1.5×
-    // - 负重 40-50% BM 时：1.5-1.8×（30kg ≈ 40%体重）
-    // - 负重 60-70% BM 时：2.0-2.5×
-    // - 负重 100% BM 时：2.5-3.0×
-    // 
-    // 真实模型：体力消耗倍数基于体重百分比
-    // 体力消耗倍数 = 1 + γ * (负重/体重)
-    // γ = 1.5 表示40%体重负重时，消耗增加60%（1 + 1.5 × 0.4 = 1.6倍），符合文献
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5; // 基于体重的体力消耗系数
-    
-    // 最小速度倍数（防止体力完全耗尽时完全无法移动）
-    static const float MIN_SPEED_MULTIPLIER = 0.15; // 15%最低速度（约0.78 m/s，勉强行走）
-    
-    // 最大速度倍数限制（防止超过游戏引擎限制）
-    static const float MAX_SPEED_MULTIPLIER = 1.0; // 100%最高速度（不超过游戏最大速度）
-    
-    // ==================== 角色特征常量 ====================
-    // 角色体重（kg）- 用于计算负重占体重的百分比（基于文献的真实模型）
-    // 游戏内标准体重为90kg
-    // 参考文献：Knapik et al., 1996; Quesada et al., 2000
-    static const float CHARACTER_WEIGHT = 90.0; // kg
-    
-    // 角色年龄（岁）- 基于ACFT标准（22-26岁男性）
-    // 当前设置为22岁（训练有素男性）
-    static const float CHARACTER_AGE = 22.0; // 岁
-    
-    // 健康状态/体能水平（Fitness Level）- 基于个性化运动建模
-    // 参考文献：Palumbo et al., 2018 - Personalizing physical exercise in a computational model
-    // 0.0 = 未训练（untrained）
-    // 0.5 = 普通健康（average fitness）
-    // 1.0 = 训练有素（well-trained）- 当前设置
-    // 
-    // 训练有素者的特点（基于文献）：
-    // - 能量效率提高15-20%（基础消耗减少）
-    // - 恢复速度增加20-30%
-    // - 高速度时消耗更少（速度平方项系数降低）
-    static const float FITNESS_LEVEL = 1.0; // 训练有素（well-trained）
-    
-    // 健康状态对能量效率的影响系数
-    // 训练有素者（fitness=1.0）基础消耗减少，能量利用效率更高
-    // 优化：提升到35%，让训练有素者的能量效率显著提升
-    static const float FITNESS_EFFICIENCY_COEFF = 0.35; // 35%效率提升（训练有素时）
-    
-    // 健康状态对恢复速度的影响系数
-    // 训练有素者（fitness=1.0）恢复速度增加20-30%
-    static const float FITNESS_RECOVERY_COEFF = 0.25; // 25%恢复速度提升（训练有素时）
-    
-    // ==================== 多维度恢复模型参数 ====================
-    // 基于个性化运动建模（Palumbo et al., 2018）和生理学恢复模型
-    //
-    // 恢复模型考虑多个维度：
-    // 1. 当前体力百分比（非线性恢复）：体力越低恢复越快，体力越高恢复越慢
-    // 2. 健康状态/训练水平：训练有素者恢复更快
-    // 3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
-    // 4. 年龄：年轻者恢复更快
-    // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
-    
-    // 基础恢复率（每0.2秒，在50%体力时的恢复率）
-    static const float BASE_RECOVERY_RATE = 0.00015; // 每0.2秒恢复0.015%
-    
-    // 恢复率非线性系数（基于当前体力百分比）
-    // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
-    // 体力越低，恢复越快；体力越高，恢复越慢
-    // 例如：体力20%时，恢复率 = BASE × (1.0 + 0.5 × 0.8) = BASE × 1.4（快40%）
-    //      体力80%时，恢复率 = BASE × (1.0 + 0.5 × 0.2) = BASE × 1.1（快10%）
-    //      体力100%时，恢复率 = BASE × (1.0 + 0.5 × 0.0) = BASE × 1.0（标准）
-    static const float RECOVERY_NONLINEAR_COEFF = 0.5; // 非线性恢复系数（0.0-1.0）
-    
-    // 快速恢复期参数（刚停止运动后的快速恢复阶段）
-    // 生理学依据：运动后0-2分钟为快速恢复期（EPOC - Excess Post-Exercise Oxygen Consumption）
-    static const float FAST_RECOVERY_DURATION_MINUTES = 2.0; // 快速恢复期持续时间（分钟）
-    static const float FAST_RECOVERY_MULTIPLIER = 1.5; // 快速恢复期恢复速度倍数（1.5倍）
-    
-    // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
-    // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
-    static const float SLOW_RECOVERY_START_MINUTES = 10.0; // 慢速恢复期开始时间（分钟）
-    static const float SLOW_RECOVERY_MULTIPLIER = 0.7; // 慢速恢复期恢复速度倍数（0.7倍）
-    
-    // 年龄对恢复速度的影响系数
-    // 年轻者（22岁）恢复快，年老者恢复慢
-    // 公式：age_recovery_multiplier = 1.0 + AGE_RECOVERY_COEFF × (30.0 - age) / 30.0
-    // 22岁时：multiplier = 1.0 + 0.2 × (30.0 - 22.0) / 30.0 = 1.0 + 0.053 = 1.053（快5.3%）
-    // 30岁时：multiplier = 1.0 + 0.2 × (30.0 - 30.0) / 30.0 = 1.0（标准）
-    // 40岁时：multiplier = 1.0 + 0.2 × (30.0 - 40.0) / 30.0 = 1.0 - 0.067 = 0.933（慢6.7%）
-    static const float AGE_RECOVERY_COEFF = 0.2; // 年龄恢复系数
-    static const float AGE_REFERENCE = 30.0; // 年龄参考值（30岁为标准）
-    
-    // 累积疲劳恢复参数
-    // 运动后的疲劳需要时间恢复，影响恢复速度
-    // 公式：fatigue_recovery_multiplier = 1.0 - FATIGUE_RECOVERY_PENALTY × min(exercise_duration_minutes / FATIGUE_RECOVERY_DURATION, 1.0)
-    // 例如：运动10分钟后，疲劳恢复惩罚 = 0.3 × min(10 / 20, 1.0) = 0.3 × 0.5 = 0.15（恢复速度减少15%）
-    static const float FATIGUE_RECOVERY_PENALTY = 0.3; // 疲劳恢复惩罚系数（最大30%恢复速度减少）
-    static const float FATIGUE_RECOVERY_DURATION_MINUTES = 20.0; // 疲劳完全恢复所需时间（分钟）
-    
-    // ==================== 运动持续时间影响（累积疲劳）参数 ====================
-    // 基于个性化运动建模（Palumbo et al., 2018）
-    // 长时间运动后，相同速度的消耗会逐渐增加
-    // 
-    // 生理学依据：
-    // - 糖原耗竭后，依赖脂肪代谢，效率降低（约15-20分钟开始）
-    // - 肌肉疲劳导致机械效率下降（约30-60分钟开始）
-    // - 体温升高导致代谢率增加（约10-15分钟开始）
-    //
-    // 累积疲劳因子：fatigue_factor = 1.0 + FATIGUE_ACCUMULATION_COEFF × exercise_duration_minutes
-    // 例如：运动30分钟后，疲劳因子 = 1.0 + 0.015 × 30 = 1.45（消耗增加45%）
-    static const float FATIGUE_ACCUMULATION_COEFF = 0.015; // 每分钟增加1.5%消耗（基于文献：30分钟增加约45%）
-    static const float FATIGUE_START_TIME_MINUTES = 5.0; // 疲劳开始累积的时间（分钟），前5分钟无疲劳累积
-    static const float FATIGUE_MAX_FACTOR = 2.0; // 最大疲劳因子（2.0倍，即消耗最多增加100%）
-    
-    // ==================== 代谢适应参数（Metabolic Adaptation）====================
-    // 基于个性化运动建模（Palumbo et al., 2018）
-    // 根据运动强度动态调整能量来源和效率
-    //
-    // 运动强度分区（基于速度比，对应VO2max百分比）：
-    // - 有氧区（<60% VO2max，speed_ratio < 0.6）：主要依赖脂肪，效率高（效率因子 = 0.9）
-    // - 混合区（60-80% VO2max，0.6 ≤ speed_ratio < 0.8）：糖原+脂肪混合（效率因子 = 1.0）
-    // - 无氧区（>80% VO2max，speed_ratio ≥ 0.8）：主要依赖糖原，效率低但功率高（效率因子 = 1.2）
-    //
-    // 代谢效率因子：根据速度比动态调整
-    static const float AEROBIC_THRESHOLD = 0.6; // 有氧阈值（60% VO2max）
-    static const float ANAEROBIC_THRESHOLD = 0.8; // 无氧阈值（80% VO2max）
-    static const float AEROBIC_EFFICIENCY_FACTOR = 0.9; // 有氧区效率因子（90%，更高效）
-    static const float MIXED_EFFICIENCY_FACTOR = 1.0; // 混合区效率因子（100%，标准）
-    static const float ANAEROBIC_EFFICIENCY_FACTOR = 1.2; // 无氧区效率因子（120%，低效但高功率）
-    
-    // ==================== 负重配置常量 ====================
-    // 基准负重（kg）- 角色携带的基础物品重量
-    // 只包括衣服、鞋子等基础物品，不包括武器、装备等
-    // 基准负重 = 1.36kg（基础衣物的合理重量）
-    // 这是"无额外负重"状态下的基础物品重量
-    static const float BASE_WEIGHT = 1.36; // kg
-    
-    // 最大负重（kg）- 角色可以携带的最大重量（包含基准负重）
-    static const float MAX_ENCUMBRANCE_WEIGHT = 40.5; // kg
-    
-    // 战斗负重（kg）- 战斗状态下的推荐负重阈值（包含基准负重）
-    // 超过此重量时，可能会影响战斗表现
-    // 30kg = 基准负重（12kg）+ 额外负重（18kg）
-    // 30kg ≈ 33% 体重（90kg），符合文献中的"中度负重"范围
-    static const float COMBAT_ENCUMBRANCE_WEIGHT = 30.0; // kg
-    
-    // ==================== 动作体力消耗常量 ====================
-    // 基于医学研究：跳跃和翻越动作的能量消耗远高于普通移动
-    // 参考：垂直跳跃的能量消耗约为水平移动的 3-5 倍
-    // 翻越动作（包括攀爬）的能量消耗约为水平移动的 2-4 倍
-    
-    // ==================== 爆发性动作消耗 (v2.5 校准版) ====================
-    // 基于医学研究和游戏平衡性考虑
-    // 跳跃和翻越是极短时间内的爆发性无氧运动，消耗远高于同等时间的跑步
-    
-    // 跳跃体力消耗（单次）
-    // 基础消耗：3.5%，受负重指数级影响
-    // 理由：允许玩家连续跳跃约 25-30 次（满体力），但在实战中，连续跳 5 次就会显著影响剩余耐力
-    static const float JUMP_STAMINA_BASE_COST = 0.035; // 3.5% 体力（单次跳跃，v2.5优化）
-    
-    // 翻越体力消耗（单次）
-    // 基础触发消耗：2%，比跳跃略低（因为翻越通常有支撑点，利用了惯性）
-    static const float VAULT_STAMINA_START_COST = 0.02; // 2% 体力（翻越起始消耗，v2.5优化）
-    
-    // 持续攀爬消耗（每秒）
-    // 对于高墙（Climb），在挂在墙上期间按时间持续扣除
-    static const float CLIMB_STAMINA_TICK_COST = 0.01; // 1% 体力/秒（持续攀爬消耗，v2.5优化）
-    
-    // 低体力跳跃阈值：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
-    static const float JUMP_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力
-    
-    // 连续跳跃时间窗口（秒）：在此时间内的连续跳跃会增加消耗
-    static const float JUMP_CONSECUTIVE_WINDOW = 3.0; // 3秒
-    
-    // 连续跳跃惩罚系数：每次连续跳跃额外增加50%消耗
-    static const float JUMP_CONSECUTIVE_PENALTY = 0.5; // 50%
-    
-    // 跳跃检测阈值（垂直速度，m/s）
-    // 当垂直速度超过此值时，判定为跳跃
-    static const float JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0; // m/s
-    
-    // 翻越检测阈值（垂直速度，m/s）
-    // 当垂直速度持续超过此值时，判定为翻越/攀爬
-    static const float VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5; // m/s
-    
-    // ==================== 坡度影响参数 ====================
-    // 基于 Pandolf 模型：坡度对能量消耗的影响
-    // Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
-    // 其中 G 是坡度（0 = 平地，正数 = 上坡，负数 = 下坡）
-    // 
-    // 坡度影响系数（基于医学研究）：
-    // - 上坡：能量消耗显著增加，坡度每增加1度，消耗增加约5-10%
-    // - 下坡：能量消耗减少，但减少幅度较小（约上坡的1/3）
-    // 
-    // 简化模型：坡度影响倍数 = 1 + α·|G|·sign(G)
-    // 其中 α 是坡度影响系数，sign(G) 区分上坡（+1）和下坡（-1）
-    static const float SLOPE_UPHILL_COEFF = 0.08; // 上坡影响系数（每度增加8%消耗）
-    static const float SLOPE_DOWNHILL_COEFF = 0.03; // 下坡影响系数（每度减少3%消耗，约为上坡的1/3）
-    static const float SLOPE_MAX_MULTIPLIER = 2.0; // 最大坡度影响倍数（上坡）
-    static const float SLOPE_MIN_MULTIPLIER = 0.7; // 最小坡度影响倍数（下坡）
-    
-    // ==================== 负重×坡度交互项参数 ====================
-    // 基于文献：负重越大，坡度的影响越明显（非线性交互）
-    // 交互项：负重×坡度
-    // 例如：30kg负重（33%体重）+ 5°上坡 = 1 + 0.15 × 0.33 × 5 = 1.25倍额外影响
-    static const float ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.15; // 负重×坡度交互系数
-    
-    // ==================== 速度×负重×坡度三维交互参数 ====================
-    // 基于 Pandolf 模型：速度、负重、坡度的三维交互项
-    // 三维交互项：速度² × 负重 × 坡度
-    // 例如：速度80%、30kg负重（33%体重）、5°上坡 = 0.10 × 0.33 × 0.8² × 5 = 0.106倍额外消耗
-    static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.10; // 速度×负重×坡度交互系数
-    
-    // ==================== Sprint（冲刺）相关参数 ====================
-    // Sprint是类似于追击或逃命的动作，追求速度，同时体力大幅消耗
-    // Sprint时速度应该比Run快，但仍然受体力和负重限制
-    
-    // Sprint速度加成（相对于Run，v2.5优化）
-    // Sprint时速度 = Run速度 × (1 + SPRINT_SPEED_BOOST)
-    // 优化：从25%提升到30%，确保在负重状态下（如28KG）仍有足够的速度差距
-    // 给负重状态下的速度压缩留出"余量"，确保初始差距足够大
-    // 例如：如果Run速度是71%（3.7 m/s），Sprint速度 = 71% × 1.30 = 92.3%（4.8 m/s）
-    // 28KG负重时：Run约3.6 m/s，Sprint约4.7 m/s，差距约1.1 m/s，极强的爆发感
-    static const float SPRINT_SPEED_BOOST = 0.30; // Sprint时速度比Run快30%（v2.5优化）
-    
-    // Sprint最高速度倍数限制（基于现实情况）
-    // 基于运动生理学数据：
-    // - 一般健康成年人的Sprint速度：20-30 km/h（约5.5-8.3 m/s）
-    // - 游戏最大速度：5.2 m/s（约18.7 km/h），在合理范围内
-    // - 考虑到负重和疲劳，Sprint最高速度应该限制在游戏最大速度的100%
-    // - 这意味着Sprint的最高速度 = 5.2 m/s（游戏最大速度）
-    // 注意：实际速度仍受体力和负重影响，只有在满体力、无负重时才能达到此上限
-    static const float SPRINT_MAX_SPEED_MULTIPLIER = 1.0; // Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
-    
-    // Sprint体力消耗倍数（相对于Run，v2.5优化）
-    // Sprint时体力消耗 = Run消耗 × SPRINT_STAMINA_DRAIN_MULTIPLIER
-    // 优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
-    // 基于医学研究：Sprint时的能量消耗约为Run的2-3倍
-    // 由于速度提升到25%，消耗也相应提升到3.0倍，确保玩家不能长时间使用Sprint
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0; // Sprint时体力消耗是Run的3.0倍（v2.5优化）
+    // 为了保持向后兼容，保留一些常用的常量别名
+    // 这些别名直接引用 StaminaConstants 中的值
+    static const float GAME_MAX_SPEED = StaminaConstants.GAME_MAX_SPEED;
+    static const float TARGET_RUN_SPEED = StaminaConstants.TARGET_RUN_SPEED;
+    static const float TARGET_RUN_SPEED_MULTIPLIER = StaminaConstants.TARGET_RUN_SPEED_MULTIPLIER;
+    static const float MIN_LIMP_SPEED_MULTIPLIER = StaminaConstants.MIN_LIMP_SPEED_MULTIPLIER;
+    static const float STAMINA_EXPONENT = StaminaConstants.STAMINA_EXPONENT;
+    static const float CHARACTER_WEIGHT = StaminaConstants.CHARACTER_WEIGHT;
+    static const float MAX_ENCUMBRANCE_WEIGHT = StaminaConstants.MAX_ENCUMBRANCE_WEIGHT;
+    static const float COMBAT_ENCUMBRANCE_WEIGHT = StaminaConstants.COMBAT_ENCUMBRANCE_WEIGHT;
+    static const float SMOOTH_TRANSITION_START = StaminaConstants.SMOOTH_TRANSITION_START;
+    static const float SMOOTH_TRANSITION_END = StaminaConstants.SMOOTH_TRANSITION_END;
+    static const float MIN_SPEED_MULTIPLIER = StaminaConstants.MIN_SPEED_MULTIPLIER;
+    static const float MAX_SPEED_MULTIPLIER = StaminaConstants.MAX_SPEED_MULTIPLIER;
+    static const float INITIAL_STAMINA_AFTER_ACFT = StaminaConstants.INITIAL_STAMINA_AFTER_ACFT;
+    static const float EXHAUSTION_THRESHOLD = StaminaConstants.EXHAUSTION_THRESHOLD;
+    static const float EXHAUSTION_LIMP_SPEED = StaminaConstants.EXHAUSTION_LIMP_SPEED;
+    static const float SPRINT_ENABLE_THRESHOLD = StaminaConstants.SPRINT_ENABLE_THRESHOLD;
+    static const float SPRINT_SPEED_BOOST = StaminaConstants.SPRINT_SPEED_BOOST;
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = StaminaConstants.SPRINT_STAMINA_DRAIN_MULTIPLIER;
+    static const float RECOVERY_THRESHOLD_NO_LOAD = StaminaConstants.RECOVERY_THRESHOLD_NO_LOAD;
+    static const float DRAIN_THRESHOLD_COMBAT_LOAD = StaminaConstants.DRAIN_THRESHOLD_COMBAT_LOAD;
+    static const float SPRINT_VELOCITY_THRESHOLD = StaminaConstants.SPRINT_VELOCITY_THRESHOLD;
+    static const float RUN_VELOCITY_THRESHOLD = StaminaConstants.RUN_VELOCITY_THRESHOLD;
+    static const float WALK_VELOCITY_THRESHOLD = StaminaConstants.WALK_VELOCITY_THRESHOLD;
+    static const float FITNESS_LEVEL = StaminaConstants.FITNESS_LEVEL;
+    static const float FITNESS_EFFICIENCY_COEFF = StaminaConstants.FITNESS_EFFICIENCY_COEFF;
+    static const float FITNESS_RECOVERY_COEFF = StaminaConstants.FITNESS_RECOVERY_COEFF;
+    static const float BASE_RECOVERY_RATE = StaminaConstants.BASE_RECOVERY_RATE;
+    static const float RECOVERY_NONLINEAR_COEFF = StaminaConstants.RECOVERY_NONLINEAR_COEFF;
+    static const float FAST_RECOVERY_DURATION_MINUTES = StaminaConstants.FAST_RECOVERY_DURATION_MINUTES;
+    static const float FAST_RECOVERY_MULTIPLIER = StaminaConstants.FAST_RECOVERY_MULTIPLIER;
+    static const float SLOW_RECOVERY_START_MINUTES = StaminaConstants.SLOW_RECOVERY_START_MINUTES;
+    static const float SLOW_RECOVERY_MULTIPLIER = StaminaConstants.SLOW_RECOVERY_MULTIPLIER;
+    static const float AGE_RECOVERY_COEFF = StaminaConstants.AGE_RECOVERY_COEFF;
+    static const float AGE_REFERENCE = StaminaConstants.AGE_REFERENCE;
+    static const float FATIGUE_RECOVERY_PENALTY = StaminaConstants.FATIGUE_RECOVERY_PENALTY;
+    static const float FATIGUE_RECOVERY_DURATION_MINUTES = StaminaConstants.FATIGUE_RECOVERY_DURATION_MINUTES;
+    static const float FATIGUE_ACCUMULATION_COEFF = StaminaConstants.FATIGUE_ACCUMULATION_COEFF;
+    static const float FATIGUE_START_TIME_MINUTES = StaminaConstants.FATIGUE_START_TIME_MINUTES;
+    static const float FATIGUE_MAX_FACTOR = StaminaConstants.FATIGUE_MAX_FACTOR;
+    static const float AEROBIC_THRESHOLD = StaminaConstants.AEROBIC_THRESHOLD;
+    static const float ANAEROBIC_THRESHOLD = StaminaConstants.ANAEROBIC_THRESHOLD;
+    static const float AEROBIC_EFFICIENCY_FACTOR = StaminaConstants.AEROBIC_EFFICIENCY_FACTOR;
+    static const float ANAEROBIC_EFFICIENCY_FACTOR = StaminaConstants.ANAEROBIC_EFFICIENCY_FACTOR;
+    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = StaminaConstants.ENCUMBRANCE_SPEED_PENALTY_COEFF;
+    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = StaminaConstants.ENCUMBRANCE_STAMINA_DRAIN_COEFF;
+    static const float JUMP_STAMINA_BASE_COST = StaminaConstants.JUMP_STAMINA_BASE_COST;
+    static const float VAULT_STAMINA_START_COST = StaminaConstants.VAULT_STAMINA_START_COST;
+    static const float CLIMB_STAMINA_TICK_COST = StaminaConstants.CLIMB_STAMINA_TICK_COST;
+    static const float JUMP_MIN_STAMINA_THRESHOLD = StaminaConstants.JUMP_MIN_STAMINA_THRESHOLD;
+    static const float JUMP_CONSECUTIVE_WINDOW = StaminaConstants.JUMP_CONSECUTIVE_WINDOW;
+    static const float JUMP_CONSECUTIVE_PENALTY = StaminaConstants.JUMP_CONSECUTIVE_PENALTY;
+    static const float PANDOLF_BASE_COEFF = StaminaConstants.PANDOLF_BASE_COEFF;
+    static const float PANDOLF_VELOCITY_COEFF = StaminaConstants.PANDOLF_VELOCITY_COEFF;
+    static const float PANDOLF_VELOCITY_OFFSET = StaminaConstants.PANDOLF_VELOCITY_OFFSET;
+    static const float PANDOLF_GRADE_BASE_COEFF = StaminaConstants.PANDOLF_GRADE_BASE_COEFF;
+    static const float PANDOLF_GRADE_VELOCITY_COEFF = StaminaConstants.PANDOLF_GRADE_VELOCITY_COEFF;
+    static const float PANDOLF_STATIC_COEFF_1 = StaminaConstants.PANDOLF_STATIC_COEFF_1;
+    static const float PANDOLF_STATIC_COEFF_2 = StaminaConstants.PANDOLF_STATIC_COEFF_2;
+    static const float ENERGY_TO_STAMINA_COEFF = StaminaConstants.ENERGY_TO_STAMINA_COEFF;
+    static const float REFERENCE_WEIGHT = StaminaConstants.REFERENCE_WEIGHT;
+    static const float GIVONI_CONSTANT = StaminaConstants.GIVONI_CONSTANT;
+    static const float GIVONI_VELOCITY_EXPONENT = StaminaConstants.GIVONI_VELOCITY_EXPONENT;
+    static const float RECOVERY_STARTUP_DELAY_SECONDS = StaminaConstants.RECOVERY_STARTUP_DELAY_SECONDS;
+    static const float BASE_WEIGHT = StaminaConstants.BASE_WEIGHT;
+    static const float SLOPE_UPHILL_COEFF = StaminaConstants.SLOPE_UPHILL_COEFF;
+    static const float SLOPE_DOWNHILL_COEFF = StaminaConstants.SLOPE_DOWNHILL_COEFF;
+    static const float ENCUMBRANCE_SLOPE_INTERACTION_COEFF = StaminaConstants.ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
+    static const float CHARACTER_AGE = StaminaConstants.CHARACTER_AGE;
+    static const float COMBAT_LOAD_WEIGHT = StaminaConstants.COMBAT_LOAD_WEIGHT;
+    static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = StaminaConstants.SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
+    static const float SPRINT_DRAIN_PER_TICK = StaminaConstants.SPRINT_DRAIN_PER_TICK;
+    static const float GRADE_DOWNHILL_COEFF = StaminaConstants.GRADE_DOWNHILL_COEFF;
     
     // ==================== 数学工具函数 ====================
-    
-    // 精确计算幂函数：base^exponent
-    // 使用优化的迭代方法实现精确计算，不使用近似
-    // 
-    // 对于 exponent = 0.6 的特殊情况：
-    // base^0.6 = base^(3/5) = (base^3)^(1/5)
-    // 使用牛顿法计算5次方根，精度达到 10^-6
-    // 
-    // @param base 底数（必须 > 0）
-    // @param exponent 指数（当前支持 0.6，可扩展）
-    // @return base^exponent（精确值）
-    static float Pow(float base, float exponent)
-    {
-        // 处理特殊情况
-        if (base <= 0.0)
-            return 0.0;
-        
-        if (exponent == 0.0)
-            return 1.0;
-        
-        if (exponent == 1.0)
-            return base;
-        
-        if (base == 1.0)
-            return 1.0;
-        
-        // 对于 exponent = 0.6 的精确计算
-        if (Math.AbsFloat(exponent - 0.6) < 0.001)
-        {
-            // base^0.6 = (base^3)^(1/5)
-            float baseCubed = base * base * base;
-            
-            // 使用牛顿法计算5次方根：x^(1/5) = y，即 x = y^5
-            // 迭代公式：y_n+1 = (4*y_n + x / y_n^4) / 5
-            // 初始猜测：y_0 = sqrt(sqrt(base))（四次方根，作为5次方根的近似）
-            float y = Math.Sqrt(Math.Sqrt(base));
-            
-            // 迭代计算，直到收敛（通常5-8次迭代即可达到高精度）
-            for (int i = 0; i < 12; i++)
-            {
-                float y4 = y * y * y * y;
-                if (y4 > 1e-10) // 避免数值不稳定
-                {
-                    float yNew = (4.0 * y + baseCubed / y4) / 5.0;
-                    // 检查收敛性
-                    if (Math.AbsFloat(yNew - y) < 1e-6)
-                    {
-                        return yNew;
-                    }
-                    y = yNew;
-                }
-                else
-                {
-                    break;
-                }
-            }
-            return y;
-        }
-        
-        // 对于其他指数值，使用优化的插值方法（比简单 sqrt 更精确）
-        // 对于 0.5 < exponent < 1.0，使用有理函数插值
-        if (exponent > 0.5 && exponent < 1.0)
-        {
-            float sqrtBase = Math.Sqrt(base);
-            float linearBase = base;
-            
-            // 使用有理函数插值，而不是简单线性插值
-            // 对于 exponent = 0.6，插值权重更偏向 sqrt
-            float t = (exponent - 0.5) * 2.0; // t in [0, 1]
-            // 使用平滑插值：result = sqrtBase * (1 - t^2) + linearBase * t^2
-            // 或者使用更精确的：result = sqrtBase^(1-t) * linearBase^t
-            // 简化版本：使用平方插值
-            float t2 = t * t;
-            return sqrtBase * (1.0 - t2) + linearBase * t2;
-        }
-        
-        // 默认情况：如果指数接近 0.5，使用 sqrt
-        if (Math.AbsFloat(exponent - 0.5) < 0.001)
-        {
-            return Math.Sqrt(base);
-        }
-        
-        // 其他情况：使用线性近似（作为后备）
-        return base * exponent + (1.0 - exponent);
-    }
+    // 注意：Pow() 函数已移至 SCR_StaminaHelpers.c 模块
+    // 使用 StaminaHelpers.Pow() 调用
     
     // ==================== 核心计算函数 ====================
     
@@ -914,8 +575,8 @@ class RealisticStaminaSpeedSystem
         float weightRatio = currentWeight / CHARACTER_WEIGHT; // 例如：120kg / 90kg = 1.33
         
         // 使用 1.5 次幂，让超重状态下的跳跃变得极其昂贵
-        // 使用 Pow 函数计算 weightRatio^1.5
-        float weightMultiplier = Math.Pow(weightRatio, 1.5);
+        // 使用 StaminaHelpers.Pow 函数计算 weightRatio^1.5
+        float weightMultiplier = StaminaHelpers.Pow(weightRatio, 1.5);
         
         // 计算实际消耗
         float actualCost = baseCost * weightMultiplier;
@@ -1036,8 +697,8 @@ class RealisticStaminaSpeedSystem
         float loadFactor = 1.0;
         if (currentWeight > 0.0)
         {
-            // 使用Pow计算 weightRatio^1.2
-            float weightRatioPower = Pow(weightRatio, 1.2);
+            // 使用StaminaHelpers.Pow计算 weightRatio^1.2
+            float weightRatioPower = StaminaHelpers.Pow(weightRatio, 1.2);
             loadFactor = 1.0 + (weightRatioPower * 1.5);
         }
         
@@ -1092,7 +753,7 @@ class RealisticStaminaSpeedSystem
             // 而15%坡度时：1.0 + (0.15^1.2) × 5.0 ≈ 1.0 + 0.173 × 5.0 ≈ 1.865倍
             // 让小坡几乎无感，陡坡才真正吃力
             float normalizedGrade = gradePercent * 0.01; // 转换为0.0-1.0范围（假设最大100%）
-            float gradePower = Pow(normalizedGrade, 1.2); // 使用1.2次方
+            float gradePower = StaminaHelpers.Pow(normalizedGrade, 1.2); // 使用1.2次方
             kGrade = 1.0 + (gradePower * 5.0);
             
             // 限制最大坡度修正（避免数值爆炸）
@@ -1459,8 +1120,8 @@ class RealisticStaminaSpeedSystem
         const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
         
         // 计算速度的幂：V^α
-        // 使用 Pow 函数计算 V^2.2
-        float velocityPower = Pow(velocity, GIVONI_VELOCITY_EXPONENT);
+        // 使用 StaminaHelpers.Pow 函数计算 V^2.2
+        float velocityPower = StaminaHelpers.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
         
         // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
         // 使用相对于基准体重的倍数
