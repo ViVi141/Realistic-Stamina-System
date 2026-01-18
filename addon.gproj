@@ -1,7 +1,7 @@
 GameProject {
- ID "testrubnspeed"
+ ID "Realistic Stamina System"
  GUID "68649101601CC93D"
- TITLE "test_rubn_speed"
+ TITLE "Realistic Stamina System"
  Dependencies {
   "58D0FB3206B6F859"
  }

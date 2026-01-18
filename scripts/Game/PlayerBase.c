@@ -1,5 +1,5 @@
-// 拟真体力-速度系统（v2.1 - 参数优化版本）
-// 结合体力值和负重，动态调整移动速度并显示状态信息
+// Realistic Stamina System (RSS) - v2.7+
+// 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
 modded class SCR_CharacterControllerComponent
@@ -377,7 +377,7 @@ modded class SCR_CharacterControllerComponent
         CharacterAnimationComponent animComponentForSpeed = GetAnimationComponent();
         if (animComponentForSpeed)
         {
-            CharacterCommandHandlerComponent handlerForSpeed = CharacterCommandHandlerComponent.Cast(animComponentForSpeed.GetCommandHandler());
+            CharacterCommandHandlerComponent handlerForSpeed = animComponentForSpeed.GetCommandHandler();
             if (handlerForSpeed)
             {
                 CharacterCommandMove moveCmdForSpeed = handlerForSpeed.GetCommandMove();
@@ -712,7 +712,7 @@ modded class SCR_CharacterControllerComponent
             CharacterAnimationComponent animComponent = GetAnimationComponent();
             if (animComponent)
             {
-                CharacterCommandHandlerComponent handler = CharacterCommandHandlerComponent.Cast(animComponent.GetCommandHandler());
+                CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
                 if (handler)
                 {
                     CharacterCommandMove moveCmd = handler.GetCommandMove();
@@ -825,7 +825,7 @@ modded class SCR_CharacterControllerComponent
         // ==================== 三维交互项（可选，用于精细调整）====================
         // 注意：Pandolf 模型已经包含了坡度项，但可以添加额外的三维交互项用于精细调整
         // 这主要用于在极端情况下（高速度+高负重+大坡度）进行微调
-        float speedEncumbranceSlopeInteraction = 0.0;
+        const float speedEncumbranceSlopeInteraction = 0.0;
         
         // 可选：计算速度×负重×坡度三维交互项（用于精细调整）
         // 如果不需要精细调整，可以将此部分注释掉
@@ -1314,7 +1314,7 @@ modded class SCR_CharacterControllerComponent
         CharacterAnimationComponent animComponent = GetAnimationComponent();
         if (animComponent)
         {
-            CharacterCommandHandlerComponent handler = CharacterCommandHandlerComponent.Cast(animComponent.GetCommandHandler());
+            CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
             if (handler)
             {
                 CharacterCommandMove moveCmd = handler.GetCommandMove();

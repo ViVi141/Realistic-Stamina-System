@@ -1,4 +1,5 @@
-// 拟真体力-速度系统（基于医学/生理学模型，v2.1 - 参数优化版本）
+// Realistic Stamina System (RSS) - v2.7+
+// 拟真体力-速度系统（基于医学/生理学模型）
 // 结合体力值和负重，动态调整移动速度
 // 
 // 医学模型参考：
@@ -456,7 +457,7 @@ class RealisticStaminaSpeedSystem
         {
             // 慢速恢复期（≥10分钟）：恢复速度减少30%
             // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.7倍
-            float transitionDuration = 10.0; // 过渡时间（分钟）
+            const float transitionDuration = 10.0; // 过渡时间（分钟）
             float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
             restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - SLOW_RECOVERY_MULTIPLIER));
         }
@@ -482,7 +483,6 @@ class RealisticStaminaSpeedSystem
         // ⚠️ 防滥用机制：负重恢复优化需静止 3 秒后才生效
         // 防止玩家通过"短促冲刺+静止恢复"循环来滥用恢复机制
         // 这模拟了心率下降和呼吸调整的时间需求
-        const float RECOVERY_STARTUP_DELAY_SECONDS = 3.0; // 恢复启动延迟（秒）
         float restDurationSeconds = restDurationMinutes * 60.0; // 将休息时间转换为秒
         
         float loadRecoveryBoost = 1.0;
@@ -816,12 +816,7 @@ class RealisticStaminaSpeedSystem
     // @return 体力消耗率（%/s，每0.2秒的消耗率需要乘以 0.2）
     static float CalculatePandolfEnergyExpenditure(float velocity, float currentWeight, float gradePercent = 0.0, float terrainFactor = 1.0, bool useSanteeCorrection = true)
     {
-        // Pandolf 模型常量
-        const float PANDOLF_BASE_COEFF = 2.7; // 基础系数（W/kg）
-        const float PANDOLF_VELOCITY_COEFF = 3.2; // 速度系数（W/kg）
-        const float PANDOLF_VELOCITY_OFFSET = 0.7; // 速度偏移（m/s）
-        const float PANDOLF_GRADE_BASE_COEFF = 0.23; // 坡度基础系数（W/kg）
-        const float PANDOLF_GRADE_VELOCITY_COEFF = 1.34; // 坡度速度系数（W/kg）
+        // Pandolf 模型常量（使用类常量，避免变量名冲突）
         
         // 确保速度和重量有效
         velocity = Math.Max(velocity, 0.0);
@@ -865,7 +860,6 @@ class RealisticStaminaSpeedSystem
         // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项) · η
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
-        const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
         weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
         
@@ -874,7 +868,6 @@ class RealisticStaminaSpeedSystem
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
         // 从0.0001降低到0.000035，减少约65%的体力消耗速度
-        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
         float staminaDrainRate = energyExpenditure * ENERGY_TO_STAMINA_COEFF;
         
         // 限制消耗率在合理范围内（避免数值爆炸）
@@ -1031,9 +1024,7 @@ class RealisticStaminaSpeedSystem
     // @return 静态站立消耗率（%/s），负数表示恢复，正数表示消耗
     static float CalculateStaticStandingCost(float bodyWeight = 90.0, float loadWeight = 0.0)
     {
-        // Pandolf 静态项常量
-        const float PANDOLF_STATIC_COEFF_1 = 1.5; // 基础系数（W/kg）
-        const float PANDOLF_STATIC_COEFF_2 = 2.0; // 负重系数（W/kg）
+        // Pandolf 静态项常量（使用类常量，避免变量名冲突）
         
         // 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
         float baseStaticTerm = PANDOLF_STATIC_COEFF_1 * bodyWeight;
@@ -1052,8 +1043,7 @@ class RealisticStaminaSpeedSystem
         float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
         
         // 将能量消耗率（W）转换为体力消耗率（%/s）
-        // 参考：CalculatePandolfEnergyExpenditure 的转换系数
-        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，与Pandolf模型保持一致）
+        // 参考：CalculatePandolfEnergyExpenditure 的转换系数（使用类常量）
         float staticDrainRate = staticEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
         
         // 限制消耗率在合理范围内
@@ -1115,9 +1105,7 @@ class RealisticStaminaSpeedSystem
         if (!isRunning || velocity <= 2.2)
             return 0.0; // 使用标准 Pandolf 模型
         
-        // Givoni-Goldman 模型常量
-        const float GIVONI_CONSTANT = 0.3; // 跑步常数（W/kg·m²/s²），需要根据实际测试校准
-        const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
+        // Givoni-Goldman 模型常量（使用类常量，避免变量名冲突）
         
         // 计算速度的幂：V^α
         // 使用 StaminaHelpers.Pow 函数计算 V^2.2
@@ -1125,14 +1113,12 @@ class RealisticStaminaSpeedSystem
         
         // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
         // 使用相对于基准体重的倍数
-        const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
         weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
         
         float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
         
-        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
-        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，与Pandolf模型保持一致）
+        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（使用类常量）
         float runningDrainRate = runningEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
         
         // 限制消耗率在合理范围内

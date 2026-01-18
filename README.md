@@ -1,9 +1,11 @@
-# Arma Reforger - 拟真体力-速度系统
+# Realistic Stamina System (RSS)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
 
-一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
+**Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
+
+**English**: A realistic stamina and speed system mod for Arma Reforger that dynamically adjusts movement speed based on stamina and encumbrance, using precise medical/physiological models.
 
 ## 作者信息
 
@@ -62,7 +64,7 @@
 ## 项目结构
 
 ```
-test_rubn_speed/
+RealisticStaminaSystem/
 ├── LICENSE                               # AGPL-3.0 许可证
 ├── README.md                             # 项目说明文档
 ├── AUTHORS.md                            # 作者信息
@@ -380,7 +382,7 @@ Walk速度 = Run速度 × 0.7（限制在80%）
 
 ## 安装方法
 
-1. 将整个 `test_rubn_speed` 文件夹复制到 Arma Reforger 工作台的 `addons` 目录
+1. 将整个 `RealisticStaminaSystem` 文件夹复制到 Arma Reforger 工作台的 `addons` 目录
 2. 在 Arma Reforger 工作台中打开项目
 3. 编译模组
 4. 在游戏中选择并启用此模组
@@ -613,7 +615,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 完成时间：925.8秒（15.43分钟），提前1.2秒完成目标 ✅
   - 使用精确数学模型（α=0.6，Pandolf模型）
 
-- **v2.0** - 拟真体力-速度系统
+- **v2.0** - Realistic Stamina System (RSS) - 拟真体力-速度系统
   - 实现动态速度调整系统（根据体力百分比）
   - 实现负重影响系统（负重影响速度）
   - 实现精确数学模型（不使用近似）

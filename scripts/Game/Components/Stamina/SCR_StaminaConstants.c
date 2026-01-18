@@ -243,7 +243,7 @@ class StaminaConstants
     static const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
     
     // 参考体重（用于 Pandolf 模型）
-    static const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
+    static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
     
     // ==================== Givoni-Goldman 跑步模型常量 ====================
     static const float GIVONI_CONSTANT = 0.3; // 跑步常数（W/kg·m²/s²），需要根据实际测试校准
