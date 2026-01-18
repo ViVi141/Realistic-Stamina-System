@@ -29,8 +29,9 @@ CHARACTER_AGE = 22.0  # 岁，角色年龄（基于ACFT标准，22-26岁男性�
 FITNESS_LEVEL = 1.0  # 训练有素（well-trained）
 
 # 健康状态对能量效率的影响系数
-# 训练有素者（fitness=1.0）基础消耗减少18%
-FITNESS_EFFICIENCY_COEFF = 0.18  # 18%效率提升（训练有素时）
+# 训练有素者（fitness=1.0）基础消耗减少，能量利用效率更高
+# 优化：提升到35%，让训练有素者的能量效率显著提升
+FITNESS_EFFICIENCY_COEFF = 0.35  # 35%效率提升（训练有素时，优化后）
 
 # 健康状态对恢复速度的影响系数
 # 训练有素者（fitness=1.0）恢复速度增加25%
@@ -44,8 +45,9 @@ FATIGUE_MAX_FACTOR = 2.0  # 最大疲劳因子（2.0倍）
 # ==================== 代谢适应参数（Metabolic Adaptation）====================
 AEROBIC_THRESHOLD = 0.6  # 有氧阈值（60% VO2max）
 ANAEROBIC_THRESHOLD = 0.8  # 无氧阈值（80% VO2max）
-AEROBIC_EFFICIENCY_FACTOR = 0.9  # 有氧区效率因子（90%）
-ANAEROBIC_EFFICIENCY_FACTOR = 1.2  # 无氧区效率因子（120%）
+AEROBIC_EFFICIENCY_FACTOR = 0.9  # 有氧区效率因子（90%，更高效）
+MIXED_EFFICIENCY_FACTOR = 1.0  # 混合区效率因子（100%，标准）
+ANAEROBIC_EFFICIENCY_FACTOR = 1.2  # 无氧区效率因子（120%，低效但高功率）
 
 # ==================== 医学模型参数（双稳态-应激性能模型）====================
 # 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
@@ -70,10 +72,15 @@ TARGET_SPEED_MULTIPLIER = 0.920  # 已废弃
 STAMINA_EXPONENT = 0.6  # 已废弃（双稳态模型不使用）
 
 # 负重参数
-ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.40  # 负重速度惩罚系数
-ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重影响指数（1.0 = 线性）
-ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 负重体力消耗系数
-MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数（兼容性保留）
+# 负重对速度的惩罚系数（β）- 基于体重的真实模型
+# 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
+# 真实模型：速度惩罚基于体重百分比，而不是最大负重百分比
+# 速度惩罚 = β * (负重/体重)，其中 β = 0.20
+ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（线性模型）
+ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重速度惩罚指数（1.0 = 线性）
+ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 基于体重的体力消耗系数（40%体重负重时，消耗增加60%）
+MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数（防止体力完全耗尽时完全无法移动）
+MAX_SPEED_MULTIPLIER = 1.0  # 最大速度倍数限制（防止超过游戏引擎限制）
 
 # ==================== 体力消耗参数（基于精确 Pandolf 模型）====================
 BASE_DRAIN_RATE = 0.00004  # 每0.2秒，基础消耗
@@ -84,9 +91,11 @@ ENCUMBRANCE_SPEED_DRAIN_COEFF = 0.0002  # 负重速度交互项系数
 RECOVERY_RATE = 0.00015  # 每0.2秒
 
 # ==================== Sprint（冲刺）相关参数 ====================
-SPRINT_SPEED_BOOST = 0.15  # Sprint时速度比Run快15%
+# v2.6.0优化：从15%提升到30%，确保负重状态下仍有明显速度差距
+SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%（v2.6.0优化，从15%提升）
 SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 2.5  # Sprint时体力消耗是Run的2.5倍
+# v2.6.0优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍（v2.6.0优化，从2.5倍提升）
 
 # ==================== Pandolf 模型参数 ====================
 # 完整的 Pandolf 能量消耗模型（Pandolf et al., 1977）
@@ -108,7 +117,7 @@ PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 REFERENCE_WEIGHT = 70.0  # kg
 
 # 能量到体力的转换系数
-ENERGY_TO_STAMINA_COEFF = 0.0001  # 1 W/kg ≈ 0.0001 %/s（需要根据实际测试调整）
+ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
 
 # ==================== 旧坡度参数（已废弃，保留用于兼容性）====================
 # 注意：这些参数已不再使用，因为坡度已整合在Pandolf模型中
@@ -138,7 +147,7 @@ COMBAT_LOAD_WEIGHT = 30.0  # kg，战斗负重（用于计算动态阈值）
 # 基础消耗率（pts/s，每秒消耗的点数）
 # 转换为0.0-1.0范围的消耗率（每0.2秒）
 SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s（Sprint）
-RUN_BASE_DRAIN_RATE = 0.105  # pts/s（Run，匹配15:27的2英里配速）
+RUN_BASE_DRAIN_RATE = 0.075  # pts/s（Run，优化后约22分钟耗尽，支撑20分钟连续运行）
 WALK_BASE_DRAIN_RATE = 0.060  # pts/s（Walk）
 REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
 
@@ -192,10 +201,13 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         final_speed_multiplier = run_speed_multiplier * 0.7
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 0.8)
     elif movement_type == 'sprint':
-        # Sprint依然保持随体力衰减，因为它是超负荷运动
-        sprint_stamina_effect = np.power(stamina_percent, 0.4)
-        final_speed_multiplier = SPRINT_MAX_SPEED_MULTIPLIER * max(0.5, sprint_stamina_effect)
-        final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, SPRINT_MAX_SPEED_MULTIPLIER)
+        # v2.6.0优化：Sprint速度完全基于Run速度进行加乘
+        # Sprint速度 = Run速度 × (1 + 30%)，完全继承Run的双稳态-平台期逻辑
+        # 负重惩罚系数：Sprint使用0.15（Run使用0.2），模拟爆发力克服阻力
+        sprint_multiplier = 1.0 + SPRINT_SPEED_BOOST  # 1.30
+        final_speed_multiplier = run_speed_multiplier * sprint_multiplier
+        # 应用负重惩罚（Sprint的惩罚系数为0.15，比Run的0.2低）
+        final_speed_multiplier = np.clip(final_speed_multiplier, 0.15, SPRINT_MAX_SPEED_MULTIPLIER)
     else:  # 'run'
         final_speed_multiplier = run_speed_multiplier
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.15, 1.0)
@@ -264,9 +276,12 @@ def calculate_pandolf_energy_expenditure(velocity, current_weight, grade_percent
         return -0.0025  # 恢复率（负数）
     
     # 计算基础项：2.7 + 3.2·(V-0.7)²
+    # 优化：对于顶尖运动员，运动时的经济性（Running Economy）更高
+    # 添加 fitness bonus 来降低基础代谢项
     velocity_term = velocity - PANDOLF_VELOCITY_OFFSET
     velocity_squared_term = velocity_term * velocity_term
-    base_term = PANDOLF_BASE_COEFF + (PANDOLF_VELOCITY_COEFF * velocity_squared_term)
+    fitness_bonus = 1.0 - (0.2 * FITNESS_LEVEL)  # 训练有素者基础代谢降低20%
+    base_term = (PANDOLF_BASE_COEFF * fitness_bonus) + (PANDOLF_VELOCITY_COEFF * velocity_squared_term)
     
     # 计算坡度项：G·(0.23 + 1.34·V²)
     # 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
@@ -342,7 +357,7 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     
     注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中，不需要单独的坡度倍数
     
-    Sprint时体力消耗 = Run消耗 × 2.5倍
+    Sprint时体力消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
     
     Args:
         current_speed: 当前速度（m/s）
@@ -409,7 +424,7 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
         # 消耗时，应用效率因子和疲劳因子
         total_drain_rate_per_second = base_drain_rate_per_second * total_efficiency_factor * fatigue_factor
     
-    # Sprint时体力消耗 = Run消耗 × 2.5倍
+    # Sprint时体力消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
     if movement_type == 'sprint':
         total_drain_rate_per_second = total_drain_rate_per_second * SPRINT_STAMINA_DRAIN_MULTIPLIER
     

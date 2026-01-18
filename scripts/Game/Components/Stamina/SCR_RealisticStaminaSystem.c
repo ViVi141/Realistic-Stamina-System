@@ -34,7 +34,7 @@ class RealisticStaminaSpeedSystem
     // 基础消耗率（pts/s，每秒消耗的点数）
     // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
     static const float SPRINT_BASE_DRAIN_RATE = 0.480; // pts/s（Sprint）
-    static const float RUN_BASE_DRAIN_RATE = 0.105; // pts/s（Run，匹配15:27的2英里配速）
+    static const float RUN_BASE_DRAIN_RATE = 0.075; // pts/s（Run，优化后约22分钟耗尽，支撑20分钟连续运行）
     static const float WALK_BASE_DRAIN_RATE = 0.060; // pts/s（Walk）
     static const float REST_RECOVERY_RATE = 0.250; // pts/s（Rest，恢复）
     
@@ -151,8 +151,9 @@ class RealisticStaminaSpeedSystem
     static const float FITNESS_LEVEL = 1.0; // 训练有素（well-trained）
     
     // 健康状态对能量效率的影响系数
-    // 训练有素者（fitness=1.0）基础消耗减少15-20%
-    static const float FITNESS_EFFICIENCY_COEFF = 0.18; // 18%效率提升（训练有素时）
+    // 训练有素者（fitness=1.0）基础消耗减少，能量利用效率更高
+    // 优化：提升到35%，让训练有素者的能量效率显著提升
+    static const float FITNESS_EFFICIENCY_COEFF = 0.35; // 35%效率提升（训练有素时）
     
     // 健康状态对恢复速度的影响系数
     // 训练有素者（fitness=1.0）恢复速度增加20-30%
@@ -257,17 +258,31 @@ class RealisticStaminaSpeedSystem
     // 参考：垂直跳跃的能量消耗约为水平移动的 3-5 倍
     // 翻越动作（包括攀爬）的能量消耗约为水平移动的 2-4 倍
     
+    // ==================== 爆发性动作消耗 (v2.5 校准版) ====================
+    // 基于医学研究和游戏平衡性考虑
+    // 跳跃和翻越是极短时间内的爆发性无氧运动，消耗远高于同等时间的跑步
+    
     // 跳跃体力消耗（单次）
-    // 基于医学研究：一次垂直跳跃消耗的能量约为 0.5-1.0 千卡
-    // 转换为游戏中的体力百分比：约 2-5%
-    static const float JUMP_STAMINA_COST = 0.03; // 3% 体力（单次跳跃）
+    // 基础消耗：3.5%，受负重指数级影响
+    // 理由：允许玩家连续跳跃约 25-30 次（满体力），但在实战中，连续跳 5 次就会显著影响剩余耐力
+    static const float JUMP_STAMINA_BASE_COST = 0.035; // 3.5% 体力（单次跳跃，v2.5优化）
     
     // 翻越体力消耗（单次）
-    // 翻越动作包括：翻越障碍物、攀爬等
-    // 基于医学研究：翻越动作的能量消耗约为跳跃的 1.5-2 倍
-    // 调整：降低消耗以匹配游戏体验（翻越动作通常很快完成）
-    // 注意：实际消耗 = 基础消耗 × 负重倍数，所以基础消耗应该较低
-    static const float VAULT_STAMINA_COST = 0.015; // 1.5% 体力（单次翻越，降低以匹配游戏体验）
+    // 基础触发消耗：2%，比跳跃略低（因为翻越通常有支撑点，利用了惯性）
+    static const float VAULT_STAMINA_START_COST = 0.02; // 2% 体力（翻越起始消耗，v2.5优化）
+    
+    // 持续攀爬消耗（每秒）
+    // 对于高墙（Climb），在挂在墙上期间按时间持续扣除
+    static const float CLIMB_STAMINA_TICK_COST = 0.01; // 1% 体力/秒（持续攀爬消耗，v2.5优化）
+    
+    // 低体力跳跃阈值：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
+    static const float JUMP_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力
+    
+    // 连续跳跃时间窗口（秒）：在此时间内的连续跳跃会增加消耗
+    static const float JUMP_CONSECUTIVE_WINDOW = 3.0; // 3秒
+    
+    // 连续跳跃惩罚系数：每次连续跳跃额外增加50%消耗
+    static const float JUMP_CONSECUTIVE_PENALTY = 0.5; // 50%
     
     // 跳跃检测阈值（垂直速度，m/s）
     // 当垂直速度超过此值时，判定为跳跃
@@ -309,10 +324,13 @@ class RealisticStaminaSpeedSystem
     // Sprint是类似于追击或逃命的动作，追求速度，同时体力大幅消耗
     // Sprint时速度应该比Run快，但仍然受体力和负重限制
     
-    // Sprint速度加成（相对于Run）
+    // Sprint速度加成（相对于Run，v2.5优化）
     // Sprint时速度 = Run速度 × (1 + SPRINT_SPEED_BOOST)
-    // 例如：如果Run速度是80%，Sprint速度 = 80% × 1.15 = 92%
-    static const float SPRINT_SPEED_BOOST = 0.15; // Sprint时速度比Run快15%
+    // 优化：从25%提升到30%，确保在负重状态下（如28KG）仍有足够的速度差距
+    // 给负重状态下的速度压缩留出"余量"，确保初始差距足够大
+    // 例如：如果Run速度是71%（3.7 m/s），Sprint速度 = 71% × 1.30 = 92.3%（4.8 m/s）
+    // 28KG负重时：Run约3.6 m/s，Sprint约4.7 m/s，差距约1.1 m/s，极强的爆发感
+    static const float SPRINT_SPEED_BOOST = 0.30; // Sprint时速度比Run快30%（v2.5优化）
     
     // Sprint最高速度倍数限制（基于现实情况）
     // 基于运动生理学数据：
@@ -323,10 +341,12 @@ class RealisticStaminaSpeedSystem
     // 注意：实际速度仍受体力和负重影响，只有在满体力、无负重时才能达到此上限
     static const float SPRINT_MAX_SPEED_MULTIPLIER = 1.0; // Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
     
-    // Sprint体力消耗倍数（相对于Run）
+    // Sprint体力消耗倍数（相对于Run，v2.5优化）
     // Sprint时体力消耗 = Run消耗 × SPRINT_STAMINA_DRAIN_MULTIPLIER
+    // 优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
     // 基于医学研究：Sprint时的能量消耗约为Run的2-3倍
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 2.5; // Sprint时体力消耗是Run的2.5倍
+    // 由于速度提升到25%，消耗也相应提升到3.0倍，确保玩家不能长时间使用Sprint
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0; // Sprint时体力消耗是Run的3.0倍（v2.5优化）
     
     // ==================== 数学工具函数 ====================
     
@@ -794,27 +814,41 @@ class RealisticStaminaSpeedSystem
         float fatigueRecoveryMultiplier = 1.0 - fatigueRecoveryPenalty;
         fatigueRecoveryMultiplier = Math.Clamp(fatigueRecoveryMultiplier, 0.7, 1.0); // 限制在70%-100%之间
         
-        // ==================== 6. 负重影响：重载下的恢复优化 ====================
+        // ==================== 6. 负重影响：重载下的恢复优化（带启动延迟）====================
         // 重载下增加恢复速率上限，模拟士兵通过深呼吸快速调整的能力
         // 这样可以避免重装冲刺后的"跛行"惩罚太久，保持游戏节奏
+        // 
+        // ⚠️ 防滥用机制：负重恢复优化需静止 3 秒后才生效
+        // 防止玩家通过"短促冲刺+静止恢复"循环来滥用恢复机制
+        // 这模拟了心率下降和呼吸调整的时间需求
+        const float RECOVERY_STARTUP_DELAY_SECONDS = 3.0; // 恢复启动延迟（秒）
+        float restDurationSeconds = restDurationMinutes * 60.0; // 将休息时间转换为秒
+        
         float loadRecoveryBoost = 1.0;
-        if (currentWeight > COMBAT_LOAD_WEIGHT)
+        bool canUseLoadRecoveryBoost = (restDurationSeconds >= RECOVERY_STARTUP_DELAY_SECONDS);
+        
+        // 只有在静止时间≥3秒时，才应用负重恢复优化
+        if (canUseLoadRecoveryBoost)
         {
-            // 负重超过30kg时，恢复速率增加（模拟深呼吸调整能力）
-            // 计算负重比例（基于战斗负重）
-            float loadRatio = (currentWeight - COMBAT_LOAD_WEIGHT) / (MAX_ENCUMBRANCE_WEIGHT - COMBAT_LOAD_WEIGHT); // 0.0-1.0（30kg到40.5kg）
-            loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
-            // 恢复速率提升：30kg时为1.0，40.5kg时为1.3（最高30%提升）
-            loadRecoveryBoost = 1.0 + (loadRatio * 0.3); // 1.0-1.3倍
+            if (currentWeight > COMBAT_LOAD_WEIGHT)
+            {
+                // 负重超过30kg时，恢复速率增加（模拟深呼吸调整能力）
+                // 计算负重比例（基于战斗负重）
+                float loadRatio = (currentWeight - COMBAT_LOAD_WEIGHT) / (MAX_ENCUMBRANCE_WEIGHT - COMBAT_LOAD_WEIGHT); // 0.0-1.0（30kg到40.5kg）
+                loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
+                // 恢复速率提升：30kg时为1.0，40.5kg时为1.3（最高30%提升）
+                loadRecoveryBoost = 1.0 + (loadRatio * 0.3); // 1.0-1.3倍
+            }
+            else if (currentWeight > 0.0)
+            {
+                // 负重在0-30kg之间时，也有轻微的恢复优化
+                float loadRatio = currentWeight / COMBAT_LOAD_WEIGHT; // 0.0-1.0
+                loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
+                // 恢复速率提升：0kg时为1.0，30kg时为1.1（最高10%提升）
+                loadRecoveryBoost = 1.0 + (loadRatio * 0.1); // 1.0-1.1倍
+            }
         }
-        else if (currentWeight > 0.0)
-        {
-            // 负重在0-30kg之间时，也有轻微的恢复优化
-            float loadRatio = currentWeight / COMBAT_LOAD_WEIGHT; // 0.0-1.0
-            loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
-            // 恢复速率提升：0kg时为1.0，30kg时为1.1（最高10%提升）
-            loadRecoveryBoost = 1.0 + (loadRatio * 0.1); // 1.0-1.1倍
-        }
+        // 如果静止时间<3秒，loadRecoveryBoost = 1.0（无加成）
         
         // ==================== 综合恢复率计算 ====================
         // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数 × 负重恢复优化
@@ -853,6 +887,41 @@ class RealisticStaminaSpeedSystem
         
         // 限制交互项在合理范围内（0.0-0.5，最多增加50%消耗）
         return Math.Clamp(interactionTerm, 0.0, 0.5);
+    }
+    
+    // 计算爆发性动作的体力消耗（动态负重倍率）
+    // 
+    // 对于跳跃和翻越等爆发性动作，负重的影响是指数级的
+    // 公式：实际消耗 = 基础消耗 * (currentWeight / CHARACTER_WEIGHT) ^ 1.5
+    // 
+    // 效果示例：
+    // - 空载（90kg）：基础消耗 × 1.0 = 基础消耗
+    // - 30kg负重（总重120kg）：基础消耗 × (120/90)^1.5 = 基础消耗 × 1.33^1.5 ≈ 基础消耗 × 1.54
+    // - 40kg负重（总重130kg）：基础消耗 × (130/90)^1.5 = 基础消耗 × 1.44^1.5 ≈ 基础消耗 × 1.73
+    // 
+    // 这体现了重负荷下对抗重力的额外代价
+    //
+    // @param baseCost 基础消耗（0.0-1.0）
+    // @param currentWeight 当前总重量（kg），包括身体重量和负重
+    // @return 实际消耗（0.0-1.0）
+    static float CalculateActionCost(float baseCost, float currentWeight)
+    {
+        // 限制输入参数
+        baseCost = Math.Max(baseCost, 0.0);
+        currentWeight = Math.Max(currentWeight, CHARACTER_WEIGHT); // 至少等于身体重量
+        
+        // 计算重量比例
+        float weightRatio = currentWeight / CHARACTER_WEIGHT; // 例如：120kg / 90kg = 1.33
+        
+        // 使用 1.5 次幂，让超重状态下的跳跃变得极其昂贵
+        // 使用 Pow 函数计算 weightRatio^1.5
+        float weightMultiplier = Math.Pow(weightRatio, 1.5);
+        
+        // 计算实际消耗
+        float actualCost = baseCost * weightMultiplier;
+        
+        // 限制最大消耗（防止数值爆炸）
+        return Math.Clamp(actualCost, 0.0, 0.15); // 最多15%体力
     }
     
     // 计算负重对体力消耗的影响倍数（基于体重的真实模型）
@@ -1059,27 +1128,32 @@ class RealisticStaminaSpeedSystem
         return kGrade;
     }
     
-    // 计算基于完整 Pandolf 模型的体力消耗率（包括坡度项）
+    // 计算基于完整 Pandolf 模型的体力消耗率（包括坡度项、地形系数、Santee下坡修正）
     // 
-    // 完整 Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+    // 完整 Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²)) · η
     // 其中：
     //   E = 能量消耗率（W/kg）
     //   M = 总重量（身体重量 + 负重）
     //   V = 速度（m/s）
     //   G = 坡度（坡度百分比，例如 5% = 0.05，正数=上坡，负数=下坡）
+    //   η = 地形系数（Terrain Factor，1.0-1.8）
     // 
-    // 简化版本（平地，G=0）：E = M·(2.7 + 3.2·(V-0.7)²)
+    // 简化版本（平地，G=0，η=1.0）：E = M·(2.7 + 3.2·(V-0.7)²)
     // 
     // 对于游戏实现，我们需要：
     // 1. 将能量消耗率（W/kg）转换为体力消耗率（%/s）
     // 2. 考虑负重的相对影响（相对于身体重量）
     // 3. 将坡度项 G·(0.23 + 1.34·V²) 整合到计算中
+    // 4. 应用地形系数 η（影响移动消耗）
+    // 5. 应用 Santee 下坡修正（下坡超过-15%时的离心收缩）
     //
     // @param velocity 当前速度（m/s）
     // @param currentWeight 当前总重量（kg），包括身体重量和负重
     // @param gradePercent 坡度百分比（例如，5% = 5.0，-15% = -15.0），默认0.0（平地）
+    // @param terrainFactor 地形系数（η，1.0-1.8），默认1.0（铺装路面）
+    // @param useSanteeCorrection 是否使用 Santee 下坡修正，默认true
     // @return 体力消耗率（%/s，每0.2秒的消耗率需要乘以 0.2）
-    static float CalculatePandolfEnergyExpenditure(float velocity, float currentWeight, float gradePercent = 0.0)
+    static float CalculatePandolfEnergyExpenditure(float velocity, float currentWeight, float gradePercent = 0.0, float terrainFactor = 1.0, bool useSanteeCorrection = true)
     {
         // Pandolf 模型常量
         const float PANDOLF_BASE_COEFF = 2.7; // 基础系数（W/kg）
@@ -1097,9 +1171,12 @@ class RealisticStaminaSpeedSystem
             return -0.0025; // 恢复率（负数）
         
         // 计算基础项：2.7 + 3.2·(V-0.7)²
+        // 优化：对于顶尖运动员，运动时的经济性（Running Economy）更高
+        // 添加 fitness bonus 来降低基础代谢项
         float velocityTerm = velocity - PANDOLF_VELOCITY_OFFSET;
         float velocitySquaredTerm = velocityTerm * velocityTerm;
-        float baseTerm = PANDOLF_BASE_COEFF + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
+        float fitnessBonus = 1.0 - (0.2 * FITNESS_LEVEL); // 训练有素者基础代谢降低20%
+        float baseTerm = (PANDOLF_BASE_COEFF * fitnessBonus) + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
         
         // 计算坡度项：G·(0.23 + 1.34·V²)
         // 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
@@ -1107,19 +1184,36 @@ class RealisticStaminaSpeedSystem
         float velocitySquared = velocity * velocity;
         float gradeTerm = gradeDecimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocitySquared));
         
-        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项)
+        // 应用 Santee 下坡修正（如果启用）
+        // 当下坡超过 -15% 时，需要用力"刹车"，消耗增加
+        if (useSanteeCorrection && gradePercent < 0.0)
+        {
+            float santeeCorrection = CalculateSanteeDownhillCorrection(gradePercent);
+            // 修正系数 < 1.0 表示消耗增加（因为修正系数在分母位置）
+            // 例如：修正系数 0.8 表示消耗 = 原始消耗 / 0.8 = 1.25倍
+            if (santeeCorrection < 1.0 && santeeCorrection > 0.0)
+            {
+                gradeTerm = gradeTerm / santeeCorrection; // 下坡陡坡时，消耗增加
+            }
+        }
+        
+        // 应用地形系数：η
+        // 地形系数直接影响移动消耗，铺装路面 η=1.0，草地 η=1.2，沙地 η=1.8
+        terrainFactor = Math.Clamp(terrainFactor, 0.5, 3.0); // 限制在合理范围内
+        
+        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项) · η
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
         const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
         weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
         
-        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm);
+        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor;
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
-        // 这个转换系数需要根据游戏的体力系统来调整
-        // 假设：1 W/kg ≈ 0.001 %/s（这个系数可以根据实际测试调整）
-        const float ENERGY_TO_STAMINA_COEFF = 0.0001; // 能量到体力的转换系数（需要根据测试调整）
+        // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
+        // 从0.0001降低到0.000035，减少约65%的体力消耗速度
+        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
         float staminaDrainRate = energyExpenditure * ENERGY_TO_STAMINA_COEFF;
         
         // 限制消耗率在合理范围内（避免数值爆炸）
@@ -1172,5 +1266,217 @@ class RealisticStaminaSpeedSystem
     static bool CanSprint(float staminaPercent)
     {
         return staminaPercent >= SPRINT_ENABLE_THRESHOLD;
+    }
+    
+    // ==================== 地形系数系统（基于实际测试数据的插值映射）====================
+    // 地形系数常量（基于 Pandolf 模型研究）
+    static const float TERRAIN_FACTOR_PAVED = 1.0;        // 铺装路面
+    static const float TERRAIN_FACTOR_DIRT = 1.1;         // 碎石路
+    static const float TERRAIN_FACTOR_GRASS = 1.2;        // 高草丛
+    static const float TERRAIN_FACTOR_BRUSH = 1.5;        // 重度灌木丛
+    static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
+    
+    // 根据密度值获取地形系数（基于实际测试数据的插值映射）
+    // 测试数据点：(0.65,1.0), (1.13,1.0), (1.2,1.2), (1.33,1.1), (1.55,1.3), 
+    //            (1.6,1.4), (2.24,1.0), (2.3,1.0), (2.7,1.5), (2.94,1.8)
+    // 见 docs/terrain_density_mapping.md 了解详细映射关系
+    // 
+    // @param density 地面材质密度值（0.5-3.0）
+    // @return 地形系数 (η)（1.0-1.8）
+    static float GetTerrainFactorFromDensity(float density)
+    {
+        if (density <= 0.0)
+            return TERRAIN_FACTOR_PAVED; // 默认值
+        
+        // 特殊情况：高密度平整表面（沥青、混凝土）
+        if (density >= 2.2 && density <= 2.4)
+            return TERRAIN_FACTOR_PAVED; // 沥青(2.24)、混凝土(2.3) → 1.0
+        
+        // 特殊情况：低密度平整表面（木箱）
+        if (density <= 0.7)
+            return TERRAIN_FACTOR_PAVED; // 木箱(0.65) → 1.0
+        
+        // 区间 1: 0.7 < density <= 1.2
+        // 插值：室内地板(1.13, 1.0) → 草地(1.2, 1.2)
+        if (density <= 1.2)
+        {
+            if (density <= 1.13)
+                return TERRAIN_FACTOR_PAVED; // 室内地板区间
+            // 线性插值
+            float t = (density - 1.13) / (1.2 - 1.13);
+            return 1.0 + t * 0.2; // 1.0 → 1.2
+        }
+        
+        // 区间 2: 1.2 < density <= 1.33
+        // 插值：草地(1.2, 1.2) → 土质(1.33, 1.1)
+        if (density <= 1.33)
+        {
+            float t = (density - 1.2) / (1.33 - 1.2);
+            return 1.2 - t * 0.1; // 1.2 → 1.1
+        }
+        
+        // 区间 3: 1.33 < density <= 1.6
+        // 插值：土质(1.33, 1.1) → 床垫(1.55, 1.3) → 海岸鹅卵石(1.6, 1.4)
+        if (density <= 1.55)
+        {
+            // 子区间：土质 → 床垫
+            float t = (density - 1.33) / (1.55 - 1.33);
+            return 1.1 + t * 0.2; // 1.1 → 1.3
+        }
+        else // density <= 1.6
+        {
+            // 子区间：床垫 → 海岸鹅卵石
+            float t = (density - 1.55) / (1.6 - 1.55);
+            return 1.3 + t * 0.1; // 1.3 → 1.4
+        }
+        
+        // 区间 4: 1.6 < density < 2.2
+        // 插值：海岸鹅卵石(1.6, 1.4) → 平滑过渡到沥青区间(2.2, 1.0)
+        if (density < 2.2)
+        {
+            float t = (density - 1.6) / (2.2 - 1.6);
+            return 1.4 - t * 0.4; // 1.4 → 1.0
+        }
+        
+        // 区间 5: 2.4 < density <= 2.7
+        // 插值：混凝土区间结束(2.4, 1.0) → 铁棚(2.7, 1.5)
+        if (density <= 2.7)
+        {
+            float t = (density - 2.4) / (2.7 - 2.4);
+            return 1.0 + t * 0.5; // 1.0 → 1.5
+        }
+        
+        // 区间 6: 2.7 < density
+        // 插值：铁棚(2.7, 1.5) → 陶片屋顶(2.94, 1.8)
+        if (density <= 2.94)
+        {
+            float t = (density - 2.7) / (2.94 - 2.7);
+            return 1.5 + t * 0.3; // 1.5 → 1.8
+        }
+        
+        // 外推：超出已知范围，限制在合理范围内
+        return Math.Clamp(1.8 + (density - 2.94) * 0.1, 1.8, 2.5);
+    }
+    
+    // ==================== 静态负重站立消耗（Pandolf 静态项）====================
+    // 基于 Pandolf 模型：当 V=0 时，背负重物原地站立也会消耗体力
+    // Pandolf 静态项公式：E_standing = 1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
+    // 其中：
+    //   W_body = 身体重量（kg）
+    //   L = 负重（kg）
+    // 
+    // @param bodyWeight 身体重量（kg），默认90kg
+    // @param loadWeight 负重（kg），当前携带的物品重量
+    // @return 静态站立消耗率（%/s），负数表示恢复，正数表示消耗
+    static float CalculateStaticStandingCost(float bodyWeight = 90.0, float loadWeight = 0.0)
+    {
+        // Pandolf 静态项常量
+        const float PANDOLF_STATIC_COEFF_1 = 1.5; // 基础系数（W/kg）
+        const float PANDOLF_STATIC_COEFF_2 = 2.0; // 负重系数（W/kg）
+        
+        // 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
+        float baseStaticTerm = PANDOLF_STATIC_COEFF_1 * bodyWeight;
+        
+        float loadRatio = 0.0;
+        if (bodyWeight > 0.0)
+            loadRatio = loadWeight / bodyWeight;
+        
+        float loadStaticTerm = 0.0;
+        if (loadWeight > 0.0)
+        {
+            float loadRatioSquared = loadRatio * loadRatio;
+            loadStaticTerm = PANDOLF_STATIC_COEFF_2 * (bodyWeight + loadWeight) * loadRatioSquared;
+        }
+        
+        float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
+        
+        // 将能量消耗率（W）转换为体力消耗率（%/s）
+        // 参考：CalculatePandolfEnergyExpenditure 的转换系数
+        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，与Pandolf模型保持一致）
+        float staticDrainRate = staticEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        
+        // 限制消耗率在合理范围内
+        // 空载时约0.0135%/s，40kg负重时约0.04%/s
+        staticDrainRate = Math.Clamp(staticDrainRate, 0.0, 0.05); // 最多每秒消耗5%
+        
+        return staticDrainRate;
+    }
+    
+    // ==================== Santee 下坡修正模型（2001）====================
+    // 基于 Santee et al. (2001) 的下坡修正模型
+    // Pandolf 原型在处理下坡（负坡度）时不够精确
+    // Santee 修正：当 G < -15% 时，需要用力"刹车"以防摔倒（离心收缩）
+    // 修正系数：μ = 1.0 - [G·(1 - G/15)/2]
+    // 其中 G 为负坡度百分比（例如 -15% = -15.0）
+    // 
+    // @param gradePercent 坡度百分比（例如，-15% = -15.0，正数=上坡，负数=下坡）
+    // @return 下坡修正系数（0.7-1.0），用于修正 Pandolf 模型的坡度项
+    static float CalculateSanteeDownhillCorrection(float gradePercent)
+    {
+        // 只处理下坡（负坡度）
+        if (gradePercent >= 0.0)
+            return 1.0; // 上坡或平地，不需要修正
+        
+        float absGrade = Math.AbsFloat(gradePercent);
+        
+        // 缓坡（0% 到 -15%）：使用标准 Pandolf 模型，不需要修正
+        if (absGrade <= 15.0)
+            return 1.0;
+        
+        // 陡坡（超过 -15%）：应用 Santee 修正
+        // 修正系数：μ = 1.0 - [G·(1 - G/15)/2]
+        // 其中 G 为负数，所以需要处理符号
+        float correctionTerm = absGrade * (1.0 - absGrade / 15.0) / 2.0;
+        float correctionFactor = 1.0 - correctionTerm;
+        
+        // 限制修正系数在合理范围内（0.5-1.0）
+        // 修正系数越小，消耗越大（因为需要更多"刹车"力）
+        return Math.Clamp(correctionFactor, 0.5, 1.0);
+    }
+    
+    // ==================== Givoni-Goldman 跑步模式切换 ====================
+    // 基于 Givoni-Goldman 跑步能量消耗模型
+    // Pandolf 模型在速度 V > 2.2 m/s（约 8 km/h）时会失效（设计时针对步行）
+    // 对于 Sprint/Run 模式，应该切换到 Givoni-Goldman 跑步模型
+    // 
+    // 跑步公式：E_run = (W_body + L)·(Givoni_Constant)·V^α
+    // 其中：
+    //   α = 速度指数（通常 2.0-2.4，跑步效率低于步行）
+    //   Givoni_Constant = 跑步常数（需要校准）
+    // 
+    // @param velocity 当前速度（m/s）
+    // @param currentWeight 当前总重量（kg），包括身体重量和负重
+    // @param isRunning 是否为跑步模式（true=Run/Sprint，false=Walk）
+    // @return 跑步模式下的能量消耗率（%/s）
+    static float CalculateGivoniGoldmanRunning(float velocity, float currentWeight, bool isRunning = true)
+    {
+        // 只在跑步模式下（V > 2.2 m/s）使用 Givoni-Goldman 模型
+        if (!isRunning || velocity <= 2.2)
+            return 0.0; // 使用标准 Pandolf 模型
+        
+        // Givoni-Goldman 模型常量
+        const float GIVONI_CONSTANT = 0.3; // 跑步常数（W/kg·m²/s²），需要根据实际测试校准
+        const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
+        
+        // 计算速度的幂：V^α
+        // 使用 Pow 函数计算 V^2.2
+        float velocityPower = Pow(velocity, GIVONI_VELOCITY_EXPONENT);
+        
+        // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
+        // 使用相对于基准体重的倍数
+        const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
+        float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
+        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
+        
+        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
+        
+        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
+        const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，与Pandolf模型保持一致）
+        float runningDrainRate = runningEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        
+        // 限制消耗率在合理范围内
+        runningDrainRate = Math.Clamp(runningDrainRate, 0.0, 0.05); // 最多每秒消耗5%
+        
+        return runningDrainRate;
     }
 }

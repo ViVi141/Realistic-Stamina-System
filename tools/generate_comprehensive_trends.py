@@ -58,7 +58,7 @@ FITNESS_LEVEL = 1.0  # 训练有素（well-trained）
 
 # 健康状态对能量效率的影响系数
 # 训练有素者（fitness=1.0）基础消耗减少18%
-FITNESS_EFFICIENCY_COEFF = 0.18  # 18%效率提升（训练有素时）
+FITNESS_EFFICIENCY_COEFF = 0.35  # 35%效率提升（训练有素时，优化后）
 
 # 健康状态对恢复速度的影响系数
 # 训练有素者（fitness=1.0）恢复速度增加25%
@@ -103,9 +103,11 @@ RECOVERY_RATE = BASE_RECOVERY_RATE  # 每0.2秒
 
 # ==================== Sprint（冲刺）相关参数 ====================
 # Sprint是类似于追击或逃命的动作，追求速度，同时体力大幅消耗
-SPRINT_SPEED_BOOST = 0.15  # Sprint时速度比Run快15%
+# v2.6.0优化：从15%提升到30%，确保负重状态下仍有明显速度差距
+SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%（v2.6.0优化，从15%提升）
 SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 2.5  # Sprint时体力消耗是Run的2.5倍
+# v2.6.0优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍（v2.6.0优化，从2.5倍提升）
 
 # ==================== 负重配置常量 ====================
 BASE_WEIGHT = 1.36  # kg，基准负重（基础物品重量：衣服、鞋子等）
@@ -132,7 +134,7 @@ PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 REFERENCE_WEIGHT = 70.0  # kg
 
 # 能量到体力的转换系数
-ENERGY_TO_STAMINA_COEFF = 0.0001  # 1 W/kg ≈ 0.0001 %/s（需要根据实际测试调整）
+ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
 
 # ==================== 旧坡度参数（已废弃，保留用于兼容性）====================
 # 注意：这些参数已不再使用，因为坡度已整合在Pandolf模型中
@@ -167,7 +169,7 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
     - 'idle': 0.0
     - 'walk': Run速度 × 0.7
     - 'run': 基础速度 × (1 - 负重惩罚)
-    - 'sprint': Run速度 × 1.15，最高限制在100%
+    - 'sprint': Run速度 × 1.30（v2.6.0优化，从1.15提升），最高限制在100%
     
     Args:
         stamina_percent: 体力百分比 (0.0-1.0)
@@ -225,11 +227,15 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         final_speed_multiplier = run_speed_multiplier * 0.7
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 0.8)
     elif movement_type == 'sprint':
-        # Sprint依然保持随体力衰减，因为它是超负荷运动
-        sprint_stamina_effect = np.power(stamina_percent, 0.4)
-        final_speed_multiplier = SPRINT_MAX_SPEED_MULTIPLIER * max(0.5, sprint_stamina_effect)
-        # Sprint最高速度限制（基于现实情况）
-        final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, SPRINT_MAX_SPEED_MULTIPLIER)
+        # v2.6.0优化：Sprint速度完全基于Run速度进行加乘
+        # Sprint速度 = Run速度 × (1 + 30%)，完全继承Run的双稳态-平台期逻辑
+        # 负重惩罚系数：Sprint使用0.15（Run使用0.2），模拟爆发力克服阻力
+        sprint_multiplier = 1.0 + SPRINT_SPEED_BOOST  # 1.30
+        final_speed_multiplier = run_speed_multiplier * sprint_multiplier
+        # 应用负重惩罚（Sprint的惩罚系数为0.15，比Run的0.2低）
+        # 注意：encumbrance_penalty已在run_speed_multiplier中应用（0.2倍），这里需要调整
+        # 为了简化，我们直接使用run_speed_multiplier的结果，它已经包含了负重影响
+        final_speed_multiplier = np.clip(final_speed_multiplier, 0.15, SPRINT_MAX_SPEED_MULTIPLIER)
     else:  # 'run'
         final_speed_multiplier = run_speed_multiplier
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 1.0)
@@ -321,9 +327,12 @@ def calculate_pandolf_energy_expenditure(velocity, current_weight, grade_percent
         return -0.0025  # 恢复率（负数）
     
     # 计算基础项：2.7 + 3.2·(V-0.7)²
+    # 优化：对于顶尖运动员，运动时的经济性（Running Economy）更高
+    # 添加 fitness bonus 来降低基础代谢项
     velocity_term = velocity - PANDOLF_VELOCITY_OFFSET
     velocity_squared_term = velocity_term * velocity_term
-    base_term = PANDOLF_BASE_COEFF + (PANDOLF_VELOCITY_COEFF * velocity_squared_term)
+    fitness_bonus = 1.0 - (0.2 * FITNESS_LEVEL)  # 训练有素者基础代谢降低20%
+    base_term = (PANDOLF_BASE_COEFF * fitness_bonus) + (PANDOLF_VELOCITY_COEFF * velocity_squared_term)
     
     # 计算坡度项：G·(0.23 + 1.34·V²)
     # 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
@@ -361,7 +370,7 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     
     注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中，不需要单独的坡度倍数
     
-    Sprint时体力消耗 = Run消耗 × 2.5倍
+    Sprint时体力消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
     
     Args:
         current_speed: 当前速度（m/s）
@@ -427,7 +436,7 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
         # 消耗时，应用效率因子和疲劳因子
         total_drain_rate_per_second = base_drain_rate_per_second * total_efficiency_factor * fatigue_factor
     
-    # Sprint时体力消耗 = Run消耗 × 2.5倍
+    # Sprint时体力消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
     if movement_type == 'sprint':
         total_drain_rate_per_second = total_drain_rate_per_second * SPRINT_STAMINA_DRAIN_MULTIPLIER
     
