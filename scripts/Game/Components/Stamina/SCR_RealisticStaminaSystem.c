@@ -26,6 +26,11 @@ class RealisticStaminaSpeedSystem
     static const float RUN_VELOCITY_THRESHOLD = 3.7; // m/s，Run速度阈值（匹配15:27的2英里配速）
     static const float WALK_VELOCITY_THRESHOLD = 3.2; // m/s，Walk速度阈值
     
+    // 基于负重的动态速度阈值（m/s）
+    static const float RECOVERY_THRESHOLD_NO_LOAD = 2.5; // m/s，空载时恢复体力阈值
+    static const float DRAIN_THRESHOLD_COMBAT_LOAD = 1.5; // m/s，负重30kg时开始消耗体力的阈值
+    static const float COMBAT_LOAD_WEIGHT = 30.0; // kg，战斗负重（用于计算动态阈值）
+    
     // 基础消耗率（pts/s，每秒消耗的点数）
     // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
     static const float SPRINT_BASE_DRAIN_RATE = 0.480; // pts/s（Sprint）
@@ -862,18 +867,46 @@ class RealisticStaminaSpeedSystem
     }
     
     // ==================== 军事体力系统模型：基于速度阈值的分段消耗率 ====================
-    // 根据当前速度计算基础消耗率（基于速度阈值）
+    // 根据当前速度和负重计算基础消耗率（基于动态速度阈值）
     // 
-    // 速度阈值分段：
+    // 速度阈值分段（根据负重动态调整）：
     // - Sprint: V ≥ 5.2 m/s → 0.480 pts/s
-    // - Run: 3.7 ≤ V < 5.2 m/s → 0.105 pts/s
-    // - Walk: 3.2 ≤ V < 3.7 m/s → 0.060 pts/s
-    // - Rest: V < 3.2 m/s → -0.250 pts/s（恢复）
+    // - Run: 动态阈值 ≤ V < 5.2 m/s → 0.105 pts/s
+    // - Walk: 动态阈值 ≤ V < 动态阈值 → 0.060 pts/s
+    // - Rest: V < 动态阈值 → -0.250 pts/s（恢复）
+    //
+    // 动态阈值计算：
+    // - 空载（0kg）时：恢复阈值 = 2.5 m/s（速度 < 2.5 m/s 时恢复）
+    // - 负重30kg时：消耗阈值 = 1.5 m/s（速度 > 1.5 m/s 时开始消耗）
+    // - 其他负重：线性插值
     //
     // @param velocity 当前速度（m/s）
+    // @param currentWeight 当前负重（kg）
     // @return 基础消耗率（每0.2秒，负数表示恢复）
-    static float CalculateBaseDrainRateByVelocity(float velocity)
+    static float CalculateBaseDrainRateByVelocity(float velocity, float currentWeight = 0.0)
     {
+        // 计算动态阈值（基于负重线性插值）
+        // 空载（0kg）时：恢复阈值 = 2.5 m/s
+        // 负重30kg时：消耗阈值 = 1.5 m/s
+        float dynamicThreshold = 0.0;
+        if (currentWeight <= 0.0)
+        {
+            // 空载：恢复阈值 = 2.5 m/s
+            dynamicThreshold = RECOVERY_THRESHOLD_NO_LOAD;
+        }
+        else if (currentWeight >= COMBAT_LOAD_WEIGHT)
+        {
+            // 负重≥30kg：消耗阈值 = 1.5 m/s
+            dynamicThreshold = DRAIN_THRESHOLD_COMBAT_LOAD;
+        }
+        else
+        {
+            // 线性插值：0kg（2.5 m/s） → 30kg（1.5 m/s）
+            float t = currentWeight / COMBAT_LOAD_WEIGHT; // t in [0, 1]
+            dynamicThreshold = RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + DRAIN_THRESHOLD_COMBAT_LOAD * t;
+        }
+        
+        // 根据速度和动态阈值计算消耗率
         if (velocity >= SPRINT_VELOCITY_THRESHOLD)
         {
             return SPRINT_DRAIN_PER_TICK; // Sprint消耗
@@ -882,12 +915,14 @@ class RealisticStaminaSpeedSystem
         {
             return RUN_DRAIN_PER_TICK; // Run消耗
         }
-        else if (velocity >= WALK_VELOCITY_THRESHOLD)
+        else if (velocity >= dynamicThreshold)
         {
+            // 速度在动态阈值和Run阈值之间：Walk消耗（缓慢消耗）
             return WALK_DRAIN_PER_TICK; // Walk消耗
         }
         else
         {
+            // 速度 < 动态阈值：恢复
             return -REST_RECOVERY_PER_TICK; // Rest恢复（负数）
         }
     }

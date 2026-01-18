@@ -472,8 +472,19 @@ modded class SCR_CharacterControllerComponent
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
         
         // ==================== 基于速度阈值的分段消耗率（融合模型）====================
-        // 使用新模型的基于速度阈值的分段消耗率作为基础
-        float baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculateBaseDrainRateByVelocity(currentSpeed);
+        // 使用新模型的基于速度阈值的分段消耗率作为基础（根据负重动态调整）
+        // 获取当前负重（kg）
+        float currentWeight = 0.0;
+        ChimeraCharacter characterForWeight = ChimeraCharacter.Cast(owner);
+        if (characterForWeight)
+        {
+            SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForWeight.FindComponent(SCR_CharacterInventoryStorageComponent));
+            if (characterInventory)
+            {
+                currentWeight = characterInventory.GetTotalWeight();
+            }
+        }
+        float baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculateBaseDrainRateByVelocity(currentSpeed, currentWeight);
         
         // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
         // 注意：恢复时（baseDrainRateByVelocity < 0），不应用效率因子（恢复不受效率影响）
