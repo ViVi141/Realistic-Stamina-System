@@ -64,14 +64,23 @@ class RealisticStaminaSpeedSystem
     // 2英里 ≈ 3218.7米，时间927秒，平均速度 ≈ 3.47 m/s
     static const float TARGET_AVERAGE_SPEED = 3.47; // m/s
     
-    // 目标速度倍数（用于校准系统，使得无负重、满体力时接近目标速度）
-    // 经过Python参数优化，找到最佳参数组合（能在15分27秒内完成2英里）：
-    // - 速度倍数: 0.920 (满体力速度: 4.78 m/s)
-    // - 基础消耗: 0.00004 (每0.2秒)
-    // - 速度线性项系数: 0.0001
-    // - 速度平方项系数: 0.0001
-    // 预期完成时间: 925.8秒 (15.43分钟)，平均速度: 3.48 m/s
-    static const float TARGET_SPEED_MULTIPLIER = 0.920; // 5.2 × 0.920 = 4.78 m/s
+    // 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
+    // 对应游戏倍率约为 0.71 (3.7 / 5.2)
+    static const float TARGET_RUN_SPEED = 3.7; // m/s
+    static const float TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED; // 0.7115
+    
+    // 意志力平台期阈值（体力百分比）
+    // 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
+    static const float WILLPOWER_THRESHOLD = 0.25; // 25%
+    
+    // 平滑过渡起点（体力百分比）
+    // 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
+    // 将25%设为"疲劳临界区"的起点，而不是终点
+    static const float SMOOTH_TRANSITION_START = 0.25; // 25%（疲劳临界区起点）
+    static const float SMOOTH_TRANSITION_END = 0.05; // 5%，平滑过渡结束点（真正的力竭点）
+    
+    // 跛行速度倍数（最低速度）
+    static const float MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED; // 1.0 m/s / 5.2 = 0.1923
     
     // ==================== 医学模型参数 ====================
     
@@ -408,21 +417,17 @@ class RealisticStaminaSpeedSystem
     
     // ==================== 核心计算函数 ====================
     
-    // 根据体力百分比计算速度倍数（基于医学模型）
+    // 根据体力百分比计算速度倍数（双稳态-应激性能模型）
     // 
-    // 数学模型：基于耐力下降模型（Fatigue-based speed model）
-    // S(E) = S_max * E^α
-    // 其中：
-    //   S = 当前速度
-    //   E = 体力百分比 (0-1)
-    //   α = 体力影响指数（STAMINA_EXPONENT）
-    //   S_max = 目标最大速度倍数（TARGET_SPEED_MULTIPLIER）
+    // 数学模型：基于双稳态-应激性能模型（Dual-State Stress Performance Model）
+    // 核心理念：士兵的性能不应是体力的简单幂函数，而应是"意志力维持"与"生理极限崩溃"的结合
     //
-    // 参考文献：
-    // - 体力下降对速度的影响是非线性的，基于医学文献（Minetti et al., 2002; Weyand et al., 2010）
-    // - α = 0.6 时，体力50%时速度为66%（更符合实际生理学数据）
-    // - α = 0.5 时，体力50%时速度为71%（平方根关系）
-    // - α = 1.0 时，体力50%时速度为50%（线性，不符合实际）
+    // 速度性能分段（Performance Plateau）：
+    // 1. 平台期（Willpower Zone, Stamina 25% - 100%）：
+    //    只要体力高于25%，士兵可以强行维持设定的目标速度（3.7 m/s）。
+    //    这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
+    // 2. 衰减期（Failure Zone, Stamina 0% - 25%）：
+    //    只有当体力掉入最后25%时，生理机能开始真正崩塌，速度迅速线性下降到跛行。
     //
     // @param staminaPercent 当前体力百分比 (0.0-1.0)
     // @return 速度倍数（相对于游戏最大速度）
@@ -431,20 +436,38 @@ class RealisticStaminaSpeedSystem
         // 确保体力百分比在有效范围内
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
         
-        // 应用医学模型：S(E) = S_max * E^α
-        // 使用精确的幂函数计算，不使用近似
-        // α = 0.6（基于医学文献的精确值）
-        // 
-        // 精确计算结果（优化后参数，v2.1）：
-        // - 无负重、满体力时：0.920 × 1.0^0.6 = 0.920 × 1.0 = 0.920 (4.78 m/s)
-        // - 无负重、50%体力时：0.920 × 0.5^0.6 = 0.920 × 0.660 ≈ 0.607 (3.16 m/s)
-        // - 无负重、25%体力时：0.920 × 0.25^0.6 = 0.920 × 0.435 ≈ 0.400 (2.08 m/s)
-        // - 无负重、10%体力时：0.920 × 0.1^0.6 = 0.920 × 0.251 ≈ 0.231 (1.20 m/s)
-        // - 无负重、0%体力时：0.920 × 0.0^0.6 = 0.0（但会被 MIN_SPEED_MULTIPLIER 限制为 0.15）
-        float staminaEffect = Pow(staminaPercent, STAMINA_EXPONENT);
+        float baseSpeedMultiplier = 0.0;
         
-        // 基础速度倍数 = 目标速度倍数 × 体力影响
-        float baseSpeedMultiplier = TARGET_SPEED_MULTIPLIER * staminaEffect;
+        if (staminaPercent >= SMOOTH_TRANSITION_START)
+        {
+            // 意志力平台期（25%-100%）：保持恒定目标速度（3.7 m/s）
+            // 模拟士兵通过意志力克服早期疲劳，维持恒定性能
+            baseSpeedMultiplier = TARGET_RUN_SPEED_MULTIPLIER;
+        }
+        else if (staminaPercent >= SMOOTH_TRANSITION_END)
+        {
+            // 平滑过渡期（5%-25%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
+            // 让开始下降时更柔和，接近力竭时下降更快
+            // t = (stamina - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END)
+            // smoothT = t² × (3 - 2t)，这是一个平滑的S型曲线
+            float t = (staminaPercent - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END); // 0.0-1.0
+            t = Math.Clamp(t, 0.0, 1.0);
+            float smoothT = t * t * (3.0 - 2.0 * t); // smoothstep函数
+            
+            // 在目标速度和跛行速度之间平滑过渡
+            // 当体力从25%降到5%时，速度从3.7m/s平滑降到跛行速度
+            baseSpeedMultiplier = MIN_LIMP_SPEED_MULTIPLIER + (TARGET_RUN_SPEED_MULTIPLIER - MIN_LIMP_SPEED_MULTIPLIER) * smoothT;
+        }
+        else
+        {
+            // 生理崩溃期（0%-5%）：速度快速线性下降到跛行速度
+            // 0.05时为平滑过渡终点速度，0时为1.0m/s（MIN_LIMP_SPEED_MULTIPLIER）
+            float collapseFactor = staminaPercent / SMOOTH_TRANSITION_END; // 0.0-1.0
+            // 计算平滑过渡终点的速度（在5%体力时，此时smoothT=0，速度为MIN_LIMP_SPEED_MULTIPLIER）
+            baseSpeedMultiplier = MIN_LIMP_SPEED_MULTIPLIER * collapseFactor;
+            // 确保不会低于最小速度
+            baseSpeedMultiplier = Math.Max(baseSpeedMultiplier, MIN_LIMP_SPEED_MULTIPLIER * 0.8); // 最低不低于跛行速度的80%
+        }
         
         // 应用最小速度限制（防止体力完全耗尽时无法移动）
         baseSpeedMultiplier = Math.Max(baseSpeedMultiplier, MIN_SPEED_MULTIPLIER);
@@ -716,12 +739,14 @@ class RealisticStaminaSpeedSystem
     // 3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
     // 4. 年龄：年轻者恢复更快
     // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
+    // 6. 负重影响：重载下增加恢复速率上限，模拟士兵通过深呼吸快速调整的能力
     //
     // @param staminaPercent 当前体力百分比（0.0-1.0）
     // @param restDurationMinutes 休息持续时间（分钟），从停止运动开始计算
     // @param exerciseDurationMinutes 运动持续时间（分钟），用于计算累积疲劳
+    // @param currentWeight 当前负重（kg），用于优化重载下的恢复速率
     // @return 恢复率（每0.2秒），表示应该恢复的体力百分比
-    static float CalculateMultiDimensionalRecoveryRate(float staminaPercent, float restDurationMinutes, float exerciseDurationMinutes)
+    static float CalculateMultiDimensionalRecoveryRate(float staminaPercent, float restDurationMinutes, float exerciseDurationMinutes, float currentWeight = 0.0)
     {
         // 限制输入参数
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
@@ -769,9 +794,31 @@ class RealisticStaminaSpeedSystem
         float fatigueRecoveryMultiplier = 1.0 - fatigueRecoveryPenalty;
         fatigueRecoveryMultiplier = Math.Clamp(fatigueRecoveryMultiplier, 0.7, 1.0); // 限制在70%-100%之间
         
+        // ==================== 6. 负重影响：重载下的恢复优化 ====================
+        // 重载下增加恢复速率上限，模拟士兵通过深呼吸快速调整的能力
+        // 这样可以避免重装冲刺后的"跛行"惩罚太久，保持游戏节奏
+        float loadRecoveryBoost = 1.0;
+        if (currentWeight > COMBAT_LOAD_WEIGHT)
+        {
+            // 负重超过30kg时，恢复速率增加（模拟深呼吸调整能力）
+            // 计算负重比例（基于战斗负重）
+            float loadRatio = (currentWeight - COMBAT_LOAD_WEIGHT) / (MAX_ENCUMBRANCE_WEIGHT - COMBAT_LOAD_WEIGHT); // 0.0-1.0（30kg到40.5kg）
+            loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
+            // 恢复速率提升：30kg时为1.0，40.5kg时为1.3（最高30%提升）
+            loadRecoveryBoost = 1.0 + (loadRatio * 0.3); // 1.0-1.3倍
+        }
+        else if (currentWeight > 0.0)
+        {
+            // 负重在0-30kg之间时，也有轻微的恢复优化
+            float loadRatio = currentWeight / COMBAT_LOAD_WEIGHT; // 0.0-1.0
+            loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
+            // 恢复速率提升：0kg时为1.0，30kg时为1.1（最高10%提升）
+            loadRecoveryBoost = 1.0 + (loadRatio * 0.1); // 1.0-1.1倍
+        }
+        
         // ==================== 综合恢复率计算 ====================
-        // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数
-        float totalRecoveryRate = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier;
+        // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数 × 负重恢复优化
+        float totalRecoveryRate = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier * loadRecoveryBoost;
         
         return totalRecoveryRate;
     }
@@ -866,13 +913,18 @@ class RealisticStaminaSpeedSystem
         return staminaDrainMultiplier;
     }
     
-    // ==================== 军事体力系统模型：基于速度阈值的分段消耗率 ====================
-    // 根据当前速度和负重计算基础消耗率（基于动态速度阈值）
+    // ==================== 军事体力系统模型：基于速度阈值的分段消耗率（重新校准）====================
+    // 根据当前速度和负重计算基础消耗率（使用临界动力概念，更温和的负重公式）
     // 
+    // 负重消耗重新校准（Load Calibration）：
+    // - 基于临界动力（Critical Power）概念：将30kg定义为"标准战斗负载"
+    // - 非线性增长：负重对体力的消耗不再是简单的倍数，而是：基础消耗 + (负重/体重)^1.2 * 1.5
+    // - 这样可以确保30kg负载下仍能坚持约16分钟，满足ACFT测试要求
+    //
     // 速度阈值分段（根据负重动态调整）：
-    // - Sprint: V ≥ 5.2 m/s → 0.480 pts/s
-    // - Run: 动态阈值 ≤ V < 5.2 m/s → 0.105 pts/s
-    // - Walk: 动态阈值 ≤ V < 动态阈值 → 0.060 pts/s
+    // - Sprint: V ≥ 5.0 m/s → 消耗 × loadFactor
+    // - Run: 3.2 ≤ V < 5.0 m/s → 消耗 × loadFactor（核心修正：大幅调低RUN的基础消耗）
+    // - Walk: V < 3.2 m/s → 消耗 × loadFactor
     // - Rest: V < 动态阈值 → -0.250 pts/s（恢复）
     //
     // 动态阈值计算：
@@ -906,24 +958,42 @@ class RealisticStaminaSpeedSystem
             dynamicThreshold = RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + DRAIN_THRESHOLD_COMBAT_LOAD * t;
         }
         
-        // 根据速度和动态阈值计算消耗率
-        if (velocity >= SPRINT_VELOCITY_THRESHOLD)
+        // 重新计算负重比例（基于体重）
+        float weightRatio = currentWeight / CHARACTER_WEIGHT; // 30kg时约为0.33
+        
+        // 负重影响因子：不再是简单的乘法，而是一个温和的增量
+        // loadFactor = 1.0 + (weightRatio^1.2) * 1.5
+        // 这样可以确保30kg时消耗不会翻倍，而是更合理的增长
+        float loadFactor = 1.0;
+        if (currentWeight > 0.0)
         {
-            return SPRINT_DRAIN_PER_TICK; // Sprint消耗
+            // 使用Pow计算 weightRatio^1.2
+            float weightRatioPower = Pow(weightRatio, 1.2);
+            loadFactor = 1.0 + (weightRatioPower * 1.5);
         }
-        else if (velocity >= RUN_VELOCITY_THRESHOLD)
+        
+        // 根据速度和动态阈值计算消耗率
+        if (velocity >= SPRINT_VELOCITY_THRESHOLD || velocity >= 5.0)
         {
-            return RUN_DRAIN_PER_TICK; // Run消耗
+            // Sprint消耗 × 负重影响因子
+            return SPRINT_DRAIN_PER_TICK * loadFactor;
+        }
+        else if (velocity >= RUN_VELOCITY_THRESHOLD || velocity >= 3.2)
+        {
+            // Run消耗（核心修正：大幅调低RUN的基础消耗，以补偿负重）
+            // 基础消耗从0.105 pts/s降低到约0.08 pts/s（每0.2秒 = 0.00016）
+            // 这是为了确保30kg负载下仍能坚持约16分钟
+            return 0.00008 * loadFactor; // 每0.2秒，调整后的Run消耗
         }
         else if (velocity >= dynamicThreshold)
         {
-            // 速度在动态阈值和Run阈值之间：Walk消耗（缓慢消耗）
-            return WALK_DRAIN_PER_TICK; // Walk消耗
+            // Walk消耗（缓慢消耗）
+            return 0.00002 * loadFactor; // 每0.2秒，调整后的Walk消耗
         }
         else
         {
-            // 速度 < 动态阈值：恢复
-            return -REST_RECOVERY_PER_TICK; // Rest恢复（负数）
+            // 速度 < 动态阈值：恢复（保持较高的恢复率）
+            return -0.00025; // Rest恢复（负数），每0.2秒
         }
     }
     
@@ -936,30 +1006,68 @@ class RealisticStaminaSpeedSystem
     //
     // @param gradePercent 坡度百分比（例如，5% = 5.0）
     // @return 坡度修正乘数
+    // 计算坡度修正乘数（使用非线性增长，让小坡几乎无感，陡坡才真正吃力）
+    // 
+    // 优化：使用幂函数代替线性增长，让小坡（5%以下）几乎无感，陡坡才真正吃力
+    // 这样 Everon 的缓坡就不会让玩家频繁断气
+    //
+    // @param gradePercent 坡度百分比（例如，5% = 5.0）
+    // @return 坡度修正乘数
     static float CalculateGradeMultiplier(float gradePercent)
     {
         float kGrade = 1.0;
         
         if (gradePercent > 0.0)
         {
-            // 上坡：每1%增加12%消耗
-            kGrade = 1.0 + (gradePercent * GRADE_UPHILL_COEFF);
+            // 上坡：使用幂函数代替线性增长
+            // 公式：kGrade = 1.0 + (gradePercent × 0.01)^1.2 × 5.0
+            // 这样5%坡度时：1.0 + (0.05^1.2) × 5.0 ≈ 1.0 + 0.047 × 5.0 ≈ 1.235倍
+            // 而15%坡度时：1.0 + (0.15^1.2) × 5.0 ≈ 1.0 + 0.173 × 5.0 ≈ 1.865倍
+            // 让小坡几乎无感，陡坡才真正吃力
+            float normalizedGrade = gradePercent * 0.01; // 转换为0.0-1.0范围（假设最大100%）
+            float gradePower = Pow(normalizedGrade, 1.2); // 使用1.2次方
+            kGrade = 1.0 + (gradePower * 5.0);
             
-            // 高坡度额外修正（G > 15%）
-            if (gradePercent > HIGH_GRADE_THRESHOLD)
-            {
-                kGrade = kGrade * HIGH_GRADE_MULTIPLIER;
-            }
+            // 限制最大坡度修正（避免数值爆炸）
+            kGrade = Math.Min(kGrade, 3.0); // 最多3倍消耗
         }
         else if (gradePercent < 0.0)
         {
-            // 下坡：每1%减少5%消耗
+            // 下坡：每1%减少3%消耗
             kGrade = 1.0 + (gradePercent * GRADE_DOWNHILL_COEFF);
             // 限制下坡修正，避免消耗变为负数
             kGrade = Math.Max(kGrade, 0.5); // 最多减少50%消耗
         }
         
         return kGrade;
+    }
+    
+    // 计算坡度自适应目标速度（坡度-速度负反馈）
+    // 
+    // 问题分析：现实中人爬坡时，会自动缩短步幅、降低速度以维持心肺负荷（体力消耗）。
+    // 目前的系统是"强行维持速度但暴扣体力"，这导致了代谢率在斜坡上迅速过载。
+    //
+    // 解决方案：实施"坡度-速度负反馈"。当上坡角度增加时，系统自动略微下调当前的"目标速度"，
+    // 从而换取更持久的续航。这样玩家在Everon爬小缓坡时，会感觉到角色稍微"沉"了一点点，
+    // 但体力掉速依然平稳。
+    //
+    // @param baseTargetSpeed 基础目标速度（m/s），例如3.7 m/s
+    // @param slopeAngleDegrees 坡度角度（度），正数=上坡，负数=下坡
+    // @return 坡度自适应后的目标速度（m/s）
+    static float CalculateSlopeAdjustedTargetSpeed(float baseTargetSpeed, float slopeAngleDegrees)
+    {
+        if (slopeAngleDegrees <= 0.0)
+        {
+            // 下坡或平地：不主动减速
+            return baseTargetSpeed;
+        }
+        
+        // 爬坡自适应：每增加1度坡度，目标速度自动下降2.5%
+        // 这样10度坡时，速度会降到约 3.7 × 0.75 = 2.775 m/s，虽然慢了，但体力能多撑一倍时间
+        // 适应因子：1.0 - (slopeAngle × 0.025)，最小不低于0.6（即最多降低40%速度）
+        float adaptationFactor = Math.Max(0.6, 1.0 - (slopeAngleDegrees * 0.025));
+        
+        return baseTargetSpeed * adaptationFactor;
     }
     
     // 检查是否精疲力尽

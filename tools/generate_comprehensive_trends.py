@@ -17,13 +17,33 @@ rcParams['axes.unicode_minus'] = False
 GAME_MAX_SPEED = 5.2  # m/s，游戏最大速度
 UPDATE_INTERVAL = 0.2  # 秒
 
-# ==================== 医学模型参数（精确数学模型，基于体重的真实模型）====================
-TARGET_SPEED_MULTIPLIER = 0.920  # 5.2 × 0.920 = 4.78 m/s（优化后）
-STAMINA_EXPONENT = 0.6  # 精确值，基于医学文献（Minetti et al., 2002）
+# ==================== 医学模型参数（双稳态-应激性能模型，基于体重的真实模型）====================
+# 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
+TARGET_RUN_SPEED = 3.7  # m/s
+TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED  # 0.7115
+
+# 意志力平台期阈值（体力百分比）
+# 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
+WILLPOWER_THRESHOLD = 0.25  # 25%
+
+# 平滑过渡起点（体力百分比）
+# 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
+# 将25%设为"疲劳临界区"的起点，而不是终点
+SMOOTH_TRANSITION_START = 0.25  # 25%（疲劳临界区起点）
+SMOOTH_TRANSITION_END = 0.05  # 5%，平滑过渡结束点（真正的力竭点）
+
+# 跛行速度倍数（最低速度）
+MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED  # 1.0 m/s / 5.2 = 0.1923
+
+# 旧模型参数（已废弃，保留用于兼容性）
+TARGET_SPEED_MULTIPLIER = 0.920  # 已废弃
+STAMINA_EXPONENT = 0.6  # 已废弃（双稳态模型不使用）
+
+# 负重参数
 ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（40%体重负重时，速度下降20%）
 ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重影响指数（1.0 = 线性）
 ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 基于体重的体力消耗系数（40%体重负重时，消耗增加60%）
-MIN_SPEED_MULTIPLIER = 0.15
+MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数（兼容性保留）
 
 # ==================== 角色特征常量 ====================
 CHARACTER_WEIGHT = 90.0  # kg，角色体重（游戏内标准体重为90kg）
@@ -115,10 +135,14 @@ TARGET_TIME_SECONDS = 15 * 60 + 27  # 927秒
 
 def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0.0, movement_type='run', current_weight_kg=0.0):
     """
-    根据体力百分比、负重和移动类型计算速度倍数（基于体重的真实模型）
+    根据体力百分比、负重和移动类型计算速度倍数（双稳态-应激性能模型）
     
-    真实公式（基于体重百分比）：
-    - 基础速度：S_base = S_max × E^α，其中 α = 0.6
+    速度性能分段（Performance Plateau）：
+    1. 平台期（Willpower Zone, Stamina 25% - 100%）：
+       只要体力高于25%，士兵可以强行维持设定的目标速度（3.7 m/s）。
+       这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
+    2. 衰减期（Failure Zone, Stamina 0% - 25%）：
+       只有当体力掉入最后25%时，生理机能开始真正崩塌，速度迅速线性下降到跛行。
     - 负重惩罚：P_enc = β × (W/体重)，其中 β = 0.20（基于体重的速度惩罚系数）
     - Run速度：S_run = S_base × (1 - P_enc)
     - Sprint速度：S_sprint = S_run × (1 + SPRINT_BOOST)，限制在SPRINT_MAX内
@@ -138,12 +162,27 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
     """
     stamina_percent = np.clip(stamina_percent, 0.0, 1.0)
     
-    # 精确计算：S_base = S_max × E^α（使用精确幂函数）
-    stamina_effect = np.power(stamina_percent, STAMINA_EXPONENT)
-    base_speed_multiplier = TARGET_SPEED_MULTIPLIER * stamina_effect
-    base_speed_multiplier = max(base_speed_multiplier, MIN_SPEED_MULTIPLIER)
+    # 计算Run速度（使用双稳态模型，带平滑过渡）
+    run_speed_multiplier = 0.0
+    if stamina_percent >= SMOOTH_TRANSITION_START:
+        # 意志力平台期（25%-100%）：保持恒定目标速度（3.7 m/s）
+        run_speed_multiplier = TARGET_RUN_SPEED_MULTIPLIER
+    elif stamina_percent >= SMOOTH_TRANSITION_END:
+        # 平滑过渡期（5%-25%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
+        # 让开始下降时更柔和，接近力竭时下降更快
+        t = (stamina_percent - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END)  # 0.0-1.0
+        t = np.clip(t, 0.0, 1.0)
+        smooth_factor = t * t * (3.0 - 2.0 * t)  # smoothstep函数
+        run_speed_multiplier = MIN_LIMP_SPEED_MULTIPLIER + (TARGET_RUN_SPEED_MULTIPLIER - MIN_LIMP_SPEED_MULTIPLIER) * smooth_factor
+    else:
+        # 生理崩溃期（0%-5%）：速度快速线性下降到跛行速度
+        collapse_factor = stamina_percent / SMOOTH_TRANSITION_END  # 0.0-1.0
+        # 计算平滑过渡终点的速度（在5%体力时，此时smoothT=0，速度为MIN_LIMP_SPEED_MULTIPLIER）
+        run_speed_multiplier = MIN_LIMP_SPEED_MULTIPLIER * collapse_factor
+        # 确保不会低于最小速度
+        run_speed_multiplier = max(run_speed_multiplier, MIN_LIMP_SPEED_MULTIPLIER * 0.8)  # 最低不低于跛行速度的80%
     
-    # 应用真实负重惩罚：基于体重百分比
+    # 应用真实负重惩罚：基于体重百分比（降低影响）
     if current_weight_kg > 0.0:
         # 计算有效负重（减去基准重量，基准重量是基本战斗装备）
         effective_weight = np.maximum(current_weight_kg - BASE_WEIGHT, 0.0)
@@ -151,7 +190,9 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         body_mass_percent = effective_weight / CHARACTER_WEIGHT
         encumbrance_penalty = ENCUMBRANCE_SPEED_PENALTY_COEFF * body_mass_percent
         encumbrance_penalty = np.clip(encumbrance_penalty, 0.0, 0.5)  # 最多减少50%速度
-        run_speed_multiplier = base_speed_multiplier * (1.0 - encumbrance_penalty)
+        # 负重主要影响"油耗"（体力消耗）而不是直接降低"最高档位"（速度）
+        # 应用负重惩罚对速度上限的微调（降低影响至20%）
+        run_speed_multiplier = run_speed_multiplier - (encumbrance_penalty * 0.2)
     elif encumbrance_percent > 0.0:
         # 兼容旧模型：如果只提供了encumbrance_percent，则转换为体重百分比
         current_weight_kg = encumbrance_percent * MAX_ENCUMBRANCE_WEIGHT
@@ -159,9 +200,8 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         body_mass_percent = effective_weight / CHARACTER_WEIGHT
         encumbrance_penalty = ENCUMBRANCE_SPEED_PENALTY_COEFF * body_mass_percent
         encumbrance_penalty = np.clip(encumbrance_penalty, 0.0, 0.5)
-        run_speed_multiplier = base_speed_multiplier * (1.0 - encumbrance_penalty)
-    else:
-        run_speed_multiplier = base_speed_multiplier
+        # 应用负重惩罚对速度上限的微调（降低影响至20%）
+        run_speed_multiplier = run_speed_multiplier - (encumbrance_penalty * 0.2)
     
     # 根据移动类型调整速度
     if movement_type == 'idle':
@@ -170,8 +210,9 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         final_speed_multiplier = run_speed_multiplier * 0.7
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 0.8)
     elif movement_type == 'sprint':
-        # Sprint速度 = Run速度 × (1 + Sprint加成)
-        final_speed_multiplier = run_speed_multiplier * (1.0 + SPRINT_SPEED_BOOST)
+        # Sprint依然保持随体力衰减，因为它是超负荷运动
+        sprint_stamina_effect = np.power(stamina_percent, 0.4)
+        final_speed_multiplier = SPRINT_MAX_SPEED_MULTIPLIER * max(0.5, sprint_stamina_effect)
         # Sprint最高速度限制（基于现实情况）
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, SPRINT_MAX_SPEED_MULTIPLIER)
     else:  # 'run'
@@ -571,8 +612,8 @@ def plot_comprehensive_trends():
     ax3.plot(stamina_range * 100, speed_walk, 'g-', linewidth=2, label='Walk（行走）')
     ax3.axhline(y=GAME_MAX_SPEED * SPRINT_MAX_SPEED_MULTIPLIER, color='orange', 
                 linestyle='--', linewidth=1.5, label=f'Sprint最高速度 ({GAME_MAX_SPEED * SPRINT_MAX_SPEED_MULTIPLIER:.2f} m/s)')
-    ax3.axhline(y=GAME_MAX_SPEED * TARGET_SPEED_MULTIPLIER, color='blue', 
-                linestyle=':', linewidth=1.5, alpha=0.7, label=f'Run目标速度 ({GAME_MAX_SPEED * TARGET_SPEED_MULTIPLIER:.2f} m/s)')
+    ax3.axhline(y=TARGET_RUN_SPEED, color='blue', 
+                linestyle=':', linewidth=1.5, alpha=0.7, label=f'Run目标速度 ({TARGET_RUN_SPEED:.2f} m/s)')
     
     ax3.set_xlabel('体力（%）', fontsize=10)
     ax3.set_ylabel('速度（m/s）', fontsize=10)
@@ -600,8 +641,8 @@ def plot_comprehensive_trends():
     # ========== 图5: 2英里测试速度曲线 ==========
     ax5 = fig.add_subplot(gs[1, 1])
     ax5.plot(time_2m / 60, speed_2m, 'r-', linewidth=2, label='实际速度')
-    ax5.axhline(y=GAME_MAX_SPEED * TARGET_SPEED_MULTIPLIER, color='orange', 
-                linestyle='--', linewidth=1.5, label=f'目标速度 ({GAME_MAX_SPEED * TARGET_SPEED_MULTIPLIER:.2f} m/s)')
+    ax5.axhline(y=TARGET_RUN_SPEED, color='orange', 
+                linestyle='--', linewidth=1.5, label=f'目标Run速度 ({TARGET_RUN_SPEED:.2f} m/s)')
     ax5.axhline(y=TARGET_TIME_SECONDS / DISTANCE_METERS * DISTANCE_METERS / TARGET_TIME_SECONDS, 
                 color='green', linestyle=':', linewidth=1.5, label=f'所需平均速度 ({DISTANCE_METERS/TARGET_TIME_SECONDS:.2f} m/s)')
     
@@ -656,7 +697,7 @@ def plot_comprehensive_trends():
             speeds.append(speed)
         ax7.plot(stamina_test * 100, speeds, color=color, linewidth=2, linestyle=linestyle, label=label)
     
-    ax7.axhline(y=GAME_MAX_SPEED * TARGET_SPEED_MULTIPLIER, color='gray', linestyle=':', linewidth=1, alpha=0.5, label='目标速度')
+    ax7.axhline(y=TARGET_RUN_SPEED, color='gray', linestyle=':', linewidth=1, alpha=0.5, label='目标Run速度 (3.7 m/s)')
     
     ax7.set_xlabel('体力（%）', fontsize=11)
     ax7.set_ylabel('速度（m/s）', fontsize=11)

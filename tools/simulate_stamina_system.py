@@ -53,16 +53,27 @@ ANAEROBIC_THRESHOLD = 0.8  # 无氧阈值（80% VO2max）
 AEROBIC_EFFICIENCY_FACTOR = 0.9  # 有氧区效率因子（90%，更高效）
 ANAEROBIC_EFFICIENCY_FACTOR = 1.2  # 无氧区效率因子（120%，低效但高功率）
 
-# ==================== 医学模型参数 ====================
-# 目标速度倍数（基于游戏最大速度5.2 m/s，目标平均速度3.47 m/s）
-# 目标：2英里在15分27秒内完成（927秒，平均速度3.47 m/s）
-# 经过参数优化后的最佳参数（能在15分27秒内完成2英里）
-TARGET_SPEED_MULTIPLIER = 0.920  # 5.2 × 0.920 = 4.78 m/s
+# ==================== 医学模型参数（双稳态-应激性能模型）====================
+# 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
+TARGET_RUN_SPEED = 3.7  # m/s
+TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED  # 0.7115
 
-# 体力下降对速度的影响指数（α）
-# 精确数学模型：S(E) = S_max * E^α
-# 基于医学文献（Minetti et al., 2002; Weyand et al., 2010），α = 0.6 更符合实际
-STAMINA_EXPONENT = 0.6  # 精确值，不使用近似
+# 意志力平台期阈值（体力百分比）
+# 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
+WILLPOWER_THRESHOLD = 0.25  # 25%
+
+# 平滑过渡起点（体力百分比）
+# 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
+# 将25%设为"疲劳临界区"的起点，而不是终点
+SMOOTH_TRANSITION_START = 0.25  # 25%（疲劳临界区起点）
+SMOOTH_TRANSITION_END = 0.05  # 5%，平滑过渡结束点（真正的力竭点）
+
+# 跛行速度倍数（最低速度）
+MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED  # 1.0 m/s / 5.2 = 0.1923
+
+# 旧模型参数（已废弃，保留用于兼容性）
+TARGET_SPEED_MULTIPLIER = 0.920  # 已废弃
+STAMINA_EXPONENT = 0.6  # 已废弃（双稳态模型不使用）
 
 # 负重对速度的惩罚系数（β）
 # 精确数学模型：速度惩罚 = β * (负重百分比)^γ
@@ -94,6 +105,30 @@ RECOVERY_RATE = 0.00015  # 每0.2秒恢复0.015%（每10秒恢复0.75%，从86%�
 # 更新间隔（秒）
 UPDATE_INTERVAL = 0.2  # 每0.2秒更新一次
 
+# ==================== 速度阈值参数 ====================
+# 基于速度阈值的分段消耗率系统（Military Stamina System Model）
+SPRINT_VELOCITY_THRESHOLD = 5.2  # m/s，Sprint速度阈值
+RUN_VELOCITY_THRESHOLD = 3.7  # m/s，Run速度阈值（匹配15:27的2英里配速）
+WALK_VELOCITY_THRESHOLD = 3.2  # m/s，Walk速度阈值
+
+# 基于负重的动态速度阈值（m/s）
+RECOVERY_THRESHOLD_NO_LOAD = 2.5  # m/s，空载时恢复体力阈值
+DRAIN_THRESHOLD_COMBAT_LOAD = 1.5  # m/s，负重30kg时开始消耗体力的阈值
+COMBAT_LOAD_WEIGHT = 30.0  # kg，战斗负重（用于计算动态阈值）
+
+# 基础消耗率（pts/s，每秒消耗的点数）
+# 转换为0.0-1.0范围的消耗率（每0.2秒）
+SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s（Sprint）
+RUN_BASE_DRAIN_RATE = 0.105  # pts/s（Run，匹配15:27的2英里配速）
+WALK_BASE_DRAIN_RATE = 0.060  # pts/s（Walk）
+REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
+
+# 转换为每0.2秒的消耗率
+SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * 0.2  # 每0.2秒
+RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * 0.2  # 每0.2秒
+WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * 0.2  # 每0.2秒
+REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * 0.2  # 每0.2秒
+
 # ==================== 坡度影响参数（改进的多维度模型）====================
 SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）
 SLOPE_DOWNHILL_COEFF = 0.03  # 下坡影响系数（每度减少3%消耗）
@@ -122,24 +157,24 @@ SLOPE_MIN_MULTIPLIER = 0.7  # 最小坡度影响倍数（下坡）
 
 def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0.0, movement_type='run'):
     """
-    根据体力百分比、负重和移动类型计算速度倍数（精确数学模型）
+    根据体力百分比、负重和移动类型计算速度倍数（双稳态-应激性能模型）
     
-    精确公式：
-    - 基础速度：S_base = S_max × E^α，其中 α = 0.6
-    - 负重惩罚：P_enc = β × (W/W_max)^γ，其中 β = 0.40, γ = 1.0
-    - Run速度：S_run = S_base × (1 - P_enc)
-    - Sprint速度：S_sprint = S_run × (1 + SPRINT_BOOST)，限制在SPRINT_MAX内
-    - Walk速度：S_walk = S_run × 0.7
+    速度性能分段（Performance Plateau）：
+    1. 平台期（Willpower Zone, Stamina 25% - 100%）：
+       只要体力高于25%，士兵可以强行维持设定的目标速度（3.7 m/s）。
+       这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
+    2. 衰减期（Failure Zone, Stamina 0% - 25%）：
+       只有当体力掉入最后25%时，生理机能开始真正崩塌，速度平滑下降到跛行。
+       使用SmoothStep函数实现25%-5%的平滑过渡缓冲区。
     
-    移动类型：
-    - 'idle': 0.0
-    - 'walk': Run速度 × 0.7
-    - 'run': 基础速度 × (1 - 负重惩罚)
-    - 'sprint': Run速度 × 1.15，最高限制在100%
+    注意：在C代码实现中，还包含5秒阻尼过渡机制。
+    当体力从25%以上降至25%以下时，会启动5秒时间阻尼过渡，
+    让玩家感觉"腿越来越重"，而不是"引擎突然断油"。
+    Python脚本主要用于参数验证和图表生成，不包含实时时间跟踪。
     
     Args:
         stamina_percent: 当前体力百分比 (0.0-1.0)
-        encumbrance_percent: 负重百分比 (0.0-1.0)，可选
+        encumbrance_percent: 负重百分比 (0.0-1.0)，可选（用于计算负重惩罚）
         movement_type: 移动类型 ('idle', 'walk', 'run', 'sprint')
     
     Returns:
@@ -147,12 +182,34 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
     """
     stamina_percent = np.clip(stamina_percent, 0.0, 1.0)
     
-    # 精确计算：S_base = S_max × E^α（使用精确幂函数）
-    stamina_effect = np.power(stamina_percent, STAMINA_EXPONENT)
-    base_speed_multiplier = TARGET_SPEED_MULTIPLIER * stamina_effect
-    base_speed_multiplier = max(base_speed_multiplier, MIN_SPEED_MULTIPLIER)
+    # 计算Run速度（使用双稳态模型，带平滑过渡）
+    run_speed_multiplier = 0.0
+    if stamina_percent >= SMOOTH_TRANSITION_START:
+        # 意志力平台期（25%-100%）：保持恒定目标速度（3.7 m/s）
+        run_speed_multiplier = TARGET_RUN_SPEED_MULTIPLIER
+    elif stamina_percent >= SMOOTH_TRANSITION_END:
+        # 平滑过渡期（5%-25%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
+        # 让开始下降时更柔和，接近力竭时下降更快
+        # t = (stamina - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END)
+        # smoothT = t² × (3 - 2t)，这是一个平滑的S型曲线
+        t = (stamina_percent - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END)  # 0.0-1.0
+        t = np.clip(t, 0.0, 1.0)
+        smooth_factor = t * t * (3.0 - 2.0 * t)  # smoothstep函数
+        
+        # 在目标速度和跛行速度之间平滑过渡
+        # 当体力从25%降到5%时，速度从3.7m/s平滑降到跛行速度
+        run_speed_multiplier = MIN_LIMP_SPEED_MULTIPLIER + (TARGET_RUN_SPEED_MULTIPLIER - MIN_LIMP_SPEED_MULTIPLIER) * smooth_factor
+    else:
+        # 生理崩溃期（0%-5%）：速度快速线性下降到跛行速度
+        # 0.05时为平滑过渡终点速度，0时为1.0m/s（MIN_LIMP_SPEED_MULTIPLIER）
+        collapse_factor = stamina_percent / SMOOTH_TRANSITION_END  # 0.0-1.0
+        # 计算平滑过渡终点的速度（在5%体力时，此时smoothT=0，速度为MIN_LIMP_SPEED_MULTIPLIER）
+        run_speed_multiplier = MIN_LIMP_SPEED_MULTIPLIER * collapse_factor
+        # 确保不会低于最小速度
+        run_speed_multiplier = max(run_speed_multiplier, MIN_LIMP_SPEED_MULTIPLIER * 0.8)  # 最低不低于跛行速度的80%
     
-    # 应用精确负重惩罚：P_enc = β × (有效负重/W_max)^γ
+    # 负重主要影响"油耗"（体力消耗）而不是直接降低"最高档位"（速度）
+    # 负重对速度的影响大幅降低，让30kg负重时仍能短时间跑3.7 m/s，只是消耗更快
     if encumbrance_percent > 0.0:
         encumbrance_percent = np.clip(encumbrance_percent, 0.0, 1.0)
         # 计算有效负重（减去基准重量）
@@ -163,9 +220,8 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         # 基于有效负重计算速度惩罚
         encumbrance_penalty = ENCUMBRANCE_SPEED_PENALTY_COEFF * np.power(effective_encumbrance_percent, ENCUMBRANCE_SPEED_EXPONENT)
         encumbrance_penalty = np.clip(encumbrance_penalty, 0.0, 0.5)  # 最多减少50%速度
-        run_speed_multiplier = base_speed_multiplier * (1.0 - encumbrance_penalty)
-    else:
-        run_speed_multiplier = base_speed_multiplier
+        # 应用负重惩罚对速度上限的微调（降低影响至20%）
+        run_speed_multiplier = run_speed_multiplier - (encumbrance_penalty * 0.2)
     
     # 根据移动类型调整速度
     if movement_type == 'idle':
@@ -174,56 +230,95 @@ def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0
         final_speed_multiplier = run_speed_multiplier * 0.7
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 0.8)
     elif movement_type == 'sprint':
-        # Sprint速度 = Run速度 × (1 + Sprint加成)
-        final_speed_multiplier = run_speed_multiplier * (1.0 + SPRINT_SPEED_BOOST)
-        # Sprint最高速度限制（基于现实情况）
+        # Sprint依然保持随体力衰减，因为它是超负荷运动
+        # 使用幂函数衰减，但比Run更温和（α=0.4）
+        sprint_stamina_effect = np.power(stamina_percent, 0.4)
+        final_speed_multiplier = SPRINT_MAX_SPEED_MULTIPLIER * max(0.5, sprint_stamina_effect)
         final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, SPRINT_MAX_SPEED_MULTIPLIER)
     else:  # 'run'
         final_speed_multiplier = run_speed_multiplier
-        final_speed_multiplier = np.clip(final_speed_multiplier, 0.2, 1.0)
+        final_speed_multiplier = np.clip(final_speed_multiplier, 0.15, 1.0)
     
     return final_speed_multiplier
 
 
-def calculate_slope_stamina_drain_multiplier(slope_angle_degrees, body_mass_percent=0.0):
+def calculate_grade_multiplier(grade_percent):
     """
-    计算坡度对体力消耗的影响倍数（改进的多维度模型，包含负重交互）
+    计算坡度修正乘数（使用非线性增长，让小坡几乎无感，陡坡才真正吃力）
     
-    改进的数学模型：基于 Pandolf 负重行走代谢成本模型
-    改进模型：坡度影响 = 基础坡度影响 + 负重×坡度交互项
+    优化：使用幂函数代替线性增长，让小坡（5%以下）几乎无感，陡坡才真正吃力
+    这样 Everon 的缓坡就不会让玩家频繁断气
     
     Args:
-        slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
-        body_mass_percent: 负重占体重的百分比（0.0-1.0+），用于计算交互项
+        grade_percent: 坡度百分比（例如，5% = 5.0）
     
     Returns:
-        坡度影响倍数（0.7-2.5），表示相对于平地时的消耗倍数
+        坡度修正乘数
     """
-    slope_angle_degrees = np.clip(slope_angle_degrees, -45.0, 45.0)
+    k_grade = 1.0
     
-    base_slope_multiplier = 1.0
+    if grade_percent > 0.0:
+        # 上坡：使用幂函数代替线性增长
+        # 公式：kGrade = 1.0 + (gradePercent × 0.01)^1.2 × 5.0
+        # 这样5%坡度时：1.0 + (0.05^1.2) × 5.0 ≈ 1.0 + 0.047 × 5.0 ≈ 1.235倍
+        # 而15%坡度时：1.0 + (0.15^1.2) × 5.0 ≈ 1.0 + 0.173 × 5.0 ≈ 1.865倍
+        # 让小坡几乎无感，陡坡才真正吃力
+        normalized_grade = grade_percent * 0.01  # 转换为0.0-1.0范围（假设最大100%）
+        grade_power = np.power(normalized_grade, 1.2)  # 使用1.2次方
+        k_grade = 1.0 + (grade_power * 5.0)
+        
+        # 限制最大坡度修正（避免数值爆炸）
+        k_grade = min(k_grade, 3.0)  # 最多3倍消耗
+    elif grade_percent < 0.0:
+        # 下坡：每1%减少3%消耗
+        k_grade = 1.0 + (grade_percent * SLOPE_DOWNHILL_COEFF)
+        # 限制下坡修正，避免消耗变为负数
+        k_grade = max(k_grade, 0.5)  # 最多减少50%消耗
     
-    if slope_angle_degrees > 0.0:
-        base_slope_multiplier = 1.0 + SLOPE_UPHILL_COEFF * slope_angle_degrees
-        base_slope_multiplier = np.clip(base_slope_multiplier, 1.0, SLOPE_MAX_MULTIPLIER)
-    elif slope_angle_degrees < 0.0:
-        base_slope_multiplier = 1.0 + SLOPE_DOWNHILL_COEFF * slope_angle_degrees
-        base_slope_multiplier = np.clip(base_slope_multiplier, SLOPE_MIN_MULTIPLIER, 1.0)
+    return k_grade
+
+
+def calculate_slope_adjusted_target_speed(base_target_speed, slope_angle_degrees):
+    """
+    计算坡度自适应目标速度（坡度-速度负反馈）
     
-    interaction_multiplier = 1.0
-    if body_mass_percent > 0.0 and slope_angle_degrees > 0.0:
-        interaction_term = ENCUMBRANCE_SLOPE_INTERACTION_COEFF * body_mass_percent * slope_angle_degrees
-        interaction_multiplier = 1.0 + interaction_term
-        interaction_multiplier = np.clip(interaction_multiplier, 1.0, 1.5)
+    问题分析：现实中人爬坡时，会自动缩短步幅、降低速度以维持心肺负荷（体力消耗）。
+    目前的系统是"强行维持速度但暴扣体力"，这导致了代谢率在斜坡上迅速过载。
     
-    total_slope_multiplier = base_slope_multiplier * interaction_multiplier
+    解决方案：实施"坡度-速度负反馈"。当上坡角度增加时，系统自动略微下调当前的"目标速度"，
+    从而换取更持久的续航。这样玩家在Everon爬小缓坡时，会感觉到角色稍微"沉"了一点点，
+    但体力掉速依然平稳。
     
-    if slope_angle_degrees > 0.0:
-        return np.clip(total_slope_multiplier, 1.0, 2.5)
-    elif slope_angle_degrees < 0.0:
-        return np.clip(total_slope_multiplier, 0.7, 1.0)
-    else:
-        return 1.0
+    Args:
+        base_target_speed: 基础目标速度（m/s），例如3.7 m/s
+        slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
+    
+    Returns:
+        坡度自适应后的目标速度（m/s）
+    """
+    if slope_angle_degrees <= 0.0:
+        # 下坡或平地：不主动减速
+        return base_target_speed
+    
+    # 爬坡自适应：每增加1度坡度，目标速度自动下降2.5%
+    # 这样10度坡时，速度会降到约 3.7 × 0.75 = 2.775 m/s，虽然慢了，但体力能多撑一倍时间
+    # 适应因子：1.0 - (slopeAngle × 0.025)，最小不低于0.6（即最多降低40%速度）
+    adaptation_factor = max(0.6, 1.0 - (slope_angle_degrees * 0.025))
+    
+    return base_target_speed * adaptation_factor
+
+
+# 保留旧函数以兼容性（已废弃）
+def calculate_slope_stamina_drain_multiplier(slope_angle_degrees, body_mass_percent=0.0):
+    """
+    计算坡度对体力消耗的影响倍数（已废弃，请使用calculate_grade_multiplier）
+    
+    为兼容性保留，但建议使用 calculate_grade_multiplier() 替代
+    """
+    # 将坡度角度转换为坡度百分比
+    import math
+    grade_percent = math.tan(slope_angle_degrees * math.pi / 180.0) * 100.0
+    return calculate_grade_multiplier(grade_percent)
 
 
 def calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees):
@@ -247,6 +342,72 @@ def calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent
     
     interaction_term = SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF * body_mass_percent * speed_ratio * speed_ratio * slope_angle_degrees
     return np.clip(interaction_term, 0.0, 0.5)
+
+
+def calculate_base_drain_rate_by_velocity(velocity, current_weight=0.0):
+    """
+    根据当前速度和负重计算基础消耗率（使用临界动力概念，更温和的负重公式）
+    
+    负重消耗重新校准（Load Calibration）：
+    - 基于临界动力（Critical Power）概念：将30kg定义为"标准战斗负载"
+    - 非线性增长：负重对体力的消耗不再是简单的倍数，而是：基础消耗 + (负重/体重)^1.2 * 1.5
+    - 这样可以确保30kg负载下仍能坚持约16分钟，满足ACFT测试要求
+    
+    速度阈值分段（根据负重动态调整）：
+    - Sprint: V ≥ 5.0 m/s → 消耗 × loadFactor
+    - Run: 3.2 ≤ V < 5.0 m/s → 消耗 × loadFactor（核心修正：大幅调低RUN的基础消耗）
+    - Walk: V < 3.2 m/s → 消耗 × loadFactor
+    - Rest: V < 动态阈值 → -0.250 pts/s（恢复）
+    
+    动态阈值计算：
+    - 空载（0kg）时：恢复阈值 = 2.5 m/s（速度 < 2.5 m/s 时恢复）
+    - 负重30kg时：消耗阈值 = 1.5 m/s（速度 > 1.5 m/s 时开始消耗）
+    - 其他负重：线性插值
+    
+    Args:
+        velocity: 当前速度（m/s）
+        current_weight: 当前负重（kg）
+    
+    Returns:
+        基础消耗率（每0.2秒，负数表示恢复）
+    """
+    # 计算动态阈值（基于负重线性插值）
+    # 空载（0kg）时：恢复阈值 = 2.5 m/s
+    # 负重30kg时：消耗阈值 = 1.5 m/s
+    if current_weight <= 0.0:
+        dynamic_threshold = RECOVERY_THRESHOLD_NO_LOAD
+    elif current_weight >= COMBAT_LOAD_WEIGHT:
+        dynamic_threshold = DRAIN_THRESHOLD_COMBAT_LOAD
+    else:
+        t = current_weight / COMBAT_LOAD_WEIGHT  # t in [0, 1]
+        dynamic_threshold = RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + DRAIN_THRESHOLD_COMBAT_LOAD * t
+    
+    # 重新计算负重比例（基于体重）
+    weight_ratio = current_weight / CHARACTER_WEIGHT if current_weight > 0.0 else 0.0  # 30kg时约为0.33
+    
+    # 负重影响因子：不再是简单的乘法，而是一个温和的增量
+    # loadFactor = 1.0 + (weightRatio^1.2) * 1.5
+    # 这样可以确保30kg时消耗不会翻倍，而是更合理的增长
+    load_factor = 1.0
+    if current_weight > 0.0:
+        weight_ratio_power = np.power(weight_ratio, 1.2)
+        load_factor = 1.0 + (weight_ratio_power * 1.5)
+    
+    # 根据速度和动态阈值计算消耗率
+    if velocity >= SPRINT_VELOCITY_THRESHOLD or velocity >= 5.0:
+        # Sprint消耗 × 负重影响因子
+        return SPRINT_DRAIN_PER_TICK * load_factor
+    elif velocity >= RUN_VELOCITY_THRESHOLD or velocity >= 3.2:
+        # Run消耗（核心修正：大幅调低RUN的基础消耗，以补偿负重）
+        # 基础消耗从0.105 pts/s降低到约0.08 pts/s（每0.2秒 = 0.00016）
+        # 这是为了确保30kg负载下仍能坚持约16分钟
+        return 0.00008 * load_factor  # 每0.2秒，调整后的Run消耗
+    elif velocity >= dynamic_threshold:
+        # Walk消耗（缓慢消耗）
+        return 0.00002 * load_factor  # 每0.2秒，调整后的Walk消耗
+    else:
+        # 速度 < 动态阈值：恢复（保持较高的恢复率）
+        return -0.00025  # Rest恢复（负数），每0.2秒
 
 
 def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, exercise_duration_minutes=0.0):
@@ -283,6 +444,12 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     # 计算速度比（相对于最大速度）
     speed_ratio = np.clip(current_speed / GAME_MAX_SPEED, 0.0, 1.0)
     
+    # ==================== 基于速度阈值的分段消耗率（融合模型）====================
+    # 计算当前负重（kg）
+    current_weight_kg = encumbrance_percent * MAX_ENCUMBRANCE_WEIGHT
+    # 使用基于速度阈值的分段消耗率作为基础
+    base_drain_rate_by_velocity = calculate_base_drain_rate_by_velocity(current_speed, current_weight_kg)
+    
     # ==================== 累积疲劳因子计算 ====================
     effective_exercise_duration = np.maximum(exercise_duration_minutes - FATIGUE_START_TIME_MINUTES, 0.0)
     fatigue_factor = 1.0 + (FATIGUE_ACCUMULATION_COEFF * effective_exercise_duration)
@@ -306,14 +473,20 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     # 综合效率因子 = 健康状态效率 × 代谢适应效率
     total_efficiency_factor = fitness_efficiency_factor * metabolic_efficiency_factor
     
-    # 基础体力消耗率（对应 Pandolf 模型中的常数项 a）
-    base_drain = BASE_DRAIN_RATE * total_efficiency_factor * fatigue_factor
+    # ==================== 应用基于速度阈值的分段消耗率 ====================
+    # 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
+    # 注意：恢复时（base_drain_rate_by_velocity < 0），不应用效率因子（恢复不受效率影响）
+    if base_drain_rate_by_velocity < 0.0:
+        # 恢复时，直接使用恢复率（负数）
+        base_drain_rate = base_drain_rate_by_velocity
+    else:
+        # 消耗时，应用效率因子和疲劳因子
+        base_drain_rate = base_drain_rate_by_velocity * total_efficiency_factor * fatigue_factor
     
-    # 速度线性项（对应 Pandolf 模型中的 b·V 项）
-    speed_linear_drain = SPEED_LINEAR_DRAIN_COEFF * speed_ratio * total_efficiency_factor * fatigue_factor
-    
-    # 速度平方项（对应 Pandolf 模型中的 c·V² 项）
-    speed_squared_drain = SPEED_SQUARED_DRAIN_COEFF * speed_ratio * speed_ratio * total_efficiency_factor * fatigue_factor
+    # 保留原有的速度相关项（用于平滑过渡和精细调整）
+    # 这些项在速度阈值附近提供平滑过渡
+    speed_linear_drain = 0.00005 * speed_ratio * total_efficiency_factor * fatigue_factor  # 降低系数，主要依赖分段消耗率
+    speed_squared_drain = 0.00005 * speed_ratio * speed_ratio * total_efficiency_factor * fatigue_factor  # 降低系数
     
     # 负重相关的体力消耗（基于精确 Pandolf 模型）
     # 计算有效负重（减去基准重量，基准重量是基础物品）
@@ -330,23 +503,41 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     # 负重速度交互项（对应 Pandolf 模型中的 e·M_enc·V² 项）
     encumbrance_speed_drain = ENCUMBRANCE_SPEED_DRAIN_COEFF * (encumbrance_drain_multiplier - 1.0) * speed_ratio * speed_ratio
     
-    # 综合体力消耗率（精确公式）
-    total_drain = base_drain + speed_linear_drain + speed_squared_drain + encumbrance_base_drain + encumbrance_speed_drain
+    # 综合体力消耗率（融合模型：基于速度阈值分段消耗率 + 精细调整项）
+    base_drain_components = base_drain_rate + speed_linear_drain + speed_squared_drain + encumbrance_base_drain + encumbrance_speed_drain
     
     # 计算有效负重占体重的百分比（用于计算交互项）
     body_mass_percent = effective_weight / CHARACTER_WEIGHT if effective_weight > 0.0 else 0.0
     
-    # 应用改进的坡度影响倍数（包含负重×坡度交互项）
-    slope_multiplier = calculate_slope_stamina_drain_multiplier(slope_angle_degrees, body_mass_percent)
-    total_drain = total_drain * slope_multiplier
+    # 将坡度角度转换为坡度百分比（用于非线性坡度消耗计算）
+    import math
+    grade_percent = math.tan(slope_angle_degrees * math.pi / 180.0) * 100.0 if slope_angle_degrees != 0.0 else 0.0
     
-    # 应用速度×负重×坡度三维交互项
-    speed_encumbrance_slope_interaction = calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees)
-    total_drain = total_drain + (total_drain * speed_encumbrance_slope_interaction)
+    # 使用非线性坡度修正（幂函数，让小坡几乎无感，陡坡才真正吃力）
+    slope_multiplier = calculate_grade_multiplier(grade_percent)
     
-    # Sprint时体力消耗大幅增加（类似于追击或逃命）
-    if movement_type == 'sprint':
-        total_drain = total_drain * SPRINT_STAMINA_DRAIN_MULTIPLIER
+    # Sprint倍数
+    sprint_multiplier = SPRINT_STAMINA_DRAIN_MULTIPLIER if movement_type == 'sprint' else 1.0
+    
+    # 应用坡度修正和Sprint倍数
+    # 注意：恢复时（base_drain_rate < 0），不应用坡度修正和Sprint倍数
+    if base_drain_rate < 0.0:
+        # 恢复时，直接使用恢复率（负数）
+        total_drain = base_drain_rate
+    else:
+        # 消耗时，应用坡度修正和Sprint倍数
+        # 应用速度×负重×坡度三维交互项
+        speed_encumbrance_slope_interaction = calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees)
+        total_drain = (base_drain_components * slope_multiplier * sprint_multiplier) + (base_drain_components * speed_encumbrance_slope_interaction)
+        
+        # ==================== 生理上限：防止负重+坡度爆炸 ====================
+        # 无论负重多重、坡多陡，人的瞬时代谢率是有极限的（即 VO2 Max 峰值）
+        # 设定每 0.2s 最大体力消耗不超过 0.02（即每秒最多掉 10%）
+        # 这样即使玩家背着 30kg 爬 15 度坡，他也不会在 5 秒内暴毙
+        # 系统会强制限制他的最大消耗，同时由于"自适应步幅"逻辑，他的速度会自动降得很低
+        # 这既保证了硬核的真实性，又避免了数值上的溢出导致无法玩下去
+        MAX_DRAIN_RATE_PER_TICK = 0.02  # 每0.2秒最大消耗
+        total_drain = min(total_drain, MAX_DRAIN_RATE_PER_TICK)
     
     return total_drain
 

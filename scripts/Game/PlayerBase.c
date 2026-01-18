@@ -18,6 +18,14 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastSpeedMultiplier = 1.0;
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
     
+    // ==================== "撞墙"阻尼过渡跟踪 ====================
+    // 解决"撞墙"瞬间的陡峭度问题：在体力触及25%时，使用5秒阻尼过渡
+    // 让玩家感觉到角色是"腿越来越重"，而不是"引擎突然断油"
+    protected bool m_bInCollapseTransition = false; // 是否处于"撞墙"过渡状态
+    protected float m_fCollapseTransitionStartTime = 0.0; // "撞墙"过渡开始时间（秒）
+    protected const float COLLAPSE_TRANSITION_DURATION = 5.0; // "撞墙"过渡持续时间（秒）
+    protected const float COLLAPSE_THRESHOLD = 0.25; // "撞墙"临界点（25%体力）
+    
     // ==================== 运动持续时间跟踪（用于累积疲劳计算）====================
     // 基于个性化运动建模（Palumbo et al., 2018）
     // 跟踪连续运动时间，用于计算累积疲劳
@@ -72,6 +80,10 @@ modded class SCR_CharacterControllerComponent
         m_fExerciseDurationMinutes = 0.0;
         m_fLastUpdateTime = GetGame().GetWorld().GetWorldTime();
         m_bWasMoving = false;
+        
+        // 初始化"撞墙"阻尼过渡变量
+        m_bInCollapseTransition = false;
+        m_fCollapseTransitionStartTime = 0.0;
         
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
@@ -175,39 +187,129 @@ modded class SCR_CharacterControllerComponent
         
         // 根据移动类型调整速度倍数
         // Sprint时：速度比Run快，但仍然受体力和负重限制（类似于追击或逃命）
-        // Run时：使用中等速度倍数（受体力和负重影响）
-        // Walk时：使用较低速度倍数
-        
-        // 先计算Run时的基础速度倍数（受体力和负重影响）
-        float runSpeedMultiplier = baseSpeedMultiplier * (1.0 - encumbranceSpeedPenalty);
+        // Run时：使用双稳态-应激性能模型（25%-100%保持3.7m/s，0%-25%线性下降）
+        // Walk时：使用Run速度的70%
         
         float finalSpeedMultiplier = 0.0;
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
-            // Sprint时：速度比Run快，但仍然受体力和负重限制
-            // Sprint速度 = Run速度 × (1 + Sprint加成)
-            // 例如：如果Run速度是80%，Sprint速度 = 80% × 1.15 = 92%
-            finalSpeedMultiplier = runSpeedMultiplier * (1.0 + RealisticStaminaSpeedSystem.SPRINT_SPEED_BOOST);
+            // Sprint依然保持随体力衰减，因为它是超负荷运动
+            // 使用幂函数衰减，但比Run更温和（α=0.4）
+            float sprintBaseMultiplier = RealisticStaminaSpeedSystem.SPRINT_MAX_SPEED_MULTIPLIER;
+            float sprintStaminaEffect = RealisticStaminaSpeedSystem.Pow(staminaPercent, 0.4);
+            finalSpeedMultiplier = sprintBaseMultiplier * Math.Max(0.5, sprintStaminaEffect);
             
-            // Sprint最高速度限制（基于现实情况）
-            // 基于运动生理学：一般健康成年人的Sprint速度约20-30 km/h（5.5-8.3 m/s）
-            // 游戏最大速度5.2 m/s（18.7 km/h）在合理范围内
-            // Sprint最高速度限制在游戏最大速度的100%（5.2 m/s）
-            // 注意：实际速度仍受体力和负重影响，只有在满体力、无负重时才能达到此上限
+            // Sprint最高速度限制
             float sprintMaxSpeedMultiplier = RealisticStaminaSpeedSystem.SPRINT_MAX_SPEED_MULTIPLIER;
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, sprintMaxSpeedMultiplier);
         }
         else if (currentMovementPhase == 2) // Run
         {
-            // Run时，使用计算出的速度倍数（受体力和负重影响）
-            finalSpeedMultiplier = runSpeedMultiplier;
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 1.0);
+            // Run时：使用双稳态-应激性能模型（带平滑过渡 + 坡度自适应 + 5秒阻尼过渡）
+            // 第一步：环境判定 - 获取坡度，计算自适应目标速度
+            // 第二步：检测"撞墙"临界点 - 体力从25%以上降下来时，启动5秒阻尼过渡
+            // 第三步：体力判定 - 根据体力值计算平滑衰减
+            // 第四步：最终输出
+            
+            // 获取坡度角度（用于自适应步幅逻辑）
+            float slopeAngleDegrees = 0.0;
+            CharacterAnimationComponent animComponentForSpeed = GetAnimationComponent();
+            if (animComponentForSpeed)
+            {
+                CharacterCommandHandlerComponent handlerForSpeed = CharacterCommandHandlerComponent.Cast(animComponentForSpeed.GetCommandHandler());
+                if (handlerForSpeed)
+                {
+                    CharacterCommandMove moveCmdForSpeed = handlerForSpeed.GetCommandMove();
+                    if (moveCmdForSpeed)
+                    {
+                        slopeAngleDegrees = moveCmdForSpeed.GetMovementSlopeAngle();
+                    }
+                }
+            }
+            
+            // 计算坡度自适应目标速度（坡度-速度负反馈）
+            // 当上坡角度增加时，系统自动略微下调当前的"目标速度"，从而换取更持久的续航
+            float baseTargetSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED; // 3.7 m/s
+            float slopeAdjustedTargetSpeed = RealisticStaminaSpeedSystem.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
+            float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            
+            // ==================== "撞墙"临界点检测和5秒阻尼过渡 ====================
+            // 检测体力是否刚从25%以上降下来
+            float currentWorldTime = GetGame().GetWorld().GetWorldTime();
+            bool justCrossedThreshold = false;
+            
+            if (m_fLastStaminaPercent >= COLLAPSE_THRESHOLD && staminaPercent < COLLAPSE_THRESHOLD)
+            {
+                // 体力刚从25%以上降下来，启动5秒阻尼过渡
+                m_bInCollapseTransition = true;
+                m_fCollapseTransitionStartTime = currentWorldTime;
+                justCrossedThreshold = true;
+            }
+            
+            // 检查5秒阻尼过渡是否已过期
+            if (m_bInCollapseTransition)
+            {
+                float elapsedTime = currentWorldTime - m_fCollapseTransitionStartTime;
+                if (elapsedTime >= COLLAPSE_TRANSITION_DURATION)
+                {
+                    // 5秒阻尼过渡结束，恢复正常平滑过渡逻辑
+                    m_bInCollapseTransition = false;
+                }
+            }
+            
+            // 如果体力恢复到25%以上，取消阻尼过渡
+            if (staminaPercent >= COLLAPSE_THRESHOLD)
+            {
+                m_bInCollapseTransition = false;
+            }
+            
+            float runBaseSpeedMultiplier = 0.0;
+            
+            // 如果在5秒阻尼过渡期间，使用时间插值来平滑过渡速度
+            if (m_bInCollapseTransition)
+            {
+                // 计算阻尼过渡进度（0.0-1.0）
+                float elapsedTime = currentWorldTime - m_fCollapseTransitionStartTime;
+                float transitionProgress = elapsedTime / COLLAPSE_TRANSITION_DURATION;
+                transitionProgress = Math.Clamp(transitionProgress, 0.0, 1.0);
+                
+                // 使用平滑的S型曲线（ease-in-out）来插值速度
+                // 这样速度下降会有一个逐渐加速的过程，让玩家感觉"腿越来越重"
+                float smoothProgress = transitionProgress * transitionProgress * (3.0 - 2.0 * transitionProgress); // smoothstep
+                
+                // 计算目标速度（阻尼过渡开始时的速度）和结束速度（5%体力时的速度）
+                float startSpeedMultiplier = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER; // 25%体力时的速度（3.7 m/s）
+                float endSpeedMultiplier = RealisticStaminaSpeedSystem.MIN_LIMP_SPEED_MULTIPLIER + (RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER - RealisticStaminaSpeedSystem.MIN_LIMP_SPEED_MULTIPLIER) * 0.8; // 5%体力时的速度（大约80%过渡位置）
+                
+                // 在5秒内平滑插值速度（从3.7 m/s逐渐降到约2.2 m/s）
+                runBaseSpeedMultiplier = startSpeedMultiplier + (endSpeedMultiplier - startSpeedMultiplier) * smoothProgress;
+            }
+            else
+            {
+                // 正常情况：使用静态工具类计算速度（基于坡度自适应目标速度，包含平滑过渡逻辑）
+                // 如果体力充足，就维持自适应速度；如果体力进入红区，就平滑降速
+                runBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
+            }
+            
+            // 将速度从基础目标速度（3.7 m/s）缩放到坡度自适应速度
+            // 例如：平地时 slopeAdjustedTargetMultiplier = 0.7115（3.7/5.2）
+            //       10度坡时 slopeAdjustedTargetMultiplier ≈ 0.534（2.775/5.2）
+            float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+            runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
+            
+            // 负重主要影响"油耗"（体力消耗）而不是直接降低"最高档位"（速度）
+            // 负重对速度的影响大幅降低，让30kg负重时仍能短时间跑3.7 m/s，只是消耗更快
+            finalSpeedMultiplier = runBaseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2); // 降低到20%的影响
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
         }
         else if (currentMovementPhase == 1) // Walk
         {
             // Walk时，速度约为Run的70%
-            finalSpeedMultiplier = runSpeedMultiplier * 0.7;
+            // 使用静态工具类计算Run速度（已包含平滑过渡逻辑）
+            float runBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
+            // Walk = Run × 0.7
+            finalSpeedMultiplier = runBaseSpeedMultiplier * 0.7;
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.8);
         }
         else // Idle
@@ -533,11 +635,12 @@ modded class SCR_CharacterControllerComponent
             SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForInteraction.FindComponent(SCR_CharacterInventoryStorageComponent));
             if (characterInventory)
             {
-                float currentWeight = characterInventory.GetTotalWeight();
-                if (currentWeight > 0.0)
+                // 使用已存在的currentWeight变量（已在前面声明）
+                float interactionWeight = characterInventory.GetTotalWeight();
+                if (interactionWeight > 0.0)
                 {
                     // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-                    float effectiveWeight = Math.Max(currentWeight - RealisticStaminaSpeedSystem.BASE_WEIGHT, 0.0);
+                    float effectiveWeight = Math.Max(interactionWeight - RealisticStaminaSpeedSystem.BASE_WEIGHT, 0.0);
                     bodyMassPercent = effectiveWeight / RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
                 }
             }
@@ -591,7 +694,7 @@ modded class SCR_CharacterControllerComponent
         // 融合公式：total = (base_by_velocity + linear·V + squared·V² + enc_base + enc_speed·V²) × slope_multiplier × sprint_multiplier × efficiency × fatigue + 3d_interaction
         // 其中：
         //   base_by_velocity 是基于速度阈值的分段消耗率（新模型）
-        //   slope_multiplier 是新模型的坡度修正（K_grade = 1 + G × 0.12）
+        //   slope_multiplier 是新模型的坡度修正（使用非线性增长）
         //   efficiency 和 fatigue 是多维度特性（健康状态、累积疲劳、代谢适应）
         //   3d_interaction 是速度×负重×坡度的三维交互项（保留用于精细调整）
         float baseDrainComponents = baseDrainRate + speedLinearDrainRate + speedSquaredDrainRate + encumbranceBaseDrainRate + encumbranceSpeedDrainRate;
@@ -608,6 +711,15 @@ modded class SCR_CharacterControllerComponent
         {
             // 消耗时，应用坡度修正和Sprint倍数
             totalDrainRate = (baseDrainComponents * slopeMultiplier * sprintMultiplier) + (baseDrainComponents * speedEncumbranceSlopeInteraction);
+            
+            // ==================== 生理上限：防止负重+坡度爆炸 ====================
+            // 无论负重多重、坡多陡，人的瞬时代谢率是有极限的（即 VO2 Max 峰值）
+            // 设定每 0.2s 最大体力消耗不超过 0.02（即每秒最多掉 10%）
+            // 这样即使玩家背着 30kg 爬 15 度坡，他也不会在 5 秒内暴毙
+            // 系统会强制限制他的最大消耗，同时由于"自适应步幅"逻辑，他的速度会自动降得很低
+            // 这既保证了硬核的真实性，又避免了数值上的溢出导致无法玩下去
+            const float MAX_DRAIN_RATE_PER_TICK = 0.02; // 每0.2秒最大消耗
+            totalDrainRate = Math.Min(totalDrainRate, MAX_DRAIN_RATE_PER_TICK);
         }
         
         // ==================== 完全控制体力值（基于医学模型）====================
@@ -634,10 +746,23 @@ modded class SCR_CharacterControllerComponent
                 // 3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
                 // 4. 年龄：年轻者恢复更快
                 // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
+                // 获取当前负重（kg），用于优化重载下的恢复速率
+                float currentWeightForRecovery = 0.0;
+                ChimeraCharacter characterForRecovery = ChimeraCharacter.Cast(owner);
+                if (characterForRecovery)
+                {
+                    SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForRecovery.FindComponent(SCR_CharacterInventoryStorageComponent));
+                    if (characterInventory)
+                    {
+                        currentWeightForRecovery = characterInventory.GetTotalWeight();
+                    }
+                }
+                
                 float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
                     staminaPercent, 
                     m_fRestDurationMinutes, 
-                    m_fExerciseDurationMinutes
+                    m_fExerciseDurationMinutes,
+                    currentWeightForRecovery
                 );
                 
                 // 计算新的目标体力值（增加恢复）
@@ -695,19 +820,19 @@ modded class SCR_CharacterControllerComponent
                 debugCounter = 0;
                 
                 // 获取负重信息用于调试
-                ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+                ChimeraCharacter characterForDebug = ChimeraCharacter.Cast(owner);
                 float encumbrancePercent = 0.0;
                 float combatEncumbrancePercent = 0.0;
-                float currentWeight = 0.0;
+                float debugCurrentWeight = 0.0;
                 float maxWeight = 40.5; // 使用我们定义的最大负重
                 float combatWeight = 30.0; // 战斗负重阈值
-                if (character)
+                if (characterForDebug)
                 {
                     // 使用 SCR_CharacterInventoryStorageComponent 获取重量信息
-                    SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
+                    SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForDebug.FindComponent(SCR_CharacterInventoryStorageComponent));
                     if (characterInventory)
                     {
-                        currentWeight = characterInventory.GetTotalWeight();
+                        debugCurrentWeight = characterInventory.GetTotalWeight();
                         encumbrancePercent = RealisticStaminaSpeedSystem.CalculateEncumbrancePercent(owner);
                         combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
                     }
@@ -747,7 +872,7 @@ modded class SCR_CharacterControllerComponent
                 }
                 
                 string encumbranceInfo = "";
-                if (currentWeight > 0.0)
+                if (debugCurrentWeight > 0.0)
                 {
                     string combatStatus = "";
                     if (combatEncumbrancePercent > 1.0)
@@ -756,7 +881,7 @@ modded class SCR_CharacterControllerComponent
                         combatStatus = " [接近战斗负重]";
                     
                     encumbranceInfo = string.Format(" | 负重: %1kg/%2kg (最大:%3kg, 战斗:%4kg%5)", 
-                        currentWeight.ToString(), 
+                        debugCurrentWeight.ToString(), 
                         maxWeight.ToString(),
                         maxWeight.ToString(),
                         combatWeight.ToString(),
