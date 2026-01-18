@@ -1,0 +1,28 @@
+GameProject {
+ ID "testrubnspeed"
+ GUID "68649101601CC93D"
+ TITLE "test_rubn_speed"
+ Dependencies {
+  "58D0FB3206B6F859"
+ }
+ Configurations {
+  GameProjectConfig PC {
+   DefaultSettings EngineUserSettings "{5702F087A781A9FC}" {
+    AudioSettings AudioSettings "{6864910176A77642}" {
+    }
+   }
+   WetnessRenderSettings WetnessRenderSettings "{686491014A194936}" {
+   }
+  }
+  GameProjectConfig XBOX_ONE {
+  }
+  GameProjectConfig XBOX_SERIES {
+  }
+  GameProjectConfig PS4 {
+  }
+  GameProjectConfig PS5 {
+  }
+  GameProjectConfig HEADLESS {
+  }
+ }
+}
