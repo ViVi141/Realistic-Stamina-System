@@ -43,18 +43,25 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         }
         
         // 检测到原生系统试图修改体力值！
-        // 记录调试信息（每5次输出一次，避免日志过多）
-        static int interceptCounter = 0;
-        interceptCounter++;
-        if (interceptCounter >= 5)
+        // 记录调试信息（每5次输出一次，避免日志过多，仅在客户端）
+        // [已注释] 拦截信息已禁用，减少日志输出
+        /*
+        IEntity owner = GetOwner();
+        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
-            float currentStamina = GetStamina();
-            PrintFormat("[StaminaOverride] 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
-                Math.Round(pDrain * 100.0).ToString(),
-                Math.Round(currentStamina * 100.0).ToString(),
-                Math.Round(m_fTargetStamina * 100.0).ToString());
-            interceptCounter = 0;
+            static int interceptCounter = 0;
+            interceptCounter++;
+            if (interceptCounter >= 5)
+            {
+                float currentStamina = GetStamina();
+                PrintFormat("[StaminaOverride] 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
+                    Math.Round(pDrain * 100.0).ToString(),
+                    Math.Round(currentStamina * 100.0).ToString(),
+                    Math.Round(m_fTargetStamina * 100.0).ToString());
+                interceptCounter = 0;
+            }
         }
+        */
         
         // 完全禁用原生系统：
         // 1. 不调用父类方法（不触发原生体力恢复/消耗）
@@ -132,17 +139,24 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             // 检测到原生系统干扰，记录调试信息
             float deviation = currentStamina - m_fTargetStamina;
             
-            // 如果偏差超过0.5%，输出警告（降低阈值，更敏感）
-            static int warningCounter = 0;
-            warningCounter++;
-            if (Math.AbsFloat(deviation) > 0.005 && warningCounter >= 10) // 每10次输出一次
+            // 如果偏差超过0.5%，输出警告（降低阈值，更敏感，仅在客户端）
+            // [已注释] 拦截信息已禁用，减少日志输出
+            /*
+            IEntity owner = GetOwner();
+            if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
             {
-                PrintFormat("[StaminaOverride] 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
-                    Math.Round(currentStamina * 100.0).ToString(),
-                    Math.Round(m_fTargetStamina * 100.0).ToString(),
-                    Math.Round(deviation * 100.0).ToString());
-                warningCounter = 0;
+                static int warningCounter = 0;
+                warningCounter++;
+                if (Math.AbsFloat(deviation) > 0.005 && warningCounter >= 10) // 每10次输出一次
+                {
+                    PrintFormat("[StaminaOverride] 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
+                        Math.Round(currentStamina * 100.0).ToString(),
+                        Math.Round(m_fTargetStamina * 100.0).ToString(),
+                        Math.Round(deviation * 100.0).ToString());
+                    warningCounter = 0;
+                }
             }
+            */
             
             // 立即纠正体力值
             CorrectStaminaToTarget();

@@ -15,24 +15,26 @@
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
 
-Copyright (C) 2024 ViVi141
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
 ## 功能说明
 
 本模组根据玩家的体力值和负重动态调整移动速度，实现更真实的游戏体验。当体力充沛时，玩家可以全速移动；当体力下降时，移动速度会逐渐减慢。同时，负重也会影响移动速度。
 
+**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
+
 ### 主要特性
 
-- ✅ **动态速度调整**：根据体力百分比动态调整移动速度
-- ✅ **负重影响系统**：负重越高，移动速度越慢
-- ✅ **分段式速度控制**：5个体力区间对应不同的速度倍数
-- ✅ **实时状态显示**：每秒显示速度、体力百分比和速度倍率
-- ✅ **平滑速度过渡**：体力变化时速度平滑过渡，避免突兀变化
+- ✅ **动态速度调整**：根据体力百分比动态调整移动速度（精确数学模型）
+- ✅ **负重影响系统**：负重越高，移动速度越慢（基于US Army实验数据）
+- ✅ **移动类型系统**：支持Idle/Walk/Run/Sprint四种移动类型，每种有不同的速度和消耗特性
+- ✅ **坡度影响系统**：上坡/下坡会影响体力消耗（基于Pandolf模型，包含负重×坡度交互项）
+- ✅ **跳跃/翻越体力消耗**：跳跃和翻越动作会消耗额外体力
+- ✅ **Sprint机制**：Sprint速度比Run快15%，但体力消耗增加2.5倍
+- ✅ **健康状态系统**：训练有素者（fitness=1.0）能量效率提高18%，恢复速度增加25%（基于个性化运动建模）
+- ✅ **累积疲劳系统**：长时间运动后，相同速度的消耗逐渐增加（基于个性化运动建模）
+- ✅ **代谢适应系统**：根据运动强度动态调整能量效率（有氧区效率高，无氧区效率低但功率高）
+- ✅ **多维交互模型**：速度×负重×坡度三维交互项，更真实地模拟复杂运动场景
+- ✅ **实时状态显示**：每秒显示速度、体力、速度倍率、移动类型和坡度信息
+- ✅ **精确医学模型**：基于Pandolf能量消耗模型和耐力下降模型，不使用近似
 
 ## 项目结构
 
@@ -40,6 +42,10 @@ the Free Software Foundation, either version 3 of the License, or
 test_rubn_speed/
 ├── LICENSE                               # AGPL-3.0 许可证
 ├── README.md                             # 项目说明文档
+├── tools/                                # 工具和文档目录
+│   ├── military_stamina_model_oop.md    # 面向对象模型设计文档（OOP架构）
+│   ├── military_stamina_model_spec.md   # 军事体力系统模型规范
+│   ├── military_stamina_model_implementation.md # 模型实现总结
 ├── AUTHORS.md                            # 作者信息
 ├── CONTRIBUTING.md                       # 贡献指南
 ├── CHANGELOG.md                          # 更新日志
@@ -57,15 +63,35 @@ test_rubn_speed/
 │       └── Core/
 │           └── Character_Base.et         # 角色基础预制体
 └── tools/                                # 开发工具和脚本
+    ├── military_stamina_model_oop.md     # 面向对象模型设计文档（OOP架构）
+    ├── military_stamina_model_spec.md   # 军事体力系统模型规范
+    ├── military_stamina_model_implementation.md # 模型实现总结
     ├── simulate_stamina_system.py        # 基础趋势图生成脚本
-    ├── generate_comprehensive_trends.py  # 综合趋势图生成脚本
+    ├── generate_comprehensive_trends.py  # 综合趋势图生成脚本（包含移动类型对比）
     ├── optimize_2miles_params.py        # 2英里参数优化脚本
+    ├── optimize_parameters.py            # 参数优化脚本
+    ├── auto_optimize.py                  # 自动优化脚本
+    ├── find_optimal_params.py           # 查找最优参数脚本
     ├── test_2miles.py                    # 2英里测试脚本
     ├── calculate_recovery_time.py        # 恢复时间计算脚本
+    ├── adjust_parameters.py              # 参数调整脚本
+    ├── analyze_results.py                # 结果分析脚本
+    ├── README.md                         # 工具使用说明
     └── *.png                             # 生成的趋势图
 ```
 
 ## 技术实现
+
+### 模型架构
+
+本项目采用**面向对象编程（OOP）**的逻辑结构，定义了完整的状态、转换公式和约束条件。详细设计文档请参考：
+
+- **[面向对象模型设计文档](tools/military_stamina_model_oop.md)** - 完整的OOP架构，包括：
+  - 核心类定义（StaminaSystem、HealthStatus、FatigueState等）
+  - 状态枚举（MovementState、MetabolicZone）
+  - 转换公式（消耗率、恢复率、速度计算）
+  - 约束条件（体力值、速度、坡度、负重）
+  - 状态机实现（状态转换逻辑）
 
 ### 实现方式
 
@@ -117,18 +143,71 @@ test_rubn_speed/
 
 **技术实现**：使用精确的幂函数计算，不使用线性近似
 
-#### 3. 综合速度计算（精确模型）
+#### 3. 坡度影响系统（基于Pandolf模型）
+
+基于 Pandolf 能量消耗模型，坡度对体力消耗的影响：
+
+**坡度影响倍数**：
+- **上坡**：坡度每增加1度，体力消耗增加约8%
+- **下坡**：坡度每增加1度，体力消耗减少约3%（约为上坡的1/3）
+- **最大影响倍数**：2.0（上坡）和 0.7（下坡）
+
+**计算公式**：
+- 上坡：`multiplier = 1.0 + 0.08 × |slope|`
+- 下坡：`multiplier = 1.0 - 0.03 × |slope|`
+- 限制范围：`clamp(multiplier, 0.7, 2.0)`
+
+#### 4. 跳跃和翻越体力消耗
+
+**跳跃体力消耗**：
+- 基础消耗：3%（检测到跳跃动作时）
+- 负重影响：消耗 × 负重倍数（最大1.5倍）
+- 检测方式：垂直速度突然增加（> 2.0 m/s）且不在攀爬状态
+
+**翻越/攀爬体力消耗**：
+- 初始消耗：1.5%（翻越动作开始时）
+- 持续消耗：每2秒额外消耗初始消耗的10%
+- 负重影响：消耗 × 负重倍数（最大1.5倍）
+- 冷却机制：5秒内视为同一个翻越动作，不会重复消耗初始体力
+- 检测方式：`IsClimbing()` 返回true
+
+#### 5. Sprint机制
+
+**Sprint速度计算**：
+- Sprint速度 = Run速度 × (1 + 15%)
+- 最高速度限制：100%（游戏最大速度5.2 m/s）
+- 仍然受体力和负重限制
+
+**Sprint体力消耗**：
+- Sprint消耗 = Run消耗 × 2.5倍
+- 基于医学研究：Sprint时的能量消耗约为Run的2-3倍
+
+**Sprint特点**：
+- 速度比Run快15%，适合短距离冲刺
+- 体力消耗大幅增加，不适合长时间使用
+- 只有在满体力、无负重时才能达到最高速度
+
+#### 6. 综合速度计算（精确模型）
 
 ```
-最终速度倍数 = 基础速度倍数（根据体力，精确计算） × (1 - 负重惩罚（精确计算）)
+Run速度 = 基础速度倍数（根据体力，精确计算） × (1 - 负重惩罚（精确计算）)
+Sprint速度 = Run速度 × 1.15（限制在100%）
+Walk速度 = Run速度 × 0.7（限制在80%）
 最终速度限制在 20%-100% 之间
 ```
 
 **计算流程**（优化后参数）：
 1. 计算基础速度倍数：`S_base = 0.920 × E^0.6`（E 为体力百分比）
 2. 计算负重惩罚：`P_enc = 0.40 × (W/40.5)^1.0`（W 为当前重量）
-3. 计算最终速度：`S_final = S_base × (1 - P_enc)`
-4. 应用限制：`S_final = clamp(S_final, 0.20, 1.0)`
+3. 计算Run速度：`S_run = S_base × (1 - P_enc)`
+4. 根据移动类型调整：
+   - Run：`S_final = S_run`
+   - Sprint：`S_final = S_run × 1.15`（限制在100%）
+   - Walk：`S_final = S_run × 0.7`（限制在80%）
+   - Idle：`S_final = 0.0`
+5. 应用限制：`S_final = clamp(S_final, 0.20, 1.0)`
+
+**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
 
 **优化目标**：2英里（3218.7米）在15分27秒（927秒）内完成  
 **优化结果**：完成时间 925.8秒（15.43分钟），提前1.2秒完成 ✅
@@ -188,18 +267,87 @@ test_rubn_speed/
 - **重度负重（30-40.5 kg）**：严重影响，速度减少 30-40%
 - **最大负重（40.5 kg）**：达到最大负重，速度最多减少 40%
 
+### 移动类型系统
+
+系统支持四种移动类型，每种类型有不同的速度特性和体力消耗：
+
+#### 1. Idle（静止）
+- **速度倍数**：0.0（完全静止）
+- **体力消耗**：无（静止时恢复体力）
+- **适用场景**：站立、蹲伏、休息
+
+#### 2. Walk（行走）
+- **速度倍数**：Run速度 × 0.7（约为Run的70%）
+- **速度限制**：20% - 80%
+- **体力消耗**：低（基础消耗 + 速度相关消耗）
+- **适用场景**：正常移动、探索、节省体力
+
+#### 3. Run（跑步）
+- **速度倍数**：基础速度 × (1 - 负重惩罚)
+- **速度限制**：20% - 100%
+- **体力消耗**：中等（基于Pandolf模型）
+- **适用场景**：正常行军、长距离移动
+- **速度计算**：
+  - 基础速度 = 目标速度倍数 × 体力^0.6
+  - 最终速度 = 基础速度 × (1 - 负重惩罚)
+  - 例如：满体力、无负重时，Run速度 = 4.78 m/s（92%）
+
+#### 4. Sprint（冲刺）
+- **速度倍数**：Run速度 × 1.15（比Run快15%）
+- **速度限制**：20% - 100%（最高速度 = 游戏最大速度5.2 m/s）
+- **体力消耗**：高（Run消耗 × 2.5倍）
+- **适用场景**：追击、逃命、短距离冲刺
+- **速度计算**：
+  - Sprint速度 = Run速度 × (1 + 15%)
+  - 例如：Run速度80%时，Sprint速度 = 92%
+  - 最高速度限制在5.2 m/s（基于现实情况：一般健康成年人的Sprint速度约20-30 km/h）
+- **特点**：
+  - 速度比Run快，但仍然受体力和负重限制
+  - 体力消耗大幅增加（2.5倍），不适合长时间使用
+  - 只有在满体力、无负重时才能达到最高速度
+
+**移动类型对比表**：
+
+| 移动类型 | 速度倍数（相对于Run） | 最高速度限制 | 体力消耗倍数 | 适用场景 |
+|---------|---------------------|------------|------------|---------|
+| Idle | 0.0 | - | 0（恢复） | 静止、休息 |
+| Walk | 0.7 | 80% | 1.0 | 正常移动、探索 |
+| Run | 1.0 | 100% | 1.0 | 正常行军、长距离 |
+| Sprint | 1.15 | 100% | 2.5 | 追击、逃命、短距离 |
+
 ### 状态显示
 
 系统每秒输出一次状态信息，格式如下：
 
 ```
-[RealisticSystem] 移动速度: 4.2 m/s | 体力: 65% | 速度倍率: 88%
+[RealisticSystem] 移动速度: 4.2 m/s | 体力: 65% | 速度倍率: 88% | 类型: Run | 坡度: 3.5° (上坡)
 ```
 
 显示内容：
 - **移动速度**：上一秒的水平移动速度（米/秒）
 - **体力**：当前体力百分比（0-100%）
 - **速度倍率**：当前速度倍数（相对于标准速度的百分比）
+- **类型**：当前移动类型（Idle/Walk/Run/Sprint）
+- **坡度**：当前移动坡度角度和方向（仅在坡度有意义时显示）
+
+### 调试信息
+
+系统每5秒输出一次详细调试信息（仅在客户端），格式如下：
+
+```
+[RealisticSystem] 调试: 类型=Sprint | 体力=85% | 基础速度倍数=0.92 | 负重惩罚=0.1 | 最终速度倍数=0.95 | 坡度倍数=1.2 | 坡度: 5.0° (上坡) | Sprint消耗倍数: 2.5x | 负重: 15kg/40.5kg (最大:40.5kg, 战斗:30kg)
+```
+
+调试信息包含：
+- **类型**：当前移动类型
+- **体力**：当前体力百分比
+- **基础速度倍数**：根据体力计算的基础速度倍数
+- **负重惩罚**：负重对速度的影响
+- **最终速度倍数**：考虑所有因素后的最终速度倍数
+- **坡度倍数**：坡度对体力消耗的影响倍数
+- **坡度信息**：坡度角度和方向（仅在坡度有意义时显示）
+- **Sprint消耗倍数**：Sprint时的体力消耗倍数（仅在Sprint时显示）
+- **负重信息**：当前重量、最大重量、战斗负重阈值和状态
 
 ## 安装方法
 
@@ -296,20 +444,75 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 - `CorrectStaminaToTarget()`: 纠正体力值到目标值
 
 **`scripts/Game/PlayerBase.c`** - 主控制器组件：
-- `OnInit()`: 初始化控制器组件，获取体力组件引用
-- `UpdateSpeedBasedOnStamina()`: 根据体力和负重精确更新速度（每0.2秒）
+- `OnInit()`: 初始化控制器组件，获取体力组件引用，禁用原生体力系统
+- `UpdateSpeedBasedOnStamina()`: 根据体力、负重、移动类型和坡度精确更新速度（每0.2秒）
+  - 检测移动类型（Idle/Walk/Run/Sprint）
+  - 检测跳跃和翻越动作，应用额外体力消耗
+  - 计算坡度影响，调整体力消耗
+  - 计算Sprint额外消耗（2.5倍）
 - `CollectSpeedSample()`: 每秒采集一次速度样本
-- `DisplayStatusInfo()`: 显示速度、体力、速度倍率信息
+- `DisplayStatusInfo()`: 显示速度、体力、速度倍率、移动类型和坡度信息
 
-**精确体力消耗模型**（基于 Pandolf 模型，优化后参数 v2.1）：
-- 基础消耗项：`a = 0.00004`
-- 速度线性项：`b·V = 0.0001·V`
-- 速度平方项：`c·V² = 0.0001·V²`（优化后降低）
+**精确体力消耗模型**（基于 Pandolf 模型，优化后参数 v2.4，包含健康状态、累积疲劳和代谢适应）：
+- 基础消耗项：`a = 0.00004 × total_efficiency_factor × fatigue_factor`
+- 速度线性项：`b·V = 0.0001·V × total_efficiency_factor × fatigue_factor`
+- 速度平方项：`c·V² = 0.0001·V² × total_efficiency_factor × fatigue_factor`
 - 负重基础项：`d·M_enc = 0.001·(M_mult - 1)`
 - 负重速度交互项：`e·M_enc·V² = 0.0002·(M_mult - 1)·V²`
-- 总消耗：`total = a + b·V + c·V² + d·M_enc + e·M_enc·V²`
+- 坡度影响倍数：`slope_multiplier`（包含负重×坡度交互项）
+- 速度×负重×坡度三维交互项：`3d_interaction`（独立项）
+- Sprint消耗倍数：`sprint_multiplier = 2.5`（仅在Sprint时）
+
+**效率因子**（基于个性化运动建模，Palumbo et al., 2018）：
+- 健康状态效率因子：`fitness_efficiency_factor = 1.0 - 0.18 × fitness_level`（训练有素=1.0时，效率82%）
+- 代谢适应效率因子：根据速度比动态调整
+  - 有氧区（<60% VO2max）：`metabolic_efficiency_factor = 0.9`（更高效）
+  - 混合区（60-80% VO2max）：`0.9 → 1.2`（线性插值）
+  - 无氧区（≥80% VO2max）：`metabolic_efficiency_factor = 1.2`（低效但高功率）
+- 综合效率因子：`total_efficiency_factor = fitness_efficiency_factor × metabolic_efficiency_factor`
+
+**累积疲劳因子**（基于个性化运动建模，Palumbo et al., 2018）：
+- 疲劳因子：`fatigue_factor = 1.0 + 0.015 × max(0, exercise_duration_minutes - 5.0)`
+- 前5分钟无疲劳累积，之后每分钟增加1.5%消耗
+- 最大疲劳因子：`2.0`（消耗最多增加100%）
+- 静止时疲劳快速恢复（恢复速度是累积速度的2倍）
+
+**体力恢复模型**（考虑健康状态）：
+- 基础恢复率：`0.00015`（每0.2秒恢复0.015%）
+- 健康状态恢复倍数：`fitness_recovery_multiplier = 1.0 + 0.25 × fitness_level`（训练有素=1.0时，恢复速度增加25%）
+- 最终恢复率：`base_recovery_rate × fitness_recovery_multiplier`（训练有素时：0.0001875，每0.2秒恢复0.01875%）
 
 ## 版本历史
+
+- **v2.4** (当前版本) - 累积疲劳和代谢适应系统
+  - 新增累积疲劳系统：长时间运动后，相同速度的消耗逐渐增加（基于Palumbo et al., 2018）
+    - 前5分钟无疲劳累积
+    - 之后每分钟增加1.5%消耗（30分钟后增加45%）
+    - 最大疲劳因子2.0（消耗最多增加100%）
+    - 静止时疲劳快速恢复（恢复速度是累积速度的2倍）
+  - 新增代谢适应系统：根据运动强度动态调整能量效率（基于Palumbo et al., 2018）
+    - 有氧区（<60% VO2max）：效率因子0.9（更高效，主要依赖脂肪）
+    - 混合区（60-80% VO2max）：效率因子0.9→1.2（线性插值，糖原+脂肪混合）
+    - 无氧区（≥80% VO2max）：效率因子1.2（低效但高功率，主要依赖糖原）
+  - 优化综合效率因子：健康状态效率 × 代谢适应效率，更真实地模拟能量代谢
+  - 更新所有Python脚本：同步累积疲劳和代谢适应系统到所有趋势图生成脚本
+
+- **v2.3** - 健康状态系统和多维交互模型
+  - 新增健康状态系统：实现个性化运动建模（基于Palumbo et al., 2018）
+    - 训练有素者（fitness=1.0）能量效率提高18%（基础消耗、速度线性项、速度平方项均减少18%）
+    - 训练有素者恢复速度增加25%
+    - 角色设置为22岁男性，训练有素水平
+  - 改进多维交互模型：添加速度×负重×坡度三维交互项
+  - 更新所有Python脚本：同步健康状态系统到所有趋势图生成脚本
+
+- **v2.2** - 移动类型和坡度系统
+  - 添加移动类型系统（Idle/Walk/Run/Sprint）
+  - 添加Sprint机制（速度+15%，消耗×2.5倍）
+  - 添加坡度影响系统（上坡/下坡影响体力消耗）
+  - 添加跳跃和翻越体力消耗
+  - 增强状态显示（包含移动类型和坡度信息）
+  - 增强调试信息（包含更多详细信息）
+  - 优化代码结构，注释掉拦截体力系统的调试信息
 
 - **v2.1** - 参数优化版本
   - 优化参数以达到2英里15分27秒目标
@@ -324,6 +527,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 实现精确数学模型（不使用近似）
   - 实现综合状态显示（速度、体力、倍率）
   - 实现平滑速度过渡机制
+  - 实现原生体力系统完全覆盖
 
 - **v1.0** - 初始版本（已废弃）
   - 实现固定速度修改功能（50%）
@@ -336,18 +540,6 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 ## 许可证
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
-
-Copyright (C) 2024 ViVi141
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
 
 ## 作者
 
