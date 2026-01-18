@@ -147,12 +147,27 @@ SPRINT_SPEED_BOOST = 0.15  # Sprint时速度比Run快15%
 SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
 SPRINT_STAMINA_DRAIN_MULTIPLIER = 2.5  # Sprint时体力消耗是Run的2.5倍
 
-# ==================== 坡度影响参数 ====================
-# 基于 Pandolf 模型：坡度对能量消耗的影响
-SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）
-SLOPE_DOWNHILL_COEFF = 0.03  # 下坡影响系数（每度减少3%消耗，约为上坡的1/3）
-SLOPE_MAX_MULTIPLIER = 2.0  # 最大坡度影响倍数（上坡）
-SLOPE_MIN_MULTIPLIER = 0.7  # 最小坡度影响倍数（下坡）
+# ==================== Pandolf 模型参数 ====================
+# 完整的 Pandolf 能量消耗模型（Pandolf et al., 1977）
+# 公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+# 其中：
+# - E = 能量消耗率（W/kg）
+# - M = 总重量（身体重量 + 负重）
+# - V = 速度（m/s）
+# - G = 坡度（坡度百分比，0 = 平地，正数 = 上坡，负数 = 下坡）
+# 注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中
+
+PANDOLF_BASE_COEFF = 2.7  # 基础系数（W/kg）
+PANDOLF_VELOCITY_COEFF = 3.2  # 速度系数（W/kg）
+PANDOLF_VELOCITY_OFFSET = 0.7  # 速度偏移（m/s）
+PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
+PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
+
+# 参考体重（用于计算相对重量倍数）
+REFERENCE_WEIGHT = 70.0  # kg
+
+# 能量到体力的转换系数
+ENERGY_TO_STAMINA_COEFF = 0.0001  # 1 W/kg ≈ 0.0001 %/s（需要根据实际测试调整）
 
 
 def calculate_speed_multiplier_by_stamina(stamina_percent, encumbrance_percent=0.0, movement_type='run'):
@@ -321,27 +336,64 @@ def calculate_slope_stamina_drain_multiplier(slope_angle_degrees, body_mass_perc
     return calculate_grade_multiplier(grade_percent)
 
 
-def calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees):
+def calculate_pandolf_energy_expenditure(velocity, current_weight, grade_percent=0.0):
     """
-    计算速度×负重×坡度三维交互项（基于 Pandolf 模型）
+    计算完整的 Pandolf 能量消耗模型（Pandolf et al., 1977）
+    
+    完整公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+    其中：
+    - E = 能量消耗率（W/kg）
+    - M = 总重量（身体重量 + 负重）
+    - V = 速度（m/s）
+    - G = 坡度（坡度百分比，0 = 平地，正数 = 上坡，负数 = 下坡）
+    
+    注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中
     
     Args:
-        speed_ratio: 速度比（0.0-1.0），当前速度/最大速度
-        body_mass_percent: 负重占体重的百分比（0.0-1.0+）
-        slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
+        velocity: 当前速度（m/s）
+        current_weight: 当前负重（kg），包含身体重量和额外负重
+        grade_percent: 坡度百分比（例如，5% = 5.0，-15% = -15.0），默认0.0（平地）
     
     Returns:
-        三维交互项系数（0.0-0.5），表示额外的消耗倍数
+        体力消耗率（%/s），每0.2秒的消耗率需要乘以 0.2
     """
-    speed_ratio = np.clip(speed_ratio, 0.0, 1.0)
-    body_mass_percent = np.maximum(body_mass_percent, 0.0)
-    slope_angle_degrees = np.clip(slope_angle_degrees, -45.0, 45.0)
+    import math
     
-    if slope_angle_degrees <= 0.0 or body_mass_percent <= 0.0:
-        return 0.0
+    # 确保速度和重量有效
+    velocity = max(velocity, 0.0)
+    current_weight = max(current_weight, 0.0)
     
-    interaction_term = SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF * body_mass_percent * speed_ratio * speed_ratio * slope_angle_degrees
-    return np.clip(interaction_term, 0.0, 0.5)
+    # 如果速度为0或很小，返回恢复率（负数）
+    if velocity < 0.1:
+        return -0.0025  # 恢复率（负数）
+    
+    # 计算基础项：2.7 + 3.2·(V-0.7)²
+    velocity_term = velocity - PANDOLF_VELOCITY_OFFSET
+    velocity_squared_term = velocity_term * velocity_term
+    base_term = PANDOLF_BASE_COEFF + (PANDOLF_VELOCITY_COEFF * velocity_squared_term)
+    
+    # 计算坡度项：G·(0.23 + 1.34·V²)
+    # 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
+    grade_decimal = grade_percent * 0.01  # 转换为小数
+    velocity_squared = velocity * velocity
+    grade_term = grade_decimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocity_squared))
+    
+    # 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项)
+    # 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
+    # 使用标准体重（70kg）作为参考，计算相对重量倍数
+    weight_multiplier = current_weight / REFERENCE_WEIGHT
+    weight_multiplier = np.clip(weight_multiplier, 0.5, 2.0)  # 限制在0.5-2.0倍之间
+    
+    energy_expenditure = weight_multiplier * (base_term + grade_term)
+    
+    # 将能量消耗率（W/kg）转换为体力消耗率（%/s）
+    # 这个转换系数需要根据游戏的体力系统来调整
+    stamina_drain_rate = energy_expenditure * ENERGY_TO_STAMINA_COEFF
+    
+    # 限制消耗率在合理范围内（避免数值爆炸）
+    stamina_drain_rate = np.clip(stamina_drain_rate, -0.005, 0.05)  # 最多每秒消耗5%
+    
+    return stamina_drain_rate
 
 
 def calculate_base_drain_rate_by_velocity(velocity, current_weight=0.0):
@@ -412,10 +464,18 @@ def calculate_base_drain_rate_by_velocity(velocity, current_weight=0.0):
 
 def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, exercise_duration_minutes=0.0):
     """
-    计算体力消耗率（基于精确 Pandolf 模型，考虑健康状态、累积疲劳和代谢适应）
+    计算体力消耗率（基于完整的 Pandolf 模型，考虑累积疲劳和代谢适应）
     
-    精确数学模型（基于 Pandolf et al., 1977 + Palumbo et al., 2018）：
-    消耗 = (a + b·V + c·V² + d·M_enc + e·M_enc·V²) × slope_multiplier × sprint_multiplier × fitness_factor × fatigue_factor × metabolic_factor
+    完整公式（Pandolf et al., 1977）：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+    其中：
+    - E = 能量消耗率（W/kg）
+    - M = 总重量（身体重量 + 负重）
+    - V = 速度（m/s）
+    - G = 坡度（坡度百分比，0 = 平地，正数 = 上坡，负数 = 下坡）
+    
+    注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中，不需要单独的坡度倍数
+    
+    Sprint时体力消耗 = Run消耗 × 2.5倍
     
     其中：
     - a = 基础消耗
@@ -444,25 +504,42 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     # 计算速度比（相对于最大速度）
     speed_ratio = np.clip(current_speed / GAME_MAX_SPEED, 0.0, 1.0)
     
-    # ==================== 基于速度阈值的分段消耗率（融合模型）====================
+    import math
+    
+    # Idle时恢复体力
+    if movement_type == 'idle' or current_speed < 0.1:
+        return -0.0025 * UPDATE_INTERVAL  # 恢复率（负数），每0.2秒
+    
     # 计算当前负重（kg）
     current_weight_kg = encumbrance_percent * MAX_ENCUMBRANCE_WEIGHT
-    # 使用基于速度阈值的分段消耗率作为基础
-    base_drain_rate_by_velocity = calculate_base_drain_rate_by_velocity(current_speed, current_weight_kg)
+    # 总重量 = 身体重量 + 当前负重（包含基准重量）
+    total_weight = CHARACTER_WEIGHT + current_weight_kg
+    
+    # 将坡度角度转换为坡度百分比
+    grade_percent = math.tan(slope_angle_degrees * math.pi / 180.0) * 100.0 if slope_angle_degrees != 0.0 else 0.0
+    
+    # 使用完整的 Pandolf 模型计算基础消耗率
+    base_drain_rate_per_second = calculate_pandolf_energy_expenditure(current_speed, total_weight, grade_percent)
     
     # ==================== 累积疲劳因子计算 ====================
+    # 基于个性化运动建模（Palumbo et al., 2018）
     effective_exercise_duration = np.maximum(exercise_duration_minutes - FATIGUE_START_TIME_MINUTES, 0.0)
     fatigue_factor = 1.0 + (FATIGUE_ACCUMULATION_COEFF * effective_exercise_duration)
     fatigue_factor = np.clip(fatigue_factor, 1.0, FATIGUE_MAX_FACTOR)
     
     # ==================== 代谢适应计算 ====================
+    # 基于个性化运动建模（Palumbo et al., 2018）
+    speed_ratio = np.clip(current_speed / GAME_MAX_SPEED, 0.0, 1.0)
     if speed_ratio < AEROBIC_THRESHOLD:
-        metabolic_efficiency_factor = AEROBIC_EFFICIENCY_FACTOR  # 0.9
+        # 有氧区（<60% VO2max）：主要依赖脂肪，效率高
+        metabolic_efficiency_factor = AEROBIC_EFFICIENCY_FACTOR  # 0.9（更高效）
     elif speed_ratio < ANAEROBIC_THRESHOLD:
+        # 混合区（60-80% VO2max）：糖原+脂肪混合
         t = (speed_ratio - AEROBIC_THRESHOLD) / (ANAEROBIC_THRESHOLD - AEROBIC_THRESHOLD)
         metabolic_efficiency_factor = AEROBIC_EFFICIENCY_FACTOR + t * (ANAEROBIC_EFFICIENCY_FACTOR - AEROBIC_EFFICIENCY_FACTOR)
     else:
-        metabolic_efficiency_factor = ANAEROBIC_EFFICIENCY_FACTOR  # 1.2
+        # 无氧区（≥80% VO2max）：主要依赖糖原，效率低但功率高
+        metabolic_efficiency_factor = ANAEROBIC_EFFICIENCY_FACTOR  # 1.2（低效但高功率）
     
     # ==================== 健康状态影响计算 ====================
     # 基于个性化运动建模（Palumbo et al., 2018）
@@ -473,73 +550,26 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     # 综合效率因子 = 健康状态效率 × 代谢适应效率
     total_efficiency_factor = fitness_efficiency_factor * metabolic_efficiency_factor
     
-    # ==================== 应用基于速度阈值的分段消耗率 ====================
-    # 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
-    # 注意：恢复时（base_drain_rate_by_velocity < 0），不应用效率因子（恢复不受效率影响）
-    if base_drain_rate_by_velocity < 0.0:
+    # 应用效率因子和疲劳因子
+    # 注意：恢复时（base_drain_rate_per_second < 0），不应用效率因子（恢复不受效率影响）
+    if base_drain_rate_per_second < 0.0:
         # 恢复时，直接使用恢复率（负数）
-        base_drain_rate = base_drain_rate_by_velocity
+        total_drain_rate_per_second = base_drain_rate_per_second
     else:
         # 消耗时，应用效率因子和疲劳因子
-        base_drain_rate = base_drain_rate_by_velocity * total_efficiency_factor * fatigue_factor
+        total_drain_rate_per_second = base_drain_rate_per_second * total_efficiency_factor * fatigue_factor
     
-    # 保留原有的速度相关项（用于平滑过渡和精细调整）
-    # 这些项在速度阈值附近提供平滑过渡
-    speed_linear_drain = 0.00005 * speed_ratio * total_efficiency_factor * fatigue_factor  # 降低系数，主要依赖分段消耗率
-    speed_squared_drain = 0.00005 * speed_ratio * speed_ratio * total_efficiency_factor * fatigue_factor  # 降低系数
+    # Sprint时体力消耗 = Run消耗 × 2.5倍
+    if movement_type == 'sprint':
+        total_drain_rate_per_second = total_drain_rate_per_second * SPRINT_STAMINA_DRAIN_MULTIPLIER
     
-    # 负重相关的体力消耗（基于精确 Pandolf 模型）
-    # 计算有效负重（减去基准重量，基准重量是基础物品）
-    current_weight_kg = encumbrance_percent * MAX_ENCUMBRANCE_WEIGHT
-    effective_weight = max(current_weight_kg - BASE_WEIGHT, 0.0)
-    effective_encumbrance_percent = effective_weight / MAX_ENCUMBRANCE_WEIGHT if MAX_ENCUMBRANCE_WEIGHT > 0.0 else 0.0
+    # 转换为每0.2秒的消耗率
+    total_drain_rate_per_tick = total_drain_rate_per_second * UPDATE_INTERVAL
     
-    # 基于有效负重计算消耗倍数
-    encumbrance_drain_multiplier = 1.0 + (ENCUMBRANCE_STAMINA_DRAIN_COEFF * effective_encumbrance_percent)
+    # 限制消耗率在合理范围内
+    total_drain_rate_per_tick = np.clip(total_drain_rate_per_tick, -0.005, 0.05)
     
-    # 负重基础消耗（对应 Pandolf 模型中的 d·M_enc 项）
-    encumbrance_base_drain = ENCUMBRANCE_BASE_DRAIN_COEFF * (encumbrance_drain_multiplier - 1.0)
-    
-    # 负重速度交互项（对应 Pandolf 模型中的 e·M_enc·V² 项）
-    encumbrance_speed_drain = ENCUMBRANCE_SPEED_DRAIN_COEFF * (encumbrance_drain_multiplier - 1.0) * speed_ratio * speed_ratio
-    
-    # 综合体力消耗率（融合模型：基于速度阈值分段消耗率 + 精细调整项）
-    base_drain_components = base_drain_rate + speed_linear_drain + speed_squared_drain + encumbrance_base_drain + encumbrance_speed_drain
-    
-    # 计算有效负重占体重的百分比（用于计算交互项）
-    body_mass_percent = effective_weight / CHARACTER_WEIGHT if effective_weight > 0.0 else 0.0
-    
-    # 将坡度角度转换为坡度百分比（用于非线性坡度消耗计算）
-    import math
-    grade_percent = math.tan(slope_angle_degrees * math.pi / 180.0) * 100.0 if slope_angle_degrees != 0.0 else 0.0
-    
-    # 使用非线性坡度修正（幂函数，让小坡几乎无感，陡坡才真正吃力）
-    slope_multiplier = calculate_grade_multiplier(grade_percent)
-    
-    # Sprint倍数
-    sprint_multiplier = SPRINT_STAMINA_DRAIN_MULTIPLIER if movement_type == 'sprint' else 1.0
-    
-    # 应用坡度修正和Sprint倍数
-    # 注意：恢复时（base_drain_rate < 0），不应用坡度修正和Sprint倍数
-    if base_drain_rate < 0.0:
-        # 恢复时，直接使用恢复率（负数）
-        total_drain = base_drain_rate
-    else:
-        # 消耗时，应用坡度修正和Sprint倍数
-        # 应用速度×负重×坡度三维交互项
-        speed_encumbrance_slope_interaction = calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees)
-        total_drain = (base_drain_components * slope_multiplier * sprint_multiplier) + (base_drain_components * speed_encumbrance_slope_interaction)
-        
-        # ==================== 生理上限：防止负重+坡度爆炸 ====================
-        # 无论负重多重、坡多陡，人的瞬时代谢率是有极限的（即 VO2 Max 峰值）
-        # 设定每 0.2s 最大体力消耗不超过 0.02（即每秒最多掉 10%）
-        # 这样即使玩家背着 30kg 爬 15 度坡，他也不会在 5 秒内暴毙
-        # 系统会强制限制他的最大消耗，同时由于"自适应步幅"逻辑，他的速度会自动降得很低
-        # 这既保证了硬核的真实性，又避免了数值上的溢出导致无法玩下去
-        MAX_DRAIN_RATE_PER_TICK = 0.02  # 每0.2秒最大消耗
-        total_drain = min(total_drain, MAX_DRAIN_RATE_PER_TICK)
-    
-    return total_drain
+    return total_drain_rate_per_tick
 
 
 def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, max_speed_mode=True):
@@ -612,11 +642,7 @@ def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, moveme
             
             drain_rate = calculate_stamina_drain(current_speed, encumbrance_percent, movement_type, slope_angle_degrees, exercise_duration_minutes)
             
-            # 应用速度×负重×坡度三维交互项
-            speed_ratio = np.clip(current_speed / GAME_MAX_SPEED, 0.0, 1.0)
-            speed_encumbrance_slope_interaction = calculate_speed_encumbrance_slope_interaction(speed_ratio, body_mass_percent, slope_angle_degrees)
-            drain_rate = drain_rate + (drain_rate * speed_encumbrance_slope_interaction)
-            
+            # 注意：坡度项已整合在Pandolf模型中，不需要额外的交互项
             drain_rate_values[i] = drain_rate
             new_stamina = current_stamina - drain_rate
         else:

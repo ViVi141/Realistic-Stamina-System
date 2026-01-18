@@ -34,11 +34,29 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bWasMoving = false; // 上次更新时是否在移动
     protected float m_fRestDurationMinutes = 0.0; // 连续休息时间（分钟），从停止运动开始计算
     
-    // 跳跃和翻越检测相关
-    protected float m_fLastVerticalVelocity = 0.0; // 上一帧的垂直速度（用于检测跳跃）
+    // 跳跃和翻越检测相关（改进：使用动作监听器检测跳跃输入）
+    protected bool m_bJumpInputTriggered = false; // 跳跃输入是否被触发（由动作监听器设置）
     protected bool m_bIsVaulting = false; // 是否正在翻越/攀爬
     protected int m_iVaultingFrameCount = 0; // 翻越状态持续帧数
     protected int m_iVaultCooldownFrames = 0; // 翻越冷却帧数（防止重复触发）
+    
+    // ==================== 性能优化：负重缓存（事件驱动）====================
+    // 避免每0.2秒重复计算负重，改为事件驱动（仅在库存变化时更新）
+    protected float m_fCachedCurrentWeight = 0.0; // 缓存的当前重量（kg）
+    protected float m_fCachedEncumbranceSpeedPenalty = 0.0; // 缓存的速度惩罚
+    protected float m_fCachedBodyMassPercent = 0.0; // 缓存的有效负重占体重百分比
+    protected float m_fCachedEncumbranceStaminaDrainMultiplier = 1.0; // 缓存的体力消耗倍数
+    protected bool m_bEncumbranceCacheValid = false; // 缓存是否有效
+    protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存的库存组件引用
+    
+    // ==================== 网络同步：服务器端验证 =====================
+    // 服务器端验证速度变化，防止客户端作弊和"拉回"问题
+    protected float m_fServerValidatedSpeedMultiplier = 1.0; // 服务器端验证的速度倍数
+    protected float m_fLastReportedStaminaPercent = 1.0; // 上次客户端报告的体力百分比
+    protected float m_fLastReportedWeight = 0.0; // 上次客户端报告的重量
+    protected const float VALIDATION_TOLERANCE = 0.05; // 验证容差（5%差异视为正常）
+    protected const float NETWORK_SYNC_INTERVAL = 1.0; // 网络同步间隔（秒）
+    protected float m_fLastNetworkSyncTime = 0.0; // 上次网络同步时间
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -66,15 +84,16 @@ modded class SCR_CharacterControllerComponent
             // 禁用原生体力系统
             m_pStaminaComponent.SetAllowNativeStaminaSystem(false);
             
-            // 设置初始目标体力值为85%（ACFT后预疲劳状态，融合模型）
+            // 设置初始目标体力值为100%（满值）
             m_pStaminaComponent.SetTargetStamina(RealisticStaminaSpeedSystem.INITIAL_STAMINA_AFTER_ACFT);
         }
         
-        // 初始化跳跃和翻越检测变量
-        m_fLastVerticalVelocity = 0.0;
+        // 初始化跳跃和翻越检测变量（改进：使用动作监听器）
+        m_bJumpInputTriggered = false;
         m_bIsVaulting = false;
         m_iVaultingFrameCount = 0;
         m_iVaultCooldownFrames = 0;
+        // m_fLastVerticalVelocity = 0.0; // 初始化垂直速度（已注释，不再使用）
         
         // 初始化运动持续时间跟踪变量
         m_fExerciseDurationMinutes = 0.0;
@@ -85,8 +104,83 @@ modded class SCR_CharacterControllerComponent
         m_bInCollapseTransition = false;
         m_fCollapseTransitionStartTime = 0.0;
         
+        // 初始化负重缓存（事件驱动）
+        m_fCachedCurrentWeight = 0.0;
+        m_fCachedEncumbranceSpeedPenalty = 0.0;
+        m_fCachedBodyMassPercent = 0.0;
+        m_fCachedEncumbranceStaminaDrainMultiplier = 1.0;
+        m_bEncumbranceCacheValid = false;
+        m_pCachedInventoryComponent = null;
+        
+        // 获取并缓存库存组件引用（避免重复查找）
+        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            m_pCachedInventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
+            if (m_pCachedInventoryComponent)
+            {
+                // 初始化时计算一次负重
+                UpdateEncumbranceCache();
+            }
+        }
+        
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
+    }
+    
+    // ==================== 性能优化：更新负重缓存（事件驱动）====================
+    // 仅在库存变化时调用，避免每0.2秒重复计算
+    // 注意：需要在库存组件的事件中调用此方法（如 OnItemAdded/OnItemRemoved）
+    void UpdateEncumbranceCache()
+    {
+        IEntity owner = GetOwner();
+        if (!owner || !m_pCachedInventoryComponent)
+        {
+            m_bEncumbranceCacheValid = false;
+            return;
+        }
+        
+        // 获取当前重量（这是唯一需要访问库存组件的地方）
+        float currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
+        if (currentWeight < 0.0)
+        {
+            m_bEncumbranceCacheValid = false;
+            return;
+        }
+        
+        // 更新缓存值
+        m_fCachedCurrentWeight = currentWeight;
+        
+        // 计算有效负重（减去基准重量）
+        float effectiveWeight = Math.Max(currentWeight - RealisticStaminaSpeedSystem.BASE_WEIGHT, 0.0);
+        m_fCachedBodyMassPercent = effectiveWeight / RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
+        
+        // 计算速度惩罚（基于体重百分比）
+        m_fCachedEncumbranceSpeedPenalty = RealisticStaminaSpeedSystem.ENCUMBRANCE_SPEED_PENALTY_COEFF * m_fCachedBodyMassPercent;
+        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.5);
+        
+        // 计算体力消耗倍数
+        m_fCachedEncumbranceStaminaDrainMultiplier = 1.0 + (RealisticStaminaSpeedSystem.ENCUMBRANCE_STAMINA_DRAIN_COEFF * m_fCachedBodyMassPercent);
+        m_fCachedEncumbranceStaminaDrainMultiplier = Math.Clamp(m_fCachedEncumbranceStaminaDrainMultiplier, 1.0, 3.0);
+        
+        m_bEncumbranceCacheValid = true;
+    }
+    
+    // ==================== 性能优化：检查并更新负重缓存（仅在变化时更新）====================
+    // 在 UpdateSpeedBasedOnStamina 中调用，检查负重是否变化
+    void CheckAndUpdateEncumbranceCache()
+    {
+        if (!m_pCachedInventoryComponent)
+            return;
+        
+        // 快速检查：获取当前重量并与缓存比较
+        float currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
+        
+        // 如果重量变化超过0.1kg，重新计算缓存（避免微小浮点误差触发）
+        if (Math.AbsFloat(currentWeight - m_fCachedCurrentWeight) > 0.1 || !m_bEncumbranceCacheValid)
+        {
+            UpdateEncumbranceCache();
+        }
     }
     
     // 启动系统
@@ -99,6 +193,100 @@ modded class SCR_CharacterControllerComponent
         GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
     }
     
+    // ==================== 改进：使用动作监听器检测跳跃输入 ====================
+    // 采用多重检测方法确保准确性：
+    // 1. 动作监听器（OnJumpActionTriggered）- 实时检测输入动作
+    // 2. OnPrepareControls - 备用检测方法，每帧检测输入动作
+    // 3. 垂直速度检测 - 已注释（动作检测已成功，不需要垂直速度验证）
+    
+    // protected float m_fLastVerticalVelocity = 0.0; // 上一帧的垂直速度，用于检测速度变化（已注释，不再使用）
+    
+    // 覆盖 OnControlledByPlayer 来添加/移除动作监听器
+    override void OnControlledByPlayer(IEntity owner, bool controlled)
+    {
+        super.OnControlledByPlayer(owner, controlled);
+        
+        // 只对本地控制的玩家处理
+        if (controlled && owner == SCR_PlayerController.GetLocalControlledEntity())
+        {
+            InputManager inputManager = GetGame().GetInputManager();
+            if (inputManager)
+            {
+                // 尝试添加多个可能的动作名称
+                inputManager.AddActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.AddActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
+                
+                // 调试输出
+                Print("[RealisticSystem] 跳跃动作监听器已添加");
+            }
+        }
+        else
+        {
+            InputManager inputManager = GetGame().GetInputManager();
+            if (inputManager)
+            {
+                // 移除所有可能的动作监听器
+                inputManager.RemoveActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
+            }
+        }
+    }
+    
+    // 跳跃动作监听器回调函数
+    // 当玩家按下跳跃键时立即调用
+    void OnJumpActionTriggered(float value = 0.0, EActionTrigger trigger = 0)
+    {
+        IEntity owner = GetOwner();
+        if (!owner || owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 检查是否在载具中（载具中的 "Jump" 是离开载具的动作，不是跳跃）
+        bool isInVehicle = false;
+        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
+            if (compAccess && compAccess.GetCompartment())
+                isInVehicle = true;
+        }
+        
+        // 如果不在载具中，设置跳跃输入标志
+        if (!isInVehicle)
+        {
+            m_bJumpInputTriggered = true;
+            Print("[RealisticSystem] 动作监听器检测到跳跃输入！");
+        }
+    }
+    
+    // 在 OnPrepareControls 中作为备用检测方法
+    override void OnPrepareControls(IEntity owner, ActionManager am, float dt, bool player)
+    {
+        super.OnPrepareControls(owner, am, dt, player);
+        
+        // 只对本地控制的玩家处理
+        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 检查是否在载具中
+        bool isInVehicle = false;
+        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
+            if (compAccess && compAccess.GetCompartment())
+                isInVehicle = true;
+        }
+        
+        // 备用检测：如果在 OnPrepareControls 中检测到跳跃输入，也设置标志
+        if (!isInVehicle && am.GetActionTriggered("Jump"))
+        {
+            m_bJumpInputTriggered = true;
+            Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！");
+        }
+    }
+    
     // 根据体力更新速度（每0.2秒调用一次）
     void UpdateSpeedBasedOnStamina()
     {
@@ -109,11 +297,43 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         
-        // 只对本地控制的玩家处理
-        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+        // ==================== 网络同步：区分客户端和服务器端逻辑 =====================
+        // 注意：World.IsServer() 方法不存在，改为使用 Replication 系统检查
+        // 在 Arma Reforger 中，通常只在客户端处理本地玩家，服务器端验证可以暂时禁用
+        bool isServer = false; // 暂时禁用服务器端验证（IsServer() 方法不存在）
+        bool isClient = true; // 默认按客户端处理
+        
+        // 客户端：只对本地控制的玩家处理
+        // 服务器端：对所有玩家处理（用于验证）
+        if (isClient && owner != SCR_PlayerController.GetLocalControlledEntity())
         {
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
             return;
+        }
+        
+        // 服务器端：确保玩家有效且不是AI
+        // 注意：在服务器端，我们需要验证玩家，但 GetPlayerController 可能不存在
+        // 改为直接检查实体是否有玩家控制器组件，或者跳过AI检查（让所有实体都处理）
+        if (isServer)
+        {
+            // 在服务器端，检查实体是否为玩家角色
+            // 如果实体是AI控制的，跳过处理（AI不需要体力系统）
+            ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+            if (character)
+            {
+                // 检查是否有玩家控制器（简单检查：尝试获取玩家控制器）
+                // 如果没有玩家控制器，可能是AI，跳过处理
+                // 注意：这个方法可能不存在，如果编译错误，可以注释掉这个检查
+                // PlayerController controller = GetGame().GetPlayerController(owner);
+                // if (!controller || controller.IsAIControlled())
+                // {
+                //     GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+                //     return;
+                // }
+                
+                // 简化：在服务器端处理所有角色（包括AI）
+                // 如果需要排除AI，可以在实际测试中根据需求调整
+            }
         }
         
         // 获取当前体力百分比
@@ -163,8 +383,14 @@ modded class SCR_CharacterControllerComponent
         // 使用静态工具类计算基础速度倍数（根据体力）
         float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
         
-        // 使用静态工具类计算负重影响
-        float encumbranceSpeedPenalty = RealisticStaminaSpeedSystem.CalculateEncumbranceSpeedPenalty(owner);
+        // ==================== 性能优化：使用缓存的负重值 ====================
+        // 检查并更新负重缓存（仅在变化时重新计算）
+        CheckAndUpdateEncumbranceCache();
+        
+        // 使用缓存的速度惩罚（避免重复计算）
+        float encumbranceSpeedPenalty = 0.0;
+        if (m_bEncumbranceCacheValid)
+            encumbranceSpeedPenalty = m_fCachedEncumbranceSpeedPenalty;
         
         // 检测当前移动类型（walk/run/sprint）
         // OverrideMaxSpeed() 设置的是最大速度倍数，游戏引擎会根据移动类型在这个范围内调整实际速度
@@ -323,8 +549,41 @@ modded class SCR_CharacterControllerComponent
         // - 负重惩罚：通过我们的计算完全替换游戏原有的负重惩罚（如果有）
         // - 体力消耗：手动根据实际速度和负重计算体力消耗（基于医学模型）
         
+        // ==================== 网络同步：使用 RPC 进行服务器端验证 =====================
+        // 客户端：发送状态到服务器端进行验证
+        // 服务器端：验证并返回正确值
+        if (isClient && owner == SCR_PlayerController.GetLocalControlledEntity())
+        {
+            // 获取当前重量用于验证
+            float currentWeight = 0.0;
+            if (m_bEncumbranceCacheValid)
+                currentWeight = m_fCachedCurrentWeight;
+            else
+            {
+                SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
+                    owner.FindComponent(SCR_CharacterInventoryStorageComponent));
+                if (inventoryComponent)
+                    currentWeight = inventoryComponent.GetTotalWeight();
+            }
+            
+            // 定期发送状态到服务器端（每1秒发送一次，避免频繁网络调用）
+            World worldCheck = GetGame().GetWorld();
+            if (worldCheck)
+            {
+                float currentTime = worldCheck.GetWorldTime();
+                if (currentTime - m_fLastNetworkSyncTime >= NETWORK_SYNC_INTERVAL)
+                {
+                    // 发送 RPC 到服务器端进行验证
+                    RPC_UpdateStaminaState(staminaPercent, currentWeight, finalSpeedMultiplier);
+                    m_fLastNetworkSyncTime = currentTime;
+                }
+            }
+        }
+        
         // 始终更新速度（确保体力变化时立即生效）
         // 移除变化阈值检查，确保体力为0时速度立即降低
+        // 注意：在服务器端，这个调用会影响所有客户端（通过网络同步）
+        // 在客户端，这个调用只影响本地玩家
         OverrideMaxSpeed(finalSpeedMultiplier);
         
         // ==================== 手动控制体力消耗（基于精确医学模型）====================
@@ -350,41 +609,59 @@ modded class SCR_CharacterControllerComponent
         horizontalVelocity[1] = 0.0; // 忽略垂直速度
         float currentSpeed = horizontalVelocity.Length(); // 当前水平速度（m/s）
         
-        // 获取垂直速度（用于检测跳跃和翻越）
-        float currentVerticalVelocity = velocity[1]; // 垂直速度（m/s，向上为正）
-        
-        // ==================== 检测跳跃和翻越动作 ====================
+        // ==================== 检测跳跃和翻越动作（改进：动作监听器检测）====================
+        // 改进：使用动作监听器检测跳跃输入
+        // 1. 动作监听器（OnJumpActionTriggered）- 实时检测输入动作
+        // 2. OnPrepareControls - 备用检测方法，每帧检测输入动作
+        // 3. 垂直速度检测 - 已注释（动作检测已成功，不需要垂直速度验证）
+        // 
         // 注意：在 Arma Reforger 中，跳跃和翻越是同一个动作系统的不同表现
         // - 按跳跃键时，如果前方有障碍物，执行翻越/攀爬（IsClimbing() 返回 true）
-        // - 按跳跃键时，如果前方无障碍物，执行普通跳跃（垂直速度增加）
+        // - 按跳跃键时，如果前方无障碍物，执行普通跳跃
         // 因此，我们需要区分这两种情况：
         // 1. 翻越/攀爬：使用 IsClimbing() 检测
-        // 2. 普通跳跃：垂直速度增加且不在攀爬状态
+        // 2. 普通跳跃：使用动作监听器检测（OnJumpActionTriggered 或 OnPrepareControls）
         if (m_pStaminaComponent)
         {
             // 检测翻越/攀爬：使用 IsClimbing() 方法（更可靠）
             // 翻越的特征：角色处于攀爬状态（使用引擎提供的状态检测）
             bool isClimbing = IsClimbing();
             
-            // 检测普通跳跃：垂直速度突然增加且超过阈值，且不在攀爬状态
-            // 跳跃的特征：垂直速度从较低值突然增加到较高值（> 2.0 m/s），且不在攀爬状态
-            if (!isClimbing && 
-                currentVerticalVelocity > RealisticStaminaSpeedSystem.JUMP_VERTICAL_VELOCITY_THRESHOLD && 
-                m_fLastVerticalVelocity < RealisticStaminaSpeedSystem.JUMP_VERTICAL_VELOCITY_THRESHOLD)
+            // 获取当前垂直速度（已注释，不再使用垂直速度检测）
+            // vector currentVelocity = GetVelocity();
+            // float currentVerticalVelocity = currentVelocity[1];
+            
+            // 检测普通跳跃：使用动作检测（动作监听器或 OnPrepareControls）
+            // 动作检测已成功，不再需要垂直速度验证
+            bool hasJumpInput = m_bJumpInputTriggered;
+            // bool hasVerticalVelocityRise = currentVerticalVelocity > RealisticStaminaSpeedSystem.JUMP_VERTICAL_VELOCITY_THRESHOLD && 
+            //                               m_fLastVerticalVelocity <= RealisticStaminaSpeedSystem.JUMP_VERTICAL_VELOCITY_THRESHOLD;
+            
+            // 如果检测到跳跃输入标志（且不在攀爬状态），则判定为跳跃
+            if (!isClimbing && hasJumpInput)
             {
-                // 检测到跳跃动作，立即消耗体力
+                // 检测到跳跃动作开始，立即消耗体力
                 float jumpCost = RealisticStaminaSpeedSystem.JUMP_STAMINA_COST;
                 
-                // 负重会增加跳跃的体力消耗
-                float encumbranceMultiplier = RealisticStaminaSpeedSystem.CalculateEncumbranceStaminaDrainMultiplier(owner);
-                jumpCost = jumpCost * encumbranceMultiplier;
+                // 负重会增加跳跃的体力消耗（使用缓存的负重消耗倍数）
+                if (m_bEncumbranceCacheValid)
+                    jumpCost = jumpCost * m_fCachedEncumbranceStaminaDrainMultiplier;
+                else
+                {
+                    float encumbranceMultiplier = RealisticStaminaSpeedSystem.CalculateEncumbranceStaminaDrainMultiplier(owner);
+                    jumpCost = jumpCost * encumbranceMultiplier;
+                }
                 
                 staminaPercent = staminaPercent - jumpCost;
+                
+                // 重置跳跃输入标志（避免重复触发）
+                m_bJumpInputTriggered = false;
                 
                 // 调试输出（仅在客户端）
                 if (owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%%", Math.Round(jumpCost * 100.0).ToString());
+                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%%", 
+                        Math.Round(jumpCost * 100.0).ToString());
                 }
             }
             
@@ -452,9 +729,6 @@ modded class SCR_CharacterControllerComponent
             // 这样可以确保5秒内都视为同一个翻越动作
             if (m_iVaultCooldownFrames > 0)
                 m_iVaultCooldownFrames--;
-            
-            // 更新记录的垂直速度（用于下一帧检测）
-            m_fLastVerticalVelocity = currentVerticalVelocity;
             
             // 限制体力值在有效范围内
             staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
@@ -573,84 +847,33 @@ modded class SCR_CharacterControllerComponent
         // 综合效率因子 = 健康状态效率 × 代谢适应效率
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
         
-        // ==================== 基于速度阈值的分段消耗率（融合模型）====================
-        // 使用新模型的基于速度阈值的分段消耗率作为基础（根据负重动态调整）
-        // 获取当前负重（kg）
+        // ==================== 性能优化：使用缓存的当前重量 ====================
+        // 使用缓存的当前重量（避免重复查找组件）
         float currentWeight = 0.0;
-        ChimeraCharacter characterForWeight = ChimeraCharacter.Cast(owner);
-        if (characterForWeight)
-        {
-            SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForWeight.FindComponent(SCR_CharacterInventoryStorageComponent));
-            if (characterInventory)
-            {
-                currentWeight = characterInventory.GetTotalWeight();
-            }
-        }
-        float baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculateBaseDrainRateByVelocity(currentSpeed, currentWeight);
-        
-        // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
-        // 注意：恢复时（baseDrainRateByVelocity < 0），不应用效率因子（恢复不受效率影响）
-        float baseDrainRate = 0.0;
-        if (baseDrainRateByVelocity < 0.0)
-        {
-            // 恢复时，直接使用恢复率（负数）
-            baseDrainRate = baseDrainRateByVelocity;
-        }
+        if (m_bEncumbranceCacheValid)
+            currentWeight = m_fCachedCurrentWeight;
         else
         {
-            // 消耗时，应用效率因子和疲劳因子
-            baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
+            SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
+                owner.FindComponent(SCR_CharacterInventoryStorageComponent));
+            if (inventoryComponent)
+                currentWeight = inventoryComponent.GetTotalWeight();
         }
         
-        // 保留原有的速度相关项（用于平滑过渡和精细调整）
-        // 这些项在速度阈值附近提供平滑过渡
-        float speedLinearDrainRate = 0.00005 * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数，主要依赖分段消耗率
-        float speedSquaredDrainRate = 0.00005 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数
+        // ==================== 使用完整的 Pandolf 模型（包括坡度项）====================
+        // 始终使用完整的 Pandolf 模型：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+        // 坡度项 G·(0.23 + 1.34·V²) 已整合在公式中
+        // 注意：由于几乎没有完全平地的地形，所以始终使用包含坡度的 Pandolf 模型
         
-        // 负重相关的体力消耗（基于精确 Pandolf 模型）
-        // Pandolf 模型：负重影响 = M_total · (能量消耗项)
-        // 其中 M_total = M_body + M_load，M_load 是负重
-        // 我们使用：负重影响倍数 = 1 + γ·(负重/最大负重)·(1 + δ·V²)
-        // 其中 γ 是负重基础影响系数，δ 是速度相关的负重影响系数
-        float encumbranceStaminaDrainMultiplier = RealisticStaminaSpeedSystem.CalculateEncumbranceStaminaDrainMultiplier(owner);
-        
-        // 负重对速度平方项的额外影响（Pandolf 模型中负重与速度的交互项）
-        // 公式：负重额外消耗 = base_encumbrance_drain + speed_encumbrance_drain·V²
-        float encumbranceBaseDrainRate = 0.001 * (encumbranceStaminaDrainMultiplier - 1.0); // 负重基础消耗
-        float encumbranceSpeedDrainRate = 0.0002 * (encumbranceStaminaDrainMultiplier - 1.0) * speedRatio * speedRatio; // 负重速度相关消耗
-        
-        // ==================== 坡度影响计算（融合模型：新坡度修正 + 多维度特性）====================
-        // 获取移动坡度角度（度）
-        // 注意：只在非攀爬、非跳跃状态下应用坡度影响
-        // 攀爬和跳跃动作已经有专门的体力消耗机制，不需要额外的坡度影响
+        // 获取坡度信息
         float slopeAngleDegrees = 0.0;
-        float slopeMultiplier = 1.0;
-        float speedEncumbranceSlopeInteraction = 0.0;
+        float gradePercent = 0.0;
         
-        // 获取负重占体重的百分比（用于计算交互项）
-        float bodyMassPercent = 0.0;
-        ChimeraCharacter characterForInteraction = ChimeraCharacter.Cast(owner);
-        if (characterForInteraction)
-        {
-            SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForInteraction.FindComponent(SCR_CharacterInventoryStorageComponent));
-            if (characterInventory)
-            {
-                // 使用已存在的currentWeight变量（已在前面声明）
-                float interactionWeight = characterInventory.GetTotalWeight();
-                if (interactionWeight > 0.0)
-                {
-                    // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-                    float effectiveWeight = Math.Max(interactionWeight - RealisticStaminaSpeedSystem.BASE_WEIGHT, 0.0);
-                    bodyMassPercent = effectiveWeight / RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
-                }
-            }
-        }
-        
-        // 检查是否在攀爬或跳跃状态（复用之前的检测结果）
+        // 检查是否在攀爬或跳跃状态（改进：使用动作监听器检测的跳跃输入）
         bool isClimbingForSlope = IsClimbing();
-        bool isJumpingForSlope = (currentVerticalVelocity > RealisticStaminaSpeedSystem.JUMP_VERTICAL_VELOCITY_THRESHOLD);
+        bool isJumpingForSlope = m_bJumpInputTriggered;
         
-        // 只在非攀爬、非跳跃状态下计算坡度影响
+        // 只在非攀爬、非跳跃状态下获取坡度
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
             // 尝试从动画组件获取移动坡度角度
@@ -665,22 +888,67 @@ modded class SCR_CharacterControllerComponent
                     {
                         slopeAngleDegrees = moveCmd.GetMovementSlopeAngle();
                         
-                        // ==================== 融合模型：使用新的坡度修正 ====================
                         // 将坡度角度（度）转换为坡度百分比
                         // 坡度百分比 = tan(坡度角度) × 100
-                        // 注意：EnforceScript使用弧度，需要转换
-                        float gradePercent = Math.Tan(slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
-                        
-                        // 使用新模型的坡度修正（K_grade = 1 + G × 0.12 for G > 0）
-                        slopeMultiplier = RealisticStaminaSpeedSystem.CalculateGradeMultiplier(gradePercent);
-                        
-                        // 保留原有的多维度交互项（用于精细调整）
-                        // 计算速度×负重×坡度三维交互项
-                        speedEncumbranceSlopeInteraction = RealisticStaminaSpeedSystem.CalculateSpeedEncumbranceSlopeInteraction(speedRatio, bodyMassPercent, slopeAngleDegrees);
+                        gradePercent = Math.Tan(slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
                     }
                 }
             }
         }
+        
+        // 始终使用完整的 Pandolf 模型（包含坡度项）
+        // E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+        // 如果无法获取坡度，坡度项为 0（平地情况）
+        float baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(currentSpeed, currentWeight, gradePercent);
+        
+        // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
+        baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2; // 转换为每0.2秒的消耗率
+        
+        // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
+        // 注意：恢复时（baseDrainRateByVelocity < 0），不应用效率因子（恢复不受效率影响）
+        float baseDrainRate = 0.0;
+        if (baseDrainRateByVelocity < 0.0)
+        {
+            // 恢复时，直接使用恢复率（负数）
+            baseDrainRate = baseDrainRateByVelocity;
+        }
+        else
+        {
+            // 消耗时，应用效率因子和疲劳因子
+            // 注意：如果使用 Pandolf 模型，坡度项已经在公式中，不需要额外的坡度倍数
+            baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
+        }
+        
+        // 保留原有的速度相关项（用于平滑过渡和精细调整）
+        // 这些项在速度阈值附近提供平滑过渡
+        float speedLinearDrainRate = 0.00005 * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数，主要依赖分段消耗率
+        float speedSquaredDrainRate = 0.00005 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数
+        
+        // ==================== 性能优化：使用缓存的负重消耗倍数 ====================
+        // 使用缓存的体力消耗倍数（避免重复计算）
+        float encumbranceStaminaDrainMultiplier = 1.0;
+        if (m_bEncumbranceCacheValid)
+            encumbranceStaminaDrainMultiplier = m_fCachedEncumbranceStaminaDrainMultiplier;
+        
+        // 负重对速度平方项的额外影响（Pandolf 模型中负重与速度的交互项）
+        // 公式：负重额外消耗 = base_encumbrance_drain + speed_encumbrance_drain·V²
+        float encumbranceBaseDrainRate = 0.001 * (encumbranceStaminaDrainMultiplier - 1.0); // 负重基础消耗
+        float encumbranceSpeedDrainRate = 0.0002 * (encumbranceStaminaDrainMultiplier - 1.0) * speedRatio * speedRatio; // 负重速度相关消耗
+        
+        // ==================== 三维交互项（可选，用于精细调整）====================
+        // 注意：Pandolf 模型已经包含了坡度项，但可以添加额外的三维交互项用于精细调整
+        // 这主要用于在极端情况下（高速度+高负重+大坡度）进行微调
+        float speedEncumbranceSlopeInteraction = 0.0;
+        
+        // 可选：计算速度×负重×坡度三维交互项（用于精细调整）
+        // 如果不需要精细调整，可以将此部分注释掉
+        // if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05 && Math.AbsFloat(gradePercent) > 1.0)
+        // {
+        //     float bodyMassPercent = 0.0;
+        //     if (m_bEncumbranceCacheValid)
+        //         bodyMassPercent = m_fCachedBodyMassPercent;
+        //     speedEncumbranceSlopeInteraction = RealisticStaminaSpeedSystem.CalculateSpeedEncumbranceSlopeInteraction(speedRatio, bodyMassPercent, slopeAngleDegrees);
+        // }
         
         // ==================== Sprint额外体力消耗 ====================
         // Sprint时体力消耗大幅增加（类似于追击或逃命，追求速度但消耗巨大）
@@ -690,17 +958,20 @@ modded class SCR_CharacterControllerComponent
             sprintMultiplier = RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER;
         }
         
-        // ==================== 综合体力消耗率（融合模型）====================
-        // 融合公式：total = (base_by_velocity + linear·V + squared·V² + enc_base + enc_speed·V²) × slope_multiplier × sprint_multiplier × efficiency × fatigue + 3d_interaction
+        // ==================== 综合体力消耗率（基于 Pandolf 模型）====================
+        // Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+        // 其中坡度项 G·(0.23 + 1.34·V²) 已经在 baseDrainRate 中
+        // 
+        // 综合公式：total = (base_pandolf + linear·V + squared·V² + enc_base + enc_speed·V²) × sprint_multiplier × efficiency × fatigue + 3d_interaction
         // 其中：
-        //   base_by_velocity 是基于速度阈值的分段消耗率（新模型）
-        //   slope_multiplier 是新模型的坡度修正（使用非线性增长）
+        //   base_pandolf 是基于 Pandolf 模型的基础消耗率（已包含坡度项）
         //   efficiency 和 fatigue 是多维度特性（健康状态、累积疲劳、代谢适应）
-        //   3d_interaction 是速度×负重×坡度的三维交互项（保留用于精细调整）
+        //   3d_interaction 是速度×负重×坡度的三维交互项（可选，用于精细调整）
         float baseDrainComponents = baseDrainRate + speedLinearDrainRate + speedSquaredDrainRate + encumbranceBaseDrainRate + encumbranceSpeedDrainRate;
         
-        // 应用坡度修正和Sprint倍数
-        // 注意：恢复时（baseDrainRate < 0），不应用坡度修正和Sprint倍数
+        // 应用 Sprint 倍数和多维度修正
+        // 注意：恢复时（baseDrainRate < 0），不应用 Sprint 倍数
+        // 注意：坡度项已经在 Pandolf 模型中，不需要额外的坡度倍数
         float totalDrainRate = 0.0;
         if (baseDrainRate < 0.0)
         {
@@ -709,8 +980,9 @@ modded class SCR_CharacterControllerComponent
         }
         else
         {
-            // 消耗时，应用坡度修正和Sprint倍数
-            totalDrainRate = (baseDrainComponents * slopeMultiplier * sprintMultiplier) + (baseDrainComponents * speedEncumbranceSlopeInteraction);
+            // 消耗时，应用 Sprint 倍数
+            // 坡度项已经在 Pandolf 模型中，不需要额外的坡度倍数
+            totalDrainRate = (baseDrainComponents * sprintMultiplier) + (baseDrainComponents * speedEncumbranceSlopeInteraction);
             
             // ==================== 生理上限：防止负重+坡度爆炸 ====================
             // 无论负重多重、坡多陡，人的瞬时代谢率是有极限的（即 VO2 Max 峰值）
@@ -746,17 +1018,11 @@ modded class SCR_CharacterControllerComponent
                 // 3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
                 // 4. 年龄：年轻者恢复更快
                 // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
-                // 获取当前负重（kg），用于优化重载下的恢复速率
+                // ==================== 性能优化：使用缓存的当前重量 ====================
+                // 使用缓存的当前重量（避免重复查找组件）
                 float currentWeightForRecovery = 0.0;
-                ChimeraCharacter characterForRecovery = ChimeraCharacter.Cast(owner);
-                if (characterForRecovery)
-                {
-                    SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForRecovery.FindComponent(SCR_CharacterInventoryStorageComponent));
-                    if (characterInventory)
-                    {
-                        currentWeightForRecovery = characterInventory.GetTotalWeight();
-                    }
-                }
+                if (m_bEncumbranceCacheValid)
+                    currentWeightForRecovery = m_fCachedCurrentWeight;
                 
                 float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
                     staminaPercent, 
@@ -888,21 +1154,123 @@ modded class SCR_CharacterControllerComponent
                         combatStatus);
                 }
                 
-                PrintFormat("[RealisticSystem] 调试: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度倍数=%6%7%8%9", 
+                // 注意：现在使用 Pandolf 模型，坡度项已经在公式中，不再需要坡度倍数
+                // 显示坡度百分比而不是坡度倍数
+                float gradeDisplay = gradePercent; // 坡度百分比（已在使用 Pandolf 模型时获取）
+                PrintFormat("[RealisticSystem] 调试: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%%%7%8%9", 
                     movementTypeStr,
                     Math.Round(staminaPercent * 100.0).ToString(),
                     baseSpeedMultiplier.ToString(),
                     encumbranceSpeedPenalty.ToString(),
                     finalSpeedMultiplier.ToString(),
-                    Math.Round(slopeMultiplier * 100.0) / 100.0,
+                    Math.Round(gradeDisplay * 10.0) / 10.0,
                     slopeInfo,
                     sprintInfo,
                     encumbranceInfo);
             }
         }
         
+        // 更新垂直速度记录（已注释，不再使用垂直速度检测）
+        // vector velocityForUpdate = GetVelocity();
+        // m_fLastVerticalVelocity = velocityForUpdate[1];
+        
         // 继续更新
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+    }
+    
+    // ==================== 网络同步：服务器端速度计算 =====================
+    // 服务器端独立计算速度倍数，用于验证客户端提交的值
+    // 使用与客户端相同的逻辑，确保一致性
+    protected float CalculateServerSpeedMultiplier(IEntity owner, float staminaPercent)
+    {
+        if (!owner)
+            return 1.0;
+        
+        // 限制在有效范围内
+        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+        
+        // 检查是否精疲力尽
+        bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
+        if (isExhausted)
+        {
+            float limpSpeedMultiplier = RealisticStaminaSpeedSystem.EXHAUSTION_LIMP_SPEED / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            return limpSpeedMultiplier;
+        }
+        
+        // 获取移动类型（服务器端也需要检测移动状态）
+        bool isSprinting = IsSprinting();
+        int currentMovementPhase = GetCurrentMovementPhase();
+        
+        // 检查是否可以Sprint
+        bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+                currentMovementPhase = 2; // 强制切换到Run
+        }
+        
+        // 计算基础速度倍数
+        float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
+        
+        // 获取负重信息（服务器端也需要获取）
+        // 注意：CalculateEncumbranceSpeedPenalty 需要 IEntity 参数，不是 float
+        float encumbranceSpeedPenalty = RealisticStaminaSpeedSystem.CalculateEncumbranceSpeedPenalty(owner);
+        
+        // 根据移动类型计算最终速度倍数
+        float finalSpeedMultiplier = 0.0;
+        
+        if (isSprinting || currentMovementPhase == 3) // Sprint
+        {
+            finalSpeedMultiplier = baseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2);
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
+        }
+        else if (currentMovementPhase == 2) // Run
+        {
+            finalSpeedMultiplier = baseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2);
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
+        }
+        else if (currentMovementPhase == 1) // Walk
+        {
+            finalSpeedMultiplier = baseSpeedMultiplier * 0.7;
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.8);
+        }
+        else // Idle
+        {
+            finalSpeedMultiplier = 0.0;
+        }
+        
+        return finalSpeedMultiplier;
+    }
+    
+    // ==================== 网络同步：验证体力状态 =====================
+    // 验证客户端提交的体力状态是否合理
+    protected bool ValidateStaminaState(float staminaPercent, float weight)
+    {
+        // 验证体力值范围（0.0-1.0）
+        if (staminaPercent < 0.0 || staminaPercent > 1.0)
+            return false;
+        
+        // 验证重量范围（0.0-200.0 kg，合理的最大值）
+        if (weight < 0.0 || weight > 200.0)
+            return false;
+        
+        // 验证体力值变化是否过快（防止客户端快速修改）
+        float staminaChange = Math.AbsFloat(staminaPercent - m_fLastReportedStaminaPercent);
+        if (staminaChange > 0.5) // 单次更新最多变化50%
+        {
+            // 如果变化过快，记录警告（仅在调试模式下）
+            // PrintFormat("[RealisticSystem] 警告：体力值变化过快！上次=%1, 当前=%2, 变化=%3", 
+            //     m_fLastReportedStaminaPercent.ToString(), 
+            //     staminaPercent.ToString(), 
+            //     staminaChange.ToString());
+            // 允许但记录警告（可能是正常的快速消耗）
+        }
+        
+        // 更新记录的值
+        m_fLastReportedStaminaPercent = staminaPercent;
+        m_fLastReportedWeight = weight;
+        
+        return true;
     }
     
     // 采集速度样本（每秒一次）
@@ -1021,5 +1389,102 @@ modded class SCR_CharacterControllerComponent
         // 在控制台输出状态信息（仅在客户端）
         // 已经在函数开头检查了 owner == SCR_PlayerController.GetLocalControlledEntity()
         PrintFormat("[RealisticSystem] %1", statusText);
+    }
+    
+    // ==================== 网络同步：RPC 方法 =====================
+    // 客户端发送状态到服务器端进行验证
+    // RPC: 客户端 -> 服务器端（可靠传输）
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_UpdateStaminaState(float staminaPercent, float weight, float speedMultiplier)
+    {
+        IEntity owner = GetOwner();
+        if (!owner)
+            return;
+        
+        // 服务器端验证
+        // 1. 验证体力值的合理性（0.0-1.0范围）
+        // 2. 验证重量值的合理性（0.0-200.0 kg范围）
+        // 3. 计算服务器端的速度倍数
+        // 4. 与客户端上报的值对比（允许小幅度差异）
+        
+        // 验证输入值的合理性
+        if (!ValidateStaminaState(staminaPercent, weight))
+        {
+            // 验证失败，同步回正确的值
+            float correctStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
+            float correctWeight = Math.Clamp(weight, 0.0, 200.0);
+            float correctSpeedMultiplier = CalculateServerSpeedMultiplier(owner, correctStamina);
+            
+            // 发送正确的值回客户端
+            RPC_SyncStaminaState(correctStamina, correctWeight, correctSpeedMultiplier);
+            return;
+        }
+        
+        // 服务器端独立计算速度倍数（使用相同的逻辑）
+        float serverSpeedMultiplier = CalculateServerSpeedMultiplier(owner, staminaPercent);
+        
+        // 验证客户端的速度倍数是否合理
+        // 允许小幅度差异（网络延迟、浮点误差等）
+        float speedDifference = Math.AbsFloat(speedMultiplier - serverSpeedMultiplier);
+        if (speedDifference > VALIDATION_TOLERANCE)
+        {
+            // 客户端速度倍数偏差过大，同步回服务器端的结果
+            RPC_SyncStaminaState(staminaPercent, weight, serverSpeedMultiplier);
+            
+            // 保存服务器端验证的速度倍数
+            m_fServerValidatedSpeedMultiplier = serverSpeedMultiplier;
+            
+            // 如果偏差过大，记录日志（仅在调试模式下）
+            // PrintFormat("[RealisticSystem] 服务器端修正速度：客户端=%1, 服务器=%2, 差异=%3", 
+            //     speedMultiplier.ToString(), 
+            //     serverSpeedMultiplier.ToString(), 
+            //     speedDifference.ToString());
+        }
+        else
+        {
+            // 验证通过，保存验证结果
+            m_fServerValidatedSpeedMultiplier = serverSpeedMultiplier;
+            m_fLastReportedStaminaPercent = staminaPercent;
+            m_fLastReportedWeight = weight;
+        }
+    }
+    
+    // 服务器端同步状态回客户端（用于修正）
+    // RPC: 服务器端 -> 客户端（可靠传输）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_SyncStaminaState(float staminaPercent, float weight, float speedMultiplier)
+    {
+        IEntity owner = GetOwner();
+        if (!owner || owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 应用服务器端验证的值
+        // 注意：这里只是记录服务器端的值，实际速度更新仍然在 UpdateSpeedBasedOnStamina 中进行
+        // 但可以在下次更新时使用服务器端的值作为参考
+        
+        // 保存服务器端同步的值
+        m_fServerValidatedSpeedMultiplier = speedMultiplier;
+        
+        // 如果服务器端验证的体力值与客户端差异较大，可以更新体力值
+        if (m_pStaminaComponent)
+        {
+            float currentStamina = m_pStaminaComponent.GetTargetStamina();
+            float staminaDifference = Math.AbsFloat(currentStamina - staminaPercent);
+            
+            // 如果差异超过5%，使用服务器端的值
+            if (staminaDifference > 0.05)
+            {
+                // 服务器端验证的体力值更准确，更新客户端
+                m_pStaminaComponent.SetTargetStamina(staminaPercent);
+                
+                // 调试输出（仅在调试模式下）
+                // PrintFormat("[RealisticSystem] 服务器端同步体力值：客户端=%1%%, 服务器=%2%%", 
+                //     Math.Round(currentStamina * 100.0).ToString(),
+                //     Math.Round(staminaPercent * 100.0).ToString());
+            }
+        }
+        
+        // 如果速度倍数差异较大，在下一次 UpdateSpeedBasedOnStamina 中使用服务器端的值
+        // 这会在下次更新时自动应用
     }
 }

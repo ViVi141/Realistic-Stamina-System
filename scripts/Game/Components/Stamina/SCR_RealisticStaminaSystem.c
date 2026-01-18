@@ -46,8 +46,8 @@ class RealisticStaminaSpeedSystem
     static const float WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
     static const float REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * 0.2; // 每0.2秒
     
-    // 初始体力状态（ACFT后预疲劳状态）
-    static const float INITIAL_STAMINA_AFTER_ACFT = 0.85; // 85.0 / 100.0 = 0.85（85%）
+    // 初始体力状态（满值）
+    static const float INITIAL_STAMINA_AFTER_ACFT = 1.0; // 100.0 / 100.0 = 1.0（100%，满值）
     
     // 精疲力尽阈值
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
@@ -997,21 +997,19 @@ class RealisticStaminaSpeedSystem
         }
     }
     
-    // 计算坡度修正乘数（基于百分比坡度）
+    // 计算坡度修正乘数（基于百分比坡度，改进的下坡逻辑）
     // 
     // 坡度修正：
-    // - 上坡 (G > 0): K_grade = 1 + (G × 0.12)
-    // - 下坡 (G < 0): K_grade = 1 + (G × 0.05)
-    // - 高坡度 (G > 15%): 额外 × 1.2
+    // - 上坡 (G > 0): K_grade = 1 + (G × 0.12)（使用幂函数）
+    // - 下坡 (G < 0): 
+    //   * 缓坡（-15% < G < 0）：减少消耗（每1%减少3%消耗）
+    //   * 陡坡（G ≤ -15%）：增加消耗（离心收缩负荷）
     //
-    // @param gradePercent 坡度百分比（例如，5% = 5.0）
-    // @return 坡度修正乘数
-    // 计算坡度修正乘数（使用非线性增长，让小坡几乎无感，陡坡才真正吃力）
-    // 
-    // 优化：使用幂函数代替线性增长，让小坡（5%以下）几乎无感，陡坡才真正吃力
-    // 这样 Everon 的缓坡就不会让玩家频繁断气
+    // 生理学修正（下坡陡坡）：
+    // 实际上，穿着30kg重负荷下陡坡对膝盖和肌肉的离心收缩负荷极大，
+    // 能量消耗有时并不比平地低。当坡度超过-15度时，消耗率反而略微回升。
     //
-    // @param gradePercent 坡度百分比（例如，5% = 5.0）
+    // @param gradePercent 坡度百分比（例如，5% = 5.0，-15% = -15.0）
     // @return 坡度修正乘数
     static float CalculateGradeMultiplier(float gradePercent)
     {
@@ -1033,13 +1031,101 @@ class RealisticStaminaSpeedSystem
         }
         else if (gradePercent < 0.0)
         {
-            // 下坡：每1%减少3%消耗
-            kGrade = 1.0 + (gradePercent * GRADE_DOWNHILL_COEFF);
-            // 限制下坡修正，避免消耗变为负数
-            kGrade = Math.Max(kGrade, 0.5); // 最多减少50%消耗
+            // 下坡：根据坡度绝对值决定消耗修正
+            float absGradePercent = Math.AbsFloat(gradePercent);
+            
+            if (absGradePercent <= 15.0)
+            {
+                // 缓坡（0% 到 -15%）：减少消耗
+                // 每1%减少3%消耗
+                kGrade = 1.0 + (gradePercent * GRADE_DOWNHILL_COEFF);
+                // 限制下坡修正，避免消耗变为负数
+                kGrade = Math.Max(kGrade, 0.5); // 最多减少50%消耗
+            }
+            else
+            {
+                // 陡坡（超过-15%）：增加消耗（离心收缩负荷）
+                // 生理学依据：重负荷下陡坡对膝盖和肌肉的离心收缩负荷极大
+                // 公式：kGrade = 1.0 + (absGradePercent - 15.0) × 0.02
+                // 例如：-20%坡度时 = 1.0 + (20.0 - 15.0) × 0.02 = 1.1倍（消耗增加10%）
+                //      -30%坡度时 = 1.0 + (30.0 - 15.0) × 0.02 = 1.3倍（消耗增加30%）
+                float steepGradePenalty = (absGradePercent - 15.0) * 0.02;
+                kGrade = 1.0 + steepGradePenalty;
+                // 限制陡坡修正，最多增加50%消耗（1.5倍）
+                kGrade = Math.Min(kGrade, 1.5);
+            }
         }
         
         return kGrade;
+    }
+    
+    // 计算基于完整 Pandolf 模型的体力消耗率（包括坡度项）
+    // 
+    // 完整 Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+    // 其中：
+    //   E = 能量消耗率（W/kg）
+    //   M = 总重量（身体重量 + 负重）
+    //   V = 速度（m/s）
+    //   G = 坡度（坡度百分比，例如 5% = 0.05，正数=上坡，负数=下坡）
+    // 
+    // 简化版本（平地，G=0）：E = M·(2.7 + 3.2·(V-0.7)²)
+    // 
+    // 对于游戏实现，我们需要：
+    // 1. 将能量消耗率（W/kg）转换为体力消耗率（%/s）
+    // 2. 考虑负重的相对影响（相对于身体重量）
+    // 3. 将坡度项 G·(0.23 + 1.34·V²) 整合到计算中
+    //
+    // @param velocity 当前速度（m/s）
+    // @param currentWeight 当前总重量（kg），包括身体重量和负重
+    // @param gradePercent 坡度百分比（例如，5% = 5.0，-15% = -15.0），默认0.0（平地）
+    // @return 体力消耗率（%/s，每0.2秒的消耗率需要乘以 0.2）
+    static float CalculatePandolfEnergyExpenditure(float velocity, float currentWeight, float gradePercent = 0.0)
+    {
+        // Pandolf 模型常量
+        const float PANDOLF_BASE_COEFF = 2.7; // 基础系数（W/kg）
+        const float PANDOLF_VELOCITY_COEFF = 3.2; // 速度系数（W/kg）
+        const float PANDOLF_VELOCITY_OFFSET = 0.7; // 速度偏移（m/s）
+        const float PANDOLF_GRADE_BASE_COEFF = 0.23; // 坡度基础系数（W/kg）
+        const float PANDOLF_GRADE_VELOCITY_COEFF = 1.34; // 坡度速度系数（W/kg）
+        
+        // 确保速度和重量有效
+        velocity = Math.Max(velocity, 0.0);
+        currentWeight = Math.Max(currentWeight, 0.0);
+        
+        // 如果速度为0或很小，返回恢复率（负数）
+        if (velocity < 0.1)
+            return -0.0025; // 恢复率（负数）
+        
+        // 计算基础项：2.7 + 3.2·(V-0.7)²
+        float velocityTerm = velocity - PANDOLF_VELOCITY_OFFSET;
+        float velocitySquaredTerm = velocityTerm * velocityTerm;
+        float baseTerm = PANDOLF_BASE_COEFF + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
+        
+        // 计算坡度项：G·(0.23 + 1.34·V²)
+        // 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
+        float gradeDecimal = gradePercent * 0.01; // 转换为小数
+        float velocitySquared = velocity * velocity;
+        float gradeTerm = gradeDecimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocitySquared));
+        
+        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项)
+        // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
+        // 使用标准体重（70kg）作为参考，计算相对重量倍数
+        const float REFERENCE_WEIGHT = 70.0; // 参考体重（kg）
+        float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
+        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
+        
+        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm);
+        
+        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
+        // 这个转换系数需要根据游戏的体力系统来调整
+        // 假设：1 W/kg ≈ 0.001 %/s（这个系数可以根据实际测试调整）
+        const float ENERGY_TO_STAMINA_COEFF = 0.0001; // 能量到体力的转换系数（需要根据测试调整）
+        float staminaDrainRate = energyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        
+        // 限制消耗率在合理范围内（避免数值爆炸）
+        staminaDrainRate = Math.Clamp(staminaDrainRate, 0.0, 0.05); // 最多每秒消耗5%
+        
+        return staminaDrainRate;
     }
     
     // 计算坡度自适应目标速度（坡度-速度负反馈）
