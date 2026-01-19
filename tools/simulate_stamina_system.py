@@ -611,7 +611,7 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     )
     
     # 创建图表（调整尺寸以符合3840×2160限制；使用constrained_layout避免文字互相挤压）
-    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7.5), constrained_layout=True)
     movement_title = movement_type_names.get(movement_type, movement_type)
     slope_title = f"{slope_angle_degrees:.1f}° ({slope_desc})"
     fig.suptitle(
@@ -672,7 +672,7 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     
     # 保存图表
     output_file = 'stamina_system_trends.png'
-    plt.savefig(output_file, dpi=200)
+    plt.savefig(output_file, dpi=180)
     print(f"\n图表已保存为: {output_file}")
     
     # 显示图表（默认关闭，避免阻塞自动生成）
