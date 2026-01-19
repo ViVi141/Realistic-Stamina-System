@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.8.0
+// Realistic Stamina System (RSS) - v2.9.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -54,6 +54,22 @@ modded class SCR_CharacterControllerComponent
     // 运动停止后，前几秒应该维持高代谢水平，延迟后才开始恢复
     // 使用EpocState类管理EPOC延迟状态（因为EnforceScript不支持基本类型的ref参数）
     protected ref EpocState m_pEpocState;
+    
+    // ==================== 游泳状态和湿重跟踪 ====================
+    // 湿重效应：上岸后30秒内，由于衣服吸水，临时增加5-10kg虚拟负重
+    protected bool m_bWasSwimming = false; // 上一帧是否在游泳
+    protected float m_fWetWeightStartTime = -1.0; // 湿重开始时间（上岸时间）
+    protected float m_fCurrentWetWeight = 0.0; // 当前湿重（kg）
+    protected bool m_bSwimmingVelocityDebugPrinted = false; // 是否已输出游泳速度调试信息
+
+    // ==================== 速度差分缓存（用于游泳/命令位移测速）====================
+    // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能不更新
+    // 因此通过“位置差分/时间步长”计算速度向量，作为消耗模型的速度输入
+    protected bool m_bHasLastPositionSample = false;
+    protected vector m_vLastPositionSample = vector.Zero;
+    protected vector m_vComputedVelocity = vector.Zero; // 上次更新周期计算得到的速度（m/s）
+    
+    // ==================== 游泳状态缓存（用于调试显示）====================
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -152,6 +168,20 @@ modded class SCR_CharacterControllerComponent
         
         // 启动速度采集循环（每秒一次）
         GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
+    }
+
+    // ==================== 游泳状态检测（用于调试显示/分支判断）====================
+    protected bool IsSwimmingByCommand()
+    {
+        CharacterAnimationComponent animComponent = GetAnimationComponent();
+        if (!animComponent)
+            return false;
+        
+        CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
+        if (!handler)
+            return false;
+        
+        return (handler.GetCommandSwim() != null);
     }
     
     // ==================== 改进：使用动作监听器检测跳跃输入 ====================
@@ -470,11 +500,126 @@ modded class SCR_CharacterControllerComponent
         // 体力消耗率 = a + b·V + c·V² + d·M_encumbrance·(1 + e·V²)
         // 其中 M_encumbrance 是负重相对于身体重量的比例
         
-        // 获取当前实际速度（m/s）
-        vector velocity = GetVelocity();
+        // ==================== 获取当前实际速度（m/s）====================
+        // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能为 0
+        // 解决：使用位置差分测速（每 0.2 秒一次），得到更可靠的速度向量
+        vector currentPos = owner.GetOrigin();
+        vector computedVelocity = vector.Zero;
+        float dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
+        if (m_bHasLastPositionSample)
+        {
+            vector deltaPos = currentPos - m_vLastPositionSample;
+
+            // 防止传送/同步跳变导致天文速度
+            float deltaLen = deltaPos.Length();
+            if (deltaLen < 20.0 && dtSeconds > 0.001)
+            {
+                computedVelocity = deltaPos / dtSeconds;
+            }
+        }
+
+        m_vLastPositionSample = currentPos;
+        m_bHasLastPositionSample = true;
+        m_vComputedVelocity = computedVelocity;
+
+        vector velocity = computedVelocity;
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0; // 忽略垂直速度
         float currentSpeed = horizontalVelocity.Length(); // 当前水平速度（m/s）
+        
+        // ==================== 性能优化：使用缓存的当前重量（模块化）====================
+        // 使用缓存的当前重量（避免重复查找组件）
+        float currentWeight = 0.0;
+        if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            currentWeight = m_pEncumbranceCache.GetCurrentWeight();
+        else
+        {
+            SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
+                owner.FindComponent(SCR_CharacterInventoryStorageComponent));
+            if (inventoryComponent)
+                currentWeight = inventoryComponent.GetTotalWeight();
+        }
+        
+        // ==================== 检测游泳状态（游泳体力管理）====================
+        // 检测方法：通过动画组件获取游泳命令（CharacterCommandSwim）
+        bool isSwimming = IsSwimmingByCommand();
+        
+        // ==================== 游泳检测调试信息 ====================
+        // 只在状态变化时输出调试信息
+        if (isSwimming != m_bWasSwimming)
+        {
+            // 只对本地控制的玩家输出调试信息
+            if (owner == SCR_PlayerController.GetLocalControlledEntity())
+            {
+                string oldState = "";
+                if (m_bWasSwimming)
+                    oldState = "游泳";
+                else
+                    oldState = "陆地";
+                
+                string newState = "";
+                if (isSwimming)
+                    newState = "游泳";
+                else
+                    newState = "陆地";
+                
+                string stateChange = string.Format(
+                    "[游泳检测] 状态变化: %1 -> %2",
+                    oldState,
+                    newState
+                );
+                Print(stateChange);
+            }
+        }
+        
+        // 如果游泳状态变化，重置调试标志
+        if (isSwimming != m_bWasSwimming)
+            m_bSwimmingVelocityDebugPrinted = false;
+        
+        // 更新上一帧状态
+        m_bWasSwimming = isSwimming;
+        
+        // ==================== 湿重效应跟踪 ====================
+        // 上岸后30秒内，由于衣服吸水，临时增加5-10kg虚拟负重
+        float currentTime = GetGame().GetWorld().GetWorldTime();
+        
+        if (isSwimming)
+        {
+            // 正在游泳：重置湿重计时器
+            m_fWetWeightStartTime = -1.0;
+            m_fCurrentWetWeight = 0.0;
+        }
+        else if (m_bWasSwimming && !isSwimming)
+        {
+            // 刚从水中上岸：启动湿重计时器
+            m_fWetWeightStartTime = currentTime;
+            // 根据游泳时间计算湿重（游泳时间越长，湿重越大）
+            // 简化：使用固定湿重（7.5kg，介于5-10kg之间）
+            m_fCurrentWetWeight = (StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0;
+        }
+        else if (m_fWetWeightStartTime > 0.0)
+        {
+            // 检查湿重是否过期（30秒）
+            float wetWeightElapsed = currentTime - m_fWetWeightStartTime;
+            if (wetWeightElapsed >= StaminaConstants.WET_WEIGHT_DURATION)
+            {
+                // 湿重过期：清除湿重
+                m_fWetWeightStartTime = -1.0;
+                m_fCurrentWetWeight = 0.0;
+            }
+            else
+            {
+                // 湿重逐渐减少（线性衰减）
+                float wetWeightRatio = 1.0 - (wetWeightElapsed / StaminaConstants.WET_WEIGHT_DURATION);
+                m_fCurrentWetWeight = ((StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0) * wetWeightRatio;
+            }
+        }
+        
+        // 应用湿重到当前重量（用于消耗计算）
+        // 注意：currentWeight 已在第487行声明，这里直接使用
+        float currentWeightWithWet = currentWeight + m_fCurrentWetWeight;
+        
+        bool useSwimmingModel = isSwimming;
         
         // ==================== 检测跳跃和翻越动作（模块化：使用 JumpVaultDetector）====================
         // 模块化拆分：使用独立的 JumpVaultDetector 类处理跳跃和翻越检测逻辑
@@ -582,18 +727,6 @@ modded class SCR_CharacterControllerComponent
         float fitnessEfficiencyFactor = StaminaConsumptionCalculator.CalculateFitnessEfficiencyFactor();
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
         
-        // ==================== 性能优化：使用缓存的当前重量（模块化）====================
-        // 使用缓存的当前重量（避免重复查找组件）
-        float currentWeight = 0.0;
-        if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-            currentWeight = m_pEncumbranceCache.GetCurrentWeight();
-        else
-        {
-            SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
-                owner.FindComponent(SCR_CharacterInventoryStorageComponent));
-            if (inventoryComponent)
-                currentWeight = inventoryComponent.GetTotalWeight();
-        }
         
         // ==================== 使用完整的 Pandolf 模型（包括坡度项）====================
         // 始终使用完整的 Pandolf 模型：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
@@ -613,10 +746,10 @@ modded class SCR_CharacterControllerComponent
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
             // 尝试从动画组件获取移动坡度角度
-            CharacterAnimationComponent animComponent = GetAnimationComponent();
-            if (animComponent)
+            CharacterAnimationComponent animComponentForSlope = GetAnimationComponent();
+            if (animComponentForSlope)
             {
-                CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
+                CharacterCommandHandlerComponent handler = animComponentForSlope.GetCommandHandler();
                 if (handler)
                 {
                     CharacterCommandMove moveCmd = handler.GetCommandMove();
@@ -642,19 +775,52 @@ modded class SCR_CharacterControllerComponent
             terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTimeForExercise, currentSpeed);
         }
         
-        // ==================== 跑步模式判断（Givoni-Goldman）====================
-        // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
-        // 否则使用标准 Pandolf 步行模型
-        bool isRunning = (currentSpeed > 2.2);
-        bool useGivoniGoldman = isRunning; // 是否使用 Givoni-Goldman 模型
-        
-        // 始终使用完整的 Pandolf 模型（包含坡度项、地形系数、Santee下坡修正）
-        // E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²)) · η
-        // 如果无法获取坡度，坡度项为 0（平地情况）
-        // 如果速度为0，计算静态站立消耗
+        // ==================== 游泳模式判断 ====================
+        // 如果正在游泳，使用游泳专用的消耗模型
+        // 游泳时不需要考虑坡度、地形等因素（在水中）
         float baseDrainRateByVelocity = 0.0;
-        if (currentSpeed < 0.1)
+        if (useSwimmingModel)
         {
+            // ==================== 游泳体力消耗模型（物理阻力模型）====================
+            // 游泳的能量消耗远高于陆地移动（约3-5倍）
+            // 使用物理阻力模型：F_d = 0.5 * ρ * v² * C_d * A
+            // 注意：使用包含湿重的重量（上岸后30秒内仍有湿重影响）
+            // 
+            // 3D 游泳体能模型：使用“位置差分测速”的速度向量（包含垂直分量）
+            // 原因：游泳命令通过 PrePhys_SetTranslation 推动位移，GetVelocity()/输入可能不反映真实移动
+            vector swimmingVelocity = m_vComputedVelocity;
+
+            // 调试信息：只在第一次检测到游泳速度仍为 0 时输出（避免刷屏）
+            if (owner == SCR_PlayerController.GetLocalControlledEntity() && !m_bSwimmingVelocityDebugPrinted)
+            {
+                float swimVelLen = swimmingVelocity.Length();
+                if (swimVelLen < 0.01)
+                {
+                    Print("[游泳速度] 位置差分测速仍为0：可能未发生位移（静止/卡住/命令未推动位置）");
+                    m_bSwimmingVelocityDebugPrinted = true;
+                }
+            }
+            
+            float swimmingDrainRate = RealisticStaminaSpeedSystem.CalculateSwimmingStaminaDrain3D(swimmingVelocity, currentWeightWithWet);
+            baseDrainRateByVelocity = swimmingDrainRate * 0.2; // 转换为每0.2秒的消耗率
+            
+            // 游泳时不应用其他修正（坡度、地形等），直接使用基础消耗
+            // 但需要应用效率因子和疲劳因子
+        }
+        // ==================== 陆地移动模式判断（Givoni-Goldman / Pandolf）====================
+        else
+        {
+            // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
+            // 否则使用标准 Pandolf 步行模型
+            bool isRunning = (currentSpeed > 2.2);
+            bool useGivoniGoldman = isRunning; // 是否使用 Givoni-Goldman 模型
+            
+            // 始终使用完整的 Pandolf 模型（包含坡度项、地形系数、Santee下坡修正）
+            // E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²)) · η
+            // 如果无法获取坡度，坡度项为 0（平地情况）
+            // 如果速度为0，计算静态站立消耗
+            if (currentSpeed < 0.1)
+            {
             // ==================== 静态负重站立消耗（Pandolf 静态项）====================
             // 当 V=0 时，背负重物原地站立也会消耗体力
             // 公式：E_standing = 1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
@@ -673,7 +839,12 @@ modded class SCR_CharacterControllerComponent
             // 当速度 V > 2.2 m/s 时，切换到跑步模型
             // 公式：E_run = (W_body + L)·Constant·V^α · η
             // 注意：跑步模型同样应用地形系数
-            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeight, true);
+            // 注意：使用包含湿重的重量（上岸后30秒内仍有湿重影响）
+            float weightForRunning = currentWeight;
+            if (m_fCurrentWetWeight > 0.0)
+                weightForRunning = currentWeight + m_fCurrentWetWeight;
+            
+            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, weightForRunning, true);
             
             // 应用地形系数（跑步时同样受地形影响）
             runningDrainRate = runningDrainRate * terrainFactor;
@@ -683,41 +854,76 @@ modded class SCR_CharacterControllerComponent
         else
         {
             // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
+            // 注意：使用包含湿重的重量（上岸后30秒内仍有湿重影响）
+            float weightForLandMovement = currentWeight;
+            if (m_fCurrentWetWeight > 0.0)
+                weightForLandMovement = currentWeight + m_fCurrentWetWeight;
+            
             baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                 currentSpeed, 
-                currentWeight, 
+                weightForLandMovement, 
                 gradePercent,
                 terrainFactor,  // 地形系数
                 true            // 使用 Santee 下坡修正
             );
+            }
+            
+            // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
+            baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2; // 转换为每0.2秒的消耗率
         }
         
-        // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
-        baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2; // 转换为每0.2秒的消耗率
-        
         // ==================== 体力消耗计算（模块化）====================
-        float postureMultiplier = StaminaConsumptionCalculator.CalculatePostureMultiplier(currentSpeed, this);
+        // 游泳时不需要应用姿态、坡度、地形等修正（已在游泳模型中考虑）
+        float postureMultiplier = 1.0;
+        float gradePercentForConsumption = 0.0;
+        float terrainFactorForConsumption = 1.0;
+        
+        if (!useSwimmingModel)
+        {
+            // 陆地移动：应用姿态、坡度、地形修正
+            postureMultiplier = StaminaConsumptionCalculator.CalculatePostureMultiplier(currentSpeed, this);
+            gradePercentForConsumption = gradePercent;
+            terrainFactorForConsumption = terrainFactor;
+        }
+        
         float encumbranceStaminaDrainMultiplier = 1.0;
         if (m_pEncumbranceCache)
             encumbranceStaminaDrainMultiplier = m_pEncumbranceCache.GetStaminaDrainMultiplier();
         
+        // 游泳时负重影响已在游泳模型中考虑，不需要额外应用
+        if (useSwimmingModel)
+            encumbranceStaminaDrainMultiplier = 1.0;
+        
         float sprintMultiplier = 1.0;
-        if (isSprinting || currentMovementPhase == 3)
+        if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
             sprintMultiplier = RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER;
         
         float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
-        float totalDrainRate = StaminaConsumptionCalculator.CalculateStaminaConsumption(
-            currentSpeed,
-            currentWeight,
-            gradePercent,
-            terrainFactor,
-            postureMultiplier,
-            totalEfficiencyFactor,
-            fatigueFactor,
-            sprintMultiplier,
-            encumbranceStaminaDrainMultiplier,
-            m_pFatigueSystem,
-            baseDrainRateByVelocityForModule);
+        float totalDrainRate = 0.0;
+        
+        if (useSwimmingModel)
+        {
+            // 游泳模式：直接使用游泳消耗，只应用效率因子和疲劳因子
+            totalDrainRate = baseDrainRateByVelocity;
+            // 应用效率因子和疲劳因子
+            totalDrainRate = totalDrainRate * totalEfficiencyFactor * fatigueFactor;
+        }
+        else
+        {
+            // 陆地模式：使用完整的消耗计算模块
+            totalDrainRate = StaminaConsumptionCalculator.CalculateStaminaConsumption(
+                currentSpeed,
+                currentWeight,
+                gradePercentForConsumption,
+                terrainFactorForConsumption,
+                postureMultiplier,
+                totalEfficiencyFactor,
+                fatigueFactor,
+                sprintMultiplier,
+                encumbranceStaminaDrainMultiplier,
+                m_pFatigueSystem,
+                baseDrainRateByVelocityForModule);
+        }
         
         // 如果模块计算的基础消耗率为0，使用本地计算的baseDrainRateByVelocity
         if (baseDrainRateByVelocityForModule == 0.0 && baseDrainRateByVelocity > 0.0)
@@ -725,7 +931,8 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== EPOC（过量耗氧）延迟检测（模块化）====================
         // 注意：currentWorldTime已在上面声明（第381行），这里重用
-        if (m_pEpocState)
+        // 游泳时跳过 EPOC：避免水面漂移/抖动导致“停下→EPOC”误触发
+        if (m_pEpocState && !useSwimmingModel)
         {
             bool isInEpocDelay = StaminaRecoveryCalculator.UpdateEpocDelay(
                 m_pEpocState,
@@ -740,8 +947,9 @@ modded class SCR_CharacterControllerComponent
         {
             float newTargetStamina = staminaPercent;
             
-            // 如果角色正在移动（速度 > 0.05 m/s），应用体力消耗
-            if (currentSpeed > 0.05)
+            // 关键修复：只要在游泳状态（包括静止踩水），就必须走“消耗分支”
+            // 仅在非游泳且静止时，才进入恢复分支
+            if (useSwimmingModel || currentSpeed > 0.05)
             {
                 // 计算新的目标体力值（扣除消耗）
                 // baseDrainRateByVelocity 已经包含了 Pandolf 模型或 Givoni-Goldman 跑步模型的消耗
@@ -785,12 +993,19 @@ modded class SCR_CharacterControllerComponent
                     float staticDrainForRecovery = baseDrainRateByVelocity;
                     if (baseDrainRateByVelocityForModule > 0.0)
                         staticDrainForRecovery = baseDrainRateByVelocityForModule;
+                    
+                    // 趴下休息：不应沿用“静态站立消耗”，否则会把恢复压成持续损耗
+                    ECharacterStance stanceForRecovery = GetStance();
+                    if (stanceForRecovery == ECharacterStance.PRONE)
+                        staticDrainForRecovery = 0.0;
+                    
                     float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
                         staminaPercent,
                         restDurationMinutes,
                         exerciseDurationMinutes,
                         currentWeightForRecovery,
-                        staticDrainForRecovery);
+                        staticDrainForRecovery,
+                        false);
                     
                     newTargetStamina = staminaPercent + recoveryRate;
                 }
@@ -923,11 +1138,12 @@ modded class SCR_CharacterControllerComponent
                 
                 // ==================== 地形系数调试：获取并显示地面密度（模块化）====================
                 // 每0.5秒检测一次地面密度（性能优化）
-                float currentTime = GetGame().GetWorld().GetWorldTime();
+                // 注意：currentTime 已在第551行声明，这里需要重新获取用于调试
+                float currentTimeForDebug = GetGame().GetWorld().GetWorldTime();
                 if (m_pTerrainDetector)
                 {
                     // 强制更新地形检测（用于调试显示）
-                    m_pTerrainDetector.ForceUpdate(owner, currentTime);
+                    m_pTerrainDetector.ForceUpdate(owner, currentTimeForDebug);
                 }
                 
                 // 构建地形密度信息字符串
@@ -1091,12 +1307,24 @@ modded class SCR_CharacterControllerComponent
         if (!world)
             return;
         
-        // 获取当前速度
-        vector velocity = GetVelocity();
-        vector velocityXZ = vector.Zero;
-        velocityXZ[0] = velocity[0];
-        velocityXZ[2] = velocity[2];
-        float speedHorizontal = velocityXZ.Length(); // 水平速度（米/秒）
+        // 获取当前速度（游泳时也可能 GetVelocity()=0，因此优先使用位置差分测速缓存）
+        float speedHorizontal = 0.0;
+        bool isSwimming = IsSwimmingByCommand();
+        vector velForDisplay = m_vComputedVelocity;
+        if (!m_bHasLastPositionSample)
+            velForDisplay = GetVelocity();
+
+        if (isSwimming)
+        {
+            speedHorizontal = velForDisplay.Length();
+        }
+        else
+        {
+            vector velocityXZ = vector.Zero;
+            velocityXZ[0] = velForDisplay[0];
+            velocityXZ[2] = velForDisplay[2];
+            speedHorizontal = velocityXZ.Length(); // 水平速度（米/秒）
+        }
         
         // 如果已有上一秒的数据，则显示上一秒的速度和状态
         if (m_bHasPreviousSpeed)
@@ -1124,18 +1352,27 @@ modded class SCR_CharacterControllerComponent
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         
-        // 获取当前移动类型
+        // 获取当前移动类型（游泳时显示 Swim）
+        bool isSwimming = IsSwimmingByCommand();
+        
         bool isSprinting = IsSprinting();
         int currentMovementPhase = GetCurrentMovementPhase();
         string movementTypeStr = "Unknown";
-        if (isSprinting || currentMovementPhase == 3)
-            movementTypeStr = "Sprint";
-        else if (currentMovementPhase == 2)
-            movementTypeStr = "Run";
-        else if (currentMovementPhase == 1)
-            movementTypeStr = "Walk";
-        else if (currentMovementPhase == 0)
-            movementTypeStr = "Idle";
+        if (isSwimming)
+        {
+            movementTypeStr = "Swim";
+        }
+        else
+        {
+            if (isSprinting || currentMovementPhase == 3)
+                movementTypeStr = "Sprint";
+            else if (currentMovementPhase == 2)
+                movementTypeStr = "Run";
+            else if (currentMovementPhase == 1)
+                movementTypeStr = "Walk";
+            else if (currentMovementPhase == 0)
+                movementTypeStr = "Idle";
+        }
         
         // 获取坡度信息
         float slopeAngleDegrees = 0.0;
