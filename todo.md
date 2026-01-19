@@ -226,7 +226,7 @@
 
 ### 6. 环境应激因子（Environmental Stress）🌡️
 
-**状态**: 待开始  
+**状态**: ✅ 已完成  
 **优先级**: 🟡 中
 
 **问题**: 
@@ -236,12 +236,41 @@
 **解决方案**:
 - **热应激（Heat Stress）**：在中午或烈日下，VO2 Max（最大摄氧量）会下降。将能效因子 `totalEfficiencyFactor` 与游戏时间或环境温度挂钩
 - **负重与雨水（Rain/Wetness）**：下雨时，衣服和背包会增重
-- 检测 `GetGame().GetWeatherManager()` 的降雨强度
-- 如果雨大，给 `currentWeight` 增加一个 5%-10% 的"水重"修正
+- 检测 `TimeAndWeatherManagerEntity` 的天气状态和当前时间
+- 如果雨大，给 `currentWeight` 增加一个 2-8kg 的"水重"修正
 
 **实现难度**: ⭐⭐ (中等，需要天气系统 API)  
 **预期代码量**: 50-80 行  
 **文件位置**: `scripts/Game/PlayerBase.c`
+
+**实际代码量**: ~220 行（已完成）  
+**完成日期**: 2026-01-19
+
+**实现细节**:
+- ✅ 创建 `SCR_EnvironmentFactor.c` 模块（环境因子检测和计算）
+- ✅ 热应激系统：10:00-14:00 逐渐增加，14:00-18:00 逐渐减少，峰值（14:00）时消耗增加30%
+- ✅ 降雨湿重系统：检测天气状态名称（包含"Rain"），小雨2kg，暴雨8kg
+- ✅ 停止降雨后湿重逐渐衰减（60秒内完全消失）
+- ✅ 环境因子检测频率优化：每5秒更新一次（性能优化）
+- ✅ 在 `PlayerBase.c` 中集成环境因子模块
+- ✅ 热应激倍数应用于陆地移动的体力消耗
+- ✅ 降雨湿重添加到总重量计算（与游泳湿重兼容）
+
+**实现位置**:
+- ✅ `scripts/Game/Components/Stamina/SCR_StaminaConstants.c` - 第332-348行：添加环境因子相关常量
+- ✅ `scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c` - 新建文件：环境因子模块（~220行）
+- ✅ `scripts/Game/PlayerBase.c` - 第49-51行：添加环境因子模块引用
+- ✅ `scripts/Game/PlayerBase.c` - 第128-134行：初始化环境因子模块
+- ✅ `scripts/Game/PlayerBase.c` - 第734-750行：更新环境因子并获取热应激倍数和降雨湿重
+- ✅ `scripts/Game/PlayerBase.c` - 第625行：应用降雨湿重到总重量
+- ✅ `scripts/Game/PlayerBase.c` - 第932行：应用热应激倍数到体力消耗
+
+**完成说明**:
+- ✅ 已实现完整的环境应激因子系统
+- ✅ 热应激基于时间段动态调整，模拟中午高温对体力的影响
+- ✅ 降雨湿重基于天气状态名称检测，与游泳湿重系统兼容
+- ✅ 性能优化：环境因子每5秒更新一次，避免每帧查询天气管理器
+- ✅ 模块化设计：独立的环境因子模块，易于维护和扩展
 
 ---
 

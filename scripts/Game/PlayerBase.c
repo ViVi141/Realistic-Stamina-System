@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.9.0
+// Realistic Stamina System (RSS) - v2.10.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -34,9 +34,6 @@ modded class SCR_CharacterControllerComponent
     // 模块化拆分：使用独立的 EncumbranceCache 类管理负重缓存
     protected ref EncumbranceCache m_pEncumbranceCache;
     
-    // ==================== 网络同步管理模块 ====================
-    // 模块化拆分：使用独立的 NetworkSyncManager 类管理网络同步状态和插值
-    protected ref NetworkSyncManager m_pNetworkSyncManager;
     
     // ==================== 疲劳积累系统模块 ====================
     // 模块化拆分：使用独立的 FatigueSystem 类管理疲劳积累和恢复
@@ -45,6 +42,10 @@ modded class SCR_CharacterControllerComponent
     // ==================== 地形检测模块 ====================
     // 模块化拆分：使用独立的 TerrainDetector 类管理地形检测和系数计算
     protected ref TerrainDetector m_pTerrainDetector;
+    
+    // ==================== 环境因子模块 ====================
+    // 模块化拆分：使用独立的 EnvironmentFactor 类管理环境因子（热应激、降雨湿重等）
+    protected ref EnvironmentFactor m_pEnvironmentFactor;
     
     // ==================== UI信号桥接模块 ====================
     // 模块化拆分：使用独立的 UISignalBridge 类管理UI信号桥接
@@ -80,15 +81,8 @@ modded class SCR_CharacterControllerComponent
             return;
         
         // 获取体力组件引用
-        // 使用 GetStaminaComponent() 获取缓存的组件引用（更高效）
         CharacterStaminaComponent staminaComp = GetStaminaComponent();
         m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(staminaComp);
-        
-        // 如果 GetStaminaComponent() 返回 null，尝试手动查找
-        if (!m_pStaminaComponent)
-        {
-            m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(owner.FindComponent(SCR_CharacterStaminaComponent));
-        }
         
         // 完全禁用原生体力系统
         // 只使用我们的自定义体力计算系统
@@ -121,10 +115,14 @@ modded class SCR_CharacterControllerComponent
         if (m_pTerrainDetector)
             m_pTerrainDetector.Initialize();
         
-        // 初始化网络同步管理模块
-        m_pNetworkSyncManager = new NetworkSyncManager();
-        if (m_pNetworkSyncManager)
-            m_pNetworkSyncManager.Initialize();
+        // 初始化环境因子模块
+        m_pEnvironmentFactor = new EnvironmentFactor();
+        if (m_pEnvironmentFactor)
+        {
+            World world = GetGame().GetWorld();
+            if (world)
+                m_pEnvironmentFactor.Initialize(world, owner);
+        }
         
         // 初始化疲劳积累系统模块
         m_pFatigueSystem = new FatigueSystem();
@@ -285,65 +283,17 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         
-        // ==================== 网络同步：区分客户端和服务器端逻辑 =====================
-        // 注意：World.IsServer() 方法不存在，改为使用 Replication 系统检查
-        // 在 Arma Reforger 中，通常只在客户端处理本地玩家，服务器端验证可以暂时禁用
-        bool isServer = false; // 暂时禁用服务器端验证（IsServer() 方法不存在）
-        bool isClient = true; // 默认按客户端处理
-        
-        // 客户端：只对本地控制的玩家处理
-        // 服务器端：对所有玩家处理（用于验证）
-        if (isClient && owner != SCR_PlayerController.GetLocalControlledEntity())
+        // 只对本地控制的玩家处理
+        if (owner != SCR_PlayerController.GetLocalControlledEntity())
         {
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
             return;
         }
         
-        // 服务器端：确保玩家有效且不是AI
-        // 注意：在服务器端，我们需要验证玩家，但 GetPlayerController 可能不存在
-        // 改为直接检查实体是否有玩家控制器组件，或者跳过AI检查（让所有实体都处理）
-        if (isServer)
-        {
-            // 在服务器端，检查实体是否为玩家角色
-            // 如果实体是AI控制的，跳过处理（AI不需要体力系统）
-            ChimeraCharacter character = ChimeraCharacter.Cast(owner);
-            if (character)
-            {
-                // 检查是否有玩家控制器（简单检查：尝试获取玩家控制器）
-                // 如果没有玩家控制器，可能是AI，跳过处理
-                // 注意：这个方法可能不存在，如果编译错误，可以注释掉这个检查
-                // PlayerController controller = GetGame().GetPlayerController(owner);
-                // if (!controller || controller.IsAIControlled())
-                // {
-                //     GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
-                //     return;
-                // }
-                
-                // 简化：在服务器端处理所有角色（包括AI）
-                // 如果需要排除AI，可以在实际测试中根据需求调整
-            }
-        }
-        
-        // 获取当前体力百分比
-        // 关键：优先使用目标体力值，而不是当前体力值
-        // 因为当前体力值可能被原生系统修改，而目标体力值是我们控制的
+        // 获取当前体力百分比（使用目标体力值，这是我们控制的）
         float staminaPercent = 1.0;
         if (m_pStaminaComponent)
-        {
-            // 优先使用目标体力值（我们控制的）
             staminaPercent = m_pStaminaComponent.GetTargetStamina();
-        }
-        else
-        {
-            // 如果没有体力组件引用，使用 GetStamina()
-            // 根据 CharacterControllerComponent 源代码：
-            // GetStamina() 返回当前体力值，范围 <0, 1>，-1 表示没有体力组件
-            staminaPercent = GetStamina();
-            
-            // 如果返回 -1，表示没有体力组件，使用默认值 1.0（100%）
-            if (staminaPercent < 0.0)
-                staminaPercent = 1.0;
-        }
         
         // 限制在有效范围内
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
@@ -434,54 +384,8 @@ modded class SCR_CharacterControllerComponent
         // - 负重惩罚：通过我们的计算完全替换游戏原有的负重惩罚（如果有）
         // - 体力消耗：手动根据实际速度和负重计算体力消耗（基于医学模型）
         
-        // ==================== 网络同步：使用 RPC 进行服务器端验证 =====================
-        // 客户端：发送状态到服务器端进行验证
-        // 服务器端：验证并返回正确值
-        if (isClient && owner == SCR_PlayerController.GetLocalControlledEntity())
-        {
-            // 获取当前重量用于验证（使用模块）
-            float currentWeight = 0.0;
-            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                currentWeight = m_pEncumbranceCache.GetCurrentWeight();
-            else
-            {
-                SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
-                    owner.FindComponent(SCR_CharacterInventoryStorageComponent));
-                if (inventoryComponent)
-                    currentWeight = inventoryComponent.GetTotalWeight();
-            }
-            
-            // 定期发送状态到服务器端（每1秒发送一次，避免频繁网络调用）
-            World worldCheck = GetGame().GetWorld();
-            if (worldCheck && m_pNetworkSyncManager)
-            {
-                float currentTime = worldCheck.GetWorldTime();
-                if (m_pNetworkSyncManager.ShouldSync(currentTime))
-                {
-                    // 发送 RPC 到服务器端进行验证
-                    RPC_UpdateStaminaState(staminaPercent, currentWeight, finalSpeedMultiplier);
-                }
-            }
-        }
-        
-        // ==================== 速度插值平滑处理（模块化）====================
-        // 问题：服务器端同步的速度倍数可能与客户端计算的值不同，立即切换会导致"拉回"感
-        // 解决方案：使用插值平滑过渡，避免突然的速度变化
-        
-        // 如果服务器端验证的速度倍数与客户端计算的不同，使用插值平滑过渡（使用模块）
-        float smoothedSpeedMultiplier = finalSpeedMultiplier;
-        if (m_pNetworkSyncManager)
-        {
-            float targetSpeedMultiplier = m_pNetworkSyncManager.GetTargetSpeedMultiplier(finalSpeedMultiplier);
-            float currentTime = GetGame().GetWorld().GetWorldTime();
-            smoothedSpeedMultiplier = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
-        }
-        
-        // 始终更新速度（确保体力变化时立即生效）
-        // 使用平滑后的速度倍数，避免突然的速度变化
-        // 注意：在服务器端，这个调用会影响所有客户端（通过网络同步）
-        // 在客户端，这个调用只影响本地玩家
-        OverrideMaxSpeed(smoothedSpeedMultiplier);
+        // 应用速度倍数
+        OverrideMaxSpeed(finalSpeedMultiplier);
         
         // ==================== 手动控制体力消耗（基于精确医学模型）====================
         // 根据实际速度和负重计算体力消耗率
@@ -615,9 +519,41 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
+        // ==================== 环境因子更新（模块化）====================
+        // 每5秒更新一次环境因子（性能优化）
+        // 传入角色实体用于室内检测
+        if (m_pEnvironmentFactor)
+        {
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner);
+        }
+        
+        // 获取热应激倍数（影响体力消耗和恢复）
+        float heatStressMultiplier = 1.0;
+        if (m_pEnvironmentFactor)
+            heatStressMultiplier = m_pEnvironmentFactor.GetHeatStressMultiplier();
+        
+        // 获取降雨湿重（影响总重量）
+        float rainWeight = 0.0;
+        if (m_pEnvironmentFactor)
+            rainWeight = m_pEnvironmentFactor.GetRainWeight();
+        
         // 应用湿重到当前重量（用于消耗计算）
-        // 注意：currentWeight 已在第487行声明，这里直接使用
-        float currentWeightWithWet = currentWeight + m_fCurrentWetWeight;
+        // 包括游泳湿重和降雨湿重，但应用饱和上限（防止叠加导致数值爆炸）
+        float totalWetWeight = 0.0;
+        if (m_fCurrentWetWeight > 0.0 && rainWeight > 0.0)
+        {
+            // 如果两者都大于0，使用加权平均（更真实的物理模型）
+            // 加权平均：游泳湿重权重0.6，降雨湿重权重0.4（游泳更湿）
+            totalWetWeight = m_fCurrentWetWeight * 0.6 + rainWeight * 0.4;
+        }
+        else
+        {
+            // 如果只有一个大于0，直接使用较大值
+            totalWetWeight = Math.Max(m_fCurrentWetWeight, rainWeight);
+        }
+        // 应用饱和上限（防止数值爆炸）
+        totalWetWeight = Math.Min(totalWetWeight, StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT);
+        float currentWeightWithWet = currentWeight + totalWetWeight;
         
         bool useSwimmingModel = isSwimming;
         
@@ -726,7 +662,6 @@ modded class SCR_CharacterControllerComponent
         float metabolicEfficiencyFactor = StaminaConsumptionCalculator.CalculateMetabolicEfficiencyFactor(speedRatio);
         float fitnessEfficiencyFactor = StaminaConsumptionCalculator.CalculateFitnessEfficiencyFactor();
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
-        
         
         // ==================== 使用完整的 Pandolf 模型（包括坡度项）====================
         // 始终使用完整的 Pandolf 模型：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
@@ -923,6 +858,9 @@ modded class SCR_CharacterControllerComponent
                 encumbranceStaminaDrainMultiplier,
                 m_pFatigueSystem,
                 baseDrainRateByVelocityForModule);
+            
+            // 应用热应激倍数（影响体力消耗）
+            totalDrainRate = totalDrainRate * heatStressMultiplier;
         }
         
         // 如果模块计算的基础消耗率为0，使用本地计算的baseDrainRateByVelocity
@@ -1006,6 +944,12 @@ modded class SCR_CharacterControllerComponent
                         currentWeightForRecovery,
                         staticDrainForRecovery,
                         false);
+                    
+                    // ==================== 热应激对恢复的影响（模块化）====================
+                    // 生理学依据：高温不仅让人动起来累，更让人休息不回来
+                    // 热应激越大，恢复倍数越小（恢复速度越慢）
+                    float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
+                    recoveryRate = recoveryRate * heatRecoveryPenalty;
                     
                     newTargetStamina = staminaPercent + recoveryRate;
                 }
@@ -1166,6 +1110,95 @@ modded class SCR_CharacterControllerComponent
                     terrainInfo = " | 地面密度: 未检测";
                 }
                 
+                // ==================== 环境因子调试信息 =====================
+                string envInfo = "";
+                if (m_pEnvironmentFactor)
+                {
+                    // 获取当前时间
+                    float currentHour = m_pEnvironmentFactor.GetCurrentHour();
+                    string timeStr = "";
+                    if (currentHour >= 0.0)
+                    {
+                        int hourInt = Math.Floor(currentHour);
+                        int minuteInt = Math.Floor((currentHour - hourInt) * 60.0);
+                        string minuteStr = minuteInt.ToString();
+                        if (minuteStr.Length() == 1)
+                            minuteStr = "0" + minuteStr;
+                        timeStr = string.Format("%1:%2", 
+                            hourInt.ToString(),
+                            minuteStr);
+                    }
+                    else
+                    {
+                        timeStr = "未知";
+                    }
+                    
+                    // 获取热应激倍数
+                    float heatStress = heatStressMultiplier;
+                    
+                    // 获取降雨信息
+                    float rainWeightDebug = rainWeight;
+                    bool isRainingDebug = m_pEnvironmentFactor.IsRaining();
+                    float rainIntensity = m_pEnvironmentFactor.GetRainIntensity();
+                    string rainStr = "";
+                    if (isRainingDebug && rainWeightDebug > 0.0)
+                    {
+                        string rainLevel = "";
+                        if (rainIntensity >= 0.8)
+                            rainLevel = "暴雨";
+                        else if (rainIntensity >= 0.5)
+                            rainLevel = "中雨";
+                        else
+                            rainLevel = "小雨";
+                        rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%)", 
+                            rainLevel,
+                            Math.Round(rainWeightDebug * 10.0) / 10.0,
+                            Math.Round(rainIntensity * 100.0));
+                    }
+                    else if (rainWeightDebug > 0.0)
+                    {
+                        // 停止降雨但仍有湿重（衰减中）
+                        rainStr = string.Format("降雨: 已停止 (残留%1kg)", 
+                            Math.Round(rainWeightDebug * 10.0) / 10.0);
+                    }
+                    else
+                    {
+                        rainStr = "降雨: 无";
+                    }
+                    
+                    // 获取室内状态
+                    bool isIndoorDebug = m_pEnvironmentFactor.IsIndoor();
+                    string indoorStr = "";
+                    if (isIndoorDebug)
+                        indoorStr = "室内";
+                    else
+                        indoorStr = "室外";
+                    
+                    // 获取游泳湿重
+                    string swimWetStr = "";
+                    if (m_fCurrentWetWeight > 0.0)
+                    {
+                        swimWetStr = string.Format("游泳湿重: %1kg", 
+                            Math.Round(m_fCurrentWetWeight * 10.0) / 10.0);
+                    }
+                    else
+                    {
+                        swimWetStr = "游泳湿重: 0kg";
+                    }
+                    
+                    // 构建环境信息字符串
+                    envInfo = string.Format(" | 时间: %1 | 热应激: %2x | %3 | %4 | %5", 
+                        timeStr,
+                        Math.Round(heatStress * 100.0) / 100.0,
+                        rainStr,
+                        indoorStr,
+                        swimWetStr);
+                }
+                else
+                {
+                    envInfo = " | 环境因子: 未初始化";
+                }
+                
                 // 注意：现在使用 Pandolf 模型，坡度项已经在公式中，不再需要坡度倍数
                 // 显示坡度百分比而不是坡度倍数
                 float gradeDisplay = gradePercent; // 坡度百分比（已在使用 Pandolf 模型时获取）
@@ -1180,113 +1213,14 @@ modded class SCR_CharacterControllerComponent
                     slopeInfo,
                     sprintInfo,
                     encumbranceInfo);
-                // 追加地形密度信息
-                Print(debugMessage + terrainInfo);
+                // 追加地形密度信息和环境因子信息
+                Print(debugMessage + terrainInfo + envInfo);
             }
         }
         
         // 继续更新
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
     }
-    
-    // ==================== 网络同步：服务器端速度计算 =====================
-    // 服务器端独立计算速度倍数，用于验证客户端提交的值
-    // 使用与客户端相同的逻辑，确保一致性
-    protected float CalculateServerSpeedMultiplier(IEntity owner, float staminaPercent)
-    {
-        if (!owner)
-            return 1.0;
-        
-        // 限制在有效范围内
-        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
-        
-        // 检查是否精疲力尽
-        bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
-        if (isExhausted)
-        {
-            float limpSpeedMultiplier = RealisticStaminaSpeedSystem.EXHAUSTION_LIMP_SPEED / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-            return limpSpeedMultiplier;
-        }
-        
-        // 获取移动类型（服务器端也需要检测移动状态）
-        bool isSprinting = IsSprinting();
-        int currentMovementPhase = GetCurrentMovementPhase();
-        
-        // 检查是否可以Sprint
-        bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
-        if (isExhausted || !canSprint)
-        {
-            if (isSprinting || currentMovementPhase == 3)
-                currentMovementPhase = 2; // 强制切换到Run
-        }
-        
-        // 计算基础速度倍数
-        float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
-        
-        // 获取负重信息（服务器端也需要获取）
-        // 注意：CalculateEncumbranceSpeedPenalty 需要 IEntity 参数，不是 float
-        float encumbranceSpeedPenalty = RealisticStaminaSpeedSystem.CalculateEncumbranceSpeedPenalty(owner);
-        
-        // 根据移动类型计算最终速度倍数
-        float finalSpeedMultiplier = 0.0;
-        
-        if (isSprinting || currentMovementPhase == 3) // Sprint
-        {
-            finalSpeedMultiplier = baseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2);
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
-        }
-        else if (currentMovementPhase == 2) // Run
-        {
-            finalSpeedMultiplier = baseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2);
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
-        }
-        else if (currentMovementPhase == 1) // Walk
-        {
-            finalSpeedMultiplier = baseSpeedMultiplier * 0.7;
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.8);
-        }
-        else // Idle
-        {
-            finalSpeedMultiplier = 0.0;
-        }
-        
-        return finalSpeedMultiplier;
-    }
-    
-    // ==================== 网络同步：验证体力状态 =====================
-    // 验证客户端提交的体力状态是否合理
-    protected bool ValidateStaminaState(float staminaPercent, float weight)
-    {
-        // 验证体力值范围（0.0-1.0）
-        if (staminaPercent < 0.0 || staminaPercent > 1.0)
-            return false;
-        
-        // 验证重量范围（0.0-200.0 kg，合理的最大值）
-        if (weight < 0.0 || weight > 200.0)
-            return false;
-        
-        // 验证体力值变化是否过快（防止客户端快速修改）
-        float lastReportedStamina = 1.0;
-        if (m_pNetworkSyncManager)
-            lastReportedStamina = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
-        float staminaChange = Math.AbsFloat(staminaPercent - lastReportedStamina);
-        if (staminaChange > 0.5) // 单次更新最多变化50%
-        {
-            // 如果变化过快，记录警告（仅在调试模式下）
-            // PrintFormat("[RealisticSystem] 警告：体力值变化过快！上次=%1, 当前=%2, 变化=%3", 
-            //     lastReportedStamina.ToString(), 
-            //     staminaPercent.ToString(), 
-            //     staminaChange.ToString());
-            // 允许但记录警告（可能是正常的快速消耗）
-        }
-        
-        // 更新记录的值（使用模块）
-        if (m_pNetworkSyncManager)
-            m_pNetworkSyncManager.UpdateReportedState(staminaPercent, weight);
-        
-        return true;
-    }
-    
     
     // 采集速度样本（每秒一次）
     void CollectSpeedSample()
@@ -1307,12 +1241,10 @@ modded class SCR_CharacterControllerComponent
         if (!world)
             return;
         
-        // 获取当前速度（游泳时也可能 GetVelocity()=0，因此优先使用位置差分测速缓存）
-        float speedHorizontal = 0.0;
+        // 获取当前速度（使用位置差分测速缓存）
         bool isSwimming = IsSwimmingByCommand();
         vector velForDisplay = m_vComputedVelocity;
-        if (!m_bHasLastPositionSample)
-            velForDisplay = GetVelocity();
+        float speedHorizontal = 0.0;
 
         if (isSwimming)
         {
@@ -1427,102 +1359,4 @@ modded class SCR_CharacterControllerComponent
         PrintFormat("[RealisticSystem] %1", statusText);
     }
     
-    // ==================== 网络同步：RPC 方法 =====================
-    // 客户端发送状态到服务器端进行验证
-    // RPC: 客户端 -> 服务器端（可靠传输）
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_UpdateStaminaState(float staminaPercent, float weight, float speedMultiplier)
-    {
-        IEntity owner = GetOwner();
-        if (!owner)
-            return;
-        
-        // 服务器端验证
-        // 1. 验证体力值的合理性（0.0-1.0范围）
-        // 2. 验证重量值的合理性（0.0-200.0 kg范围）
-        // 3. 计算服务器端的速度倍数
-        // 4. 与客户端上报的值对比（允许小幅度差异）
-        
-        // 验证输入值的合理性
-        if (!ValidateStaminaState(staminaPercent, weight))
-        {
-            // 验证失败，同步回正确的值
-            float correctStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
-            float correctWeight = Math.Clamp(weight, 0.0, 200.0);
-            float correctSpeedMultiplier = CalculateServerSpeedMultiplier(owner, correctStamina);
-            
-            // 发送正确的值回客户端
-            RPC_SyncStaminaState(correctStamina, correctWeight, correctSpeedMultiplier);
-            return;
-        }
-        
-        // 服务器端独立计算速度倍数（使用相同的逻辑）
-        float serverSpeedMultiplier = CalculateServerSpeedMultiplier(owner, staminaPercent);
-        
-        // ==================== 网络同步容差优化：连续偏差累计触发 =====================
-        // 问题：地形LOD差异可能导致客户端和服务器端计算的速度倍数略有差异
-        // 单次检查会在每次差异超过容差时立即同步，导致频繁拉回（Rubber-banding）
-        // 解决方案：只有当偏差连续超过容差一段时间后才触发同步
-        
-        // 计算速度差异（使用模块处理偏差）
-        float speedDifference = Math.AbsFloat(speedMultiplier - serverSpeedMultiplier);
-        float currentTime = GetGame().GetWorld().GetWorldTime();
-        
-        if (m_pNetworkSyncManager)
-        {
-            bool shouldSync = m_pNetworkSyncManager.ProcessDeviation(speedDifference, currentTime);
-            
-            if (shouldSync)
-            {
-                // 连续偏差持续时间超过阈值：触发同步
-                // 客户端速度倍数偏差过大，同步回服务器端的结果
-                RPC_SyncStaminaState(staminaPercent, weight, serverSpeedMultiplier);
-                
-                // 保存服务器端验证的速度倍数（使用模块）
-                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(serverSpeedMultiplier);
-            }
-            else if (speedDifference <= m_pNetworkSyncManager.GetValidationTolerance())
-            {
-                // 偏差在容差范围内：验证通过
-                // 保存验证结果（使用模块）
-                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(serverSpeedMultiplier);
-                m_pNetworkSyncManager.UpdateReportedState(staminaPercent, weight);
-            }
-        }
-    }
-    
-    // 服务器端同步状态回客户端（用于修正）
-    // RPC: 服务器端 -> 客户端（可靠传输）
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_SyncStaminaState(float staminaPercent, float weight, float speedMultiplier)
-    {
-        IEntity owner = GetOwner();
-        if (!owner || owner != SCR_PlayerController.GetLocalControlledEntity())
-            return;
-        
-        // 应用服务器端验证的值
-        // 注意：这里只是记录服务器端的值，实际速度更新仍然在 UpdateSpeedBasedOnStamina 中进行
-        // 但可以在下次更新时使用服务器端的值作为参考
-        
-        // 保存服务器端同步的值（使用模块）
-        if (m_pNetworkSyncManager)
-            m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
-        
-        // 如果服务器端验证的体力值与客户端差异较大，可以更新体力值
-        if (m_pStaminaComponent)
-        {
-            float currentStamina = m_pStaminaComponent.GetTargetStamina();
-            float staminaDifference = Math.AbsFloat(currentStamina - staminaPercent);
-            
-            // 如果差异超过5%，使用服务器端的值
-            if (staminaDifference > 0.05)
-            {
-                // 服务器端验证的体力值更准确，更新客户端
-                m_pStaminaComponent.SetTargetStamina(staminaPercent);
-            }
-        }
-        
-        // 如果速度倍数差异较大，在下一次 UpdateSpeedBasedOnStamina 中使用服务器端的值
-        // 这会在下次更新时自动应用
-    }
 }

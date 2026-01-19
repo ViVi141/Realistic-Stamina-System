@@ -327,4 +327,28 @@ class StaminaConstants
     // 游泳检测参数
     static const float SWIMMING_MIN_SPEED = 0.1; // m/s，游泳最小速度阈值
     static const float SWIMMING_VERTICAL_VELOCITY_THRESHOLD = -0.5; // m/s，垂直速度阈值（检测是否在水中）
+    
+    // ==================== 环境因子常量 ====================
+    // 热应激参数（基于时间段）
+    static const float ENV_HEAT_STRESS_START_HOUR = 10.0; // 热应激开始时间（小时）
+    static const float ENV_HEAT_STRESS_PEAK_HOUR = 14.0; // 热应激峰值时间（小时，正午）
+    static const float ENV_HEAT_STRESS_END_HOUR = 18.0; // 热应激结束时间（小时）
+    static const float ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3; // 热应激最大倍数（30%消耗增加）
+    static const float ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0; // 热应激基础倍数（无影响）
+    static const float ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5; // 室内热应激减少比例（50%）
+    
+    // 降雨湿重参数
+    static const float ENV_RAIN_WEIGHT_MIN = 2.0; // kg，小雨时的湿重
+    static const float ENV_RAIN_WEIGHT_MAX = 8.0; // kg，暴雨时的湿重
+    static const float ENV_RAIN_WEIGHT_DURATION = 60.0; // 秒，停止降雨后湿重持续时间
+    static const float ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167; // 每秒衰减率（60秒内完全消失）
+    
+    // 湿重饱和上限（防止游泳湿重+降雨湿重叠加导致数值爆炸）
+    static const float ENV_MAX_TOTAL_WET_WEIGHT = 10.0; // kg，总湿重上限（游泳+降雨）
+    
+    // 环境因子检测频率（性能优化）
+    static const float ENV_CHECK_INTERVAL = 5.0; // 秒，环境因子检测间隔
+    
+    // 室内检测参数
+    static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
 }
