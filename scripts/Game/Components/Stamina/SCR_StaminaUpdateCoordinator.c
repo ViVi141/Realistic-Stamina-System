@@ -327,13 +327,23 @@ class StaminaUpdateCoordinator
                 if (stanceForRecovery == ECharacterStance.PRONE)
                     staticDrainForRecovery = 0.0;
                 
+                // 将姿态转换为整数（0=站立，1=蹲姿，2=趴姿）
+                int stanceInt = 0;
+                if (stanceForRecovery == ECharacterStance.PRONE)
+                    stanceInt = 2;
+                else if (stanceForRecovery == ECharacterStance.CROUCH)
+                    stanceInt = 1;
+                else
+                    stanceInt = 0;
+                
                 float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
                     staminaPercent,
                     restDurationMinutes,
                     exerciseDurationMinutes,
                     currentWeightForRecovery,
                     staticDrainForRecovery,
-                    false);
+                    false,
+                    stanceInt);
                 
                 // ==================== 热应激对恢复的影响（模块化）====================
                 // 生理学依据：高温不仅让人动起来累，更让人休息不回来

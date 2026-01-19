@@ -403,7 +403,7 @@ def simulate_2miles(encumbrance_percent=0.0, movement_type='run', slope_angle_de
     return np.array(time_points), np.array(stamina_values), np.array(speed_values), np.array(distance_values), time, distance
 
 
-def calculate_multi_dimensional_recovery_rate(stamina_percent, rest_duration_minutes, exercise_duration_minutes):
+def calculate_multi_dimensional_recovery_rate(stamina_percent, rest_duration_minutes, exercise_duration_minutes, current_weight=0.0, stance=0):
     """
     计算多维度恢复率（基于个性化运动建模和生理学恢复模型）
     
@@ -413,10 +413,18 @@ def calculate_multi_dimensional_recovery_rate(stamina_percent, rest_duration_min
     3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
     4. 年龄：年轻者恢复更快
     5. 累积疲劳恢复：运动后的疲劳需要时间恢复
+    6. 姿态影响：不同休息姿势对肌肉紧张度和血液循环的影响
+    7. 负重对恢复的静态剥夺：负重越大，恢复越慢
+    8. 边际效应衰减：体力>80%时恢复速度显著降低
     """
     stamina_percent = np.clip(stamina_percent, 0.0, 1.0)
     rest_duration_minutes = np.maximum(rest_duration_minutes, 0.0)
     exercise_duration_minutes = np.maximum(exercise_duration_minutes, 0.0)
+    
+    # ==================== 深度生理压制：最低体力阈值限制 ====================
+    rest_duration_seconds = rest_duration_minutes * 60.0
+    if stamina_percent < MIN_RECOVERY_STAMINA_THRESHOLD and rest_duration_seconds < MIN_RECOVERY_REST_TIME_SECONDS:
+        return 0.0  # 体力低于20%且休息时间不足10秒时，不恢复
     
     # 1. 基础恢复率（基于当前体力百分比，非线性）
     stamina_recovery_multiplier = 1.0 + (RECOVERY_NONLINEAR_COEFF * (1.0 - stamina_percent))
@@ -426,9 +434,11 @@ def calculate_multi_dimensional_recovery_rate(stamina_percent, rest_duration_min
     fitness_recovery_multiplier = 1.0 + (FITNESS_RECOVERY_COEFF * FITNESS_LEVEL)
     fitness_recovery_multiplier = np.clip(fitness_recovery_multiplier, 1.0, 1.5)
     
-    # 3. 休息时间影响（快速恢复期 vs 慢速恢复期）
+    # 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）
     if rest_duration_minutes <= FAST_RECOVERY_DURATION_MINUTES:
         rest_time_multiplier = FAST_RECOVERY_MULTIPLIER
+    elif rest_duration_minutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES:
+        rest_time_multiplier = MEDIUM_RECOVERY_MULTIPLIER
     elif rest_duration_minutes >= SLOW_RECOVERY_START_MINUTES:
         transition_duration = 10.0
         transition_progress = np.minimum((rest_duration_minutes - SLOW_RECOVERY_START_MINUTES) / transition_duration, 1.0)
@@ -445,13 +455,43 @@ def calculate_multi_dimensional_recovery_rate(stamina_percent, rest_duration_min
     fatigue_recovery_multiplier = 1.0 - fatigue_recovery_penalty
     fatigue_recovery_multiplier = np.clip(fatigue_recovery_multiplier, 0.7, 1.0)
     
-    # 综合恢复率
-    total_recovery_rate = base_recovery_rate * fitness_recovery_multiplier * rest_time_multiplier * age_recovery_multiplier * fatigue_recovery_multiplier
+    # 6. 姿态恢复加成
+    stance_recovery_multiplier = 1.0
+    if stance == 0:
+        stance_recovery_multiplier = STANDING_RECOVERY_MULTIPLIER
+    elif stance == 1:
+        stance_recovery_multiplier = CROUCHING_RECOVERY_MULTIPLIER
+    elif stance == 2:
+        stance_recovery_multiplier = PRONE_RECOVERY_MULTIPLIER
+    
+    # ==================== 深度生理压制：负重对恢复的静态剥夺机制 ====================
+    load_recovery_penalty = 0.0
+    if current_weight > 0.0:
+        load_ratio = current_weight / BODY_TOLERANCE_BASE
+        load_ratio = np.clip(load_ratio, 0.0, 2.0)
+        load_recovery_penalty = np.power(load_ratio, LOAD_RECOVERY_PENALTY_EXPONENT) * LOAD_RECOVERY_PENALTY_COEFF
+    
+    # ==================== 深度生理压制：边际效应衰减机制 ====================
+    marginal_decay_multiplier = 1.0
+    if stamina_percent > MARGINAL_DECAY_THRESHOLD:
+        marginal_decay_multiplier = MARGINAL_DECAY_COEFF - stamina_percent
+        marginal_decay_multiplier = np.clip(marginal_decay_multiplier, 0.2, 1.0)
+    
+    # 综合恢复率（深度生理压制版本）
+    # 核心概念：从"净增加"改为"代谢净值"
+    # 最终恢复率 = (基础恢复率 × 姿态修正) - (负重压制 + 氧债惩罚)
+    total_recovery_rate = base_recovery_rate * fitness_recovery_multiplier * rest_time_multiplier * age_recovery_multiplier * fatigue_recovery_multiplier * stance_recovery_multiplier * marginal_decay_multiplier
+    
+    # 应用负重静态剥夺
+    total_recovery_rate = total_recovery_rate - load_recovery_penalty
+    
+    # 确保恢复率不为负
+    total_recovery_rate = np.maximum(total_recovery_rate, 0.0)
     
     return total_recovery_rate
 
 
-def simulate_recovery(start_stamina=0.2, target_stamina=1.0, exercise_duration_minutes=0.0):
+def simulate_recovery(start_stamina=0.2, target_stamina=1.0, exercise_duration_minutes=0.0, current_weight=0.0, stance=0):
     """模拟体力恢复过程（使用多维度恢复模型）"""
     stamina = start_stamina
     time = 0.0
@@ -464,7 +504,7 @@ def simulate_recovery(start_stamina=0.2, target_stamina=1.0, exercise_duration_m
         stamina_values.append(stamina)
         
         # 使用多维度恢复模型计算恢复率
-        recovery_rate = calculate_multi_dimensional_recovery_rate(stamina, rest_duration_minutes, exercise_duration_minutes)
+        recovery_rate = calculate_multi_dimensional_recovery_rate(stamina, rest_duration_minutes, exercise_duration_minutes, current_weight, stance)
         stamina = min(stamina + recovery_rate, target_stamina)
         
         time += UPDATE_INTERVAL
@@ -474,7 +514,7 @@ def simulate_recovery(start_stamina=0.2, target_stamina=1.0, exercise_duration_m
         if exercise_duration_minutes > 0.0:
             exercise_duration_minutes = max(exercise_duration_minutes - (UPDATE_INTERVAL / 60.0 * 2.0), 0.0)
         
-        if time > 600:  # 最多模拟10分钟
+        if time > 1200:  # 最多模拟20分钟
             break
     
     return np.array(time_points), np.array(stamina_values)

@@ -77,6 +77,7 @@ class StaminaRecoveryCalculator
     // @param currentWeightForRecovery 恢复计算用的当前重量（考虑姿态优化）
     // @param baseDrainRateByVelocity 基础消耗率（用于静态站立消耗）
     // @param disablePositiveRecovery 是否禁止正向恢复（例如：水中/踩水等场景）
+    // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
     // @return 恢复率（每0.2秒）
     static float CalculateRecoveryRate(
         float staminaPercent,
@@ -84,13 +85,15 @@ class StaminaRecoveryCalculator
         float exerciseDurationMinutes,
         float currentWeightForRecovery,
         float baseDrainRateByVelocity,
-        bool disablePositiveRecovery)
+        bool disablePositiveRecovery,
+        int stance = 0)
     {
         float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
             staminaPercent, 
             restDurationMinutes, 
             exerciseDurationMinutes,
-            currentWeightForRecovery
+            currentWeightForRecovery,
+            stance
         );
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：

@@ -7,7 +7,7 @@ class JumpVaultDetector
     // ==================== 状态变量 ====================
     // 跳跃相关
     protected bool m_bJumpInputTriggered = false; // 跳跃输入是否被触发（由动作监听器设置）
-    protected int m_iJumpCooldownFrames = 0; // 跳跃冷却帧数（防止重复触发，3秒冷却）
+    protected int m_iJumpCooldownFrames = 0; // 跳跃冷却帧数（防止重复触发，2秒冷却）
     
     // 连续跳跃惩罚（无氧欠债）机制
     protected int m_iRecentJumpCount = 0; // 连续跳跃计数
@@ -76,12 +76,12 @@ class JumpVaultDetector
                 return 0.0;
             }
             
-            // 跳跃冷却检查：3秒冷却时间（15个更新周期）
+            // 跳跃冷却检查：2秒冷却时间（10个更新周期）
             if (m_iJumpCooldownFrames == 0)
             {
                 float currentTime = GetGame().GetWorld().GetWorldTime();
                 
-                // 连续跳跃惩罚（无氧欠债）：检测是否在3秒内连续跳跃
+                // 连续跳跃惩罚（无氧欠债）：检测是否在2秒内连续跳跃
                 if (currentTime - m_fJumpTimer < RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_WINDOW)
                 {
                     m_iRecentJumpCount++;
@@ -119,8 +119,8 @@ class JumpVaultDetector
                 float consecutiveMultiplier = 1.0 + (m_iRecentJumpCount - 1) * RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_PENALTY;
                 float finalJumpCost = baseJumpCost * consecutiveMultiplier;
                 
-                // 设置3秒冷却（15个更新周期）
-                m_iJumpCooldownFrames = 15;
+                // 设置2秒冷却（10个更新周期）
+                m_iJumpCooldownFrames = 10;
                 
                 // UI交互：更新Exhaustion信号
                 if (signalsManager && exhaustionSignal != -1)
@@ -141,7 +141,7 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (基础: %2%%, 连续: %3次, 倍数: %4, 冷却: 3秒)", 
+                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (基础: %2%%, 连续: %3次, 倍数: %4, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
                         Math.Round(baseJumpCost * 100.0).ToString(),
                         m_iRecentJumpCount.ToString(),

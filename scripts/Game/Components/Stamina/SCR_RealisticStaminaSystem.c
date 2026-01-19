@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.7+
+// Realistic Stamina System (RSS) - v2.13.0
 // 拟真体力-速度系统（基于医学/生理学模型）
 // 结合体力值和负重，动态调整移动速度
 // 
@@ -50,12 +50,25 @@ class RealisticStaminaSpeedSystem
     static const float RECOVERY_NONLINEAR_COEFF = StaminaConstants.RECOVERY_NONLINEAR_COEFF;
     static const float FAST_RECOVERY_DURATION_MINUTES = StaminaConstants.FAST_RECOVERY_DURATION_MINUTES;
     static const float FAST_RECOVERY_MULTIPLIER = StaminaConstants.FAST_RECOVERY_MULTIPLIER;
+    static const float MEDIUM_RECOVERY_START_MINUTES = StaminaConstants.MEDIUM_RECOVERY_START_MINUTES;
+    static const float MEDIUM_RECOVERY_DURATION_MINUTES = StaminaConstants.MEDIUM_RECOVERY_DURATION_MINUTES;
+    static const float MEDIUM_RECOVERY_MULTIPLIER = StaminaConstants.MEDIUM_RECOVERY_MULTIPLIER;
     static const float SLOW_RECOVERY_START_MINUTES = StaminaConstants.SLOW_RECOVERY_START_MINUTES;
     static const float SLOW_RECOVERY_MULTIPLIER = StaminaConstants.SLOW_RECOVERY_MULTIPLIER;
     static const float AGE_RECOVERY_COEFF = StaminaConstants.AGE_RECOVERY_COEFF;
     static const float AGE_REFERENCE = StaminaConstants.AGE_REFERENCE;
     static const float FATIGUE_RECOVERY_PENALTY = StaminaConstants.FATIGUE_RECOVERY_PENALTY;
     static const float FATIGUE_RECOVERY_DURATION_MINUTES = StaminaConstants.FATIGUE_RECOVERY_DURATION_MINUTES;
+    static const float STANDING_RECOVERY_MULTIPLIER = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
+    static const float CROUCHING_RECOVERY_MULTIPLIER = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
+    static const float PRONE_RECOVERY_MULTIPLIER = StaminaConstants.PRONE_RECOVERY_MULTIPLIER;
+    static const float LOAD_RECOVERY_PENALTY_COEFF = StaminaConstants.LOAD_RECOVERY_PENALTY_COEFF;
+    static const float LOAD_RECOVERY_PENALTY_EXPONENT = StaminaConstants.LOAD_RECOVERY_PENALTY_EXPONENT;
+    static const float BODY_TOLERANCE_BASE = StaminaConstants.BODY_TOLERANCE_BASE;
+    static const float MARGINAL_DECAY_THRESHOLD = StaminaConstants.MARGINAL_DECAY_THRESHOLD;
+    static const float MARGINAL_DECAY_COEFF = StaminaConstants.MARGINAL_DECAY_COEFF;
+    static const float MIN_RECOVERY_STAMINA_THRESHOLD = StaminaConstants.MIN_RECOVERY_STAMINA_THRESHOLD;
+    static const float MIN_RECOVERY_REST_TIME_SECONDS = StaminaConstants.MIN_RECOVERY_REST_TIME_SECONDS;
     static const float FATIGUE_ACCUMULATION_COEFF = StaminaConstants.FATIGUE_ACCUMULATION_COEFF;
     static const float FATIGUE_START_TIME_MINUTES = StaminaConstants.FATIGUE_START_TIME_MINUTES;
     static const float FATIGUE_MAX_FACTOR = StaminaConstants.FATIGUE_MAX_FACTOR;
@@ -422,18 +435,29 @@ class RealisticStaminaSpeedSystem
     // 4. 年龄：年轻者恢复更快
     // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
     // 6. 负重影响：重载下增加恢复速率上限，模拟士兵通过深呼吸快速调整的能力
+    // 7. 姿态影响：不同休息姿势对肌肉紧张度和血液循环的影响
     //
     // @param staminaPercent 当前体力百分比（0.0-1.0）
     // @param restDurationMinutes 休息持续时间（分钟），从停止运动开始计算
     // @param exerciseDurationMinutes 运动持续时间（分钟），用于计算累积疲劳
     // @param currentWeight 当前负重（kg），用于优化重载下的恢复速率
+    // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
     // @return 恢复率（每0.2秒），表示应该恢复的体力百分比
-    static float CalculateMultiDimensionalRecoveryRate(float staminaPercent, float restDurationMinutes, float exerciseDurationMinutes, float currentWeight = 0.0)
+    static float CalculateMultiDimensionalRecoveryRate(float staminaPercent, float restDurationMinutes, float exerciseDurationMinutes, float currentWeight = 0.0, int stance = 0)
     {
         // 限制输入参数
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
         restDurationMinutes = Math.Max(restDurationMinutes, 0.0);
         exerciseDurationMinutes = Math.Max(exerciseDurationMinutes, 0.0);
+        
+        // ==================== 深度生理压制：最低体力阈值限制 ====================
+        // 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
+        // 数学实现：体力低于20%时，必须处于静止状态10秒后才允许开始回血
+        float restDurationSeconds = restDurationMinutes * 60.0;
+        if (staminaPercent < MIN_RECOVERY_STAMINA_THRESHOLD && restDurationSeconds < MIN_RECOVERY_REST_TIME_SECONDS)
+        {
+            return 0.0; // 体力低于20%且休息时间不足10秒时，不恢复
+        }
         
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
         // 体力越低，恢复越快；体力越高，恢复越慢
@@ -446,22 +470,27 @@ class RealisticStaminaSpeedSystem
         float fitnessRecoveryMultiplier = 1.0 + (FITNESS_RECOVERY_COEFF * FITNESS_LEVEL);
         fitnessRecoveryMultiplier = Math.Clamp(fitnessRecoveryMultiplier, 1.0, 1.5); // 限制在100%-150%之间
         
-        // ==================== 3. 休息时间影响（快速恢复期 vs 慢速恢复期）====================
+        // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
         if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
         {
-            // 快速恢复期（0-2分钟）：恢复速度增加50%
+            // 快速恢复期（0-3分钟）：恢复速度增加200%（3倍）
             restTimeMultiplier = FAST_RECOVERY_MULTIPLIER;
+        }
+        else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
+        {
+            // 中等恢复期（3-10分钟）：恢复速度增加50%（1.5倍）
+            restTimeMultiplier = MEDIUM_RECOVERY_MULTIPLIER;
         }
         else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
         {
-            // 慢速恢复期（≥10分钟）：恢复速度减少30%
-            // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.7倍
+            // 慢速恢复期（≥10分钟）：恢复速度减少20%（0.8倍）
+            // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.8倍
             const float transitionDuration = 10.0; // 过渡时间（分钟）
             float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
             restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - SLOW_RECOVERY_MULTIPLIER));
         }
-        // 否则：标准恢复期（2-10分钟），restTimeMultiplier = 1.0
+        // 否则：标准恢复期（10分钟内），restTimeMultiplier = 1.0
         
         // ==================== 4. 年龄影响 ====================
         // 年轻者恢复更快，年老者恢复较慢
@@ -476,44 +505,67 @@ class RealisticStaminaSpeedSystem
         float fatigueRecoveryMultiplier = 1.0 - fatigueRecoveryPenalty;
         fatigueRecoveryMultiplier = Math.Clamp(fatigueRecoveryMultiplier, 0.7, 1.0); // 限制在70%-100%之间
         
-        // ==================== 6. 负重影响：重载下的恢复优化（带启动延迟）====================
-        // 重载下增加恢复速率上限，模拟士兵通过深呼吸快速调整的能力
-        // 这样可以避免重装冲刺后的"跛行"惩罚太久，保持游戏节奏
-        // 
-        // ⚠️ 防滥用机制：负重恢复优化需静止 3 秒后才生效
-        // 防止玩家通过"短促冲刺+静止恢复"循环来滥用恢复机制
-        // 这模拟了心率下降和呼吸调整的时间需求
-        float restDurationSeconds = restDurationMinutes * 60.0; // 将休息时间转换为秒
-        
-        float loadRecoveryBoost = 1.0;
-        bool canUseLoadRecoveryBoost = (restDurationSeconds >= RECOVERY_STARTUP_DELAY_SECONDS);
-        
-        // 只有在静止时间≥3秒时，才应用负重恢复优化
-        if (canUseLoadRecoveryBoost)
+        // ==================== 6. 姿态恢复加成 ====================
+        // 不同休息姿势对肌肉紧张度和血液循环的影响
+        float stanceRecoveryMultiplier = 1.0;
+        switch (stance)
         {
-            if (currentWeight > COMBAT_LOAD_WEIGHT)
-            {
-                // 负重超过30kg时，恢复速率增加（模拟深呼吸调整能力）
-                // 计算负重比例（基于战斗负重）
-                float loadRatio = (currentWeight - COMBAT_LOAD_WEIGHT) / (MAX_ENCUMBRANCE_WEIGHT - COMBAT_LOAD_WEIGHT); // 0.0-1.0（30kg到40.5kg）
-                loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
-                // 恢复速率提升：30kg时为1.0，40.5kg时为1.3（最高30%提升）
-                loadRecoveryBoost = 1.0 + (loadRatio * 0.3); // 1.0-1.3倍
-            }
-            else if (currentWeight > 0.0)
-            {
-                // 负重在0-30kg之间时，也有轻微的恢复优化
-                float loadRatio = currentWeight / COMBAT_LOAD_WEIGHT; // 0.0-1.0
-                loadRatio = Math.Clamp(loadRatio, 0.0, 1.0);
-                // 恢复速率提升：0kg时为1.0，30kg时为1.1（最高10%提升）
-                loadRecoveryBoost = 1.0 + (loadRatio * 0.1); // 1.0-1.1倍
-            }
+            case 0: // 站姿
+                stanceRecoveryMultiplier = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
+                break;
+            case 1: // 蹲姿
+                stanceRecoveryMultiplier = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
+                break;
+            case 2: // 趴姿
+                stanceRecoveryMultiplier = StaminaConstants.PRONE_RECOVERY_MULTIPLIER;
+                break;
+            default:
+                stanceRecoveryMultiplier = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
+                break;
         }
-        // 如果静止时间<3秒，loadRecoveryBoost = 1.0（无加成）
         
-        // ==================== 综合恢复率计算 ====================
-        // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数 × 负重恢复优化
-        float totalRecoveryRate = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier * loadRecoveryBoost;
+        // ==================== 深度生理压制：负重对恢复的静态剥夺机制 ====================
+        // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
+        // 这种收缩产生的代谢废物（乳酸）排放速度远慢于空载状态
+        // 数学实现：恢复率与负重百分比（BM%）挂钩
+        // Penalty = (当前总重 / 身体耐受基准)^2 * 0.0004
+        // 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除70%
+        // 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
+        float loadRecoveryPenalty = 0.0;
+        if (currentWeight > 0.0)
+        {
+            float loadRatio = currentWeight / BODY_TOLERANCE_BASE; // 负重比例（相对于身体耐受基准）
+            loadRatio = Math.Clamp(loadRatio, 0.0, 2.0); // 限制在0-2倍之间
+            // 负重惩罚 = (负重比例)^2 * 惩罚系数
+            loadRecoveryPenalty = Math.Pow(loadRatio, LOAD_RECOVERY_PENALTY_EXPONENT) * LOAD_RECOVERY_PENALTY_COEFF;
+        }
+        
+        // ==================== 深度生理压制：边际效应衰减机制 ====================
+        // 医学解释：身体从"半死不活"恢复到"喘匀气"很快（前80%），但要从"喘匀气"恢复到"肌肉巅峰竞技状态"非常慢（最后20%）
+        // 数学实现：当体力>80%时，恢复率 = 原始恢复率 * (1.1 - 当前体力百分比)
+        // 结果：最后10%的体力恢复速度会比前50%慢3-4倍
+        // 战术意图：玩家经常会处于80%-90%的"亚健康"状态，只有长时间修整才能真正满血
+        float marginalDecayMultiplier = 1.0;
+        if (staminaPercent > MARGINAL_DECAY_THRESHOLD)
+        {
+            // 当体力>80%时，应用边际效应衰减
+            // 恢复率 = (1.1 - 当前体力百分比)
+            // 例如：体力90%时，恢复率 = 1.1 - 0.9 = 0.2（即20%的原始恢复速度）
+            marginalDecayMultiplier = MARGINAL_DECAY_COEFF - staminaPercent;
+            marginalDecayMultiplier = Math.Clamp(marginalDecayMultiplier, 0.2, 1.0); // 限制在20%-100%之间
+        }
+        
+        // ==================== 综合恢复率计算（深度生理压制版本）====================
+        // 核心概念：从"净增加"改为"代谢净值"
+        // 最终恢复率 = (基础恢复率 × 姿态修正) - (负重压制 + 氧债惩罚)
+        // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数 × 姿态恢复倍数 × 边际效应衰减 - 负重惩罚
+        float totalRecoveryRate = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier * stanceRecoveryMultiplier * marginalDecayMultiplier;
+        
+        // 应用负重静态剥夺（从恢复率中减去负重惩罚）
+        totalRecoveryRate = totalRecoveryRate - loadRecoveryPenalty;
+        
+        // 确保恢复率不为负（最低为0）
+        totalRecoveryRate = Math.Max(totalRecoveryRate, 0.0);
         
         return totalRecoveryRate;
     }
