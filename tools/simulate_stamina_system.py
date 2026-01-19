@@ -300,6 +300,361 @@ def calculate_pandolf_energy_expenditure(velocity, current_weight, grade_percent
     return stamina_drain_rate
 
 
+def calculate_terrain_factor(terrain_type='paved'):
+    """
+    计算地形对体力消耗的影响因子
+    
+    Args:
+        terrain_type: 地形类型 ('paved', 'dirt', 'grass', 'brush', 'sand')
+    
+    Returns:
+        地形影响因子（1.0-1.8）
+    """
+    terrain_factors = {
+        'paved': TERRAIN_FACTOR_PAVED,    # 铺装路面
+        'dirt': TERRAIN_FACTOR_DIRT,      # 碎石路
+        'grass': TERRAIN_FACTOR_GRASS,    # 高草丛
+        'brush': TERRAIN_FACTOR_BRUSH,    # 重度灌木丛
+        'sand': TERRAIN_FACTOR_SAND,      # 软沙地
+    }
+    return terrain_factors.get(terrain_type.lower(), TERRAIN_FACTOR_PAVED)
+
+
+def calculate_temperature_factor(temperature_celsius=20.0, is_recovery=False, current_hour=12.0, is_indoor=False):
+    """
+    计算温度对体力消耗/恢复的影响因子
+    
+    Args:
+        temperature_celsius: 温度（摄氏度）
+        is_recovery: 是否为恢复模式（True=恢复，False=消耗）
+        current_hour: 当前时间（小时，0-24），用于计算热应激
+        is_indoor: 是否在室内（True=室内，False=室外）
+    
+    Returns:
+        温度影响因子（恢复时：0.0-1.0，消耗时：1.0-1.5）
+    """
+    if is_recovery:
+        # 恢复模式：高温降低恢复率
+        if temperature_celsius > ENV_TEMPERATURE_HEAT_THRESHOLD:
+            # 每高1度，恢复率降低2%
+            heat_penalty = (temperature_celsius - ENV_TEMPERATURE_HEAT_THRESHOLD) * ENV_TEMPERATURE_HEAT_PENALTY_COEFF
+            recovery_factor = 1.0 - heat_penalty
+            return max(recovery_factor, 0.5)  # 最多降低50%
+        elif temperature_celsius < ENV_TEMPERATURE_COLD_THRESHOLD:
+            # 低温时恢复率降低5%
+            return 1.0 - ENV_TEMPERATURE_COLD_RECOVERY_PENALTY
+        else:
+            return 1.0
+    else:
+        # 消耗模式：基于时间段的热应激计算
+        # 热应激：10:00-18:00，正午14:00达到峰值
+        if ENV_HEAT_STRESS_START_HOUR <= current_hour <= ENV_HEAT_STRESS_END_HOUR:
+            # 计算热应激倍数（基于时间的正弦曲线）
+            if current_hour <= ENV_HEAT_STRESS_PEAK_HOUR:
+                # 上升期（10:00-14:00）
+                t = (current_hour - ENV_HEAT_STRESS_START_HOUR) / (ENV_HEAT_STRESS_PEAK_HOUR - ENV_HEAT_STRESS_START_HOUR)
+                heat_stress_multiplier = ENV_HEAT_STRESS_BASE_MULTIPLIER + t * (ENV_HEAT_STRESS_MAX_MULTIPLIER - ENV_HEAT_STRESS_BASE_MULTIPLIER)
+            else:
+                # 下降期（14:00-18:00）
+                t = (current_hour - ENV_HEAT_STRESS_PEAK_HOUR) / (ENV_HEAT_STRESS_END_HOUR - ENV_HEAT_STRESS_PEAK_HOUR)
+                heat_stress_multiplier = ENV_HEAT_STRESS_MAX_MULTIPLIER - t * (ENV_HEAT_STRESS_MAX_MULTIPLIER - ENV_HEAT_STRESS_BASE_MULTIPLIER)
+            
+            # 室内热应激减少50%
+            if is_indoor:
+                heat_stress_multiplier = heat_stress_multiplier - (heat_stress_multiplier - 1.0) * ENV_HEAT_STRESS_INDOOR_REDUCTION
+            
+            return heat_stress_multiplier
+        else:
+            # 低温时静态消耗增加
+            if temperature_celsius < ENV_TEMPERATURE_COLD_THRESHOLD:
+                return 1.0 + ENV_TEMPERATURE_COLD_STATIC_PENALTY
+            else:
+                return 1.0
+
+
+def calculate_wind_factor(wind_speed=0.0, is_tailwind=False):
+    """
+    计算风速对体力消耗的影响因子
+    
+    Args:
+        wind_speed: 风速（m/s）
+        is_tailwind: 是否为顺风（True=顺风，False=逆风/侧风）
+    
+    Returns:
+        风速影响因子（0.98-1.05）
+    """
+    if wind_speed < ENV_WIND_SPEED_THRESHOLD:
+        return 1.0
+    
+    if is_tailwind:
+        # 顺风：减少消耗，增加速度
+        drain_reduction = min(wind_speed * ENV_WIND_TAILWIND_BONUS, 0.1)  # 最多减少10%
+        return 1.0 - drain_reduction
+    else:
+        # 逆风/侧风：增加消耗
+        drain_increase = min((wind_speed - ENV_WIND_SPEED_THRESHOLD) * ENV_WIND_RESISTANCE_COEFF, 0.05)  # 最多增加5%
+        return 1.0 + drain_increase
+
+
+def calculate_surface_wetness_factor(surface_wetness=0.0, is_prone=False, is_recovery=False):
+    """
+    计算表面湿度对体力的影响因子
+    
+    Args:
+        surface_wetness: 表面湿度（0.0-1.0）
+        is_prone: 是否为趴姿（True=趴姿，False=其他姿态）
+        is_recovery: 是否为恢复模式（True=恢复，False=消耗）
+    
+    Returns:
+        表面湿度影响因子（恢复时：0.85-1.0，消耗时：1.0-1.15）
+    """
+    if surface_wetness < ENV_SURFACE_WETNESS_THRESHOLD:
+        return 1.0
+    
+    if is_recovery and is_prone:
+        # 湿地趴下时的恢复惩罚
+        return 1.0 - ENV_SURFACE_WETNESS_PRONE_PENALTY
+    else:
+        # 湿地消耗增加
+        wetness_penalty = (surface_wetness - ENV_SURFACE_WETNESS_THRESHOLD) * 0.15
+        return 1.0 + wetness_penalty
+
+
+def calculate_jump_cost(is_consecutive=False, time_since_last_jump=0.0):
+    """
+    计算跳跃的体力消耗
+    
+    Args:
+        is_consecutive: 是否为连续跳跃（True=连续，False=单次）
+        time_since_last_jump: 距离上次跳跃的时间（秒）
+    
+    Returns:
+        跳跃体力消耗（0.0-1.0）
+    """
+    base_cost = JUMP_STAMINA_BASE_COST
+    
+    # 检查是否在连续跳跃窗口内
+    if is_consecutive and time_since_last_jump < JUMP_CONSECUTIVE_WINDOW:
+        # 连续跳跃惩罚：50%
+        base_cost = base_cost * (1.0 - JUMP_CONSECUTIVE_PENALTY)
+    
+    return base_cost
+
+
+def calculate_climb_cost(climb_duration=0.0):
+    """
+    计算攀爬的体力消耗
+    
+    Args:
+        climb_duration: 攀爬持续时间（秒）
+    
+    Returns:
+        攀爬体力消耗（0.0-1.0）
+    """
+    return CLIMB_STAMINA_TICK_COST * climb_duration
+
+
+def calculate_static_standing_cost(body_weight=90.0, load_weight=0.0):
+    """
+    计算静态站立的体力消耗（Pandolf静态项）
+    
+    Args:
+        body_weight: 身体重量（kg）
+        load_weight: 负重重量（kg）
+    
+    Returns:
+        静态站立体力消耗（%/s）
+    """
+    # 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
+    base_static_term = PANDOLF_STATIC_COEFF_1 * body_weight
+    
+    load_ratio = 0.0
+    if body_weight > 0.0:
+        load_ratio = load_weight / body_weight
+    
+    load_static_term = 0.0
+    if load_weight > 0.0:
+        load_ratio_squared = load_ratio * load_ratio
+        load_static_term = PANDOLF_STATIC_COEFF_2 * (body_weight + load_weight) * load_ratio_squared
+    
+    static_energy_expenditure = base_static_term + load_static_term
+    
+    # 将能量消耗率（W）转换为体力消耗率（%/s）
+    static_drain_rate = static_energy_expenditure * ENERGY_TO_STAMINA_COEFF
+    
+    # 限制消耗率在合理范围内
+    static_drain_rate = max(min(static_drain_rate, 0.05), 0.0)
+    
+    return static_drain_rate
+
+
+def calculate_swimming_drain(velocity=0.0, current_weight=90.0):
+    """
+    计算游泳的体力消耗
+    
+    Args:
+        velocity: 游泳速度（m/s）
+        current_weight: 当前总重量（kg）
+    
+    Returns:
+        游泳体力消耗（%/s）
+    """
+    velocity = max(velocity, 0.0)
+    current_weight = max(current_weight, 0.0)
+    
+    body_weight = CHARACTER_WEIGHT
+    effective_weight = max(current_weight - body_weight, 0.0)
+    
+    # 静态消耗优化（踩水维持）
+    base_maintenance_power = SWIMMING_BASE_POWER
+    
+    static_multiplier = 1.0
+    threshold = SWIMMING_ENCUMBRANCE_THRESHOLD
+    
+    if effective_weight > threshold:
+        load_factor = (effective_weight - threshold) / (SWIMMING_FULL_PENALTY_WEIGHT - threshold)
+        load_factor = max(min(load_factor, 1.0), 0.0)
+        
+        power_exponent = 2.0
+        static_multiplier = 1.0 + (np.power(load_factor, power_exponent) * (SWIMMING_STATIC_DRAIN_MULTIPLIER - 1.0))
+    
+    static_power = base_maintenance_power * static_multiplier
+    
+    # 动态消耗（v³阻尼）
+    dynamic_power = 0.0
+    if velocity > SWIMMING_MIN_SPEED:
+        velocity_cubed = velocity * velocity * velocity
+        dynamic_power = 0.5 * SWIMMING_WATER_DENSITY * velocity_cubed * \
+                       SWIMMING_DRAG_COEFFICIENT * SWIMMING_FRONTAL_AREA
+        
+        dynamic_power = dynamic_power * SWIMMING_DYNAMIC_POWER_EFFICIENCY
+        
+        # 动态阻力随负重的修正
+        drag_weight_bonus = 1.0 + (effective_weight / body_weight * 0.3)
+        drag_weight_bonus = max(min(drag_weight_bonus, 1.3), 1.0)
+        dynamic_power = dynamic_power * drag_weight_bonus
+    
+    # 增加"生存压力"常数
+    total_power = static_power + dynamic_power + SWIMMING_SURVIVAL_STRESS_POWER
+    
+    # 生理功率上限
+    total_power = max(min(total_power, SWIMMING_MAX_TOTAL_POWER), 0.0)
+    
+    # 转换为体力消耗率
+    swimming_drain_rate = total_power * SWIMMING_ENERGY_TO_STAMINA_COEFF
+    
+    # 低强度折扣
+    if velocity < SWIMMING_LOW_INTENSITY_VELOCITY and effective_weight < threshold:
+        swimming_drain_rate = swimming_drain_rate * SWIMMING_LOW_INTENSITY_DISCOUNT
+    
+    # 限制每秒最大消耗
+    swimming_drain_rate = max(min(swimming_drain_rate, 0.12), 0.0)
+    
+    return swimming_drain_rate
+
+
+def calculate_santee_downhill_correction(grade_percent=0.0):
+    """
+    计算Santee下坡修正系数
+    
+    基于 Santee et al. (2001) 的下坡修正模型
+    Pandolf 原型在处理下坡（负坡度）时不够精确
+    Santee 修正：当 G < -15% 时，需要用力"刹车"以防摔倒（离心收缩）
+    
+    Args:
+        grade_percent: 坡度百分比（例如，-15% = -15.0）
+    
+    Returns:
+        下坡修正系数（0.5-1.0）
+    """
+    if grade_percent >= 0.0:
+        return 1.0
+    
+    abs_grade = abs(grade_percent)
+    
+    if abs_grade <= 15.0:
+        return 1.0
+    
+    # 陡坡（超过 -15%）：应用 Santee 修正
+    correction_term = abs_grade * (1.0 - abs_grade / 15.0) / 2.0
+    correction_factor = 1.0 - correction_term
+    
+    return max(min(correction_factor, 1.0), 0.5)
+
+
+def calculate_givoni_goldman_running(velocity=0.0, current_weight=90.0, is_running=True):
+    """
+    计算Givoni-Goldman跑步模式下的能量消耗
+    
+    基于 Givoni-Goldman 跑步能量消耗模型
+    Pandolf 模型在速度 V > 2.2 m/s 时会失效（设计时针对步行）
+    对于 Sprint/Run 模式，应该切换到 Givoni-Goldman 跑步模型
+    
+    Args:
+        velocity: 当前速度（m/s）
+        current_weight: 当前总重量（kg）
+        is_running: 是否为跑步模式（True=Run/Sprint，False=Walk）
+    
+    Returns:
+        跑步模式下的能量消耗率（%/s）
+    """
+    velocity = max(velocity, 0.0)
+    current_weight = max(current_weight, 0.0)
+    
+    # 只在跑步模式下（V > 2.2 m/s）使用 Givoni-Goldman 模型
+    if not is_running or velocity <= 2.2:
+        return -0.0025
+    
+    # 跑步公式：E_run = (W_body + L)·(Givoni_Constant)·V^α
+    # 其中 α = 速度指数（通常 2.0-2.4）
+    # Givoni_Constant = 跑步常数（需要校准）
+    
+    # 使用简化的 Givoni-Goldman 模型
+    givoni_constant = 0.15  # 需要校准
+    velocity_exponent = 2.2  # 跑步效率低于步行
+    
+    running_energy = current_weight * givoni_constant * np.power(velocity, velocity_exponent)
+    
+    # 转换为体力消耗率
+    running_drain_rate = running_energy * ENERGY_TO_STAMINA_COEFF
+    
+    # 限制消耗率在合理范围内
+    running_drain_rate = max(min(running_drain_rate, 0.05), 0.0)
+    
+    return running_drain_rate
+
+
+def calculate_combat_encumbrance_percent(current_weight=0.0):
+    """
+    计算战斗负重百分比
+    
+    Args:
+        current_weight: 当前负重（kg）
+    
+    Returns:
+        战斗负重百分比（0.0-1.0+）
+    """
+    if current_weight <= 0.0:
+        return 0.0
+    
+    # 战斗负重百分比 = 当前重量 / 战斗负重阈值
+    combat_encumbrance_percent = current_weight / COMBAT_ENCUMBRANCE_WEIGHT
+    return max(combat_encumbrance_percent, 0.0)
+
+
+def is_over_combat_encumbrance(current_weight=0.0):
+    """
+    判断是否超过战斗负重
+    
+    Args:
+        current_weight: 当前负重（kg）
+    
+    Returns:
+        是否超过战斗负重（True=超过，False=未超过）
+    """
+    return current_weight > COMBAT_ENCUMBRANCE_WEIGHT
+
+
 def calculate_base_drain_rate_by_velocity(velocity, current_weight=0.0):
     """
     根据当前速度和负重计算基础消耗率（使用临界动力概念，更温和的负重公式）
@@ -366,7 +721,9 @@ def calculate_base_drain_rate_by_velocity(velocity, current_weight=0.0):
         return -0.00025  # Rest恢复（负数），每0.2秒
 
 
-def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, exercise_duration_minutes=0.0):
+def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, exercise_duration_minutes=0.0,
+                           terrain_type='paved', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False, 
+                           surface_wetness=0.0, is_prone=False, current_hour=12.0, is_indoor=False):
     """
     计算体力消耗率（基于完整的 Pandolf 模型，考虑累积疲劳和代谢适应）
     
@@ -394,6 +751,10 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     - fitness_factor = 健康状态效率因子（训练有素者效率提高）
     - fatigue_factor = 累积疲劳因子（长时间运动后消耗增加）
     - metabolic_factor = 代谢适应因子（根据强度动态调整效率）
+    - terrain_factor = 地形影响因子
+    - temperature_factor = 温度影响因子
+    - wind_factor = 风速影响因子
+    - surface_wetness_factor = 表面湿度影响因子
     
     Args:
         current_speed: 当前速度（m/s）
@@ -401,6 +762,14 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
         movement_type: 移动类型 ('idle', 'walk', 'run', 'sprint')
         slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
         exercise_duration_minutes: 运动持续时间（分钟），用于计算累积疲劳
+        terrain_type: 地形类型 ('paved', 'dirt', 'grass', 'brush', 'sand')
+        temperature_celsius: 温度（摄氏度）
+        wind_speed: 风速（m/s）
+        is_tailwind: 是否为顺风（True=顺风，False=逆风/侧风）
+        surface_wetness: 表面湿度（0.0-1.0）
+        is_prone: 是否为趴姿（True=趴姿，False=其他姿态）
+        current_hour: 当前时间（小时，0-24），用于计算热应激
+        is_indoor: 是否在室内（True=室内，False=室外）
     
     Returns:
         体力消耗率（每0.2秒）
@@ -412,7 +781,19 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     
     # Idle时恢复体力
     if movement_type == 'idle' or current_speed < 0.1:
-        return -0.0025 * UPDATE_INTERVAL  # 恢复率（负数），每0.2秒
+        # 恢复时考虑温度和表面湿度影响
+        recovery_rate = -0.0025 * UPDATE_INTERVAL
+        
+        # 温度影响（恢复模式）
+        temperature_factor = calculate_temperature_factor(temperature_celsius, is_recovery=True, current_hour=current_hour, is_indoor=is_indoor)
+        recovery_rate = recovery_rate * temperature_factor
+        
+        # 表面湿度影响（趴姿恢复）
+        if is_prone:
+            surface_wetness_factor = calculate_surface_wetness_factor(surface_wetness, is_prone=True, is_recovery=True)
+            recovery_rate = recovery_rate * surface_wetness_factor
+        
+        return recovery_rate
     
     # 计算当前负重（kg）
     current_weight_kg = encumbrance_percent * MAX_ENCUMBRANCE_WEIGHT
@@ -462,6 +843,23 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     else:
         # 消耗时，应用效率因子和疲劳因子
         total_drain_rate_per_second = base_drain_rate_per_second * total_efficiency_factor * fatigue_factor
+        
+        # ==================== 环境因素影响 ====================
+        # 地形影响
+        terrain_factor = calculate_terrain_factor(terrain_type)
+        total_drain_rate_per_second = total_drain_rate_per_second * terrain_factor
+        
+        # 温度影响（消耗模式）
+        temperature_factor = calculate_temperature_factor(temperature_celsius, is_recovery=False, current_hour=current_hour, is_indoor=is_indoor)
+        total_drain_rate_per_second = total_drain_rate_per_second * temperature_factor
+        
+        # 风速影响
+        wind_factor = calculate_wind_factor(wind_speed, is_tailwind)
+        total_drain_rate_per_second = total_drain_rate_per_second * wind_factor
+        
+        # 表面湿度影响（消耗模式）
+        surface_wetness_factor = calculate_surface_wetness_factor(surface_wetness, is_prone=is_prone, is_recovery=False)
+        total_drain_rate_per_second = total_drain_rate_per_second * surface_wetness_factor
     
     # Sprint时体力消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
     if movement_type == 'sprint':
@@ -476,7 +874,9 @@ def calculate_stamina_drain(current_speed, encumbrance_percent=0.0, movement_typ
     return total_drain_rate_per_tick
 
 
-def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, max_speed_mode=True):
+def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0, max_speed_mode=True,
+                            terrain_type='paved', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False, 
+                            surface_wetness=0.0, is_prone=False, current_hour=12.0, is_indoor=False):
     """
     模拟体力系统
     
@@ -486,6 +886,14 @@ def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, moveme
         movement_type: 移动类型 ('idle', 'walk', 'run', 'sprint')
         slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
         max_speed_mode: 是否保持最大速度模式（True）或静止模式（False）
+        terrain_type: 地形类型 ('paved', 'dirt', 'grass', 'brush', 'sand')
+        temperature_celsius: 温度（摄氏度）
+        wind_speed: 风速（m/s）
+        is_tailwind: 是否为顺风（True=顺风，False=逆风/侧风）
+        surface_wetness: 表面湿度（0.0-1.0）
+        is_prone: 是否为趴姿（True=趴姿，False=其他姿态）
+        current_hour: 当前时间（小时，0-24），用于计算热应激
+        is_indoor: 是否在室内（True=室内，False=室外）
     
     Returns:
         time_points: 时间点数组
@@ -544,15 +952,20 @@ def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, moveme
             current_weight_kg = encumbrance_percent * 40.5  # MAX_ENCUMBRANCE_WEIGHT
             body_mass_percent = current_weight_kg / CHARACTER_WEIGHT if current_weight_kg > 0.0 else 0.0
             
-            drain_rate = calculate_stamina_drain(current_speed, encumbrance_percent, movement_type, slope_angle_degrees, exercise_duration_minutes)
+            drain_rate = calculate_stamina_drain(current_speed, encumbrance_percent, movement_type, slope_angle_degrees, exercise_duration_minutes,
+                                                  terrain_type, temperature_celsius, wind_speed, is_tailwind, surface_wetness, is_prone,
+                                                  current_hour, is_indoor)
             
             # 注意：坡度项已整合在Pandolf模型中，不需要额外的交互项
             drain_rate_values[i] = drain_rate
             new_stamina = current_stamina - drain_rate
         else:
             # 静止时：恢复体力
-            drain_rate_values[i] = -RECOVERY_RATE  # 负数表示恢复
-            new_stamina = current_stamina + RECOVERY_RATE
+            drain_rate = calculate_stamina_drain(0.0, encumbrance_percent, 'idle', 0.0, 0.0,
+                                                  terrain_type, temperature_celsius, wind_speed, is_tailwind, surface_wetness, is_prone,
+                                                  current_hour, is_indoor)
+            drain_rate_values[i] = drain_rate
+            new_stamina = current_stamina - drain_rate
         
         # 限制体力值范围
         stamina_values[i] = np.clip(new_stamina, 0.0, 1.0)
@@ -560,7 +973,9 @@ def simulate_stamina_system(simulation_time=300, encumbrance_percent=0.0, moveme
     return time_points, stamina_values, speed_values, speed_multiplier_values, drain_rate_values
 
 
-def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0):
+def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0,
+                terrain_type='paved', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False, 
+                surface_wetness=0.0, is_prone=False, current_hour=12.0, is_indoor=False):
     """
     绘制趋势图
     
@@ -569,12 +984,28 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
         encumbrance_percent: 负重百分比（0.0-1.0）
         movement_type: 移动类型 ('idle', 'walk', 'run', 'sprint')
         slope_angle_degrees: 坡度角度（度），正数=上坡，负数=下坡
+        terrain_type: 地形类型 ('paved', 'dirt', 'grass', 'brush', 'sand')
+        temperature_celsius: 温度（摄氏度）
+        wind_speed: 风速（m/s）
+        is_tailwind: 是否为顺风（True=顺风，False=逆风/侧风）
+        surface_wetness: 表面湿度（0.0-1.0）
+        is_prone: 是否为趴姿（True=趴姿，False=其他姿态）
+        current_hour: 当前时间（小时，0-24），用于计算热应激
+        is_indoor: 是否在室内（True=室内，False=室外）
     """
     movement_type_names = {
         'idle': '静止 / Idle',
         'walk': '行走 / Walk',
         'run': '跑步 / Run',
         'sprint': '冲刺 / Sprint'
+    }
+
+    terrain_type_names = {
+        'paved': '铺装路面 / Paved',
+        'dirt': '碎石路 / Dirt',
+        'grass': '高草丛 / Grass',
+        'brush': '重度灌木丛 / Brush',
+        'sand': '软沙地 / Sand'
     }
 
     slope_desc = "平地 / Flat"
@@ -589,6 +1020,11 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     print(f"  负重: {encumbrance_percent*100:.0f}%")
     print(f"  移动类型: {movement_type_names.get(movement_type, movement_type)}")
     print(f"  坡度: {slope_angle_degrees:.1f}° ({slope_desc})")
+    print(f"  地形: {terrain_type_names.get(terrain_type, terrain_type)}")
+    print(f"  温度: {temperature_celsius:.1f}°C")
+    print(f"  风速: {wind_speed:.1f} m/s ({'顺风' if is_tailwind else '逆风/侧风'})")
+    print(f"  表面湿度: {surface_wetness*100:.0f}%")
+    print(f"  姿态: {'趴姿' if is_prone else '站立/蹲姿'}")
     print(f"  游戏最大速度: {GAME_MAX_SPEED} m/s")
     print(f"  目标速度倍数: {TARGET_RUN_SPEED_MULTIPLIER}")
     print(f"  体力影响指数 (α): {STAMINA_EXPONENT}")
@@ -601,22 +1037,32 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     # 模拟最大速度模式
     print(f"模拟：保持最大速度模式 ({movement_type_names.get(movement_type, movement_type)})...")
     time_max, stamina_max, speed_max, speed_mult_max, drain_max = simulate_stamina_system(
-        simulation_time, encumbrance_percent, movement_type, slope_angle_degrees, max_speed_mode=True
+        simulation_time=simulation_time, encumbrance_percent=encumbrance_percent, movement_type=movement_type, 
+        slope_angle_degrees=slope_angle_degrees, max_speed_mode=True,
+        terrain_type=terrain_type, temperature_celsius=temperature_celsius, wind_speed=wind_speed, 
+        is_tailwind=is_tailwind, surface_wetness=surface_wetness, is_prone=is_prone,
+        current_hour=current_hour, is_indoor=is_indoor
     )
     
     # 模拟静止模式（对比）
     print("模拟：静止恢复模式...")
     time_rest, stamina_rest, speed_rest, speed_mult_rest, drain_rest = simulate_stamina_system(
-        simulation_time, encumbrance_percent, 'idle', 0.0, max_speed_mode=False
+        simulation_time=simulation_time, encumbrance_percent=encumbrance_percent, movement_type='idle', 
+        slope_angle_degrees=0.0, max_speed_mode=False,
+        terrain_type=terrain_type, temperature_celsius=temperature_celsius, wind_speed=wind_speed, 
+        is_tailwind=is_tailwind, surface_wetness=surface_wetness, is_prone=is_prone,
+        current_hour=current_hour, is_indoor=is_indoor
     )
     
     # 创建图表（调整尺寸以符合3840×2160限制；使用constrained_layout避免文字互相挤压）
     fig, axes = plt.subplots(2, 2, figsize=(10, 7.5), constrained_layout=True)
     movement_title = movement_type_names.get(movement_type, movement_type)
     slope_title = f"{slope_angle_degrees:.1f}° ({slope_desc})"
+    terrain_title = terrain_type_names.get(terrain_type, terrain_type)
     fig.suptitle(
         f"Realistic Stamina System (RSS) - 趋势图 / Trends\n"
-        f"({movement_title}, Slope / 坡度: {slope_title}, α={STAMINA_EXPONENT})",
+        f"({movement_title}, Slope / 坡度: {slope_title}, Terrain / 地形: {terrain_title}, "
+        f"Temp / 温度: {temperature_celsius:.1f}°C, Wind / 风速: {wind_speed:.1f} m/s, α={STAMINA_EXPONENT})",
         fontsize=12,
         fontweight='bold'
     )
@@ -717,28 +1163,46 @@ if __name__ == "__main__":
     # 参数：模拟时间（秒），负重百分比（0.0-1.0），移动类型，坡度角度（度）
     # 模拟时间设置为20分钟（1200秒），以观察完整趋势
     
-    # 示例1：Run模式，无负重，平地
+    # 示例1：Run模式，无负重，平地，铺装路面，正午
     print("="*70)
-    print("示例1：Run模式，无负重，平地")
+    print("示例1：Run模式，无负重，平地，铺装路面，正午")
     print("="*70)
-    plot_trends(simulation_time=1200, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0)
+    plot_trends(simulation_time=1200, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0,
+                terrain_type='paved', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False,
+                surface_wetness=0.0, is_prone=False, current_hour=14.0, is_indoor=False)
+    
+    # 示例2：Run模式，无负重，平地，软沙地，正午
+    print("\n" + "="*70)
+    print("示例2：Run模式，无负重，平地，软沙地，正午")
+    print("="*70)
+    plot_trends(simulation_time=1200, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0,
+                terrain_type='sand', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False,
+                surface_wetness=0.0, is_prone=False, current_hour=14.0, is_indoor=False)
+    
+    # 示例3：Run模式，无负重，平地，铺装路面，上午
+    print("\n" + "="*70)
+    print("示例3：Run模式，无负重，平地，铺装路面，上午")
+    print("="*70)
+    plot_trends(simulation_time=1200, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=0.0,
+                terrain_type='paved', temperature_celsius=20.0, wind_speed=0.0, is_tailwind=False,
+                surface_wetness=0.0, is_prone=False, current_hour=9.0, is_indoor=False)
     
     # 可以取消注释以下示例来测试不同场景：
     # 
-    # # 示例2：Sprint模式，无负重，平地
+    # # 示例4：Sprint模式，无负重，平地
     # print("\n" + "="*70)
-    # print("示例2：Sprint模式，无负重，平地")
+    # print("示例4：Sprint模式，无负重，平地")
     # print("="*70)
     # plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='sprint', slope_angle_degrees=0.0)
     # 
-    # # 示例3：Run模式，无负重，上坡5度
+    # # 示例5：Run模式，无负重，上坡5度
     # print("\n" + "="*70)
-    # print("示例3：Run模式，无负重，上坡5度")
+    # print("示例5：Run模式，无负重，上坡5度")
     # print("="*70)
     # plot_trends(simulation_time=1200, encumbrance_percent=0.0, movement_type='run', slope_angle_degrees=5.0)
     # 
-    # # 示例4：Sprint模式，无负重，上坡5度
+    # # 示例6：Sprint模式，无负重，上坡5度
     # print("\n" + "="*70)
-    # print("示例4：Sprint模式，无负重，上坡5度")
+    # print("示例6：Sprint模式，无负重，上坡5度")
     # print("="*70)
     # plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='sprint', slope_angle_degrees=5.0)

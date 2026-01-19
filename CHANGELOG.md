@@ -5,6 +5,68 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.17.0] - 2026-01-20
+
+### 新增
+- **Python模拟器完整优化（Python Simulator Complete Optimization）**
+  - **地形因素影响系统**：
+    - 铺装路面（1.0x）、碎石路（1.1x）、高草丛（1.2x）、重度灌木丛（1.5x）、软沙地（1.8x）
+    - 地形影响因子直接作用于体力消耗率
+  - **环境因素影响系统**：
+    - 温度影响：基于时间段的热应激计算（10:00-18:00，正午14:00达到峰值）
+    - 风速影响：顺风减少消耗（最多10%），逆风增加消耗（最多5%）
+    - 表面湿度影响：湿地趴下时的恢复惩罚（15%）
+  - **动作成本计算系统**：
+    - 跳跃消耗：3.5%体力（单次），连续跳跃50%惩罚（2秒窗口）
+    - 攀爬消耗：1%/秒（持续攀爬）
+  - **特殊运动模式系统**：
+    - 游泳消耗：静态踩水（25W基础）+ 动态v³阻尼
+    - 静态站立消耗：Pandolf静态项（1.5·W_body + 2.0·(W_body + L)·(L/W_body)²）
+  - **高级修正模型系统**：
+    - Santee下坡修正：陡峭下坡（>15%）的修正系数（0.5-1.0）
+    - Givoni-Goldman跑步模型：高速跑步（>2.2 m/s）的能量消耗
+  - **战斗负重系统**：
+    - 战斗负重百分比计算（基于30kg阈值）
+    - 战斗负重阈值判断（超过30kg触发）
+  - **模拟器参数扩展**：
+    - 新增地形类型参数（terrain_type）
+    - 新增温度参数（temperature_celsius）
+    - 新增风速参数（wind_speed、is_tailwind）
+    - 新增表面湿度参数（surface_wetness）
+    - 新增姿态参数（is_prone）
+    - 新增时间参数（current_hour）
+    - 新增室内参数（is_indoor）
+
+### 改进
+- **模拟器函数签名更新**：
+  - `calculate_stamina_drain()`：新增8个环境参数
+  - `simulate_stamina_system()`：新增6个环境参数
+  - `plot_trends()`：新增6个环境参数
+  - `calculate_temperature_factor()`：新增热应激时间计算
+- **测试用例扩展**：
+  - 示例1：Run模式，无负重，平地，铺装路面，正午
+  - 示例2：Run模式，无负重，平地，软沙地，正午
+  - 示例3：Run模式，无负重，平地，铺装路面，上午
+- **测试结果验证**：
+  - 正午+铺装路面：体力降至50%需要7.86分钟
+  - 正午+软沙地：体力降至50%需要4.40分钟（地形影响显著）
+  - 上午+铺装路面：体力降至50%需要10.10分钟（热应激影响显著）
+
+### 代码统计
+- **simulate_stamina_system.py**：新增12个函数（约450行）
+  - `calculate_terrain_factor()` - 地形影响因子
+  - `calculate_temperature_factor()` - 温度影响因子（含热应激）
+  - `calculate_wind_factor()` - 风速影响因子
+  - `calculate_surface_wetness_factor()` - 表面湿度影响因子
+  - `calculate_jump_cost()` - 跳跃体力消耗
+  - `calculate_climb_cost()` - 攀爬体力消耗
+  - `calculate_static_standing_cost()` - 静态站立消耗
+  - `calculate_swimming_drain()` - 游泳体力消耗
+  - `calculate_santee_downhill_correction()` - Santee下坡修正
+  - `calculate_givoni_goldman_running()` - Givoni-Goldman跑步模型
+  - `calculate_combat_encumbrance_percent()` - 战斗负重百分比
+  - `is_over_combat_encumbrance()` - 战斗负重判断
+
 ## [2.16.0] - 2026-01-20
 
 ### 新增
