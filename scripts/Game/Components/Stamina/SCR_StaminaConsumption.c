@@ -18,6 +18,7 @@ class StaminaConsumptionCalculator
     // @param encumbranceStaminaDrainMultiplier 负重体力消耗倍数
     // @param fatigueSystem 疲劳积累系统模块引用
     // @param out baseDrainRateByVelocity 基础消耗率（输出，用于恢复计算）
+    // @param environmentFactor 环境因子模块引用（v2.14.0新增）
     // @return 体力消耗率（每0.2秒）
     static float CalculateStaminaConsumption(
         float currentSpeed,
@@ -30,8 +31,41 @@ class StaminaConsumptionCalculator
         float sprintMultiplier,
         float encumbranceStaminaDrainMultiplier,
         FatigueSystem fatigueSystem,
-        out float baseDrainRateByVelocity)
+        out float baseDrainRateByVelocity,
+        EnvironmentFactor environmentFactor = null)
     {
+        // ==================== v2.14.0 环境因子修正 ====================
+        
+        // 获取高级环境因子（如果环境因子模块存在）
+        float windDrag = 0.0;
+        float mudTerrainFactor = 0.0;
+        float mudSprintPenalty = 0.0;
+        float totalWetWeight = 0.0;
+        float coldStaticPenalty = 0.0;
+        
+        if (environmentFactor)
+        {
+            windDrag = environmentFactor.GetWindDrag();
+            mudTerrainFactor = environmentFactor.GetMudTerrainFactor();
+            mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
+            totalWetWeight = environmentFactor.GetTotalWetWeight();
+            coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+        }
+        
+        // 应用泥泞地形系数（修正地形因子）
+        terrainFactor = terrainFactor + mudTerrainFactor;
+        
+        // 应用泥泞Sprint惩罚（修正Sprint倍数，只在Sprint时应用）
+        if (currentSpeed >= StaminaConstants.SPRINT_VELOCITY_THRESHOLD)
+        {
+            sprintMultiplier = sprintMultiplier + mudSprintPenalty;
+        }
+        
+        // 应用降雨湿重（修正当前重量）
+        currentWeight = currentWeight + totalWetWeight;
+        
+        // ==================== 原有计算逻辑 ====================
+        
         // 如果速度为0，计算静态站立消耗
         if (currentSpeed < 0.1)
         {
@@ -39,6 +73,10 @@ class StaminaConsumptionCalculator
             float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0); // 负重（去除身体重量）
             
             float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
+            
+            // 应用冷应激静态惩罚（v2.14.0）
+            staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
+            
             baseDrainRateByVelocity = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
         }
         // 如果速度 > 2.2 m/s，使用 Givoni-Goldman 跑步模型
@@ -46,6 +84,10 @@ class StaminaConsumptionCalculator
         {
             float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeight, true);
             runningDrainRate = runningDrainRate * terrainFactor; // 应用地形系数
+            
+            // 应用风阻（v2.14.0）：逆风时增加消耗
+            runningDrainRate = runningDrainRate * (1.0 + windDrag);
+            
             baseDrainRateByVelocity = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
         }
         // 否则使用 Pandolf 步行模型
@@ -58,6 +100,9 @@ class StaminaConsumptionCalculator
                 terrainFactor,
                 true // 使用 Santee 下坡修正
             );
+            
+            // 应用风阻（v2.14.0）：逆风时增加消耗
+            baseDrainRateByVelocity = baseDrainRateByVelocity * (1.0 + windDrag);
         }
         
         // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率

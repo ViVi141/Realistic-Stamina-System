@@ -14,6 +14,26 @@ class EnvironmentFactor
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
     protected IEntity m_pCachedOwner; // 缓存的角色实体引用（用于室内检测）
     
+    // ==================== 高级环境因子状态变量（v2.14.0）====================
+    protected float m_fCachedRainIntensity = 0.0; // 缓存的降雨强度（0.0-1.0）
+    protected float m_fCachedWindSpeed = 0.0; // 缓存的风速（m/s）
+    protected float m_fCachedWindDirection = 0.0; // 缓存的风向（度）
+    protected float m_fCachedWindDrag = 0.0; // 缓存的风阻系数
+    protected float m_fCachedMudFactor = 0.0; // 缓存的泥泞度系数（0.0-1.0）
+    protected float m_fCachedTemperature = 20.0; // 缓存的当前气温（°C）
+    protected float m_fCachedSurfaceWetness = 0.0; // 缓存的地表湿度（0.0-1.0）
+    protected float m_fCurrentTotalWetWeight = 0.0; // 当前总湿重（游泳+降雨，kg）
+    protected float m_fLastUpdateTime = 0.0; // 上次更新时间（秒）
+    protected float m_fRainBreathingPenalty = 0.0; // 暴雨呼吸阻力惩罚
+    protected float m_fCachedTerrainFactor = 1.0; // 缓存的地形系数
+    protected float m_fMudTerrainFactor = 0.0; // 泥泞地形系数惩罚
+    protected float m_fMudSprintPenalty = 0.0; // 泥泞Sprint惩罚
+    protected float m_fSlipRisk = 0.0; // 滑倒风险
+    protected float m_fHeatStressPenalty = 0.0; // 热应激惩罚
+    protected float m_fColdStressPenalty = 0.0; // 冷应激惩罚
+    protected float m_fColdStaticPenalty = 0.0; // 冷应激静态惩罚
+    protected float m_fSurfaceWetnessPenalty = 0.0; // 地表湿度惩罚
+    
     // ==================== 公共方法 ====================
     
     // 初始化环境因子模块
@@ -30,6 +50,26 @@ class EnvironmentFactor
         m_pCachedWeatherManager = null;
         m_pCachedOwner = owner;
         
+        // ==================== 高级环境因子初始化（v2.14.0）====================
+        m_fCachedRainIntensity = 0.0;
+        m_fCachedWindSpeed = 0.0;
+        m_fCachedWindDirection = 0.0;
+        m_fCachedWindDrag = 0.0;
+        m_fCachedMudFactor = 0.0;
+        m_fCachedTemperature = 20.0;
+        m_fCachedSurfaceWetness = 0.0;
+        m_fCurrentTotalWetWeight = 0.0;
+        m_fLastUpdateTime = 0.0;
+        m_fRainBreathingPenalty = 0.0;
+        m_fCachedTerrainFactor = 1.0;
+        m_fMudTerrainFactor = 0.0;
+        m_fMudSprintPenalty = 0.0;
+        m_fSlipRisk = 0.0;
+        m_fHeatStressPenalty = 0.0;
+        m_fColdStressPenalty = 0.0;
+        m_fColdStaticPenalty = 0.0;
+        m_fSurfaceWetnessPenalty = 0.0;
+        
         // 获取天气管理器引用
         if (world)
         {
@@ -39,11 +79,13 @@ class EnvironmentFactor
         }
     }
     
-    // 更新环境因子（每5秒调用一次，性能优化）
-    // @param currentTime 当前世界时间
-    // @param owner 角色实体（用于室内检测，可为null）
+    // 更新环境因子（协调方法）
+    // @param currentTime 当前时间（秒）
+    // @param owner 角色实体（用于室内检测和姿态判断）
+    // @param playerVelocity 玩家速度向量（用于风阻计算）
+    // @param terrainFactor 地形系数（用于泥泞计算）
     // @return 是否需要更新（true表示已更新，false表示跳过）
-    bool UpdateEnvironmentFactors(float currentTime, IEntity owner = null)
+    bool UpdateEnvironmentFactors(float currentTime, IEntity owner = null, vector playerVelocity = vector.Zero, float terrainFactor = 1.0)
     {
         // 防御性编程：如果天气管理器丢失，尝试重新获取
         if (!m_pCachedWeatherManager)
@@ -67,6 +109,38 @@ class EnvironmentFactor
         
         m_fLastEnvironmentCheckTime = currentTime;
         
+        // 获取角色姿态（用于地表湿度惩罚计算）
+        int stance = 0; // 默认：站立
+        if (owner)
+        {
+            SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
+            if (controller)
+            {
+                ECharacterStance currentStance = controller.GetStance();
+                switch (currentStance)
+                {
+                    case ECharacterStance.STAND:
+                        stance = 0;
+                        break;
+                    case ECharacterStance.CROUCH:
+                        stance = 1;
+                        break;
+                    case ECharacterStance.PRONE:
+                        stance = 2;
+                        break;
+                    default:
+                        stance = 0;
+                        break;
+                }
+            }
+        }
+        
+        // 保存地形系数（用于泥泞计算）
+        m_fCachedTerrainFactor = terrainFactor;
+        
+        // ==================== 更新高级环境因子（v2.14.0）====================
+        UpdateAdvancedEnvironmentFactors(currentTime, owner, playerVelocity, stance);
+        
         // 更新热应激倍数（考虑室内豁免）
         float oldHeatStress = m_fCachedHeatStressMultiplier;
         m_fCachedHeatStressMultiplier = CalculateHeatStressMultiplier(m_pCachedOwner);
@@ -75,24 +149,36 @@ class EnvironmentFactor
         float oldRainWeight = m_fCachedRainWeight;
         m_fCachedRainWeight = CalculateRainWeight(currentTime);
         
+        // 更新总湿重（游泳湿重 + 降雨湿重，限制在最大值）
+        // 注意：游泳湿重由外部传入，这里暂时只考虑降雨湿重
+        m_fCurrentTotalWetWeight = Math.Clamp(m_fCachedRainWeight, 0.0, StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT);
+        
         // 调试信息：环境因子更新（每5秒输出一次或值变化时）
         static int envDebugCounter = 0;
         static float lastLoggedHeatStress = 1.0;
         static float lastLoggedRainWeight = 0.0;
+        static float lastLoggedWindSpeed = 0.0;
+        static float lastLoggedTemperature = 20.0;
         envDebugCounter++;
         bool shouldLog = (envDebugCounter >= 125) || // 每25秒（5秒 * 5）
                         (Math.AbsFloat(m_fCachedHeatStressMultiplier - lastLoggedHeatStress) > 0.05) ||
-                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5);
+                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5) ||
+                        (Math.AbsFloat(m_fCachedWindSpeed - lastLoggedWindSpeed) > 2.0) ||
+                        (Math.AbsFloat(m_fCachedTemperature - lastLoggedTemperature) > 2.0);
         
         if (shouldLog)
         {
             envDebugCounter = 0;
             lastLoggedHeatStress = m_fCachedHeatStressMultiplier;
             lastLoggedRainWeight = m_fCachedRainWeight;
+            lastLoggedWindSpeed = m_fCachedWindSpeed;
+            lastLoggedTemperature = m_fCachedTemperature;
             
-            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 热应激=%1x | 降雨湿重=%2kg | Heat Stress=%1x | Rain Weight=%2kg",
+            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 热应激=%1x | 降雨湿重=%2kg | 风速=%3m/s | 气温=%4°C | Heat Stress=%1x | Rain Weight=%2kg | Wind Speed=%3m/s | Temperature=%4°C",
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
-                Math.Round(m_fCachedRainWeight * 10.0) / 10.0);
+                Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
+                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0,
+                Math.Round(m_fCachedTemperature * 10.0) / 10.0);
         }
         
         return true;
@@ -110,6 +196,120 @@ class EnvironmentFactor
     float GetRainWeight()
     {
         return m_fCachedRainWeight;
+    }
+    
+    // ==================== 高级环境因子获取方法（v2.14.0）====================
+    
+    // 获取降雨强度（0.0-1.0）
+    // @return 降雨强度（0.0=无雨，1.0=暴雨）
+    float GetRainIntensity()
+    {
+        return m_fCachedRainIntensity;
+    }
+    
+    // 获取风速（m/s）
+    // @return 风速（m/s）
+    float GetWindSpeed()
+    {
+        return m_fCachedWindSpeed;
+    }
+    
+    // 获取风向（度）
+    // @return 风向（0-360度，0=北，90=东，180=南，270=西）
+    float GetWindDirection()
+    {
+        return m_fCachedWindDirection;
+    }
+    
+    // 获取风阻系数
+    // @return 风阻系数（负数=顺风，正数=逆风）
+    float GetWindDrag()
+    {
+        return m_fCachedWindDrag;
+    }
+    
+    // 获取泥泞度系数（0.0-1.0）
+    // @return 泥泞度系数（0.0=干燥，1.0=完全泥泞）
+    float GetMudFactor()
+    {
+        return m_fCachedMudFactor;
+    }
+    
+    // 获取当前气温（°C）
+    // @return 当前气温（°C）
+    float GetTemperature()
+    {
+        return m_fCachedTemperature;
+    }
+    
+    // 获取地表湿度（0.0-1.0）
+    // @return 地表湿度（0.0=干燥，1.0=完全湿润）
+    float GetSurfaceWetness()
+    {
+        return m_fCachedSurfaceWetness;
+    }
+    
+    // 获取总湿重（游泳+降雨，kg）
+    // @return 总湿重（0.0-10.0 kg）
+    float GetTotalWetWeight()
+    {
+        return m_fCurrentTotalWetWeight;
+    }
+    
+    // 获取暴雨呼吸阻力惩罚
+    // @return 呼吸阻力惩罚（0.0-1.0）
+    float GetRainBreathingPenalty()
+    {
+        return m_fRainBreathingPenalty;
+    }
+    
+    // 获取泥泞地形系数惩罚
+    // @return 泥泞地形系数（0.0-0.4）
+    float GetMudTerrainFactor()
+    {
+        return m_fMudTerrainFactor;
+    }
+    
+    // 获取泥泞Sprint惩罚
+    // @return Sprint惩罚（0.0-0.1）
+    float GetMudSprintPenalty()
+    {
+        return m_fMudSprintPenalty;
+    }
+    
+    // 获取滑倒风险
+    // @return 滑倒风险（0.0-1.0）
+    float GetSlipRisk()
+    {
+        return m_fSlipRisk;
+    }
+    
+    // 获取热应激惩罚
+    // @return 热应激惩罚（0.0-1.0）
+    float GetHeatStressPenalty()
+    {
+        return m_fHeatStressPenalty;
+    }
+    
+    // 获取冷应激惩罚
+    // @return 冷应激惩罚（0.0-1.0）
+    float GetColdStressPenalty()
+    {
+        return m_fColdStressPenalty;
+    }
+    
+    // 获取冷应激静态惩罚
+    // @return 冷应激静态惩罚（0.0-1.0）
+    float GetColdStaticPenalty()
+    {
+        return m_fColdStaticPenalty;
+    }
+    
+    // 获取地表湿度惩罚
+    // @return 地表湿度惩罚（0.0-0.15）
+    float GetSurfaceWetnessPenalty()
+    {
+        return m_fSurfaceWetnessPenalty;
     }
     
     // ==================== 私有方法 ====================
@@ -626,17 +826,448 @@ class EnvironmentFactor
         return found;
     }
     
-    // 获取降雨强度（用于调试）
-    // @return 降雨强度（0.0-1.0），0.0表示无雨，1.0表示暴雨
-    float GetRainIntensity()
-    {
-        return m_fLastRainIntensity;
-    }
-    
     // 检查是否正在下雨（用于调试）
     // @return true表示正在下雨，false表示未下雨
     bool IsRaining()
     {
         return m_bWasRaining;
+    }
+    
+    // ==================== 高级环境因子计算方法（v2.14.0）====================
+    
+    // 更新高级环境因子（协调方法）
+    // @param currentTime 当前时间（秒）
+    // @param owner 角色实体
+    // @param playerVelocity 玩家速度向量（用于风阻计算）
+    // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
+    void UpdateAdvancedEnvironmentFactors(float currentTime, IEntity owner, vector playerVelocity = vector.Zero, int stance = 0)
+    {
+        if (!m_pCachedWeatherManager)
+            return;
+        
+        // 更新时间戳
+        m_fLastUpdateTime = currentTime;
+        
+        // 1. 获取降雨强度（优先使用API，失败则回退到字符串匹配）
+        m_fCachedRainIntensity = CalculateRainIntensityFromAPI();
+        
+        // 2. 获取风速和风向
+        m_fCachedWindSpeed = CalculateWindSpeedFromAPI();
+        m_fCachedWindDirection = CalculateWindDirectionFromAPI();
+        
+        // 3. 计算风阻系数（基于玩家移动方向）
+        m_fCachedWindDrag = CalculateWindDrag(playerVelocity);
+        
+        // 4. 获取泥泞度系数
+        m_fCachedMudFactor = CalculateMudFactorFromAPI();
+        
+        // 5. 获取当前气温
+        m_fCachedTemperature = CalculateTemperatureFromAPI();
+        
+        // 6. 获取地表湿度
+        m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
+        
+        // 7. 计算降雨湿重（基于降雨强度）
+        CalculateRainWetWeight(currentTime);
+        
+        // 8. 计算暴雨呼吸阻力
+        CalculateRainBreathingPenalty();
+        
+        // 9. 计算泥泞地形系数
+        CalculateMudTerrainFactor();
+        
+        // 10. 计算泥泞Sprint惩罚
+        CalculateMudSprintPenalty();
+        
+        // 11. 计算滑倒风险
+        CalculateSlipRisk();
+        
+        // 12. 计算热应激惩罚
+        CalculateHeatStressPenalty();
+        
+        // 13. 计算冷应激惩罚
+        CalculateColdStressPenalty();
+        
+        // 14. 计算地表湿度惩罚（传入姿态）
+        CalculateSurfaceWetnessPenalty(owner, stance);
+        
+        // ==================== 调试信息：高级环境因子（v2.14.0）====================
+        // 每5秒输出一次或值变化时
+        static int advancedEnvDebugCounter = 0;
+        static float lastLoggedRainIntensity = 0.0;
+        static float lastLoggedWindSpeed = 0.0;
+        static float lastLoggedWindDirection = 0.0;
+        static float lastLoggedWindDrag = 0.0;
+        static float lastLoggedMudFactor = 0.0;
+        static float lastLoggedTemperature = 0.0;
+        static float lastLoggedSurfaceWetness = 0.0;
+        static float lastLoggedRainWeight = 0.0;
+        static float lastLoggedRainBreathingPenalty = 0.0;
+        static float lastLoggedMudTerrainFactor = 0.0;
+        static float lastLoggedMudSprintPenalty = 0.0;
+        static float lastLoggedSlipRisk = 0.0;
+        static float lastLoggedHeatStressPenalty = 0.0;
+        static float lastLoggedColdStressPenalty = 0.0;
+        static float lastLoggedColdStaticPenalty = 0.0;
+        static float lastLoggedSurfaceWetnessPenalty = 0.0;
+        
+        advancedEnvDebugCounter++;
+        bool shouldLog = (advancedEnvDebugCounter >= 25) || // 每5秒（0.2秒 * 25）
+                        (Math.AbsFloat(m_fCachedRainIntensity - lastLoggedRainIntensity) > 0.1) ||
+                        (Math.AbsFloat(m_fCachedWindSpeed - lastLoggedWindSpeed) > 1.0) ||
+                        (Math.AbsFloat(m_fCachedWindDirection - lastLoggedWindDirection) > 10.0) ||
+                        (Math.AbsFloat(m_fCachedWindDrag - lastLoggedWindDrag) > 0.1) ||
+                        (Math.AbsFloat(m_fCachedMudFactor - lastLoggedMudFactor) > 0.1) ||
+                        (Math.AbsFloat(m_fCachedTemperature - lastLoggedTemperature) > 2.0) ||
+                        (Math.AbsFloat(m_fCachedSurfaceWetness - lastLoggedSurfaceWetness) > 0.1) ||
+                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5) ||
+                        (Math.AbsFloat(m_fRainBreathingPenalty - lastLoggedRainBreathingPenalty) > 0.1) ||
+                        (Math.AbsFloat(m_fMudTerrainFactor - lastLoggedMudTerrainFactor) > 0.1) ||
+                        (Math.AbsFloat(m_fMudSprintPenalty - lastLoggedMudSprintPenalty) > 0.05) ||
+                        (Math.AbsFloat(m_fSlipRisk - lastLoggedSlipRisk) > 0.1) ||
+                        (Math.AbsFloat(m_fHeatStressPenalty - lastLoggedHeatStressPenalty) > 0.1) ||
+                        (Math.AbsFloat(m_fColdStressPenalty - lastLoggedColdStressPenalty) > 0.1) ||
+                        (Math.AbsFloat(m_fColdStaticPenalty - lastLoggedColdStaticPenalty) > 0.1) ||
+                        (Math.AbsFloat(m_fSurfaceWetnessPenalty - lastLoggedSurfaceWetnessPenalty) > 0.05);
+        
+        if (shouldLog)
+        {
+            advancedEnvDebugCounter = 0;
+            
+            PrintFormat("[RealisticSystem] 高级环境因子 / Advanced Environment Factors:");
+            PrintFormat("  降雨强度 / Rain Intensity: %1 (%2%%)", 
+                Math.Round(m_fCachedRainIntensity * 100.0) / 100.0,
+                Math.Round(m_fCachedRainIntensity * 100.0).ToString());
+            PrintFormat("  风速 / Wind Speed: %1 m/s", Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
+            PrintFormat("  风向 / Wind Direction: %1°", Math.Round(m_fCachedWindDirection));
+            PrintFormat("  风阻系数 / Wind Drag: %1", Math.Round(m_fCachedWindDrag * 100.0) / 100.0);
+            PrintFormat("  泥泞度 / Mud Factor: %1 (%2%%)", 
+                Math.Round(m_fCachedMudFactor * 100.0) / 100.0,
+                Math.Round(m_fCachedMudFactor * 100.0).ToString());
+            PrintFormat("  气温 / Temperature: %1°C", Math.Round(m_fCachedTemperature * 10.0) / 10.0);
+            PrintFormat("  地表湿度 / Surface Wetness: %1 (%2%%)", 
+                Math.Round(m_fCachedSurfaceWetness * 100.0) / 100.0,
+                Math.Round(m_fCachedSurfaceWetness * 100.0).ToString());
+            PrintFormat("  降雨湿重 / Rain Weight: %1 kg", Math.Round(m_fCachedRainWeight * 10.0) / 10.0);
+            PrintFormat("  暴雨呼吸阻力 / Rain Breathing Penalty: %1", Math.Round(m_fRainBreathingPenalty * 10000.0) / 10000.0);
+            PrintFormat("  泥泞地形系数 / Mud Terrain Factor: %1", Math.Round(m_fMudTerrainFactor * 100.0) / 100.0);
+            PrintFormat("  泥泞Sprint惩罚 / Mud Sprint Penalty: %1", Math.Round(m_fMudSprintPenalty * 100.0) / 100.0);
+            PrintFormat("  滑倒风险 / Slip Risk: %1", Math.Round(m_fSlipRisk * 10000.0) / 10000.0);
+            PrintFormat("  热应激惩罚 / Heat Stress Penalty: %1", Math.Round(m_fHeatStressPenalty * 100.0) / 100.0);
+            PrintFormat("  冷应激惩罚 / Cold Stress Penalty: %1", Math.Round(m_fColdStressPenalty * 100.0) / 100.0);
+            PrintFormat("  冷应激静态惩罚 / Cold Static Penalty: %1", Math.Round(m_fColdStaticPenalty * 100.0) / 100.0);
+            PrintFormat("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(m_fSurfaceWetnessPenalty * 100.0) / 100.0);
+            
+            lastLoggedRainIntensity = m_fCachedRainIntensity;
+            lastLoggedWindSpeed = m_fCachedWindSpeed;
+            lastLoggedWindDirection = m_fCachedWindDirection;
+            lastLoggedWindDrag = m_fCachedWindDrag;
+            lastLoggedMudFactor = m_fCachedMudFactor;
+            lastLoggedTemperature = m_fCachedTemperature;
+            lastLoggedSurfaceWetness = m_fCachedSurfaceWetness;
+            lastLoggedRainWeight = m_fCachedRainWeight;
+            lastLoggedRainBreathingPenalty = m_fRainBreathingPenalty;
+            lastLoggedMudTerrainFactor = m_fMudTerrainFactor;
+            lastLoggedMudSprintPenalty = m_fMudSprintPenalty;
+            lastLoggedSlipRisk = m_fSlipRisk;
+            lastLoggedHeatStressPenalty = m_fHeatStressPenalty;
+            lastLoggedColdStressPenalty = m_fColdStressPenalty;
+            lastLoggedColdStaticPenalty = m_fColdStaticPenalty;
+            lastLoggedSurfaceWetnessPenalty = m_fSurfaceWetnessPenalty;
+        }
+    }
+    
+    // 从API获取降雨强度（带字符串回退）
+    // @return 降雨强度（0.0-1.0）
+    protected float CalculateRainIntensityFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // 尝试获取降雨强度（API方法）
+        float rainIntensity = 0.0;
+        
+        // API调用：获取降雨强度
+        rainIntensity = m_pCachedWeatherManager.GetRainIntensity();
+        
+        // 如果API返回有效值，直接使用
+        if (rainIntensity > StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
+            return rainIntensity;
+        
+        // 回退方案：基于天气状态名称判断
+        return CalculateRainIntensityFromStateName();
+    }
+    
+    // 基于状态名称判断降雨强度（回退方案）
+    // @return 降雨强度（0.0-1.0）
+    protected float CalculateRainIntensityFromStateName()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // 获取当前天气状态
+        BaseWeatherStateTransitionManager transitionManager = m_pCachedWeatherManager.GetTransitionManager();
+        if (!transitionManager)
+            return 0.0;
+        
+        WeatherState currentWeatherState = transitionManager.GetCurrentState();
+        if (!currentWeatherState)
+            return 0.0;
+        
+        string stateName = currentWeatherState.GetStateName();
+        stateName.ToLower();
+        
+        // 基于状态名称判断降雨强度
+        if (stateName.Contains("storm") || stateName.Contains("heavy"))
+            return 0.9;
+        else if (stateName.Contains("rain") || stateName.Contains("shower"))
+            return 0.5;
+        else if (stateName.Contains("drizzle") || stateName.Contains("light"))
+            return 0.2;
+        else if (stateName.Contains("cloudy") || stateName.Contains("overcast"))
+            return 0.05;
+        else
+            return 0.0;
+    }
+    
+    // 从API获取风速
+    // @return 风速（m/s）
+    protected float CalculateWindSpeedFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // API调用：获取风速
+        float windSpeed = m_pCachedWeatherManager.GetWindSpeed();
+        
+        return windSpeed;
+    }
+    
+    // 从API获取风向
+    // @return 风向（度，0-360）
+    protected float CalculateWindDirectionFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // API调用：获取风向
+        float windDirection = m_pCachedWeatherManager.GetWindDirection();
+        
+        return windDirection;
+    }
+    
+    // 计算风阻系数（基于玩家移动方向）
+    // @param playerVelocity 玩家速度向量
+    // @return 风阻系数（0.0-1.0）
+    protected float CalculateWindDrag(vector playerVelocity)
+    {
+        if (m_fCachedWindSpeed < StaminaConstants.ENV_WIND_SPEED_THRESHOLD)
+            return 0.0;
+        
+        // 获取玩家移动向量（水平）
+        vector playerVel = playerVelocity;
+        playerVel[1] = 0; // 忽略垂直分量
+        
+        float speed = playerVel.Length();
+        if (speed < 0.1)
+            return 0.0; // 玩家静止，无风阻
+        
+        // 转换风向为向量
+        float windDirRad = m_fCachedWindDirection * Math.DEG2RAD;
+        vector windDirVec = Vector(Math.Sin(windDirRad), 0, Math.Cos(windDirRad));
+        
+        // 计算玩家速度与风向的投影
+        // Dot > 0 为顺风, Dot < 0 为逆风
+        float windProjection = vector.Dot(playerVel.Normalized(), windDirVec);
+        
+        // 只计算逆风阻力
+        if (windProjection >= 0)
+            return 0.0; // 顺风，无阻力
+        
+        // 计算风阻系数：逆风越强，阻力越大
+        float windResistance = Math.AbsFloat(windProjection) * m_fCachedWindSpeed * StaminaConstants.ENV_WIND_RESISTANCE_COEFF;
+        
+        return Math.Clamp(windResistance, 0.0, 1.0);
+    }
+    
+    // 从API获取泥泞度系数
+    // @return 泥泞度系数（0.0-1.0）
+    protected float CalculateMudFactorFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // API调用：获取积水程度
+        float puddles = m_pCachedWeatherManager.GetCurrentWaterAccumulationPuddles();
+        
+        return puddles;
+    }
+    
+    // 从API获取当前气温
+    // @return 当前气温（°C）
+    protected float CalculateTemperatureFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 20.0; // 默认20°C
+        
+        // API调用：获取气温
+        float temperature = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
+        
+        return temperature;
+    }
+    
+    // 从API获取地表湿度
+    // @return 地表湿度（0.0-1.0）
+    protected float CalculateSurfaceWetnessFromAPI()
+    {
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+        
+        // API调用：获取地表湿度
+        float wetness = m_pCachedWeatherManager.GetCurrentWetness();
+        
+        return wetness;
+    }
+    
+    // 计算降雨湿重（基于降雨强度）
+    // @param currentTime 当前时间（秒）
+    protected void CalculateRainWetWeight(float currentTime)
+    {
+        if (m_fCachedRainIntensity < StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
+            return;
+        
+        // 计算湿重增加速率（非线性增长）
+        float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
+                                 Math.Pow(m_fCachedRainIntensity, StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
+        
+        // 计算时间增量（秒）
+        float deltaTime = currentTime - m_fLastUpdateTime;
+        if (deltaTime <= 0)
+            return;
+        
+        // 增加湿重
+        m_fCachedRainWeight = Math.Clamp(
+            m_fCachedRainWeight + accumulationRate * deltaTime,
+            0.0,
+            StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT
+        );
+    }
+    
+    // 计算暴雨呼吸阻力
+    protected void CalculateRainBreathingPenalty()
+    {
+        // 只有暴雨才会触发呼吸阻力
+        if (m_fCachedRainIntensity < StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
+        {
+            m_fRainBreathingPenalty = 0.0;
+            return;
+        }
+        
+        // 计算呼吸阻力（基于降雨强度）
+        m_fRainBreathingPenalty = StaminaConstants.ENV_RAIN_INTENSITY_BREATHING_PENALTY * 
+                                   (m_fCachedRainIntensity - StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
+    }
+    
+    // 计算泥泞地形系数
+    protected void CalculateMudTerrainFactor()
+    {
+        // 只有在非铺装路面才计算泥泞惩罚
+        if (m_fCachedTerrainFactor <= 1.0)
+        {
+            m_fMudTerrainFactor = 0.0;
+            return;
+        }
+        
+        // 计算泥泞惩罚（基于积水程度）
+        m_fMudTerrainFactor = m_fCachedMudFactor * StaminaConstants.ENV_MUD_PENALTY_MAX;
+    }
+    
+    // 计算泥泞Sprint惩罚
+    protected void CalculateMudSprintPenalty()
+    {
+        // 只有在泥泞路面才计算Sprint惩罚
+        if (m_fCachedMudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
+        {
+            m_fMudSprintPenalty = 0.0;
+            return;
+        }
+        
+        // 计算Sprint惩罚（基于泥泞度）
+        m_fMudSprintPenalty = StaminaConstants.ENV_MUD_SPRINT_PENALTY * m_fCachedMudFactor;
+    }
+    
+    // 计算滑倒风险
+    protected void CalculateSlipRisk()
+    {
+        // 只有在泥泞路面才计算滑倒风险
+        if (m_fCachedMudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
+        {
+            m_fSlipRisk = 0.0;
+            return;
+        }
+        
+        // 计算滑倒风险（基于泥泞度）
+        m_fSlipRisk = StaminaConstants.ENV_MUD_SLIP_RISK_BASE * m_fCachedMudFactor;
+    }
+    
+    // 计算热应激惩罚
+    protected void CalculateHeatStressPenalty()
+    {
+        // 只有超过热应激阈值才计算
+        if (m_fCachedTemperature <= StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD)
+        {
+            m_fHeatStressPenalty = 0.0;
+            return;
+        }
+        
+        // 计算热应激惩罚（每高1度，恢复率降低2%）
+        m_fHeatStressPenalty = (m_fCachedTemperature - StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * 
+                               StaminaConstants.ENV_TEMPERATURE_HEAT_PENALTY_COEFF;
+    }
+    
+    // 计算冷应激惩罚
+    protected void CalculateColdStressPenalty()
+    {
+        // 只有低于冷应激阈值才计算
+        if (m_fCachedTemperature >= StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD)
+        {
+            m_fColdStressPenalty = 0.0;
+            m_fColdStaticPenalty = 0.0;
+            return;
+        }
+        
+        // 计算冷应激惩罚（每低1度，恢复率降低5%）
+        m_fColdStressPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
+                               StaminaConstants.ENV_TEMPERATURE_COLD_RECOVERY_PENALTY;
+        
+        // 计算冷应激静态惩罚（每低1度，静态消耗增加3%）
+        m_fColdStaticPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
+                               StaminaConstants.ENV_TEMPERATURE_COLD_STATIC_PENALTY;
+    }
+    
+    // 计算地表湿度惩罚
+    // @param owner 角色实体
+    // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
+    protected void CalculateSurfaceWetnessPenalty(IEntity owner, int stance = 0)
+    {
+        if (!owner)
+            return;
+        
+        // 只有趴下姿态才计算地表湿度惩罚
+        if (stance != 2) // 不是趴姿
+        {
+            m_fSurfaceWetnessPenalty = 0.0;
+            return;
+        }
+        
+        // 只有在地表湿度超过阈值时才计算
+        if (m_fCachedSurfaceWetness < StaminaConstants.ENV_SURFACE_WETNESS_THRESHOLD)
+        {
+            m_fSurfaceWetnessPenalty = 0.0;
+            return;
+        }
+        
+        // 计算地表湿度惩罚（趴下时的恢复惩罚）
+        m_fSurfaceWetnessPenalty = StaminaConstants.ENV_SURFACE_WETNESS_PRONE_PENALTY * m_fCachedSurfaceWetness;
     }
 }

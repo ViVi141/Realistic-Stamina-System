@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.13.0
+// Realistic Stamina System (RSS) - v2.14.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -335,7 +335,9 @@ modded class SCR_CharacterControllerComponent
                         exerciseDurationMinutes,
                         currentWeightForRecovery,
                         baseDrainRateByVelocity,
-                        false); // 不禁用正向恢复
+                        false, // 不禁用正向恢复
+                        0, // 站立姿态
+                        m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
                     
                     // 更新体力值
                     float newStamina = Math.Clamp(currentStamina + recoveryRate, 0.0, 1.0);
@@ -480,6 +482,9 @@ modded class SCR_CharacterControllerComponent
         float currentTime = GetGame().GetWorld().GetWorldTime();
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
         
+        // 运动/休息时间跟踪（用于地形检测和疲劳计算）
+        float currentTimeForExercise = currentTime;
+        
         // 如果游泳状态变化，重置调试标志
         if (isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
@@ -498,12 +503,21 @@ modded class SCR_CharacterControllerComponent
         // 更新上一帧状态
         m_bWasSwimming = isSwimming;
         
+        // 地形系数：铺装路面 1.0 → 深雪 2.1-3.0
+        // 优化检测频率：移动时0.5秒检测一次，静止时2秒检测一次（性能优化）
+        // 注意：使用上面已声明的 currentTimeForExercise
+        float terrainFactor = 1.0; // 默认值（铺装路面）
+        if (m_pTerrainDetector)
+        {
+            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTimeForExercise, currentSpeed);
+        }
+        
         // ==================== 环境因子更新（模块化）====================
         // 每5秒更新一次环境因子（性能优化）
-        // 传入角色实体用于室内检测
+        // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算
         if (m_pEnvironmentFactor)
         {
-            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner);
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, m_vComputedVelocity, terrainFactor);
         }
         
         // 获取热应激倍数（影响体力消耗和恢复）
@@ -620,7 +634,7 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 运动持续时间跟踪（模块化）====================
         // 更新运动/休息时间跟踪，并计算累积疲劳因子
-        float currentTimeForExercise = GetGame().GetWorld().GetWorldTime();
+        // 注意：currentTimeForExercise 已在上面声明
         bool isCurrentlyMoving = (currentSpeed > 0.05);
         float fatigueFactor = 1.0; // 默认值（无疲劳）
         
@@ -653,16 +667,6 @@ modded class SCR_CharacterControllerComponent
             slopeAngleDegrees);
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
-        
-        // ==================== 地形系数获取（模块化）====================
-        // 地形系数：铺装路面 1.0 → 深雪 2.1-3.0
-        // 优化检测频率：移动时0.5秒检测一次，静止时2秒检测一次（性能优化）
-        // 注意：使用上面已声明的 currentTimeForExercise
-        float terrainFactor = 1.0; // 默认值（铺装路面）
-        if (m_pTerrainDetector)
-        {
-            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTimeForExercise, currentSpeed);
-        }
         
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
@@ -757,7 +761,8 @@ modded class SCR_CharacterControllerComponent
                 sprintMultiplier,
                 encumbranceStaminaDrainMultiplier,
                 m_pFatigueSystem,
-                baseDrainRateByVelocityForModule);
+                baseDrainRateByVelocityForModule,
+                m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
             
             // 应用热应激倍数（影响体力消耗）
             float drainRateBeforeHeat = totalDrainRate;
@@ -812,7 +817,8 @@ modded class SCR_CharacterControllerComponent
                 m_pEncumbranceCache,
                 m_pExerciseTracker,
                 m_pFatigueSystem,
-                this);
+                this,
+                m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
             
             // 设置目标体力值（这会自动应用到体力组件）
             m_pStaminaComponent.SetTargetStamina(newTargetStamina);

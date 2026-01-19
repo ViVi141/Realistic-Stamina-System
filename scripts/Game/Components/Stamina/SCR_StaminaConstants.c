@@ -171,11 +171,11 @@ class StaminaConstants
     // ==================== 姿态恢复加成参数（深度生理压制版本）====================
     // 深度生理压制：趴下不只是为了隐蔽，更是为了让心脏负荷最小化
     // 姿态加成设定的更有体感，但不过分
-    // 站姿：核心削弱 - 站立恢复效率仅为基础的40%（模拟负重静态消耗）
+    // 站姿：提升至2.0倍，确保能够覆盖静态站立消耗（0.0027%每0.2秒）
     // 蹲姿：减少下肢肌肉紧张，+50%恢复速度
     // 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
-    static const float STANDING_RECOVERY_MULTIPLIER = 0.4; // 站姿恢复倍数（核心削弱，从1.0降到0.4）
+    static const float STANDING_RECOVERY_MULTIPLIER = 2.0; // 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
     static const float CROUCHING_RECOVERY_MULTIPLIER = 1.5; // 蹲姿恢复倍数（+50%，从1.3提升到1.5）
     static const float PRONE_RECOVERY_MULTIPLIER = 2.2; // 趴姿恢复倍数（+120%，从1.7提升到2.2）
     
@@ -408,4 +408,38 @@ class StaminaConstants
     
     // 室内检测参数
     static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
+    
+    // ==================== 高级环境因子常量（v2.14.0）====================
+    
+    // 降雨强度相关常量
+    static const float ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE = 0.5; // kg/秒，基础湿重增加速率
+    static const float ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT = 1.5; // 降雨强度指数（非线性增长）
+    static const float ENV_RAIN_INTENSITY_THRESHOLD = 0.01; // 降雨强度阈值（低于此值不计算湿重）
+    static const float ENV_RAIN_INTENSITY_HEAVY_THRESHOLD = 0.8; // 暴雨阈值（呼吸阻力触发）
+    static const float ENV_RAIN_INTENSITY_BREATHING_PENALTY = 0.05; // 暴雨时的无氧代谢增加比例
+    
+    // 风阻相关常量
+    static const float ENV_WIND_RESISTANCE_COEFF = 0.05; // 风阻系数（体力消耗权重）
+    static const float ENV_WIND_SPEED_THRESHOLD = 1.0; // m/s，风速阈值（低于此值忽略）
+    static const float ENV_WIND_TAILWIND_BONUS = 0.02; // 顺风时的消耗减少比例
+    static const float ENV_WIND_TAILWIND_SPEED_BONUS = 0.01; // 顺风时的速度加成比例
+    
+    // 路面泥泞度相关常量
+    static const float ENV_MUD_PENALTY_MAX = 0.4; // 最大泥泞惩罚（40%地形阻力增加）
+    static const float ENV_MUD_SLIPPERY_THRESHOLD = 0.3; // 积水阈值（高于此值触发滑倒风险）
+    static const float ENV_MUD_SPRINT_PENALTY = 0.1; // 泥泞时Sprint速度惩罚
+    static const float ENV_MUD_SLIP_RISK_BASE = 0.001; // 基础滑倒风险（每0.2秒）
+    
+    // 气温相关常量
+    static const float ENV_TEMPERATURE_HEAT_THRESHOLD = 30.0; // °C，热应激阈值
+    static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02; // 每高1度，恢复率降低2%
+    static const float ENV_TEMPERATURE_COLD_THRESHOLD = 0.0; // °C，冷应激阈值
+    static const float ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03; // 低温时静态消耗增加比例
+    static const float ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05; // 低温时恢复率降低比例
+    
+    // 地表湿度相关常量
+    static const float ENV_SURFACE_WETNESS_SOAK_RATE = 1.0; // kg/秒，趴下时的湿重增加速率
+    static const float ENV_SURFACE_WETNESS_THRESHOLD = 0.1; // 积水阈值（高于此值触发湿重增加）
+    static const float ENV_SURFACE_WETNESS_MARGINAL_DECAY_ADVANCE = 0.1; // 边际效应衰减提前触发比例
+    static const float ENV_SURFACE_WETNESS_PRONE_PENALTY = 0.15; // 湿地趴下时的恢复惩罚
 }

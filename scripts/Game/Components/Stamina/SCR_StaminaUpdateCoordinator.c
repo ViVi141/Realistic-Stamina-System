@@ -244,6 +244,7 @@ class StaminaUpdateCoordinator
     // @param exerciseTracker 运动跟踪器
     // @param fatigueSystem 疲劳系统
     // @param controller 角色控制器组件
+    // @param environmentFactor 环境因子模块引用（v2.14.0新增）
     // @return 新的目标体力值
     static float UpdateStaminaValue(
         SCR_CharacterStaminaComponent staminaComponent,
@@ -258,7 +259,8 @@ class StaminaUpdateCoordinator
         EncumbranceCache encumbranceCache,
         ExerciseTracker exerciseTracker,
         FatigueSystem fatigueSystem,
-        SCR_CharacterControllerComponent controller)
+        SCR_CharacterControllerComponent controller,
+        EnvironmentFactor environmentFactor = null)
     {
         if (!staminaComponent)
             return staminaPercent;
@@ -343,7 +345,8 @@ class StaminaUpdateCoordinator
                     currentWeightForRecovery,
                     staticDrainForRecovery,
                     false,
-                    stanceInt);
+                    stanceInt,
+                    environmentFactor);
                 
                 // ==================== 热应激对恢复的影响（模块化）====================
                 // 生理学依据：高温不仅让人动起来累，更让人休息不回来

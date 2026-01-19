@@ -78,6 +78,7 @@ class StaminaRecoveryCalculator
     // @param baseDrainRateByVelocity 基础消耗率（用于静态站立消耗）
     // @param disablePositiveRecovery 是否禁止正向恢复（例如：水中/踩水等场景）
     // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
+    // @param environmentFactor 环境因子模块引用（v2.14.0新增）
     // @return 恢复率（每0.2秒）
     static float CalculateRecoveryRate(
         float staminaPercent,
@@ -86,7 +87,8 @@ class StaminaRecoveryCalculator
         float currentWeightForRecovery,
         float baseDrainRateByVelocity,
         bool disablePositiveRecovery,
-        int stance = 0)
+        int stance = 0,
+        EnvironmentFactor environmentFactor = null)
     {
         float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
             staminaPercent, 
@@ -95,6 +97,34 @@ class StaminaRecoveryCalculator
             currentWeightForRecovery,
             stance
         );
+        
+        // ==================== v2.14.0 环境因子修正 ====================
+        
+        // 获取高级环境因子（如果环境因子模块存在）
+        float heatStressPenalty = 0.0;
+        float coldStressPenalty = 0.0;
+        float surfaceWetnessPenalty = 0.0;
+        
+        if (environmentFactor)
+        {
+            heatStressPenalty = environmentFactor.GetHeatStressPenalty();
+            coldStressPenalty = environmentFactor.GetColdStressPenalty();
+            surfaceWetnessPenalty = environmentFactor.GetSurfaceWetnessPenalty();
+        }
+        
+        // 应用热应激惩罚（降低恢复率）
+        recoveryRate = recoveryRate * (1.0 - heatStressPenalty);
+        
+        // 应用冷应激惩罚（降低恢复率）
+        recoveryRate = recoveryRate * (1.0 - coldStressPenalty);
+        
+        // 应用地表湿度惩罚（趴下时的恢复惩罚）
+        if (stance == 2) // 趴姿
+        {
+            recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
+        }
+        
+        // ==================== 原有恢复逻辑 ====================
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
         // 禁止任何正向恢复，避免“静止踩水回血”等不合理情况。
