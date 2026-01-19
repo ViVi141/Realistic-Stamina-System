@@ -2,6 +2,13 @@
 // 负责检测游泳状态、跟踪湿重效应、计算总湿重等
 // 模块化拆分：从 PlayerBase.c 提取的游泳相关逻辑
 
+// 湿重更新结果结构体
+class WetWeightUpdateResult
+{
+    float wetWeightStartTime;
+    float currentWetWeight;
+}
+
 class SwimmingStateManager
 {
     // ==================== 游泳状态检测 ====================
@@ -31,60 +38,74 @@ class SwimmingStateManager
     // @param wasSwimming 上一帧是否在游泳
     // @param isSwimming 当前是否在游泳
     // @param currentTime 当前世界时间
-    // @param wetWeightStartTime 湿重开始时间（输入/输出）
-    // @param currentWetWeight 当前湿重（输入/输出）
+    // @param wetWeightStartTime 湿重开始时间（输入）
+    // @param currentWetWeight 当前湿重（输入）
     // @param owner 角色实体（用于调试输出）
-    // @return 更新后的湿重值（kg）
-    static float UpdateWetWeight(
+    // @return 更新后的湿重结果（包含湿重开始时间和当前湿重）
+    static WetWeightUpdateResult UpdateWetWeight(
         bool wasSwimming, 
         bool isSwimming, 
         float currentTime,
-        ref float wetWeightStartTime,
-        ref float currentWetWeight,
+        float wetWeightStartTime,
+        float currentWetWeight,
         IEntity owner)
     {
         // 如果状态变化，输出调试信息
         if (isSwimming != wasSwimming && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
-            string oldState = wasSwimming ? "游泳" : "陆地";
-            string newState = isSwimming ? "游泳" : "陆地";
+            string oldState = "";
+            if (wasSwimming)
+                oldState = "游泳";
+            else
+                oldState = "陆地";
+            
+            string newState = "";
+            if (isSwimming)
+                newState = "游泳";
+            else
+                newState = "陆地";
+            
             string stateChange = string.Format("[游泳检测] 状态变化: %1 -> %2", oldState, newState);
             Print(stateChange);
         }
         
         // 更新湿重
+        WetWeightUpdateResult result = new WetWeightUpdateResult();
+        result.wetWeightStartTime = wetWeightStartTime;
+        result.currentWetWeight = currentWetWeight;
+        
         if (isSwimming)
         {
             // 正在游泳：重置湿重计时器
-            wetWeightStartTime = -1.0;
-            currentWetWeight = 0.0;
+            result.wetWeightStartTime = -1.0;
+            result.currentWetWeight = 0.0;
         }
         else if (wasSwimming && !isSwimming)
         {
             // 刚从水中上岸：启动湿重计时器
-            wetWeightStartTime = currentTime;
+            result.wetWeightStartTime = currentTime;
             // 使用固定湿重（7.5kg，介于5-10kg之间）
-            currentWetWeight = (StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0;
+            result.currentWetWeight = (StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0;
         }
-        else if (wetWeightStartTime > 0.0)
+        else if (result.wetWeightStartTime > 0.0)
         {
             // 检查湿重是否过期（30秒）
-            float wetWeightElapsed = currentTime - wetWeightStartTime;
+            float wetWeightElapsed = currentTime - result.wetWeightStartTime;
             if (wetWeightElapsed >= StaminaConstants.WET_WEIGHT_DURATION)
             {
                 // 湿重过期：清除湿重
-                wetWeightStartTime = -1.0;
-                currentWetWeight = 0.0;
+                result.wetWeightStartTime = -1.0;
+                result.currentWetWeight = 0.0;
             }
             else
             {
                 // 湿重逐渐减少（线性衰减）
                 float wetWeightRatio = 1.0 - (wetWeightElapsed / StaminaConstants.WET_WEIGHT_DURATION);
-                currentWetWeight = ((StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0) * wetWeightRatio;
+                result.currentWetWeight = ((StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0) * wetWeightRatio;
             }
         }
         
-        return currentWetWeight;
+        return result;
     }
     
     // ==================== 总湿重计算 ====================

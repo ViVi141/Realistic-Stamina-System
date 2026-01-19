@@ -2,6 +2,28 @@
 // 负责格式化并显示调试信息
 // 模块化拆分：从 PlayerBase.c 提取的调试显示逻辑
 
+// 调试信息参数结构体
+class DebugInfoParams
+{
+    IEntity owner;
+    string movementTypeStr;
+    float staminaPercent;
+    float baseSpeedMultiplier;
+    float encumbranceSpeedPenalty;
+    float finalSpeedMultiplier;
+    float gradePercent;
+    float slopeAngleDegrees;
+    bool isSprinting;
+    int currentMovementPhase;
+    float debugCurrentWeight;
+    float combatEncumbrancePercent;
+    TerrainDetector terrainDetector;
+    EnvironmentFactor environmentFactor;
+    float heatStressMultiplier;
+    float rainWeight;
+    float swimmingWetWeight;
+}
+
 class DebugDisplay
 {
     // ==================== 公共方法 ====================
@@ -208,7 +230,11 @@ class DebugDisplay
         
         // 获取室内状态
         bool isIndoorDebug = environmentFactor.IsIndoor();
-        string indoorStr = isIndoorDebug ? "室内" : "室外";
+        string indoorStr = "";
+        if (isIndoorDebug)
+            indoorStr = "室内";
+        else
+            indoorStr = "室外";
         
         // 获取游泳湿重
         string swimWetStr = "";
@@ -251,54 +277,76 @@ class DebugDisplay
     // @param heatStressMultiplier 热应激倍数
     // @param rainWeight 降雨湿重（kg）
     // @param swimmingWetWeight 游泳湿重（kg）
-    static void OutputDebugInfo(
-        IEntity owner,
-        string movementTypeStr,
-        float staminaPercent,
-        float baseSpeedMultiplier,
-        float encumbranceSpeedPenalty,
-        float finalSpeedMultiplier,
-        float gradePercent,
-        float slopeAngleDegrees,
-        bool isSprinting,
-        int currentMovementPhase,
-        float debugCurrentWeight,
-        float combatEncumbrancePercent,
-        TerrainDetector terrainDetector,
-        EnvironmentFactor environmentFactor,
-        float heatStressMultiplier,
-        float rainWeight,
-        float swimmingWetWeight)
+    static void OutputDebugInfo(DebugInfoParams params)
     {
         // 只对本地控制的玩家输出
-        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+        if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         
         // 格式化各个信息字符串
-        string slopeInfo = FormatSlopeInfo(slopeAngleDegrees);
-        string sprintInfo = FormatSprintInfo(isSprinting, currentMovementPhase);
-        string encumbranceInfo = FormatEncumbranceInfo(debugCurrentWeight, combatEncumbrancePercent);
+        string slopeInfo = FormatSlopeInfo(params.slopeAngleDegrees);
+        string sprintInfo = FormatSprintInfo(params.isSprinting, params.currentMovementPhase);
+        string encumbranceInfo = FormatEncumbranceInfo(params.debugCurrentWeight, params.combatEncumbrancePercent);
         
         // 获取地形信息
         float currentTimeForDebug = GetGame().GetWorld().GetWorldTime();
-        string terrainInfo = FormatTerrainInfo(terrainDetector, owner, currentTimeForDebug);
+        string terrainInfo = FormatTerrainInfo(params.terrainDetector, params.owner, currentTimeForDebug);
         
         // 获取环境因子信息
-        string envInfo = FormatEnvironmentInfo(environmentFactor, heatStressMultiplier, rainWeight, swimmingWetWeight);
+        string envInfo = FormatEnvironmentInfo(params.environmentFactor, params.heatStressMultiplier, params.rainWeight, params.swimmingWetWeight);
         
         // 构建并输出调试消息
         string debugMessage = BuildDebugMessage(
-            movementTypeStr,
-            staminaPercent,
-            baseSpeedMultiplier,
-            encumbranceSpeedPenalty,
-            finalSpeedMultiplier,
-            gradePercent,
+            params.movementTypeStr,
+            params.staminaPercent,
+            params.baseSpeedMultiplier,
+            params.encumbranceSpeedPenalty,
+            params.finalSpeedMultiplier,
+            params.gradePercent,
             slopeInfo,
             sprintInfo,
             encumbranceInfo,
             terrainInfo);
         
         Print(debugMessage + envInfo);
+    }
+    
+    // 输出状态信息（每秒一次）
+    // @param owner 角色实体
+    // @param lastSecondSpeed 上一秒的速度（m/s）
+    // @param lastStaminaPercent 上一秒的体力百分比
+    // @param lastSpeedMultiplier 上一秒的速度倍数
+    // @param isSwimming 是否在游泳
+    // @param isSprinting 是否正在Sprint
+    // @param currentMovementPhase 当前移动阶段
+    // @param controller 角色控制器组件
+    static void OutputStatusInfo(
+        IEntity owner,
+        float lastSecondSpeed,
+        float lastStaminaPercent,
+        float lastSpeedMultiplier,
+        bool isSwimming,
+        bool isSprinting,
+        int currentMovementPhase,
+        SCR_CharacterControllerComponent controller)
+    {
+        // 只对本地控制的玩家输出
+        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 格式化移动类型
+        string movementTypeStr = FormatMovementType(isSprinting, currentMovementPhase);
+        if (isSwimming)
+            movementTypeStr = "Swim";
+        
+        // 构建状态消息
+        string statusMessage = string.Format(
+            "[状态] 速度: %1 m/s | 体力: %2% | 速度倍数: %3x | 类型: %4",
+            Math.Round(lastSecondSpeed * 10.0) / 10.0,
+            Math.Round(lastStaminaPercent * 100.0),
+            Math.Round(lastSpeedMultiplier * 100.0) / 100.0,
+            movementTypeStr);
+        
+        Print(statusMessage);
     }
 }

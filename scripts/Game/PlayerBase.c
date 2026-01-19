@@ -358,12 +358,16 @@ modded class SCR_CharacterControllerComponent
         // 解决：使用位置差分测速（每 0.2 秒一次），得到更可靠的速度向量
         // 模块化：使用 StaminaUpdateCoordinator 计算速度
         float dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
-        float currentSpeed = StaminaUpdateCoordinator.CalculateCurrentSpeed(
+        SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
             owner,
             m_vLastPositionSample,
             m_bHasLastPositionSample,
             m_vComputedVelocity,
             dtSeconds);
+        float currentSpeed = speedResult.currentSpeed;
+        m_vLastPositionSample = speedResult.lastPositionSample;
+        m_bHasLastPositionSample = speedResult.hasLastPositionSample;
+        m_vComputedVelocity = speedResult.computedVelocity;
         
         // ==================== 性能优化：使用缓存的当前重量（模块化）====================
         // 使用缓存的当前重量（避免重复查找组件）
@@ -388,13 +392,15 @@ modded class SCR_CharacterControllerComponent
             m_bSwimmingVelocityDebugPrinted = false;
         
         // 更新湿重（模块化）
-        m_fCurrentWetWeight = SwimmingStateManager.UpdateWetWeight(
+        WetWeightUpdateResult wetWeightResult = SwimmingStateManager.UpdateWetWeight(
             m_bWasSwimming,
             isSwimming,
             currentTime,
             m_fWetWeightStartTime,
             m_fCurrentWetWeight,
             owner);
+        m_fWetWeightStartTime = wetWeightResult.wetWeightStartTime;
+        m_fCurrentWetWeight = wetWeightResult.currentWetWeight;
         
         // 更新上一帧状态
         m_bWasSwimming = isSwimming;
@@ -536,11 +542,14 @@ modded class SCR_CharacterControllerComponent
         // 注意：由于几乎没有完全平地的地形，所以始终使用包含坡度的 Pandolf 模型
         
         // 获取坡度信息（模块化：使用 SpeedCalculator 计算坡度百分比）
-        float gradePercent = SpeedCalculator.CalculateGradePercent(
+        float slopeAngleDegrees = 0.0; // 初始化坡度角度
+        GradeCalculationResult gradeResult = SpeedCalculator.CalculateGradePercent(
             this,
             currentSpeed,
             m_pJumpVaultDetector,
             slopeAngleDegrees);
+        float gradePercent = gradeResult.gradePercent;
+        slopeAngleDegrees = gradeResult.slopeAngleDegrees;
         
         // ==================== 地形系数获取（模块化）====================
         // 地形系数：铺装路面 1.0 → 深雪 2.1-3.0
@@ -554,7 +563,7 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
-        float baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateBaseDrainRate(
+        BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
             currentWeight,
@@ -564,6 +573,8 @@ modded class SCR_CharacterControllerComponent
             m_vComputedVelocity,
             m_bSwimmingVelocityDebugPrinted,
             owner);
+        float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
+        m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         
         // ==================== 体力消耗计算（模块化）====================
         // 游泳时不需要应用姿态、坡度、地形等修正（已在游泳模型中考虑）
@@ -586,6 +597,10 @@ modded class SCR_CharacterControllerComponent
         // 游泳时负重影响已在游泳模型中考虑，不需要额外应用
         if (useSwimmingModel)
             encumbranceStaminaDrainMultiplier = 1.0;
+        
+        // 获取当前移动状态（用于计算冲刺倍数）
+        bool isSprinting = IsSprinting();
+        int currentMovementPhase = GetCurrentMovementPhase();
         
         float sprintMultiplier = 1.0;
         if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
@@ -626,10 +641,10 @@ modded class SCR_CharacterControllerComponent
             baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
         
         // ==================== EPOC（过量耗氧）延迟检测（模块化）====================
-        // 注意：currentWorldTime已在上面声明（第381行），这里重用
-        // 游泳时跳过 EPOC：避免水面漂移/抖动导致“停下→EPOC”误触发
+        // 游泳时跳过 EPOC：避免水面漂移/抖动导致"停下→EPOC"误触发
         if (m_pEpocState && !useSwimmingModel)
         {
+            float currentWorldTime = GetGame().GetWorld().GetWorldTime();
             bool isInEpocDelay = StaminaRecoveryCalculator.UpdateEpocDelay(
                 m_pEpocState,
                 currentSpeed,
@@ -713,24 +728,25 @@ modded class SCR_CharacterControllerComponent
                 string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
                 
                 // 输出完整调试信息（模块化）
-                DebugDisplay.OutputDebugInfo(
-                    owner,
-                    movementTypeStr,
-                    staminaPercent,
-                    baseSpeedMultiplier,
-                    encumbranceSpeedPenalty,
-                    finalSpeedMultiplier,
-                    gradePercent,
-                    slopeAngleDegrees,
-                    isSprinting,
-                    currentMovementPhase,
-                    debugCurrentWeight,
-                    combatEncumbrancePercent,
-                    m_pTerrainDetector,
-                    m_pEnvironmentFactor,
-                    heatStressMultiplier,
-                    rainWeight,
-                    m_fCurrentWetWeight);
+                DebugInfoParams debugParams = new DebugInfoParams();
+                debugParams.owner = owner;
+                debugParams.movementTypeStr = movementTypeStr;
+                debugParams.staminaPercent = staminaPercent;
+                debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
+                debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
+                debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
+                debugParams.gradePercent = gradePercent;
+                debugParams.slopeAngleDegrees = slopeAngleDegrees;
+                debugParams.isSprinting = isSprinting;
+                debugParams.currentMovementPhase = currentMovementPhase;
+                debugParams.debugCurrentWeight = debugCurrentWeight;
+                debugParams.combatEncumbrancePercent = combatEncumbrancePercent;
+                debugParams.terrainDetector = m_pTerrainDetector;
+                debugParams.environmentFactor = m_pEnvironmentFactor;
+                debugParams.heatStressMultiplier = heatStressMultiplier;
+                debugParams.rainWeight = rainWeight;
+                debugParams.swimmingWetWeight = m_fCurrentWetWeight;
+                DebugDisplay.OutputDebugInfo(debugParams);
             }
         }
         

@@ -2,6 +2,13 @@
 // 负责计算基础速度倍数、移动类型处理、Sprint速度计算等
 // 模块化拆分：从 PlayerBase.c 提取的速度计算逻辑
 
+// 坡度计算结果结构体
+class GradeCalculationResult
+{
+    float gradePercent;
+    float slopeAngleDegrees;
+}
+
 class SpeedCalculator
 {
     // ==================== 公共方法 ====================
@@ -130,15 +137,17 @@ class SpeedCalculator
     // @param controller 角色控制器组件
     // @param currentSpeed 当前速度（m/s）
     // @param jumpVaultDetector 跳跃检测器（可选）
-    // @param slopeAngleDegrees 坡度角度（ref参数，会被更新）
-    // @return 坡度百分比（例如，5% = 5.0）
-    static float CalculateGradePercent(
+    // @param slopeAngleDegrees 坡度角度（输入，通常为0.0）
+    // @return 坡度计算结果（包含坡度百分比和角度）
+    static GradeCalculationResult CalculateGradePercent(
         SCR_CharacterControllerComponent controller,
         float currentSpeed,
         JumpVaultDetector jumpVaultDetector,
-        ref float slopeAngleDegrees)
+        float slopeAngleDegrees)
     {
-        float gradePercent = 0.0;
+        GradeCalculationResult result = new GradeCalculationResult();
+        result.gradePercent = 0.0;
+        result.slopeAngleDegrees = slopeAngleDegrees;
         
         // 检查是否在攀爬或跳跃状态
         bool isClimbingForSlope = controller.IsClimbing();
@@ -150,13 +159,13 @@ class SpeedCalculator
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
             // 获取坡度角度
-            slopeAngleDegrees = GetSlopeAngle(controller);
+            result.slopeAngleDegrees = GetSlopeAngle(controller);
             
             // 将坡度角度（度）转换为坡度百分比
             // 坡度百分比 = tan(坡度角度) × 100
-            gradePercent = Math.Tan(slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
+            result.gradePercent = Math.Tan(result.slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
         }
         
-        return gradePercent;
+        return result;
     }
 }

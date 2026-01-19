@@ -2,6 +2,22 @@
 // 负责协调体力消耗和恢复的计算流程
 // 模块化拆分：从 PlayerBase.c 提取的体力更新协调逻辑
 
+// 速度计算结果结构体
+class SpeedCalculationResult
+{
+    float currentSpeed;
+    vector lastPositionSample;
+    bool hasLastPositionSample;
+    vector computedVelocity;
+}
+
+// 基础消耗率计算结果结构体
+class BaseDrainRateResult
+{
+    float baseDrainRate;
+    bool swimmingVelocityDebugPrinted;
+}
+
 class StaminaUpdateCoordinator
 {
     // ==================== 速度计算和更新 ====================
@@ -80,16 +96,16 @@ class StaminaUpdateCoordinator
     
     // 计算当前速度（使用位置差分测速，适用于游泳）
     // @param owner 角色实体
-    // @param lastPositionSample 上一帧位置（ref参数，会被更新）
-    // @param hasLastPositionSample 是否有上一帧位置（ref参数，会被更新）
-    // @param computedVelocity 计算得到的速度（ref参数，会被更新）
+    // @param lastPositionSample 上一帧位置（输入）
+    // @param hasLastPositionSample 是否有上一帧位置（输入）
+    // @param computedVelocity 计算得到的速度（输入，通常为vector.Zero）
     // @param dtSeconds 时间步长（秒）
-    // @return 当前水平速度（m/s）
-    static float CalculateCurrentSpeed(
+    // @return 速度计算结果（包含速度、位置、标志和速度向量）
+    static SpeedCalculationResult CalculateCurrentSpeed(
         IEntity owner,
-        ref vector lastPositionSample,
-        ref bool hasLastPositionSample,
-        ref vector computedVelocity,
+        vector lastPositionSample,
+        bool hasLastPositionSample,
+        vector computedVelocity,
         float dtSeconds)
     {
         vector currentPos = owner.GetOrigin();
@@ -107,16 +123,18 @@ class StaminaUpdateCoordinator
             }
         }
         
-        lastPositionSample = currentPos;
-        hasLastPositionSample = true;
-        computedVelocity = velocity;
-        
         // 计算水平速度
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0; // 忽略垂直速度
         float currentSpeed = horizontalVelocity.Length();
         
-        return currentSpeed;
+        SpeedCalculationResult result = new SpeedCalculationResult();
+        result.currentSpeed = currentSpeed;
+        result.lastPositionSample = currentPos;
+        result.hasLastPositionSample = true;
+        result.computedVelocity = velocity;
+        
+        return result;
     }
     
     // ==================== 基础消耗率计算 ====================
@@ -129,10 +147,10 @@ class StaminaUpdateCoordinator
     // @param gradePercent 坡度百分比
     // @param terrainFactor 地形系数
     // @param computedVelocity 计算得到的速度向量（用于游泳）
-    // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（ref参数）
+    // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（输入）
     // @param owner 角色实体（用于调试）
-    // @return 基础消耗率（每0.2秒）
-    static float CalculateBaseDrainRate(
+    // @return 基础消耗率结果（包含消耗率和调试标志）
+    static BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
         float currentSpeed,
         float currentWeight,
@@ -140,7 +158,7 @@ class StaminaUpdateCoordinator
         float gradePercent,
         float terrainFactor,
         vector computedVelocity,
-        ref bool swimmingVelocityDebugPrinted,
+        bool swimmingVelocityDebugPrinted,
         IEntity owner)
     {
         float baseDrainRate = 0.0;
@@ -204,7 +222,10 @@ class StaminaUpdateCoordinator
             }
         }
         
-        return baseDrainRate;
+        BaseDrainRateResult result = new BaseDrainRateResult();
+        result.baseDrainRate = baseDrainRate;
+        result.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
+        return result;
     }
     
     // ==================== 体力更新协调 ====================
