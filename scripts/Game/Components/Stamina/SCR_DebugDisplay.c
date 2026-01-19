@@ -26,6 +26,10 @@ class DebugInfoParams
 
 class DebugDisplay
 {
+    // ==================== 静态变量 ====================
+    protected static float m_fNextDebugLogTime = 0.0; // 下次调试日志时间
+    protected static float m_fNextStatusLogTime = 0.0; // 下次状态日志时间
+    
     // ==================== 公共方法 ====================
     
     // 格式化移动类型字符串
@@ -287,6 +291,19 @@ class DebugDisplay
     // @param swimmingWetWeight 游泳湿重（kg）
     static void OutputDebugInfo(DebugInfoParams params)
     {
+        // ==================== 配置门禁检查 ====================
+        // 获取配置实例
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        
+        // 如果开关没开，直接退出，性能消耗极低
+        if (!settings || !settings.m_bDebugLogEnabled)
+            return;
+        
+        // 检查时间间隔
+        float currentTime = GetGame().GetWorld().GetWorldTime();
+        if (currentTime < m_fNextDebugLogTime)
+            return;
+        
         // 只对本地控制的玩家输出
         if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
@@ -317,6 +334,9 @@ class DebugDisplay
             terrainInfo);
         
         Print(debugMessage + envInfo);
+        
+        // 更新下次日志时间
+        m_fNextDebugLogTime = currentTime + (settings.m_iDebugUpdateInterval / 1000.0);
     }
     
     // 输出状态信息（每秒一次）
@@ -338,6 +358,19 @@ class DebugDisplay
         int currentMovementPhase,
         SCR_CharacterControllerComponent controller)
     {
+        // ==================== 配置门禁检查 ====================
+        // 获取配置实例
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        
+        // 如果开关没开，直接退出，性能消耗极低
+        if (!settings || !settings.m_bDebugLogEnabled)
+            return;
+        
+        // 检查时间间隔
+        float currentTime = GetGame().GetWorld().GetWorldTime();
+        if (currentTime < m_fNextStatusLogTime)
+            return;
+        
         // 只对本地控制的玩家输出
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
@@ -356,5 +389,8 @@ class DebugDisplay
             movementTypeStr);
         
         Print(statusMessage);
+        
+        // 更新下次日志时间（状态信息每秒输出一次）
+        m_fNextStatusLogTime = currentTime + 1.0;
     }
 }

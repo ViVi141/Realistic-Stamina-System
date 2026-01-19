@@ -80,6 +80,13 @@ modded class SCR_CharacterControllerComponent
         if (!owner)
             return;
         
+        // ==================== 初始化配置系统 ====================
+        // 仅在服务器端加载配置
+        if (Replication.IsServer())
+        {
+            SCR_RSS_ConfigManager.Load();
+        }
+        
         // 获取体力组件引用
         CharacterStaminaComponent staminaComp = GetStaminaComponent();
         m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(staminaComp);
@@ -337,7 +344,7 @@ modded class SCR_CharacterControllerComponent
                         baseDrainRateByVelocity,
                         false, // 不禁用正向恢复
                         0, // 站立姿态
-                        m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
+                        m_pEnvironmentFactor); // v2.15.0：传递环境因子模块
                     
                     // 更新体力值
                     float newStamina = Math.Clamp(currentStamina + recoveryRate, 0.0, 1.0);

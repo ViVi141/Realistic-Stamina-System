@@ -5,6 +5,47 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.15.0] - 2026-01-20
+
+### 新增
+- **配置系统（Config System）**
+  - 使用 `[BaseContainerProps]` 和 `[Attribute]` 属性实现自动序列化
+  - 使用官方的 `SCR_JsonLoadContext` 和 `SCR_JsonSaveContext`
+  - 配置文件路径：`$profile:RealisticStaminaSystem.json`
+  - 支持热重载（无需重启服务器）
+- **调试日志门禁系统（Debug Log Gate）**
+  - 零开销门禁：调试关闭时完全不执行字符串格式化
+  - 时间间隔控制：防止日志刷屏
+  - 工作台模式自动开启调试：`#ifdef WORKBENCH` 宏
+- **配置管理器（SCR_RSS_ConfigManager）**
+  - 单例模式，自动加载/保存配置
+  - 内置配置验证，自动检测无效配置值
+  - 支持配置热重载
+- **配置类（SCR_RSS_Settings）**
+  - 包含所有可配置参数（调试、体力、移动、环境、高级、性能）
+  - 支持中英双语注释
+  - 使用 `[Attribute]` 属性定义默认值和UI控件类型
+- **常量桥接方法（SCR_StaminaConstants.c）**
+  - 15个静态方法用于获取配置值
+  - 工作台模式自动开启调试
+
+### 改进
+- **性能优化**
+  - 配置只加载一次，避免重复IO
+  - 调试关闭时零开销
+  - 使用配置中的刷新间隔控制日志频率
+- **API兼容性**
+  - 使用 `Replication.IsServer()` 判断服务器端
+  - 移除 `FileIO` 使用，直接使用JsonLoadContext/JsonSaveContext
+
+### 代码统计
+- **SCR_RSS_Settings.c**: 新建配置类（约80行）
+- **SCR_RSS_ConfigManager.c**: 新建配置管理器（约160行）
+- **SCR_StaminaConstants.c**: 新增15个配置桥接方法（约120行）
+- **SCR_DebugDisplay.c**: 集成配置门禁系统（约20行）
+- **PlayerBase.c**: 集成配置初始化（约15行）
+- **RealisticStaminaSystem.json**: 新建示例配置文件（约20行）
+
 ## [2.14.1] - 2026-01-20
 
 ### 新增

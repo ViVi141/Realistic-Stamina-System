@@ -14,7 +14,7 @@ class EnvironmentFactor
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
     protected IEntity m_pCachedOwner; // 缓存的角色实体引用（用于室内检测）
     
-    // ==================== 高级环境因子状态变量（v2.14.0）====================
+    // ==================== 高级环境因子状态变量（v2.15.0）====================
     protected float m_fCachedRainIntensity = 0.0; // 缓存的降雨强度（0.0-1.0）
     protected float m_fCachedWindSpeed = 0.0; // 缓存的风速（m/s）
     protected float m_fCachedWindDirection = 0.0; // 缓存的风向（度）
@@ -55,7 +55,7 @@ class EnvironmentFactor
         m_pCachedWeatherManager = null;
         m_pCachedOwner = owner;
         
-        // ==================== 高级环境因子初始化（v2.14.0）====================
+        // ==================== 高级环境因子初始化（v2.15.0）====================
         m_fCachedRainIntensity = 0.0;
         m_fCachedWindSpeed = 0.0;
         m_fCachedWindDirection = 0.0;

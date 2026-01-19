@@ -409,7 +409,7 @@ class StaminaConstants
     // 室内检测参数
     static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
     
-    // ==================== 高级环境因子常量（v2.14.0）====================
+    // ==================== 高级环境因子常量（v2.15.0）====================
     
     // 降雨强度相关常量
     static const float ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE = 0.5; // kg/秒，基础湿重增加速率
@@ -442,4 +442,181 @@ class StaminaConstants
     static const float ENV_SURFACE_WETNESS_THRESHOLD = 0.1; // 积水阈值（高于此值触发湿重增加）
     static const float ENV_SURFACE_WETNESS_MARGINAL_DECAY_ADVANCE = 0.1; // 边际效应衰减提前触发比例
     static const float ENV_SURFACE_WETNESS_PRONE_PENALTY = 0.15; // 湿地趴下时的恢复惩罚
+    
+    // ==================== 配置系统桥接方法 ====================
+    
+    // 获取调试状态的快捷静态方法
+    static bool IsDebugEnabled()
+    {
+        // 工作台模式下强制开启以便开发
+        #ifdef WORKBENCH
+            return true;
+        #endif
+        
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bDebugLogEnabled;
+        
+        return false;
+    }
+    
+    // 获取详细日志状态
+    static bool IsVerboseLoggingEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bVerboseLogging;
+        
+        return false;
+    }
+    
+    // 获取调试信息刷新频率
+    static int GetDebugUpdateInterval()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_iDebugUpdateInterval;
+        
+        return 5000; // 默认5秒
+    }
+    
+    // 获取体力消耗倍率
+    static float GetStaminaDrainMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_fStaminaDrainMultiplier;
+        
+        return 1.0; // 默认值
+    }
+    
+    // 获取体力恢复倍率
+    static float GetStaminaRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_fStaminaRecoveryMultiplier;
+        
+        return 1.0; // 默认值
+    }
+    
+    // 获取负重速度惩罚倍率
+    static float GetEncumbranceSpeedPenaltyMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_fEncumbranceSpeedPenaltyMultiplier;
+        
+        return 1.0; // 默认值
+    }
+    
+    // 获取Sprint速度倍率
+    static float GetSprintSpeedMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_fSprintSpeedMultiplier;
+        
+        return 1.3; // 默认值
+    }
+    
+    // 获取Sprint体力消耗倍率
+    static float GetSprintStaminaDrainMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_fSprintStaminaDrainMultiplier;
+        
+        return 3.0; // 默认值
+    }
+    
+    // 检查是否启用热应激系统
+    static bool IsHeatStressEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableHeatStress;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用降雨湿重系统
+    static bool IsRainWeightEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableRainWeight;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用风阻系统
+    static bool IsWindResistanceEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableWindResistance;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用泥泞惩罚系统
+    static bool IsMudPenaltyEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableMudPenalty;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用疲劳积累系统
+    static bool IsFatigueSystemEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableFatigueSystem;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用代谢适应系统
+    static bool IsMetabolicAdaptationEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableMetabolicAdaptation;
+        
+        return true; // 默认启用
+    }
+    
+    // 检查是否启用室内检测系统
+    static bool IsIndoorDetectionEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bEnableIndoorDetection;
+        
+        return true; // 默认启用
+    }
+    
+    // 获取地形检测更新间隔
+    static int GetTerrainUpdateInterval()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_iTerrainUpdateInterval;
+        
+        return 5000; // 默认5秒
+    }
+    
+    // 获取环境因子更新间隔
+    static int GetEnvironmentUpdateInterval()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_iEnvironmentUpdateInterval;
+        
+        return 5000; // 默认5秒
+    }
 }

@@ -1341,6 +1341,34 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
+- **v2.15.0** (当前版本) - 配置系统（Reforger官方标准）
+  - 新增配置系统（Config System）：
+    - 使用 `[BaseContainerProps]` 和 `[Attribute]` 属性实现自动序列化
+    - 使用官方的 `SCR_JsonLoadContext` 和 `SCR_JsonSaveContext`
+    - 配置文件路径：`$profile:RealisticStaminaSystem.json`
+    - 支持热重载（无需重启服务器）
+  - 新增调试日志门禁系统（Debug Log Gate）：
+    - 零开销门禁：调试关闭时完全不执行字符串格式化
+    - 时间间隔控制：防止日志刷屏
+    - 工作台模式自动开启调试：`#ifdef WORKBENCH` 宏
+  - 新增配置管理器（SCR_RSS_ConfigManager）：
+    - 单例模式，自动加载/保存配置
+    - 内置配置验证，自动检测无效配置值
+    - 支持配置热重载
+  - 新增配置类（SCR_RSS_Settings）：
+    - 包含所有可配置参数（调试、体力、移动、环境、高级、性能）
+    - 支持中英双语注释
+    - 使用 `[Attribute]` 属性定义默认值和UI控件类型
+  - 优化性能：
+    - 配置只加载一次，避免重复IO
+    - 调试关闭时零开销
+    - 使用配置中的刷新间隔控制日志频率
+  - 改进API兼容性：
+    - 使用 `Replication.IsServer()` 判断服务器端
+    - 移除 `FileIO` 使用，直接使用JsonLoadContext/JsonSaveContext
+  - 更新常量桥接方法（SCR_StaminaConstants.c）：
+    - 15个静态方法用于获取配置值
+    - 工作台模式自动开启调试
 - **v2.14.1** (当前版本) - 室内检测系统
   - 新增室内检测系统（Indoor Detection System）：
     - 使用建筑物边界框检测角色是否在室内
@@ -1434,6 +1462,12 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+## Debug Config
+
+**Debug Config**: Server admins can enable detailed logs via `RealisticStaminaSystem.json` in server profile folder.
+
+**调试配置**：服务器管理员可以通过服务器Profile文件夹中的 `RealisticStaminaSystem.json` 文件启用详细日志。
 
 ## 许可证
 
