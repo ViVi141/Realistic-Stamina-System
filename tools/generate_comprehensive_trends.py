@@ -7,135 +7,31 @@ Realistic Stamina System (RSS) - 综合趋势图生成器
 """
 
 import numpy as np
+import sys
+import os
+
+# Headless-friendly backend (do not require GUI)
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
+
+# 添加当前目录到路径，以便导入常量模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stamina_constants import *
 
 # 设置中文字体（用于图表）
 rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 rcParams['axes.unicode_minus'] = False
 
-# ==================== 游戏配置常量 ====================
-GAME_MAX_SPEED = 5.2  # m/s，游戏最大速度
-UPDATE_INTERVAL = 0.2  # 秒
+# Whether to show figures interactively (default off; scripts are for PNG generation)
+SHOW_PLOTS = False
 
-# ==================== 医学模型参数（双稳态-应激性能模型，基于体重的真实模型）====================
-# 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
-TARGET_RUN_SPEED = 3.7  # m/s
-TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED  # 0.7115
-
-# 意志力平台期阈值（体力百分比）
-# 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
-WILLPOWER_THRESHOLD = 0.25  # 25%
-
-# 平滑过渡起点（体力百分比）
-# 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
-# 将25%设为"疲劳临界区"的起点，而不是终点
-SMOOTH_TRANSITION_START = 0.25  # 25%（疲劳临界区起点）
-SMOOTH_TRANSITION_END = 0.05  # 5%，平滑过渡结束点（真正的力竭点）
-
-# 跛行速度倍数（最低速度）
-MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED  # 1.0 m/s / 5.2 = 0.1923
-
-# 旧模型参数（已废弃，保留用于兼容性）
-TARGET_SPEED_MULTIPLIER = 0.920  # 已废弃
-STAMINA_EXPONENT = 0.6  # 已废弃（双稳态模型不使用）
-
-# 负重参数
-ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（40%体重负重时，速度下降20%）
-ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重影响指数（1.0 = 线性）
-ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 基于体重的体力消耗系数（40%体重负重时，消耗增加60%）
-MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数（兼容性保留）
-
-# ==================== 角色特征常量 ====================
-CHARACTER_WEIGHT = 90.0  # kg，角色体重（游戏内标准体重为90kg）
-CHARACTER_AGE = 22.0  # 岁，角色年龄（基于ACFT标准，22-26岁男性）
-
-# ==================== 健康状态/体能水平常量 ====================
-# 基于个性化运动建模（Palumbo et al., 2018）
-# 0.0 = 未训练（untrained）
-# 0.5 = 普通健康（average fitness）
-# 1.0 = 训练有素（well-trained）- 当前设置
-FITNESS_LEVEL = 1.0  # 训练有素（well-trained）
-
-# 健康状态对能量效率的影响系数
-# 训练有素者（fitness=1.0）基础消耗减少18%
-FITNESS_EFFICIENCY_COEFF = 0.35  # 35%效率提升（训练有素时，优化后）
-
-# 健康状态对恢复速度的影响系数
-# 训练有素者（fitness=1.0）恢复速度增加25%
-FITNESS_RECOVERY_COEFF = 0.25  # 25%恢复速度提升（训练有素时）
-
-# ==================== 运动持续时间影响（累积疲劳）参数 ====================
-# 基于个性化运动建模（Palumbo et al., 2018）
-FATIGUE_ACCUMULATION_COEFF = 0.015  # 每分钟增加1.5%消耗（基于文献：30分钟增加约45%）
-FATIGUE_START_TIME_MINUTES = 5.0  # 疲劳开始累积的时间（分钟），前5分钟无疲劳累积
-FATIGUE_MAX_FACTOR = 2.0  # 最大疲劳因子（2.0倍，即消耗最多增加100%）
-
-# ==================== 代谢适应参数（Metabolic Adaptation）====================
-# 基于个性化运动建模（Palumbo et al., 2018）
-AEROBIC_THRESHOLD = 0.6  # 有氧阈值（60% VO2max）
-ANAEROBIC_THRESHOLD = 0.8  # 无氧阈值（80% VO2max）
-AEROBIC_EFFICIENCY_FACTOR = 0.9  # 有氧区效率因子（90%，更高效）
-MIXED_EFFICIENCY_FACTOR = 1.0  # 混合区效率因子（100%，标准）
-ANAEROBIC_EFFICIENCY_FACTOR = 1.2  # 无氧区效率因子（120%，低效但高功率）
-
-# ==================== 体力消耗参数（基于精确 Pandolf 模型）====================
-BASE_DRAIN_RATE = 0.00004  # 每0.2秒，基础消耗
-SPEED_LINEAR_DRAIN_COEFF = 0.0001  # 速度线性项系数
-SPEED_SQUARED_DRAIN_COEFF = 0.0001  # 速度平方项系数（优化后降低）
-ENCUMBRANCE_BASE_DRAIN_COEFF = 0.001  # 负重基础消耗系数
-ENCUMBRANCE_SPEED_DRAIN_COEFF = 0.0002  # 负重速度交互项系数
-
-# ==================== 多维度恢复模型参数 ====================
-# 基于个性化运动建模（Palumbo et al., 2018）和生理学恢复模型
-BASE_RECOVERY_RATE = 0.00015  # 基础恢复率（每0.2秒，在50%体力时的恢复率）
-RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数（体力越低恢复越快）
-FAST_RECOVERY_DURATION_MINUTES = 2.0  # 快速恢复期持续时间（分钟）
-FAST_RECOVERY_MULTIPLIER = 1.5  # 快速恢复期恢复速度倍数
-SLOW_RECOVERY_START_MINUTES = 10.0  # 慢速恢复期开始时间（分钟）
-SLOW_RECOVERY_MULTIPLIER = 0.7  # 慢速恢复期恢复速度倍数
-AGE_RECOVERY_COEFF = 0.2  # 年龄恢复系数
-AGE_REFERENCE = 30.0  # 年龄参考值（30岁为标准）
-FATIGUE_RECOVERY_PENALTY = 0.3  # 疲劳恢复惩罚系数（最大30%恢复速度减少）
-FATIGUE_RECOVERY_DURATION_MINUTES = 20.0  # 疲劳完全恢复所需时间（分钟）
-
-# 兼容旧代码
-RECOVERY_RATE = BASE_RECOVERY_RATE  # 每0.2秒
-
-# ==================== Sprint（冲刺）相关参数 ====================
-# Sprint是类似于追击或逃命的动作，追求速度，同时体力大幅消耗
-# v2.6.0优化：从15%提升到30%，确保负重状态下仍有明显速度差距
-SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%（v2.6.0优化，从15%提升）
-SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
-# v2.6.0优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍（v2.6.0优化，从2.5倍提升）
-
-# ==================== 负重配置常量 ====================
-BASE_WEIGHT = 1.36  # kg，基准负重（基础物品重量：衣服、鞋子等）
-MAX_ENCUMBRANCE_WEIGHT = 40.5  # kg，最大负重（包含基准负重）
-COMBAT_ENCUMBRANCE_WEIGHT = 30.0  # kg，战斗负重（包含基准负重，标准基准）
-
-# ==================== Pandolf 模型参数 ====================
-# 完整的 Pandolf 能量消耗模型（Pandolf et al., 1977）
-# 公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
-# 其中：
-# - E = 能量消耗率（W/kg）
-# - M = 总重量（身体重量 + 负重）
-# - V = 速度（m/s）
-# - G = 坡度（坡度百分比，0 = 平地，正数 = 上坡，负数 = 下坡）
-# 注意：坡度项 G·(0.23 + 1.34·V²) 已直接整合在公式中
-
-PANDOLF_BASE_COEFF = 2.7  # 基础系数（W/kg）
-PANDOLF_VELOCITY_COEFF = 3.2  # 速度系数（W/kg）
-PANDOLF_VELOCITY_OFFSET = 0.7  # 速度偏移（m/s）
-PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
-PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
-
-# 参考体重（用于计算相对重量倍数）
-REFERENCE_WEIGHT = 90.0  # kg（用于 Pandolf 模型的参考体重，与角色基准体重一致）
-
-# 能量到体力的转换系数
-ENERGY_TO_STAMINA_COEFF = 0.000035  # 1 W/kg ≈ 0.000035 %/s（优化后，支持16-18分钟连续运行）
+# ==================== 所有常量已从stamina_constants导入 ====================
+# 兼容性保留（用于向后兼容）
+BASE_DRAIN_RATE = RUN_DRAIN_PER_TICK  # 基础消耗率（每0.2秒）
+RECOVERY_RATE = BASE_RECOVERY_RATE  # 恢复率（每0.2秒）
+TARGET_SPEED_MULTIPLIER = TARGET_RUN_SPEED_MULTIPLIER  # 已废弃，保留用于兼容性
 
 # ==================== 旧坡度参数（已废弃，保留用于兼容性）====================
 # 注意：这些参数已不再使用，因为坡度已整合在Pandolf模型中
@@ -583,7 +479,12 @@ def plot_comprehensive_trends():
     fig = plt.figure(figsize=(16, 12))
     gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
     
-    fig.suptitle('Realistic Stamina System (RSS) - 综合趋势分析\n（基于医学模型）', fontsize=18, fontweight='bold')
+    fig.suptitle(
+        'Realistic Stamina System (RSS) - 综合趋势分析 / Comprehensive Trends\n'
+        '（基于医学模型 / Based on physiological models）',
+        fontsize=18,
+        fontweight='bold'
+    )
     
     # ========== 图1: 2英里测试 ==========
     ax1 = fig.add_subplot(gs[0, 0])
@@ -598,10 +499,15 @@ def plot_comprehensive_trends():
     ax1.axhline(y=25, color='b', linestyle=':', alpha=0.5)
     ax1.axvline(x=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=2, label='目标时间')
     
-    ax1.set_xlabel('时间（分钟）', fontsize=10)
-    ax1.set_ylabel('体力（%）', fontsize=10, color='b')
-    ax1_twin.set_ylabel('速度（m/s） / 距离（km）', fontsize=10)
-    ax1.set_title(f'2英里测试\n完成时间: {final_time:.1f}秒 ({final_time/60:.2f}分钟)', fontsize=11, fontweight='bold')
+    ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
+    ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=10, color='b')
+    ax1_twin.set_ylabel('速度（m/s） / Speed (m/s) | 距离（km） / Distance (km)', fontsize=10)
+    ax1.set_title(
+        f'2英里测试 / 2-mile test\n'
+        f'完成时间 / Finish: {final_time:.1f}s ({final_time/60:.2f}min)',
+        fontsize=11,
+        fontweight='bold'
+    )
     ax1.grid(True, alpha=0.3)
     
     lines = line1 + line2 + line3
@@ -627,9 +533,14 @@ def plot_comprehensive_trends():
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     ax2.axvline(x=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=1.5, alpha=0.5, label='目标时间')
     
-    ax2.set_xlabel('时间（分钟）', fontsize=10)
-    ax2.set_ylabel('体力（%）', fontsize=10)
-    ax2.set_title('不同负重下的体力消耗对比\n（30KG为战斗负重基准）', fontsize=11, fontweight='bold')
+    ax2.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
+    ax2.set_ylabel('体力（%） / Stamina (%)', fontsize=10)
+    ax2.set_title(
+        '不同负重下的体力消耗对比 / Stamina drain by load\n'
+        '（30KG为战斗负重基准 / 30kg baseline）',
+        fontsize=11,
+        fontweight='bold'
+    )
     ax2.grid(True, alpha=0.3)
     ax2.legend(fontsize=8)
     
@@ -650,9 +561,9 @@ def plot_comprehensive_trends():
     ax3.axhline(y=TARGET_RUN_SPEED, color='blue', 
                 linestyle=':', linewidth=1.5, alpha=0.7, label=f'Run目标速度 ({TARGET_RUN_SPEED:.2f} m/s)')
     
-    ax3.set_xlabel('体力（%）', fontsize=10)
-    ax3.set_ylabel('速度（m/s）', fontsize=10)
-    ax3.set_title('不同移动类型的速度对比', fontsize=11, fontweight='bold')
+    ax3.set_xlabel('体力（%） / Stamina (%)', fontsize=10)
+    ax3.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=10)
+    ax3.set_title('不同移动类型的速度对比 / Speed by movement type', fontsize=11, fontweight='bold')
     ax3.grid(True, alpha=0.3)
     ax3.legend(fontsize=8)
     
@@ -666,9 +577,9 @@ def plot_comprehensive_trends():
         ax4.plot(time_r / 60, stamina_r * 100, color=color, linewidth=2, 
                 label=f'从 {start*100:.0f}% 恢复')
     
-    ax4.set_xlabel('时间（分钟）', fontsize=10)
-    ax4.set_ylabel('体力（%）', fontsize=10)
-    ax4.set_title('体力恢复速度分析', fontsize=11, fontweight='bold')
+    ax4.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
+    ax4.set_ylabel('体力（%） / Stamina (%)', fontsize=10)
+    ax4.set_title('体力恢复速度分析 / Recovery analysis', fontsize=11, fontweight='bold')
     ax4.grid(True, alpha=0.3)
     ax4.legend(fontsize=8)
     ax4.set_ylim([0, 105])
@@ -681,9 +592,9 @@ def plot_comprehensive_trends():
     ax5.axhline(y=TARGET_TIME_SECONDS / DISTANCE_METERS * DISTANCE_METERS / TARGET_TIME_SECONDS, 
                 color='green', linestyle=':', linewidth=1.5, label=f'所需平均速度 ({DISTANCE_METERS/TARGET_TIME_SECONDS:.2f} m/s)')
     
-    ax5.set_xlabel('时间（分钟）', fontsize=10)
-    ax5.set_ylabel('速度（m/s）', fontsize=10)
-    ax5.set_title('2英里测试速度变化', fontsize=11, fontweight='bold')
+    ax5.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
+    ax5.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=10)
+    ax5.set_title('2英里测试速度变化 / Speed during 2-mile test', fontsize=11, fontweight='bold')
     ax5.grid(True, alpha=0.3)
     ax5.legend(fontsize=8)
     
@@ -701,9 +612,14 @@ def plot_comprehensive_trends():
     ax6.axvline(x=combat_enc_percent * 100, color='orange', linestyle='--', linewidth=2, label='30KG战斗负重基准')
     ax6.plot(combat_enc_percent * 100, combat_speed_penalty, 'o', color='orange', markersize=10, label=f'30KG惩罚: {combat_speed_penalty:.1f}%')
     
-    ax6.set_xlabel('负重百分比（%）', fontsize=10)
-    ax6.set_ylabel('速度惩罚（%）', fontsize=10)
-    ax6.set_title('负重对速度的影响\n（30KG为战斗负重基准）', fontsize=11, fontweight='bold')
+    ax6.set_xlabel('负重百分比（%） / Load (%)', fontsize=10)
+    ax6.set_ylabel('速度惩罚（%） / Speed penalty (%)', fontsize=10)
+    ax6.set_title(
+        '负重对速度的影响 / Load vs speed penalty\n'
+        '（30KG为战斗负重基准 / 30kg baseline）',
+        fontsize=11,
+        fontweight='bold'
+    )
     ax6.grid(True, alpha=0.3)
     ax6.legend(fontsize=8)
     
@@ -734,9 +650,14 @@ def plot_comprehensive_trends():
     
     ax7.axhline(y=TARGET_RUN_SPEED, color='gray', linestyle=':', linewidth=1, alpha=0.5, label='目标Run速度 (3.7 m/s)')
     
-    ax7.set_xlabel('体力（%）', fontsize=11)
-    ax7.set_ylabel('速度（m/s）', fontsize=11)
-    ax7.set_title('多维度对比：30KG战斗负重基准下的速度和体力消耗\n（不同移动类型和坡度）', fontsize=12, fontweight='bold')
+    ax7.set_xlabel('体力（%） / Stamina (%)', fontsize=11)
+    ax7.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=11)
+    ax7.set_title(
+        '多维度对比 / Multi-factor comparison (30kg baseline)\n'
+        '（不同移动类型与坡度 / movement types & slopes）',
+        fontsize=12,
+        fontweight='bold'
+    )
     ax7.grid(True, alpha=0.3)
     ax7.legend(fontsize=8, loc='upper right')
     
@@ -786,7 +707,8 @@ def plot_comprehensive_trends():
     print("="*70)
     
     # 显示图表
-    plt.show()
+    if SHOW_PLOTS:
+        plt.show()
 
 
 if __name__ == "__main__":

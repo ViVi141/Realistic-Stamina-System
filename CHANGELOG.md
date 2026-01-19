@@ -30,6 +30,8 @@
   - 新增 `OutputDebugInfo()` 方法：统一调试信息输出接口（使用参数结构体，解决参数数量限制）
   - 新增 `OutputStatusInfo()` 方法：统一状态信息输出接口
   - 所有调试信息格式化逻辑集中在 DebugDisplay 模块
+- **工具趋势图输出双语化**
+  - `tools/` 下生成的趋势图（`stamina_system_trends.png` / `comprehensive_stamina_trends.png` / `multi_dimensional_analysis.png`）统一为中英双语标注
 - **坡度检测模块化**
   - 扩展 SCR_SpeedCalculation.c 模块
   - 新增 `CalculateGradePercent()` 方法：统一坡度检测和计算逻辑

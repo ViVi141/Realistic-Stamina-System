@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Realistic Stamina System (RSS) - 统一常量定义
+所有Python脚本共享的常量定义，与C代码中的StaminaConstants完全同步
+"""
+
+# ==================== 游戏配置常量 ====================
+GAME_MAX_SPEED = 5.2  # m/s，游戏最大速度
+UPDATE_INTERVAL = 0.2  # 秒，更新间隔
+
+# ==================== 角色特征常量 ====================
+CHARACTER_WEIGHT = 90.0  # kg，角色体重（游戏内标准体重为90kg）
+CHARACTER_AGE = 22.0  # 岁，角色年龄（基于ACFT标准，22-26岁男性）
+
+# ==================== 负重配置常量 ====================
+BASE_WEIGHT = 1.36  # kg，基准负重（基础物品重量：衣服、鞋子等）
+MAX_ENCUMBRANCE_WEIGHT = 40.5  # kg，最大负重（包含基准负重）
+COMBAT_ENCUMBRANCE_WEIGHT = 30.0  # kg，战斗负重（包含基准负重，标准基准）
+
+# ==================== 健康状态/体能水平常量 ====================
+FITNESS_LEVEL = 1.0  # 训练有素（well-trained）
+FITNESS_EFFICIENCY_COEFF = 0.35  # 35%效率提升（训练有素时）
+FITNESS_RECOVERY_COEFF = 0.25  # 25%恢复速度提升（训练有素时）
+
+# ==================== 医学模型参数（双稳态-应激性能模型）====================
+TARGET_RUN_SPEED = 3.7  # m/s
+TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED  # 0.7115
+WILLPOWER_THRESHOLD = 0.25  # 25%
+SMOOTH_TRANSITION_START = 0.25  # 25%（疲劳临界区起点）
+SMOOTH_TRANSITION_END = 0.05  # 5%，平滑过渡结束点
+MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED  # 1.0 m/s / 5.2 = 0.1923
+STAMINA_EXPONENT = 0.6  # 体力影响指数
+
+# ==================== 负重参数 ====================
+ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（线性模型）
+ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重速度惩罚指数（1.0 = 线性）
+ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 基于体重的体力消耗系数
+MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数
+MAX_SPEED_MULTIPLIER = 1.0  # 最大速度倍数限制
+
+# ==================== 速度阈值参数 ====================
+SPRINT_VELOCITY_THRESHOLD = 5.2  # m/s，Sprint速度阈值
+RUN_VELOCITY_THRESHOLD = 3.7  # m/s，Run速度阈值
+WALK_VELOCITY_THRESHOLD = 3.2  # m/s，Walk速度阈值
+RECOVERY_THRESHOLD_NO_LOAD = 2.5  # m/s，空载时恢复体力阈值
+DRAIN_THRESHOLD_COMBAT_LOAD = 1.5  # m/s，负重30kg时开始消耗体力的阈值
+
+# ==================== 基础消耗率（pts/s，每秒消耗的点数）====================
+SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s（Sprint）
+RUN_BASE_DRAIN_RATE = 0.075  # pts/s（Run，优化后约22分钟耗尽）
+WALK_BASE_DRAIN_RATE = 0.060  # pts/s（Walk）
+REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
+
+# 转换为每0.2秒的消耗率
+SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * UPDATE_INTERVAL
+
+# ==================== 精疲力尽阈值 ====================
+EXHAUSTION_THRESHOLD = 0.0  # 0.0（0点）
+EXHAUSTION_LIMP_SPEED = 1.0  # m/s（跛行速度）
+SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
+
+# ==================== Sprint（冲刺）相关参数 ====================
+SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%
+SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍
+
+# ==================== Pandolf 模型常量 ====================
+PANDOLF_BASE_COEFF = 2.7  # 基础系数（W/kg）
+PANDOLF_VELOCITY_COEFF = 3.2  # 速度系数（W/kg）
+PANDOLF_VELOCITY_OFFSET = 0.7  # 速度偏移（m/s）
+PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
+PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
+PANDOLF_STATIC_COEFF_1 = 1.5  # 静态基础系数（W/kg）
+PANDOLF_STATIC_COEFF_2 = 2.0  # 静态负重系数（W/kg）
+ENERGY_TO_STAMINA_COEFF = 0.000035  # 能量到体力的转换系数（优化后）
+REFERENCE_WEIGHT = 90.0  # 参考体重（kg）
+
+# ==================== Givoni-Goldman 跑步模型常量 ====================
+GIVONI_CONSTANT = 0.3  # 跑步常数（W/kg·m²/s²）
+GIVONI_VELOCITY_EXPONENT = 2.2  # 速度指数（2.0-2.4，2.2为推荐值）
+
+# ==================== 坡度影响参数 ====================
+SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）
+SLOPE_DOWNHILL_COEFF = 0.03  # 下坡影响系数（每度减少3%消耗）
+SLOPE_MAX_MULTIPLIER = 2.0  # 最大坡度影响倍数（上坡）
+SLOPE_MIN_MULTIPLIER = 0.7  # 最小坡度影响倍数（下坡）
+ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.15  # 负重×坡度交互系数
+SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.10  # 速度×负重×坡度交互系数
+
+# ==================== 地形系数常量 ====================
+TERRAIN_FACTOR_PAVED = 1.0  # 铺装路面
+TERRAIN_FACTOR_DIRT = 1.1  # 碎石路
+TERRAIN_FACTOR_GRASS = 1.2  # 高草丛
+TERRAIN_FACTOR_BRUSH = 1.5  # 重度灌木丛
+TERRAIN_FACTOR_SAND = 1.8  # 软沙地
+
+# ==================== 多维度恢复模型参数 ====================
+BASE_RECOVERY_RATE = 0.00015  # 基础恢复率（每0.2秒，在50%体力时的恢复率）
+RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数
+FAST_RECOVERY_DURATION_MINUTES = 2.0  # 快速恢复期持续时间（分钟）
+FAST_RECOVERY_MULTIPLIER = 1.5  # 快速恢复期恢复速度倍数
+SLOW_RECOVERY_START_MINUTES = 10.0  # 慢速恢复期开始时间（分钟）
+SLOW_RECOVERY_MULTIPLIER = 0.7  # 慢速恢复期恢复速度倍数
+AGE_RECOVERY_COEFF = 0.2  # 年龄恢复系数
+AGE_REFERENCE = 30.0  # 年龄参考值（30岁为标准）
+FATIGUE_RECOVERY_PENALTY = 0.3  # 疲劳恢复惩罚系数（最大30%恢复速度减少）
+FATIGUE_RECOVERY_DURATION_MINUTES = 20.0  # 疲劳完全恢复所需时间（分钟）
+
+# ==================== 运动持续时间影响（累积疲劳）参数 ====================
+FATIGUE_ACCUMULATION_COEFF = 0.015  # 每分钟增加1.5%消耗
+FATIGUE_START_TIME_MINUTES = 5.0  # 疲劳开始累积的时间（分钟）
+FATIGUE_MAX_FACTOR = 2.0  # 最大疲劳因子（2.0倍）
+
+# ==================== 代谢适应参数（Metabolic Adaptation）====================
+AEROBIC_THRESHOLD = 0.6  # 有氧阈值（60% VO2max）
+ANAEROBIC_THRESHOLD = 0.8  # 无氧阈值（80% VO2max）
+AEROBIC_EFFICIENCY_FACTOR = 0.9  # 有氧区效率因子（90%，更高效）
+MIXED_EFFICIENCY_FACTOR = 1.0  # 混合区效率因子（100%，标准）
+ANAEROBIC_EFFICIENCY_FACTOR = 1.2  # 无氧区效率因子（120%，低效但高功率）
+
+# ==================== 动作体力消耗常量 ====================
+JUMP_STAMINA_BASE_COST = 0.035  # 3.5% 体力（单次跳跃）
+VAULT_STAMINA_START_COST = 0.02  # 2% 体力（翻越起始消耗）
+CLIMB_STAMINA_TICK_COST = 0.01  # 1% 体力/秒（持续攀爬消耗）
+JUMP_MIN_STAMINA_THRESHOLD = 0.10  # 10% 体力
+JUMP_CONSECUTIVE_WINDOW = 3.0  # 3秒
+JUMP_CONSECUTIVE_PENALTY = 0.5  # 50%
+
+# ==================== 恢复启动延迟常量 ====================
+RECOVERY_STARTUP_DELAY_SECONDS = 3.0  # 恢复启动延迟（秒）
+
+# ==================== EPOC（过量耗氧）延迟参数 ====================
+EPOC_DELAY_SECONDS = 4.0  # EPOC延迟时间（秒）
+EPOC_DRAIN_RATE = 0.001  # EPOC期间的基础消耗率（每0.2秒）
+
+# ==================== 姿态交互修正参数 ====================
+POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数
+POSTURE_PRONE_MULTIPLIER = 3.0  # 匍匐爬行消耗倍数
+POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走消耗倍数（基准）
+
+# ==================== 游泳体力消耗参数 ====================
+SWIMMING_DRAG_COEFFICIENT = 0.5  # 阻力系数（C_d）
+SWIMMING_WATER_DENSITY = 1000.0  # 水密度（ρ，kg/m³）
+SWIMMING_FRONTAL_AREA = 0.5  # 正面面积（A，m²）
+SWIMMING_BASE_POWER = 25.0  # 基础游泳功率（W）
+SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0  # kg，超过此重量时静态消耗大幅增加
+SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0  # 超过阈值时的静态消耗倍数
+SWIMMING_FULL_PENALTY_WEIGHT = 40.0  # kg，达到此重量时应用满额惩罚
+SWIMMING_LOW_INTENSITY_DISCOUNT = 0.7  # 低强度踩水时的消耗折扣
+SWIMMING_LOW_INTENSITY_VELOCITY = 0.2  # m/s，低于此速度视为低强度踩水
+SWIMMING_ENERGY_TO_STAMINA_COEFF = 0.00005  # 游泳功率到体力消耗的转换系数
+SWIMMING_DYNAMIC_POWER_EFFICIENCY = 2.0  # 动态功率效率因子
+SWIMMING_VERTICAL_DRAG_COEFFICIENT = 1.2  # 垂直方向阻力系数
+SWIMMING_VERTICAL_FRONTAL_AREA = 0.8  # 垂直方向受力面积（m²）
+SWIMMING_VERTICAL_SPEED_THRESHOLD = 0.05  # m/s，垂直速度阈值
+SWIMMING_EFFECTIVE_GRAVITY_COEFF = 0.15  # 水中有效重力系数
+SWIMMING_BUOYANCY_FORCE_COEFF = 0.10  # 浮力对抗系数
+SWIMMING_VERTICAL_UP_MULTIPLIER = 2.5  # 上浮效率惩罚倍数
+SWIMMING_VERTICAL_DOWN_MULTIPLIER = 1.5  # 下潜效率惩罚倍数
+SWIMMING_MAX_DRAIN_RATE = 0.15  # 每秒最大消耗
+SWIMMING_VERTICAL_UP_BASE_BODY_FORCE_COEFF = 0.02  # 上浮基础费力系数
+SWIMMING_VERTICAL_DOWN_LOAD_RELIEF_COEFF = 0.50  # 负重能抵消浮力的比例
+SWIMMING_SURVIVAL_STRESS_POWER = 15.0  # 生存压力常数（W）
+SWIMMING_MAX_TOTAL_POWER = 2000.0  # 生理功率上限（W）
+WET_WEIGHT_DURATION = 30.0  # 秒，上岸后湿重持续时间
+WET_WEIGHT_MIN = 5.0  # kg，最小湿重
+WET_WEIGHT_MAX = 10.0  # kg，最大湿重
+SWIMMING_MIN_SPEED = 0.1  # m/s，游泳最小速度阈值
+
+# ==================== 环境因子常量 ====================
+ENV_HEAT_STRESS_START_HOUR = 10.0  # 热应激开始时间（小时）
+ENV_HEAT_STRESS_PEAK_HOUR = 14.0  # 热应激峰值时间（小时，正午）
+ENV_HEAT_STRESS_END_HOUR = 18.0  # 热应激结束时间（小时）
+ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3  # 热应激最大倍数（30%消耗增加）
+ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0  # 热应激基础倍数（无影响）
+ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5  # 室内热应激减少比例（50%）
+ENV_RAIN_WEIGHT_MIN = 2.0  # kg，小雨时的湿重
+ENV_RAIN_WEIGHT_MAX = 8.0  # kg，暴雨时的湿重
+ENV_RAIN_WEIGHT_DURATION = 60.0  # 秒，停止降雨后湿重持续时间
+ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167  # 每秒衰减率（60秒内完全消失）
+ENV_MAX_TOTAL_WET_WEIGHT = 10.0  # kg，总湿重上限（游泳+降雨）
+ENV_UPDATE_INTERVAL_SECONDS = 5.0  # 环境因子检测频率（秒）
