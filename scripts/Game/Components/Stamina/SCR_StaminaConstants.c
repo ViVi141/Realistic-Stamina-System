@@ -287,9 +287,9 @@ class StaminaConstants
     static const float PANDOLF_GRADE_BASE_COEFF = 0.23; // 坡度基础系数（W/kg）
     static const float PANDOLF_GRADE_VELOCITY_COEFF = 1.34; // 坡度速度系数（W/kg）
     
-    // Pandolf 静态站立消耗常量
-    static const float PANDOLF_STATIC_COEFF_1 = 1.5; // 基础系数（W/kg）
-    static const float PANDOLF_STATIC_COEFF_2 = 2.0; // 负重系数（W/kg）
+    // Pandolf 静态站立消耗常量（v2.15.0：降低静态消耗，给30KG留出呼吸空间）
+    static const float PANDOLF_STATIC_COEFF_1 = 1.2; // 基础系数（W/kg），从1.5降低到1.2（降低20%）
+    static const float PANDOLF_STATIC_COEFF_2 = 1.6; // 负重系数（W/kg），从2.0降低到1.6（降低20%）
     
     // 能量到体力的转换系数
     static const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）

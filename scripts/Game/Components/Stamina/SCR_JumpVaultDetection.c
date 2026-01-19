@@ -69,15 +69,21 @@ class JumpVaultDetector
         // 如果检测到跳跃输入标志（且不在攀爬状态），则判定为跳跃
         if (!isClimbing && hasJumpInput)
         {
+            // 跳跃冷却检查：2秒冷却时间（10个更新周期）
+            if (m_iJumpCooldownFrames > 0)
+            {
+                // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
+                m_bJumpInputTriggered = false;
+                Print("[RealisticSystem] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
+                return 0.0;
+            }
+            
             // 低体力禁用跳跃：体力 < 10% 时禁用跳跃
             if (staminaPercent < RealisticStaminaSpeedSystem.JUMP_MIN_STAMINA_THRESHOLD)
             {
                 m_bJumpInputTriggered = false;
                 return 0.0;
             }
-            
-            // 跳跃冷却检查：2秒冷却时间（10个更新周期）
-            if (m_iJumpCooldownFrames == 0)
             {
                 float currentTime = GetGame().GetWorld().GetWorldTime();
                 
@@ -177,6 +183,13 @@ class JumpVaultDetector
         {
             // 翻越冷却检查：防止在短时间内重复触发初始消耗
             // 冷却时间：5秒（25个更新周期）
+            if (m_iVaultCooldownFrames > 0)
+            {
+                // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
+                Print("[RealisticSystem] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
+                return 0.0;
+            }
+            
             if (!m_bIsVaulting && m_iVaultCooldownFrames == 0)
             {
                 // 翻越起始消耗（使用动态负重倍率）

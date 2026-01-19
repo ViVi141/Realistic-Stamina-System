@@ -182,11 +182,11 @@ class EnvironmentFactor
             lastLoggedWindSpeed = m_fCachedWindSpeed;
             lastLoggedTemperature = m_fCachedTemperature;
             
-            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 热应激=%1x | 降雨湿重=%2kg | 风速=%3m/s | 气温=%4°C | Heat Stress=%1x | Rain Weight=%2kg | Wind Speed=%3m/s | Temperature=%4°C",
+            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 风速=%4m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Wind Speed=%4m/s",
+                Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
                 Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
-                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0,
-                Math.Round(m_fCachedTemperature * 10.0) / 10.0);
+                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
         }
         
         return true;
@@ -322,10 +322,33 @@ class EnvironmentFactor
     
     // ==================== 私有方法 ====================
     
-    // 计算热应激倍数（基于时间段，考虑室内豁免）
-    // 热应激模型：10:00-14:00 逐渐增加，14:00-18:00 逐渐减少
-    // 峰值（14:00）时消耗增加30%
-    // 如果角色在室内（头顶有遮挡），热应激减少50%
+    // 计算虚拟气温（基于时间的昼夜温度曲线）
+    // 使用余弦函数模拟昼夜温度变化，峰值出现在 14:00
+    // @return 虚拟气温（°C）
+    protected float CalculateSimulatedTemperature()
+    {
+        if (!m_pCachedWeatherManager)
+            return 15.0; // 默认气温
+        
+        float currentHour = m_pCachedWeatherManager.GetTimeOfTheDay();
+        
+        // 昼夜温度模型参数
+        float baseTemp = 15.0;      // 基础气温（清晨最低温）
+        float amplitude = 12.0;     // 昼夜温差幅度
+        
+        // 使用余弦函数模拟曲线，使峰值出现在 14:00
+        // 公式：T(t) = baseTemp + amplitude * cos((t - 14) * π / 12)
+        // 14:00 -> 15 + 12 = 27°C (舒适偏热)
+        // 02:00 -> 15 - 12 = 3°C (寒冷)
+        float simulatedTemp = baseTemp + amplitude * Math.Cos((currentHour - 14.0) * Math.PI / 12.0);
+        
+        return simulatedTemp;
+    }
+    
+    // 计算热应激倍数（基于虚拟气温，考虑室内豁免）
+    // 热应激模型：基于虚拟气温阈值，而非固定时间段
+    // 只有当虚拟气温超过 26°C 时，才开始计算热应激
+    // 如果角色在室内（头顶有遮挡），热应激减少 50%
     // @param owner 角色实体（用于室内检测，可为null）
     // @return 热应激倍数（1.0-1.3）
     protected float CalculateHeatStressMultiplier(IEntity owner = null)
@@ -333,43 +356,33 @@ class EnvironmentFactor
         if (!m_pCachedWeatherManager)
             return 1.0;
         
-        float currentHour = m_pCachedWeatherManager.GetTimeOfTheDay();
+        // 计算虚拟气温
+        float simulatedTemp = CalculateSimulatedTemperature();
         
-        // 热应激时间段：10:00-18:00
-        if (currentHour < StaminaConstants.ENV_HEAT_STRESS_START_HOUR || currentHour >= StaminaConstants.ENV_HEAT_STRESS_END_HOUR)
-        {
-            // 不在热应激时间段，无影响
-            return StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER;
-        }
-        
+        // 热应激触发阈值：26°C
+        // 只有当虚拟气温超过 26°C 时，才开始计算热应激
+        float heatStressThreshold = 26.0;
         float multiplier = 1.0;
         
-        if (currentHour < StaminaConstants.ENV_HEAT_STRESS_PEAK_HOUR)
+        if (simulatedTemp < heatStressThreshold)
         {
-            // 10:00-14:00：逐渐增加
-            float t = (currentHour - StaminaConstants.ENV_HEAT_STRESS_START_HOUR) / 
-                      (StaminaConstants.ENV_HEAT_STRESS_PEAK_HOUR - StaminaConstants.ENV_HEAT_STRESS_START_HOUR);
-            t = Math.Clamp(t, 0.0, 1.0);
-            multiplier = StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER + 
-                        (StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER - StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER) * t;
+            // 虚拟气温未达阈值，无热应激
+            multiplier = 1.0;
         }
         else
         {
-            // 14:00-18:00：逐渐减少
-            float t = (currentHour - StaminaConstants.ENV_HEAT_STRESS_PEAK_HOUR) / 
-                      (StaminaConstants.ENV_HEAT_STRESS_END_HOUR - StaminaConstants.ENV_HEAT_STRESS_PEAK_HOUR);
-            t = Math.Clamp(t, 0.0, 1.0);
-            multiplier = StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER - 
-                        (StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER - StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER) * t;
+            // 虚拟气温超过阈值，计算热应激倍数
+            // 倍数 = 1.0 + (虚拟气温 - 阈值) * 0.02
+            // 例如：30°C -> 1.0 + (30 - 26) * 0.02 = 1.08x
+            float tempExcess = simulatedTemp - heatStressThreshold;
+            multiplier = 1.0 + tempExcess * 0.02;
         }
         
-        // 室内豁免：如果角色在室内（头顶有遮挡），热应激减少
+        // 室内豁免：如果角色在室内（头顶有遮挡），热应激减少 50%
         if (owner && IsUnderCover(owner))
         {
-            // 室内热应激 = 基础倍数 + (室外热应激 - 基础倍数) × (1 - 室内减少比例)
-            float outdoorStress = multiplier - StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER;
-            multiplier = StaminaConstants.ENV_HEAT_STRESS_BASE_MULTIPLIER + 
-                        outdoorStress * (1.0 - StaminaConstants.ENV_HEAT_STRESS_INDOOR_REDUCTION);
+            // 室内热应激 = 室外热应激 × (1 - 室内减少比例)
+            multiplier = multiplier * (1.0 - StaminaConstants.ENV_HEAT_STRESS_INDOOR_REDUCTION);
         }
         
         return Math.Clamp(multiplier, 1.0, StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER);
@@ -403,22 +416,22 @@ class EnvironmentFactor
         // 使用回调函数收集建筑物
         world.QueryEntitiesByAABB(searchMins, searchMaxs, QueryBuildingCallback);
         
-        // 调试信息：查询结果概览
+        // 调试信息：查询结果概览（暂时禁用）
         int buildingCount = m_pCachedBuildings.Count();
-        PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 查询范围 (%1, %2, %3) - (%4, %5, %6) | 找到建筑物: %7 个 | Query Range (%1, %2, %3) - (%4, %5, %6) | Buildings Found: %7",
-            searchMins[0], searchMins[1], searchMins[2],
-            searchMaxs[0], searchMaxs[1], searchMaxs[2],
-            buildingCount.ToString());
+        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 查询范围 (%1, %2, %3) - (%4, %5, %6) | 找到建筑物: %7 个 | Query Range (%1, %2, %3) - (%4, %5, %6) | Buildings Found: %7",
+        //     searchMins[0], searchMins[1], searchMins[2],
+        //     searchMaxs[0], searchMaxs[1], searchMaxs[2],
+        //     buildingCount.ToString());
         
         if (buildingCount == 0)
         {
-            PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 周围无建筑物，判定为室外 | No buildings nearby,判定为室外 /判定为室外 /判定为室外");
+            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 周围无建筑物，判定为室外 | No buildings nearby,判定为室外 /判定为室外 /判定为室外");
             return false;
         }
         
-        // 调试信息：角色位置
-        PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 角色位置 (%1, %2, %3) | Character Position (%1, %2, %3)",
-            ownerPos[0], ownerPos[1], ownerPos[2]);
+        // 调试信息：角色位置（暂时禁用）
+        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 角色位置 (%1, %2, %3) | Character Position (%1, %2, %3)",
+        //     ownerPos[0], ownerPos[1], ownerPos[2]);
         
         // 检查角色是否在任何一个建筑物的边界框内
         int checkedBuildings = 0;
@@ -441,52 +454,52 @@ class EnvironmentFactor
             // 初步判定：X、Y、Z 都在边界框内
             bool isInside = xInside && yInside && zInside;
             
-            // 调试信息：建筑物边界框
-            PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 建筑物 #%1 | 边界框: (%2, %3, %4) - (%5, %6, %7)",
-                checkedBuildings.ToString(),
-                buildingMins[0], buildingMins[1], buildingMins[2],
-                buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
+            // 调试信息：建筑物边界框（暂时禁用）
+            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 建筑物 #%1 | 边界框: (%2, %3, %4) - (%5, %6, %7)",
+            //     checkedBuildings.ToString(),
+            //     buildingMins[0], buildingMins[1], buildingMins[2],
+            //     buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
             
-            // 调试信息：位置对比
-            string xStatus;
-            if (xInside)
-                xStatus = "✓";
-            else
-                xStatus = "✗";
+            // 调试信息：位置对比（暂时禁用）
+            // string xStatus;
+            // if (xInside)
+            //     xStatus = "✓";
+            // else
+            //     xStatus = "✗";
             
-            string yStatus;
-            if (yInside)
-                yStatus = "✓";
-            else
-                yStatus = "✗";
+            // string yStatus;
+            // if (yInside)
+            //     yStatus = "✓";
+            // else
+            //     yStatus = "✗";
             
-            string zStatus;
-            if (zInside)
-                zStatus = "✓";
-            else
-                zStatus = "✗";
+            // string zStatus;
+            // if (zInside)
+            //     zStatus = "✓";
+            // else
+            //     zStatus = "✗";
             
-            string totalStatus;
-            if (isInside)
-                totalStatus = "✓ 在内 / Inside";
-            else
-                totalStatus = "✗ 在外 / Outside";
+            // string totalStatus;
+            // if (isInside)
+            //     totalStatus = "✓ 在内 / Inside";
+            // else
+            //     totalStatus = "✗ 在外 / Outside";
             
-            PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: X: %1 Y: %2 Z: %3 总计: %4",
-                xStatus, yStatus, zStatus, totalStatus);
+            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: X: %1 Y: %2 Z: %3 总计: %4",
+            //     xStatus, yStatus, zStatus, totalStatus);
             
             if (isInside)
             {
-                // 调试信息：找到包含角色的建筑物
-                PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✓ 角色在建筑物内 | 位置: (%1, %2, %3)",
-                    ownerPos[0], ownerPos[1], ownerPos[2]);
+                // 调试信息：找到包含角色的建筑物（暂时禁用）
+                // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✓ 角色在建筑物内 | 位置: (%1, %2, %3)",
+                //     ownerPos[0], ownerPos[1], ownerPos[2]);
                 return true;
             }
         }
         
-        // 调试信息：未找到包含角色的建筑物
-        PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✗ 角色不在任何建筑物内 | 检查了 %1 个建筑物 | ✗ Character Not Inside Any Building | Checked %1 buildings",
-            checkedBuildings.ToString());
+        // 调试信息：未找到包含角色的建筑物（暂时禁用）
+        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✗ 角色不在任何建筑物内 | 检查了 %1 个建筑物 | ✗ Character Not Inside Any Building | Checked %1 buildings",
+        //     checkedBuildings.ToString());
         
         // 未找到包含角色的建筑物
         return false;
@@ -719,8 +732,8 @@ class EnvironmentFactor
         // 4. 获取泥泞度系数
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
         
-        // 5. 获取当前气温
-        m_fCachedTemperature = CalculateTemperatureFromAPI();
+        // 5. 获取当前气温（虚拟气温）
+        m_fCachedTemperature = CalculateSimulatedTemperature();
         
         // 6. 获取地表湿度
         m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();

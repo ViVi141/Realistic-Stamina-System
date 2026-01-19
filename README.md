@@ -1341,7 +1341,38 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v2.15.0** (当前版本) - 配置系统（Reforger官方标准）
+- **v2.16.0** (当前版本) - 环境模拟优化（v2.16.0）
+  - 新增休息时间累积修复（Rest Time Accumulation Fix）：
+    - 修复时间单位错误：`GetWorldTime()` 返回毫秒，需要除以1000转换为秒
+    - 使用 idle 状态判断是否休息（静止时间 ≥ 1秒）
+    - 避免速度波动导致休息时间频繁重置
+  - 新增虚拟气温曲线（Simulated Diurnal Temperature）：
+    - 使用余弦函数模拟昼夜温度变化，峰值出现在 14:00
+    - 清晨（05:00）：最低温 3°C
+    - 正午（14:00）：最高温 27°C
+    - 基于虚拟气温计算热应激，而非固定时间段
+  - 新增热应激阈值优化（Heat Stress Threshold）：
+    - 将热应激挂钩到阈值（26°C），而非线性时间（10:00-18:00）
+    - 只有当虚拟气温超过 26°C 时，才开始计算热应激
+    - 倍数 = 1.0 + (虚拟气温 - 阈值) * 0.02
+  - 新增静态消耗优化（Static Consumption Optimization）：
+    - 降低 `PANDOLF_STATIC_COEFF_1` 从 1.5 到 1.2（降低20%）
+    - 降低 `PANDOLF_STATIC_COEFF_2` 从 2.0 到 1.6（降低20%）
+    - 30KG站立总消耗从 0.000543/0.2s 降低到约 0.00035/0.2s
+  - 新增跳跃和攀爬冷却拦截（Jump/Vault Cooldown Interception）：
+    - 跳跃冷却：2秒冷却时间，冷却期间拦截跳跃输入
+    - 攀爬冷却：5秒冷却时间，冷却期间拦截攀爬输入
+    - 通过设置 `m_bJumpInputTriggered = false` 阻止游戏引擎执行动作
+  - 改进调试信息：
+    - 更新环境因子调试信息，显示虚拟气温
+    - 格式：`虚拟气温=22°C | 热应激=1.0x | 降雨湿重=0kg | 风速=6.4m/s`
+  - 代码统计：
+    - **SCR_ExerciseTracking.c**: 修复时间单位错误（约10行）
+    - **SCR_EnvironmentFactor.c**: 新增虚拟气温计算和热应激阈值优化（约40行）
+    - **SCR_StaminaConstants.c**: 降低静态消耗系数（约5行）
+    - **SCR_JumpVaultDetection.c**: 添加冷却拦截逻辑（约20行）
+
+- **v2.15.0** - 配置系统（Reforger官方标准）
   - 新增配置系统（Config System）：
     - 使用 `[BaseContainerProps]` 和 `[Attribute]` 属性实现自动序列化
     - 使用官方的 `SCR_JsonLoadContext` 和 `SCR_JsonSaveContext`
