@@ -271,6 +271,18 @@ class StaminaUpdateCoordinator
         {
             // 计算新的目标体力值（扣除消耗）
             newTargetStamina = staminaPercent - totalDrainRate;
+            
+            // 调试信息：体力消耗（每5秒输出一次）
+            static int staminaUpdateDebugCounter = 0;
+            staminaUpdateDebugCounter++;
+            if (staminaUpdateDebugCounter >= 25)
+            {
+                staminaUpdateDebugCounter = 0;
+                PrintFormat("[RealisticSystem] 体力消耗 / Stamina Consumption: %1%% → %2%% (消耗: %3/0.2s) | %1%% → %2%% (Drain: %3/0.2s)",
+                    Math.Round(staminaPercent * 100.0).ToString(),
+                    Math.Round(newTargetStamina * 100.0).ToString(),
+                    Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
+            }
         }
         // 如果角色完全静止（速度 <= 0.05 m/s），根据EPOC延迟决定是消耗还是恢复
         else
@@ -327,9 +339,31 @@ class StaminaUpdateCoordinator
                 // 生理学依据：高温不仅让人动起来累，更让人休息不回来
                 // 热应激越大，恢复倍数越小（恢复速度越慢）
                 float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
+                float recoveryRateBeforeHeat = recoveryRate;
                 recoveryRate = recoveryRate * heatRecoveryPenalty;
                 
                 newTargetStamina = staminaPercent + recoveryRate;
+                
+                // 调试信息：体力恢复（每5秒输出一次）
+                static int recoveryDebugCounter = 0;
+                recoveryDebugCounter++;
+                if (recoveryDebugCounter >= 25)
+                {
+                    recoveryDebugCounter = 0;
+                    PrintFormat("[RealisticSystem] 体力恢复 / Stamina Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s) | 休息时间: %4分钟 | Rest Duration: %4 min",
+                        Math.Round(staminaPercent * 100.0).ToString(),
+                        Math.Round(newTargetStamina * 100.0).ToString(),
+                        Math.Round(recoveryRate * 1000000.0) / 1000000.0,
+                        Math.Round(restDurationMinutes * 10.0) / 10.0);
+                    
+                    if (heatStressMultiplier > 1.01)
+                    {
+                        PrintFormat("[RealisticSystem] 热应激恢复影响 / Heat Stress Recovery Effect: 恢复率 %1 → %2 (惩罚: %3x) | Recovery Rate %1 → %2 (Penalty: %3x)",
+                            Math.Round(recoveryRateBeforeHeat * 1000000.0) / 1000000.0,
+                            Math.Round(recoveryRate * 1000000.0) / 1000000.0,
+                            Math.Round(heatRecoveryPenalty * 100.0) / 100.0);
+                    }
+                }
             }
         }
         

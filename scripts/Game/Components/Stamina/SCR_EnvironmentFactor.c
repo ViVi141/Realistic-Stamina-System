@@ -68,10 +68,32 @@ class EnvironmentFactor
         m_fLastEnvironmentCheckTime = currentTime;
         
         // 更新热应激倍数（考虑室内豁免）
+        float oldHeatStress = m_fCachedHeatStressMultiplier;
         m_fCachedHeatStressMultiplier = CalculateHeatStressMultiplier(m_pCachedOwner);
         
         // 更新降雨湿重
+        float oldRainWeight = m_fCachedRainWeight;
         m_fCachedRainWeight = CalculateRainWeight(currentTime);
+        
+        // 调试信息：环境因子更新（每5秒输出一次或值变化时）
+        static int envDebugCounter = 0;
+        static float lastLoggedHeatStress = 1.0;
+        static float lastLoggedRainWeight = 0.0;
+        envDebugCounter++;
+        bool shouldLog = (envDebugCounter >= 125) || // 每25秒（5秒 * 5）
+                        (Math.AbsFloat(m_fCachedHeatStressMultiplier - lastLoggedHeatStress) > 0.05) ||
+                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5);
+        
+        if (shouldLog)
+        {
+            envDebugCounter = 0;
+            lastLoggedHeatStress = m_fCachedHeatStressMultiplier;
+            lastLoggedRainWeight = m_fCachedRainWeight;
+            
+            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 热应激=%1x | 降雨湿重=%2kg | Heat Stress=%1x | Rain Weight=%2kg",
+                Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
+                Math.Round(m_fCachedRainWeight * 10.0) / 10.0);
+        }
         
         return true;
     }
@@ -146,6 +168,7 @@ class EnvironmentFactor
     }
     
     // 检测角色是否在室内（头顶是否有遮挡）
+    // 改进方法：多位置检测，提高准确率
     // @param owner 角色实体
     // @return true表示在室内（有遮挡），false表示在室外（无遮挡）
     protected bool IsUnderCover(IEntity owner)
@@ -157,30 +180,211 @@ class EnvironmentFactor
         if (!world)
             return false;
         
-        // 从角色位置向上检测，判断是否有遮挡
         vector ownerPos = owner.GetOrigin();
-        vector traceStart = ownerPos;
-        traceStart[1] = traceStart[1] + 0.1; // 角色位置上方 0.1 米
-        vector traceEnd = traceStart;
-        traceEnd[1] = traceEnd[1] + StaminaConstants.ENV_INDOOR_CHECK_HEIGHT; // 向上检测 10 米
+        float expectedDistance = StaminaConstants.ENV_INDOOR_CHECK_HEIGHT;
         
-        TraceParam traceParam = new TraceParam();
+        // 多位置检测：检测角色头顶和周围4个方向，提高准确率
+        // 如果多数位置被遮挡，则判定为室内
+        // EnforceScript 不支持数组和代码块作用域，重用变量逐个检测
+        int hitCount = 0;
+        
+        // 重用变量（避免重复声明）
+        vector checkPos;
+        vector traceStart;
+        vector traceEnd;
+        vector offset;
+        TraceParam traceParam;
+        float hitDistance;
+        
+        // 位置1：角色正上方
+        checkPos = ownerPos + vector.Zero;
+        traceStart = checkPos;
+        traceStart[1] = traceStart[1] + 1.0;
+        traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + expectedDistance;
+        traceParam = new TraceParam();
         traceParam.Start = traceStart;
         traceParam.End = traceEnd;
         traceParam.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
         traceParam.Exclude = owner;
-        traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+        traceParam.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam, FilterIndoorCallback);
+        hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+        if (hitDistance < expectedDistance * 0.95)
+        {
+            hitCount++;
+        }
+        else
+        {
+            traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+            world.TraceMove(traceParam, FilterIndoorCallback);
+            hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+            if (hitDistance < expectedDistance * 0.95)
+                hitCount++;
+        }
         
-        // 执行追踪
-        world.TraceMove(traceParam, null);
+        // 位置2：右侧
+        offset[0] = 0.5;
+        offset[1] = 0.0;
+        offset[2] = 0.0;
+        checkPos = ownerPos + offset;
+        traceStart = checkPos;
+        traceStart[1] = traceStart[1] + 1.0;
+        traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + expectedDistance;
+        traceParam = new TraceParam();
+        traceParam.Start = traceStart;
+        traceParam.End = traceEnd;
+        traceParam.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam.Exclude = owner;
+        traceParam.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam, FilterIndoorCallback);
+        hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+        if (hitDistance < expectedDistance * 0.95)
+        {
+            hitCount++;
+        }
+        else
+        {
+            traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+            world.TraceMove(traceParam, FilterIndoorCallback);
+            hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+            if (hitDistance < expectedDistance * 0.95)
+                hitCount++;
+        }
         
-        // 如果命中物体（End位置被修改），说明头顶有遮挡（在室内）
-        // TraceMove 会修改 traceParam.End 为命中点，如果未命中则 End 保持不变
-        float hitDistance = vector.Distance(traceParam.Start, traceParam.End);
-        float expectedDistance = StaminaConstants.ENV_INDOOR_CHECK_HEIGHT;
+        // 位置3：左侧
+        offset[0] = -0.5;
+        offset[1] = 0.0;
+        offset[2] = 0.0;
+        checkPos = ownerPos + offset;
+        traceStart = checkPos;
+        traceStart[1] = traceStart[1] + 1.0;
+        traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + expectedDistance;
+        traceParam = new TraceParam();
+        traceParam.Start = traceStart;
+        traceParam.End = traceEnd;
+        traceParam.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam.Exclude = owner;
+        traceParam.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam, FilterIndoorCallback);
+        hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+        if (hitDistance < expectedDistance * 0.95)
+        {
+            hitCount++;
+        }
+        else
+        {
+            traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+            world.TraceMove(traceParam, FilterIndoorCallback);
+            hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+            if (hitDistance < expectedDistance * 0.95)
+                hitCount++;
+        }
         
-        // 如果实际距离明显小于预期距离（95%阈值），说明命中物体
-        return (hitDistance < expectedDistance * 0.95);
+        // 位置4：前方
+        offset[0] = 0.0;
+        offset[1] = 0.0;
+        offset[2] = 0.5;
+        checkPos = ownerPos + offset;
+        traceStart = checkPos;
+        traceStart[1] = traceStart[1] + 1.0;
+        traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + expectedDistance;
+        traceParam = new TraceParam();
+        traceParam.Start = traceStart;
+        traceParam.End = traceEnd;
+        traceParam.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam.Exclude = owner;
+        traceParam.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam, FilterIndoorCallback);
+        hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+        if (hitDistance < expectedDistance * 0.95)
+        {
+            hitCount++;
+        }
+        else
+        {
+            traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+            world.TraceMove(traceParam, FilterIndoorCallback);
+            hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+            if (hitDistance < expectedDistance * 0.95)
+                hitCount++;
+        }
+        
+        // 位置5：后方
+        offset[0] = 0.0;
+        offset[1] = 0.0;
+        offset[2] = -0.5;
+        checkPos = ownerPos + offset;
+        traceStart = checkPos;
+        traceStart[1] = traceStart[1] + 1.0;
+        traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + expectedDistance;
+        traceParam = new TraceParam();
+        traceParam.Start = traceStart;
+        traceParam.End = traceEnd;
+        traceParam.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam.Exclude = owner;
+        traceParam.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam, FilterIndoorCallback);
+        hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+        if (hitDistance < expectedDistance * 0.95)
+        {
+            hitCount++;
+        }
+        else
+        {
+            traceParam.LayerMask = EPhysicsLayerPresets.Projectile;
+            world.TraceMove(traceParam, FilterIndoorCallback);
+            hitDistance = vector.Distance(traceParam.Start, traceParam.End);
+            if (hitDistance < expectedDistance * 0.95)
+                hitCount++;
+        }
+        
+        // 如果超过60%的检测点被遮挡，判定为室内
+        float hitRatio = (float)hitCount / 5.0;
+        bool isIndoor = (hitRatio >= 0.6);
+        
+        // 调试信息：室内检测结果（每5秒输出一次）
+        static int indoorDebugCounter = 0;
+        static bool lastIndoorState = false;
+        indoorDebugCounter++;
+        if (indoorDebugCounter >= 25 || isIndoor != lastIndoorState) // 每5秒或状态改变时输出
+        {
+            indoorDebugCounter = 0;
+            lastIndoorState = isIndoor;
+            string indoorStatusStr = "";
+            if (isIndoor)
+                indoorStatusStr = "室内 / Indoor";
+            else
+                indoorStatusStr = "室外 / Outdoor";
+            PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: %1 | 命中点: %2/5 (%3%%) | Hit Points: %2/5 (%3%%)", 
+                indoorStatusStr,
+                hitCount.ToString(),
+                Math.Round(hitRatio * 100.0 * 10.0) / 10.0);
+        }
+        
+        return isIndoor;
+    }
+    
+    // 室内检测过滤回调（排除角色实体和某些不需要检测的物体）
+    // @param e 实体
+    // @return true表示接受检测，false表示排除
+    bool FilterIndoorCallback(IEntity e)
+    {
+        if (!e)
+            return true;
+        
+        // 排除角色实体
+        if (ChimeraCharacter.Cast(e))
+            return false;
+        
+        // 排除车辆（如果角色在车内，应该通过其他方式检测）
+        // 这里可以添加更多过滤条件
+        
+        return true;
     }
     
     // 计算降雨湿重（基于天气状态）
@@ -195,6 +399,7 @@ class EnvironmentFactor
         
         float rainIntensity = 0.0;
         bool isRaining = false;
+        bool isHeavyRain = false; // 在函数开始时声明，避免作用域问题
         
         // 优先尝试使用 GetRainIntensity() API（如果存在）
         // 注意：如果 API 不存在，编译器会报错，需要注释掉或使用条件编译
@@ -218,9 +423,9 @@ class EnvironmentFactor
             isRaining = true;
             
             // 根据天气状态名称判断强度
-            bool isHeavyRain = weatherStateName.Contains("heavy") || weatherStateName.Contains("Heavy") || 
-                               weatherStateName.Contains("storm") || weatherStateName.Contains("Storm") ||
-                               weatherStateName.Contains("HEAVY") || weatherStateName.Contains("STORM");
+            isHeavyRain = weatherStateName.Contains("heavy") || weatherStateName.Contains("Heavy") || 
+                          weatherStateName.Contains("storm") || weatherStateName.Contains("Storm") ||
+                          weatherStateName.Contains("HEAVY") || weatherStateName.Contains("STORM");
             
             if (isHeavyRain)
             {
@@ -242,11 +447,24 @@ class EnvironmentFactor
             // 开始下雨：重置停止时间，保存当前强度
             m_fRainStopTime = -1.0;
             m_fLastRainIntensity = rainIntensity;
+            
+            // 调试信息：开始下雨
+            string rainIntensityStr = "";
+            if (isHeavyRain)
+                rainIntensityStr = "暴雨 / Heavy Rain";
+            else
+                rainIntensityStr = "小雨/中雨 / Light/Moderate Rain";
+            PrintFormat("[RealisticSystem] 开始下雨 / Rain Started: %1 | 强度: %2%% | Intensity: %2%%", 
+                rainIntensityStr,
+                Math.Round(rainIntensity * 100.0).ToString());
         }
         else if (!isRaining && m_bWasRaining)
         {
             // 停止下雨：记录停止时间和最后强度
             m_fRainStopTime = currentTime;
+            
+            // 调试信息：停止下雨
+            Print("[RealisticSystem] 停止下雨 / Rain Stopped: 湿重开始衰减 | Wet Weight Starts Decaying");
         }
         
         m_bWasRaining = isRaining;
@@ -336,6 +554,76 @@ class EnvironmentFactor
     bool IsIndoor()
     {
         return IsUnderCover(m_pCachedOwner);
+    }
+    
+    // 调试室内检测（输出详细信息）
+    // @param owner 角色实体
+    // @return 检测结果（true=室内，false=室外）
+    bool DebugIndoorDetection(IEntity owner)
+    {
+        if (!owner)
+        {
+            Print("[RealisticSystem] 室内检测调试: 角色实体为空");
+            return false;
+        }
+        
+        World world = owner.GetWorld();
+        if (!world)
+        {
+            Print("[RealisticSystem] 室内检测调试: 世界对象为空");
+            return false;
+        }
+        
+        vector ownerPos = owner.GetOrigin();
+        PrintFormat("[RealisticSystem] 室内检测调试: 角色位置=(%1, %2, %3)", 
+            ownerPos[0], ownerPos[1], ownerPos[2]);
+        
+        vector traceStart = ownerPos;
+        traceStart[1] = traceStart[1] + 0.5;
+        vector traceEnd = traceStart;
+        traceEnd[1] = traceEnd[1] + StaminaConstants.ENV_INDOOR_CHECK_HEIGHT;
+        
+        PrintFormat("[RealisticSystem] 室内检测调试: 射线起点=(%1, %2, %3), 终点=(%4, %5, %6)", 
+            traceStart[0], traceStart[1], traceStart[2],
+            traceEnd[0], traceEnd[1], traceEnd[2]);
+        
+        float expectedDistance = StaminaConstants.ENV_INDOOR_CHECK_HEIGHT;
+        PrintFormat("[RealisticSystem] 室内检测调试: 预期距离=%1m", expectedDistance);
+        
+        // 测试所有物理层
+        bool found = false;
+        
+        // 1. Character 层
+        TraceParam traceParam1 = new TraceParam();
+        traceParam1.Start = traceStart;
+        traceParam1.End = traceEnd;
+        traceParam1.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam1.Exclude = owner;
+        traceParam1.LayerMask = EPhysicsLayerPresets.Character;
+        world.TraceMove(traceParam1, FilterIndoorCallback);
+        float hitDistance1 = vector.Distance(traceParam1.Start, traceParam1.End);
+        bool hit1 = (hitDistance1 < expectedDistance * 0.98);
+        PrintFormat("[RealisticSystem] 室内检测调试: 物理层=Character, 命中距离=%1m, 是否命中=%2", hitDistance1, hit1);
+        if (hit1) found = true;
+        
+        // 2. Projectile 层
+        TraceParam traceParam2 = new TraceParam();
+        traceParam2.Start = traceStart;
+        traceParam2.End = traceEnd;
+        traceParam2.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        traceParam2.Exclude = owner;
+        traceParam2.LayerMask = EPhysicsLayerPresets.Projectile;
+        world.TraceMove(traceParam2, FilterIndoorCallback);
+        float hitDistance2 = vector.Distance(traceParam2.Start, traceParam2.End);
+        bool hit2 = (hitDistance2 < expectedDistance * 0.98);
+        PrintFormat("[RealisticSystem] 室内检测调试: 物理层=Projectile, 命中距离=%1m, 是否命中=%2", hitDistance2, hit2);
+        if (hit2) found = true;
+        
+        string resultStr = "室外";
+        if (found)
+            resultStr = "室内";
+        PrintFormat("[RealisticSystem] 室内检测调试: 最终结果=%1", resultStr);
+        return found;
     }
     
     // 获取降雨强度（用于调试）

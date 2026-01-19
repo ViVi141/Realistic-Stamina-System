@@ -45,7 +45,7 @@ class DebugDisplay
         return "Unknown";
     }
     
-    // 格式化坡度信息字符串
+    // 格式化坡度信息字符串（中英双语）
     // @param slopeAngleDegrees 坡度角度（度）
     // @return 坡度信息字符串
     static string FormatSlopeInfo(float slopeAngleDegrees)
@@ -54,17 +54,25 @@ class DebugDisplay
             return "";
         
         string slopeDirection = "";
+        string slopeDirectionEn = "";
         if (slopeAngleDegrees > 0)
+        {
             slopeDirection = "上坡";
+            slopeDirectionEn = "Uphill";
+        }
         else
+        {
             slopeDirection = "下坡";
+            slopeDirectionEn = "Downhill";
+        }
         
-        return string.Format(" | 坡度: %1%° (%2)", 
+        return string.Format(" | 坡度: %1° (%2) | Grade: %1° (%3)", 
             Math.Round(Math.AbsFloat(slopeAngleDegrees) * 10.0) / 10.0,
-            slopeDirection);
+            slopeDirection,
+            slopeDirectionEn);
     }
     
-    // 格式化Sprint信息字符串
+    // 格式化Sprint信息字符串（中英双语）
     // @param isSprinting 是否正在Sprint
     // @param currentMovementPhase 当前移动阶段
     // @return Sprint信息字符串
@@ -73,7 +81,7 @@ class DebugDisplay
         if (!isSprinting && currentMovementPhase != 3)
             return "";
         
-        return string.Format(" | Sprint消耗倍数: %1x", 
+        return string.Format(" | Sprint消耗倍数: %1x | Sprint Drain Multiplier: %1x", 
             RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER.ToString());
     }
     
@@ -151,7 +159,7 @@ class DebugDisplay
         string terrainInfo)
     {
         string debugMessage = string.Format(
-            "[RealisticSystem] 调试: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%%%7%8%9", 
+            "[RealisticSystem] 调试 / Debug: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%% | Type=%1 | Stamina=%2%% | Base Speed=%3 | Encumbrance Penalty=%4 | Final Speed=%5 | Grade=%6%%%7%8%9", 
             movementTypeStr,
             Math.Round(staminaPercent * 100.0).ToString(),
             baseSpeedMultiplier.ToString(),
@@ -339,9 +347,9 @@ class DebugDisplay
         if (isSwimming)
             movementTypeStr = "Swim";
         
-        // 构建状态消息
+        // 构建状态消息（中英双语）
         string statusMessage = string.Format(
-            "[状态] 速度: %1 m/s | 体力: %2% | 速度倍数: %3x | 类型: %4",
+            "[状态 / Status] 速度: %1 m/s | 体力: %2%% | 速度倍数: %3x | 类型: %4 | Speed: %1 m/s | Stamina: %2%% | Speed Multiplier: %3x | Type: %4",
             Math.Round(lastSecondSpeed * 10.0) / 10.0,
             Math.Round(lastStaminaPercent * 100.0),
             Math.Round(lastSpeedMultiplier * 100.0) / 100.0,

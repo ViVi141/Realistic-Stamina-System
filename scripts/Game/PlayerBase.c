@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.11.0
+// Realistic Stamina System (RSS) - v2.12.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -204,7 +204,7 @@ modded class SCR_CharacterControllerComponent
                 inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
                 
                 // 调试输出
-                Print("[RealisticSystem] 跳跃动作监听器已添加");
+                Print("[RealisticSystem] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
         }
         else
@@ -242,7 +242,7 @@ modded class SCR_CharacterControllerComponent
         if (!isInVehicle && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
-            Print("[RealisticSystem] 动作监听器检测到跳跃输入！");
+            Print("[RealisticSystem] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
         }
     }
     
@@ -269,7 +269,7 @@ modded class SCR_CharacterControllerComponent
         if (!isInVehicle && am.GetActionTriggered("Jump") && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
-            Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！");
+            Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
         }
     }
     
@@ -290,6 +290,73 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         
+        // ==================== 载具检测：如果在载具中，不消耗体力 ====================
+        // 检查是否在载具中（载具中不应该消耗体力）
+        bool isInVehicle = false;
+        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
+            if (compAccess && compAccess.GetCompartment())
+                isInVehicle = true;
+        }
+        
+        // 如果在载具中，只恢复体力，不消耗体力，也不更新速度
+        if (isInVehicle)
+        {
+            // 调试信息：载具状态
+            static int vehicleDebugCounter = 0;
+            vehicleDebugCounter++;
+            if (vehicleDebugCounter >= 25) // 每5秒输出一次
+            {
+                vehicleDebugCounter = 0;
+                if (m_pStaminaComponent)
+                {
+                    float currentStamina = m_pStaminaComponent.GetTargetStamina();
+                    PrintFormat("[RealisticSystem] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%", 
+                        Math.Round(currentStamina * 100.0).ToString());
+                }
+            }
+            
+            // 在载具中可以恢复体力（静止状态）
+            if (m_pStaminaComponent)
+            {
+                float currentStamina = m_pStaminaComponent.GetTargetStamina();
+                if (currentStamina < 1.0)
+                {
+                    // 计算恢复率（使用标准恢复模型）
+                    float restDurationMinutes = 0.0; // 载具中视为静止，但恢复时间较短
+                    float exerciseDurationMinutes = 0.0; // 无运动累积疲劳
+                    float currentWeightForRecovery = 0.0; // 载具中负重不影响恢复
+                    float baseDrainRateByVelocity = 0.0; // 无消耗
+                    float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                        currentStamina,
+                        restDurationMinutes,
+                        exerciseDurationMinutes,
+                        currentWeightForRecovery,
+                        baseDrainRateByVelocity,
+                        false); // 不禁用正向恢复
+                    
+                    // 更新体力值
+                    float newStamina = Math.Clamp(currentStamina + recoveryRate, 0.0, 1.0);
+                    m_pStaminaComponent.SetTargetStamina(newStamina);
+                    
+                    // 调试信息：载具中体力恢复
+                    if (vehicleDebugCounter == 0)
+                    {
+                        PrintFormat("[RealisticSystem] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s)",
+                            Math.Round(currentStamina * 100.0).ToString(),
+                            Math.Round(newStamina * 100.0).ToString(),
+                            recoveryRate.ToString());
+                    }
+                }
+            }
+            
+            // 继续调度下一次更新，但不进行速度更新和体力消耗计算
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+            return;
+        }
+        
         // 获取当前体力百分比（使用目标体力值，这是我们控制的）
         float staminaPercent = 1.0;
         if (m_pStaminaComponent)
@@ -305,14 +372,30 @@ modded class SCR_CharacterControllerComponent
         // ==================== 精疲力尽逻辑（融合模型）====================
         // 如果体力 ≤ 0，强制速度为跛行速度（1.0 m/s）
         bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
+        static bool lastExhaustedState = false;
         if (isExhausted)
         {
             // 精疲力尽：强制速度为跛行速度（1.0 m/s）
             float limpSpeedMultiplier = RealisticStaminaSpeedSystem.EXHAUSTION_LIMP_SPEED / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
             OverrideMaxSpeed(limpSpeedMultiplier);
             
+            // 调试信息：精疲力尽状态
+            if (!lastExhaustedState)
+            {
+                Print("[RealisticSystem] 精疲力尽 / Exhausted: 速度限制为跛行速度 | Speed Limited to Limp Speed");
+                lastExhaustedState = true;
+            }
+            
             // 继续执行后续逻辑（但速度已被限制）
             // 注意：即使精疲力尽，仍然需要更新体力值（恢复）
+        }
+        else
+        {
+            if (lastExhaustedState)
+            {
+                Print("[RealisticSystem] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
+                lastExhaustedState = false;
+            }
         }
         
         // ==================== 性能优化：使用缓存的负重值（模块化）====================
@@ -368,6 +451,16 @@ modded class SCR_CharacterControllerComponent
         m_vLastPositionSample = speedResult.lastPositionSample;
         m_bHasLastPositionSample = speedResult.hasLastPositionSample;
         m_vComputedVelocity = speedResult.computedVelocity;
+        
+        // 调试信息：速度计算（每5秒输出一次）
+        static int speedDebugCounter = 0;
+        speedDebugCounter++;
+        if (speedDebugCounter >= 25) // 每5秒输出一次
+        {
+            speedDebugCounter = 0;
+            PrintFormat("[RealisticSystem] 速度计算 / Speed Calculation: 当前速度=%1 m/s | Current Speed=%1 m/s",
+                Math.Round(currentSpeed * 10.0) / 10.0);
+        }
         
         // ==================== 性能优化：使用缓存的当前重量（模块化）====================
         // 使用缓存的当前重量（避免重复查找组件）
@@ -459,6 +552,11 @@ modded class SCR_CharacterControllerComponent
                 signalsManager, 
                 exhaustionSignalID
             );
+            if (jumpCost > 0.0)
+            {
+                PrintFormat("[RealisticSystem] 跳跃消耗 / Jump Cost: -%1%% | -%1%%", 
+                    Math.Round(jumpCost * 100.0 * 10.0) / 10.0);
+            }
             staminaPercent = staminaPercent - jumpCost;
             
             // 处理翻越逻辑（返回体力消耗值）
@@ -475,6 +573,11 @@ modded class SCR_CharacterControllerComponent
                 vaultEncumbranceCacheValid, 
                 vaultEncumbranceCurrentWeight
             );
+            if (vaultCost > 0.0)
+            {
+                PrintFormat("[RealisticSystem] 翻越消耗 / Vault Cost: -%1%% | -%1%%", 
+                    Math.Round(vaultCost * 100.0 * 10.0) / 10.0);
+            }
             staminaPercent = staminaPercent - vaultCost;
             
             // 更新冷却时间（每0.2秒调用一次）
@@ -606,6 +709,30 @@ modded class SCR_CharacterControllerComponent
         if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
             sprintMultiplier = RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER;
         
+        // 调试信息：体力消耗计算参数（每5秒输出一次）
+        static int drainDebugCounter = 0;
+        drainDebugCounter++;
+        if (drainDebugCounter >= 25) // 每5秒输出一次
+        {
+            drainDebugCounter = 0;
+            string movementTypeDebug = "";
+            if (useSwimmingModel)
+                movementTypeDebug = "游泳 / Swimming";
+            else
+                movementTypeDebug = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 坡度=%4%% | 地形系数=%5 | 姿态=%6x | 热应激=%7x | 效率=%8 | 疲劳=%9 | Sprint倍数=%10x",
+                movementTypeDebug,
+                Math.Round(currentSpeed * 10.0) / 10.0,
+                Math.Round(currentWeight * 10.0) / 10.0,
+                Math.Round(gradePercentForConsumption * 10.0),
+                Math.Round(terrainFactorForConsumption * 100.0) / 100.0,
+                Math.Round(postureMultiplier * 100.0) / 100.0,
+                Math.Round(heatStressMultiplier * 100.0) / 100.0,
+                Math.Round(totalEfficiencyFactor * 100.0) / 100.0,
+                Math.Round(fatigueFactor * 100.0) / 100.0,
+                Math.Round(sprintMultiplier * 100.0) / 100.0);
+        }
+        
         float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
         float totalDrainRate = 0.0;
         
@@ -633,7 +760,24 @@ modded class SCR_CharacterControllerComponent
                 baseDrainRateByVelocityForModule);
             
             // 应用热应激倍数（影响体力消耗）
+            float drainRateBeforeHeat = totalDrainRate;
             totalDrainRate = totalDrainRate * heatStressMultiplier;
+            
+            // 调试信息：热应激影响
+            if (drainDebugCounter == 0 && heatStressMultiplier > 1.01)
+            {
+                PrintFormat("[RealisticSystem] 热应激影响 / Heat Stress Effect: 消耗率 %1 → %2 (倍数: %3x) | Drain Rate %1 → %2 (Multiplier: %3x)",
+                    Math.Round(drainRateBeforeHeat * 1000000.0).ToString(),
+                    Math.Round(totalDrainRate * 1000000.0).ToString(),
+                    Math.Round(heatStressMultiplier * 100.0) / 100.0);
+            }
+        }
+        
+        // 调试信息：最终体力消耗率
+        if (drainDebugCounter == 0)
+        {
+            PrintFormat("[RealisticSystem] 最终体力消耗率 / Final Stamina Drain Rate: %1/0.2s | %1/0.2s",
+                Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
         }
         
         // 如果模块计算的基础消耗率为0，使用本地计算的baseDrainRateByVelocity
@@ -680,6 +824,10 @@ modded class SCR_CharacterControllerComponent
             if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005) // 如果偏差超过0.5%（降低阈值，更敏感）
             {
                 // 检测到原生系统干扰，强制纠正
+                PrintFormat("[RealisticSystem] 检测到原生系统干扰 / Native System Interference Detected: 目标=%1%% | 实际=%2%% | 偏差=%3%% | Target=%1%% | Actual=%2%% | Diff=%3%%",
+                    Math.Round(newTargetStamina * 100.0).ToString(),
+                    Math.Round(verifyStamina * 100.0).ToString(),
+                    Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
                 m_pStaminaComponent.SetTargetStamina(newTargetStamina);
             }
             
