@@ -25,9 +25,9 @@
   - UpdateSpeedBasedOnStamina() 函数从约 946 行精简到约 700 行
   - 大幅提升代码可读性和可维护性
 - **调试信息输出优化**
-  - 扩展 SCR_DebugDisplay.c 模块（从 145 行扩展到 304 行）
+  - 扩展 SCR_DebugDisplay.c 模块（从 145 行扩展到 352 行）
   - 新增 `FormatEnvironmentInfo()` 方法：统一格式化环境因子信息
-  - 新增 `OutputDebugInfo()` 方法：统一调试信息输出接口
+  - 新增 `OutputDebugInfo()` 方法：统一调试信息输出接口（使用参数结构体，解决参数数量限制）
   - 新增 `OutputStatusInfo()` 方法：统一状态信息输出接口
   - 所有调试信息格式化逻辑集中在 DebugDisplay 模块
 - **坡度检测模块化**
@@ -46,7 +46,7 @@
 - **PlayerBase.c**: 1362行 → 817行（减少40%）
 - **SCR_SwimmingState.c**: 新建（121行）
 - **SCR_StaminaUpdateCoordinator.c**: 新建（333行）
-- **SCR_DebugDisplay.c**: 145行 → 304行（扩展）
+- **SCR_DebugDisplay.c**: 145行 → 352行（扩展）
 - **SCR_SpeedCalculation.c**: 128行 → 163行（扩展）
 
 ## [2.10.0] - 2026-01-19
