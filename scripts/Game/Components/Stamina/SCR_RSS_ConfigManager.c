@@ -56,7 +56,11 @@ class SCR_RSS_ConfigManager
         m_fLastLoadTime = currentTime;
         
         // 打印启动提示（让服主确认模组已正常加载）
-        string debugStatus = m_Settings.m_bDebugLogEnabled ? "ON" : "OFF";
+        string debugStatus;
+        if (m_Settings.m_bDebugLogEnabled)
+            debugStatus = "ON";
+        else
+            debugStatus = "OFF";
         Print("[RSS] Realistic Stamina System v2.15.0 initialized (Debug Logs: " + debugStatus + ")");
     }
     
