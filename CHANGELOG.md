@@ -5,6 +5,50 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.11.0] - 2026-01-20
+
+### 新增
+- **进一步模块化重构（Advanced Modular Refactoring）**
+  - **SCR_SwimmingState.c** - 游泳状态管理模块（121行）
+    - 游泳状态检测逻辑
+    - 湿重跟踪和计算逻辑
+    - 总湿重计算逻辑
+  - **SCR_StaminaUpdateCoordinator.c** - 体力更新协调器模块（333行）
+    - 速度更新协调逻辑
+    - 位置差分测速逻辑
+    - 基础消耗率计算（游泳/陆地）
+    - 体力更新协调（消耗/恢复）
+
+### 改进
+- **代码精简优化**
+  - PlayerBase.c: 从 1362 行减少到 817 行（减少 545 行，约 40%）
+  - UpdateSpeedBasedOnStamina() 函数从约 946 行精简到约 700 行
+  - 大幅提升代码可读性和可维护性
+- **调试信息输出优化**
+  - 扩展 SCR_DebugDisplay.c 模块（从 145 行扩展到 304 行）
+  - 新增 `FormatEnvironmentInfo()` 方法：统一格式化环境因子信息
+  - 新增 `OutputDebugInfo()` 方法：统一调试信息输出接口
+  - 新增 `OutputStatusInfo()` 方法：统一状态信息输出接口
+  - 所有调试信息格式化逻辑集中在 DebugDisplay 模块
+- **坡度检测模块化**
+  - 扩展 SCR_SpeedCalculation.c 模块
+  - 新增 `CalculateGradePercent()` 方法：统一坡度检测和计算逻辑
+  - 考虑攀爬和跳跃状态的坡度检测
+
+### 技术改进
+- 实现游泳状态管理模块化架构（SwimmingStateManager类）
+- 实现体力更新协调器模块化架构（StaminaUpdateCoordinator类）
+- 实现调试信息统一管理（DebugDisplay类扩展）
+- 优化代码组织，每个模块职责单一，符合单一职责原则
+- 提高代码复用性和可测试性
+
+### 代码统计
+- **PlayerBase.c**: 1362行 → 817行（减少40%）
+- **SCR_SwimmingState.c**: 新建（121行）
+- **SCR_StaminaUpdateCoordinator.c**: 新建（333行）
+- **SCR_DebugDisplay.c**: 145行 → 304行（扩展）
+- **SCR_SpeedCalculation.c**: 128行 → 163行（扩展）
+
 ## [2.10.0] - 2026-01-19
 
 ### 新增

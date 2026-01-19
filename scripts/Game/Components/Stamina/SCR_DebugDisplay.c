@@ -142,4 +142,163 @@ class DebugDisplay
         
         return debugMessage + terrainInfo;
     }
+    
+    // ==================== 环境因子信息格式化 ====================
+    
+    // 格式化环境因子信息字符串
+    // @param environmentFactor 环境因子模块引用
+    // @param heatStressMultiplier 热应激倍数
+    // @param rainWeight 降雨湿重（kg）
+    // @param swimmingWetWeight 游泳湿重（kg）
+    // @return 环境因子信息字符串
+    static string FormatEnvironmentInfo(
+        EnvironmentFactor environmentFactor,
+        float heatStressMultiplier,
+        float rainWeight,
+        float swimmingWetWeight)
+    {
+        if (!environmentFactor)
+            return " | 环境因子: 未初始化";
+        
+        // 获取当前时间
+        float currentHour = environmentFactor.GetCurrentHour();
+        string timeStr = "";
+        if (currentHour >= 0.0)
+        {
+            int hourInt = Math.Floor(currentHour);
+            int minuteInt = Math.Floor((currentHour - hourInt) * 60.0);
+            string minuteStr = minuteInt.ToString();
+            if (minuteStr.Length() == 1)
+                minuteStr = "0" + minuteStr;
+            timeStr = string.Format("%1:%2", hourInt.ToString(), minuteStr);
+        }
+        else
+        {
+            timeStr = "未知";
+        }
+        
+        // 获取降雨信息
+        bool isRainingDebug = environmentFactor.IsRaining();
+        float rainIntensity = environmentFactor.GetRainIntensity();
+        string rainStr = "";
+        if (isRainingDebug && rainWeight > 0.0)
+        {
+            string rainLevel = "";
+            if (rainIntensity >= 0.8)
+                rainLevel = "暴雨";
+            else if (rainIntensity >= 0.5)
+                rainLevel = "中雨";
+            else
+                rainLevel = "小雨";
+            rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%)", 
+                rainLevel,
+                Math.Round(rainWeight * 10.0) / 10.0,
+                Math.Round(rainIntensity * 100.0));
+        }
+        else if (rainWeight > 0.0)
+        {
+            // 停止降雨但仍有湿重（衰减中）
+            rainStr = string.Format("降雨: 已停止 (残留%1kg)", 
+                Math.Round(rainWeight * 10.0) / 10.0);
+        }
+        else
+        {
+            rainStr = "降雨: 无";
+        }
+        
+        // 获取室内状态
+        bool isIndoorDebug = environmentFactor.IsIndoor();
+        string indoorStr = isIndoorDebug ? "室内" : "室外";
+        
+        // 获取游泳湿重
+        string swimWetStr = "";
+        if (swimmingWetWeight > 0.0)
+        {
+            swimWetStr = string.Format("游泳湿重: %1kg", 
+                Math.Round(swimmingWetWeight * 10.0) / 10.0);
+        }
+        else
+        {
+            swimWetStr = "游泳湿重: 0kg";
+        }
+        
+        // 构建环境信息字符串
+        return string.Format(" | 时间: %1 | 热应激: %2x | %3 | %4 | %5", 
+            timeStr,
+            Math.Round(heatStressMultiplier * 100.0) / 100.0,
+            rainStr,
+            indoorStr,
+            swimWetStr);
+    }
+    
+    // ==================== 统一调试信息输出 ====================
+    
+    // 输出完整调试信息（每5秒一次）
+    // @param owner 角色实体
+    // @param movementTypeStr 移动类型字符串
+    // @param staminaPercent 体力百分比
+    // @param baseSpeedMultiplier 基础速度倍数
+    // @param encumbranceSpeedPenalty 负重速度惩罚
+    // @param finalSpeedMultiplier 最终速度倍数
+    // @param gradePercent 坡度百分比
+    // @param slopeAngleDegrees 坡度角度（度）
+    // @param isSprinting 是否正在Sprint
+    // @param currentMovementPhase 当前移动阶段
+    // @param debugCurrentWeight 当前重量（kg）
+    // @param combatEncumbrancePercent 战斗负重百分比
+    // @param terrainDetector 地形检测模块
+    // @param environmentFactor 环境因子模块
+    // @param heatStressMultiplier 热应激倍数
+    // @param rainWeight 降雨湿重（kg）
+    // @param swimmingWetWeight 游泳湿重（kg）
+    static void OutputDebugInfo(
+        IEntity owner,
+        string movementTypeStr,
+        float staminaPercent,
+        float baseSpeedMultiplier,
+        float encumbranceSpeedPenalty,
+        float finalSpeedMultiplier,
+        float gradePercent,
+        float slopeAngleDegrees,
+        bool isSprinting,
+        int currentMovementPhase,
+        float debugCurrentWeight,
+        float combatEncumbrancePercent,
+        TerrainDetector terrainDetector,
+        EnvironmentFactor environmentFactor,
+        float heatStressMultiplier,
+        float rainWeight,
+        float swimmingWetWeight)
+    {
+        // 只对本地控制的玩家输出
+        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 格式化各个信息字符串
+        string slopeInfo = FormatSlopeInfo(slopeAngleDegrees);
+        string sprintInfo = FormatSprintInfo(isSprinting, currentMovementPhase);
+        string encumbranceInfo = FormatEncumbranceInfo(debugCurrentWeight, combatEncumbrancePercent);
+        
+        // 获取地形信息
+        float currentTimeForDebug = GetGame().GetWorld().GetWorldTime();
+        string terrainInfo = FormatTerrainInfo(terrainDetector, owner, currentTimeForDebug);
+        
+        // 获取环境因子信息
+        string envInfo = FormatEnvironmentInfo(environmentFactor, heatStressMultiplier, rainWeight, swimmingWetWeight);
+        
+        // 构建并输出调试消息
+        string debugMessage = BuildDebugMessage(
+            movementTypeStr,
+            staminaPercent,
+            baseSpeedMultiplier,
+            encumbranceSpeedPenalty,
+            finalSpeedMultiplier,
+            gradePercent,
+            slopeInfo,
+            sprintInfo,
+            encumbranceInfo,
+            terrainInfo);
+        
+        Print(debugMessage + envInfo);
+    }
 }

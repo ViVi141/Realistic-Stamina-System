@@ -57,14 +57,16 @@
 - ✅ **多维交互模型**：速度×负重×坡度三维交互项，更真实地模拟复杂运动场景
 - ✅ **重载下恢复优化**：负重时恢复速率提升，模拟深呼吸快速调整能力
 - ✅ **趴下休息负重优化**（v2.6.0）：当角色趴下休息时，负重影响降至最低（地面支撑装备重量），重装兵趴下时能够快速恢复体力
-- ✅ **深度模块化架构**（v2.8.0）：代码完全模块化，提高可维护性和游戏工作台兼容性
+- ✅ **深度模块化架构**（v2.8.0/v2.11.0）：代码完全模块化，提高可维护性和游戏工作台兼容性
+  - v2.11.0进一步优化：PlayerBase.c 减少 40%，新增游泳状态管理和体力更新协调器模块
 - ✅ **环境因子系统**（v2.10.0）：热应激和降雨湿重系统
   - 热应激：10:00-18:00时间段内，峰值（14:00）时消耗增加30%，室内豁免50%
   - 降雨湿重：小雨2kg，暴雨8kg，停止降雨后60秒内逐渐衰减
   - 室内检测：向上射线检测，判断角色是否在室内
   - 湿重饱和上限：总湿重（游泳+降雨）不超过10kg
 - ✅ **实时状态显示**：每秒显示速度、体力、速度倍率、移动类型和坡度信息
-- ✅ **调试信息增强**（v2.10.0）：每5秒显示完整的环境因子信息（时间、热应激、降雨、室内状态、游泳湿重）
+- ✅ **调试信息增强**（v2.10.0/v2.11.0）：每5秒显示完整的环境因子信息（时间、热应激、降雨、室内状态、游泳湿重）
+  - v2.11.0优化：统一调试信息输出接口，所有格式化逻辑集中在 DebugDisplay 模块
 - ✅ **精确医学模型**：基于[Pandolf能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)和耐力下降模型，不使用近似
 - ✅ **游泳体力管理**（v2.9.0）：3D物理模型，包含水平阻力、垂直上浮/下潜功率、静态踩水功率
 
@@ -81,11 +83,29 @@ RealisticStaminaSystem/
 ├── addon.gproj                           # Arma Reforger 项目配置文件
 ├── scripts/                              # EnforceScript 脚本目录
 │   └── Game/
-│       ├── PlayerBase.c                  # 主控制器组件（速度更新和状态显示）
+│       ├── PlayerBase.c                  # 主控制器组件（速度更新和状态显示，817行）
 │       └── Components/
 │           └── Stamina/
 │               ├── SCR_RealisticStaminaSystem.c  # 体力-速度系统核心（数学计算）
-│               └── SCR_StaminaOverride.c          # 体力系统覆盖（拦截原生系统）
+│               ├── SCR_StaminaOverride.c          # 体力系统覆盖（拦截原生系统）
+│               ├── SCR_SwimmingState.c            # 游泳状态管理模块（121行，v2.11.0新增）
+│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块（333行，v2.11.0新增）
+│               ├── SCR_SpeedCalculation.c        # 速度计算模块（163行，v2.11.0扩展）
+│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块（187行）
+│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块（127行）
+│               ├── SCR_DebugDisplay.c            # 调试信息显示模块（304行，v2.11.0扩展）
+│               ├── SCR_CollapseTransition.c      # "撞墙"阻尼过渡模块
+│               ├── SCR_ExerciseTracking.c        # 运动持续时间跟踪模块
+│               ├── SCR_JumpVaultDetection.c      # 跳跃和翻越检测模块
+│               ├── SCR_EncumbranceCache.c        # 负重缓存管理模块
+│               ├── SCR_FatigueSystem.c           # 疲劳积累系统模块
+│               ├── SCR_TerrainDetection.c        # 地形检测模块
+│               ├── SCR_EnvironmentFactor.c       # 环境因子模块（v2.10.0）
+│               ├── SCR_EpocState.c               # EPOC状态管理模块
+│               ├── SCR_NetworkSync.c             # 网络同步模块
+│               ├── SCR_UISignalBridge.c          # UI信号桥接模块
+│               ├── SCR_StaminaConstants.c        # 常量定义模块
+│               └── SCR_StaminaHelpers.c          # 辅助函数模块
 ├── Prefabs/                              # 预制体文件
 │   └── Characters/
 │       └── Core/
@@ -555,7 +575,14 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v2.9.0** (当前版本) - 游泳体力管理完善与游泳速度检测修复
+- **v2.11.0** (当前版本) - 进一步模块化重构和调试信息优化
+  - 代码精简：PlayerBase.c 减少 40%（1362行 → 817行）
+  - 新增游泳状态管理模块（SCR_SwimmingState.c）
+  - 新增体力更新协调器模块（SCR_StaminaUpdateCoordinator.c）
+  - 扩展调试显示模块（SCR_DebugDisplay.c）
+  - 统一调试信息输出接口
+- **v2.10.0** - 环境因子系统（热应激和降雨湿重）
+- **v2.9.0** - 游泳体力管理完善与游泳速度检测修复
   - 游泳体力管理：引入3D物理阻力/浮力模型，区分水平/垂直代价，包含湿重效应
   - 修复游泳速度始终为0：改为使用 `GetOrigin()` 位置差分测速（游泳命令位移不更新 `GetVelocity()` 的情况下仍可正确取速）
   - 速度显示与体力消耗使用同一套游泳速度输入，调试与体验更一致
