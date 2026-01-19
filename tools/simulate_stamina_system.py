@@ -23,6 +23,12 @@ from stamina_constants import *
 # 设置中文字体（用于图表）
 rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 rcParams['axes.unicode_minus'] = False
+rcParams['figure.titlesize'] = 14
+rcParams['axes.titlesize'] = 11
+rcParams['axes.labelsize'] = 10
+rcParams['legend.fontsize'] = 9
+rcParams['xtick.labelsize'] = 9
+rcParams['ytick.labelsize'] = 9
 
 # Whether to show figures interactively (default off; scripts are for PNG generation)
 SHOW_PLOTS = False
@@ -604,14 +610,14 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
         simulation_time, encumbrance_percent, 'idle', 0.0, max_speed_mode=False
     )
     
-    # 创建图表
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    # 创建图表（调整尺寸以符合3840×2160限制；使用constrained_layout避免文字互相挤压）
+    fig, axes = plt.subplots(2, 2, figsize=(12.8, 9), constrained_layout=True)
     movement_title = movement_type_names.get(movement_type, movement_type)
     slope_title = f"{slope_angle_degrees:.1f}° ({slope_desc})"
     fig.suptitle(
         f"Realistic Stamina System (RSS) - 趋势图 / Trends\n"
         f"({movement_title}, Slope / 坡度: {slope_title}, α={STAMINA_EXPONENT})",
-        fontsize=16,
+        fontsize=12,
         fontweight='bold'
     )
     
@@ -621,9 +627,9 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     ax1.plot(time_rest / 60, stamina_rest * 100, 'b-', linewidth=2, label='静止恢复 / Rest')
     ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
     ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=12)
-    ax1.set_title('体力随时间变化 / Stamina vs Time', fontsize=13, fontweight='bold')
+    ax1.set_title('体力随时间变化 / Stamina vs Time', fontsize=10, fontweight='bold')
     ax1.grid(True, alpha=0.3)
-    ax1.legend()
+    ax1.legend(loc='best')
     ax1.set_ylim([0, 105])
     
     # 子图2：速度随时间变化
@@ -635,9 +641,9 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
                 label=f'目标速度 / Target ({GAME_MAX_SPEED * TARGET_RUN_SPEED_MULTIPLIER:.2f} m/s)')
     ax2.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
     ax2.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
-    ax2.set_title('速度随时间变化 / Speed vs Time (max-speed mode)', fontsize=13, fontweight='bold')
+    ax2.set_title('速度随时间变化 / Speed vs Time (max-speed mode)', fontsize=10, fontweight='bold')
     ax2.grid(True, alpha=0.3)
-    ax2.legend()
+    ax2.legend(loc='best')
     
     # 子图3：速度倍数随时间变化
     ax3 = axes[1, 0]
@@ -648,9 +654,9 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
                 label=f'最小 / Min ({MIN_SPEED_MULTIPLIER*100:.0f}%)')
     ax3.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
     ax3.set_ylabel('速度倍数（%） / Multiplier (%)', fontsize=12)
-    ax3.set_title('速度倍数随时间变化 / Multiplier vs Time', fontsize=13, fontweight='bold')
+    ax3.set_title('速度倍数随时间变化 / Multiplier vs Time', fontsize=10, fontweight='bold')
     ax3.grid(True, alpha=0.3)
-    ax3.legend()
+    ax3.legend(loc='best')
     
     # 子图4：体力消耗率随时间变化
     ax4 = axes[1, 1]
@@ -658,15 +664,15 @@ def plot_trends(simulation_time=300, encumbrance_percent=0.0, movement_type='run
     ax4.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
     ax4.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
     ax4.set_ylabel('体力变化率（%/秒） / Rate (%/s)', fontsize=12)
-    ax4.set_title('体力消耗率随时间变化 / Stamina rate vs Time', fontsize=13, fontweight='bold')
+    ax4.set_title('体力消耗率随时间变化 / Stamina rate vs Time', fontsize=10, fontweight='bold')
     ax4.grid(True, alpha=0.3)
-    ax4.legend()
+    ax4.legend(loc='best')
     
-    plt.tight_layout()
+    # constrained_layout 已启用，无需 tight_layout（避免与constrained_layout冲突）
     
     # 保存图表
     output_file = 'stamina_system_trends.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, dpi=200)
     print(f"\n图表已保存为: {output_file}")
     
     # 显示图表（默认关闭，避免阻塞自动生成）

@@ -23,6 +23,12 @@ from stamina_constants import *
 # 设置中文字体（用于图表）
 rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 rcParams['axes.unicode_minus'] = False
+rcParams['figure.titlesize'] = 15
+rcParams['axes.titlesize'] = 10
+rcParams['axes.labelsize'] = 9
+rcParams['legend.fontsize'] = 8
+rcParams['xtick.labelsize'] = 8
+rcParams['ytick.labelsize'] = 8
 
 # Whether to show figures interactively (default off; scripts are for PNG generation)
 SHOW_PLOTS = False
@@ -392,23 +398,11 @@ def simulate_2miles(encumbrance_percent=0.0, movement_type='run', slope_angle_de
     return np.array(time_points), np.array(stamina_values), np.array(speed_values), np.array(distance_values), time, distance
 
 
-def plot_multi_dimensional_analysis():
-    """生成多维度趋势分析图"""
-    fig = plt.figure(figsize=(20, 14))
-    gs = fig.add_gridspec(4, 3, hspace=0.35, wspace=0.3)
+def plot_2mile_by_load():
+    """生成不同负重下的2英里测试对比图"""
+    fig, ax1 = plt.subplots(figsize=(10, 6), constrained_layout=True)
     
-    fig.suptitle(
-        'Realistic Stamina System (RSS) - 多维度趋势分析 / Multi-dimensional Analysis\n'
-        '（以30KG战斗负重为基准 / 30kg combat-load baseline）',
-        fontsize=20,
-        fontweight='bold'
-    )
-    
-    # 30KG战斗负重百分比
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
-    
-    # ========== 图1: 不同负重下的2英里测试对比（以30KG为基准）==========
-    ax1 = fig.add_subplot(gs[0, 0])
     weights_kg = [0.0, 15.0, 30.0, 40.5]
     encumbrance_levels = [w / MAX_ENCUMBRANCE_WEIGHT for w in weights_kg]
     colors = ['blue', 'green', 'orange', 'red']
@@ -420,19 +414,28 @@ def plot_multi_dimensional_analysis():
         ax1.plot(time_e / 60, stamina_e * 100, color=color, linewidth=line_width, label=label)
     
     ax1.axvline(x=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=1.5, alpha=0.5, label='目标时间')
-    ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=11)
-    ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=11)
+    ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
+    ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=12)
     ax1.set_title(
         '不同负重下的2英里测试体力消耗 / 2-mile stamina by load\n'
         '（30KG为战斗负重基准 / 30kg baseline）',
-        fontsize=12,
+        fontsize=14,
         fontweight='bold'
     )
     ax1.grid(True, alpha=0.3)
-    ax1.legend(fontsize=9)
+    ax1.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图2: 30KG战斗负重下不同移动类型的速度对比 ==========
-    ax2 = fig.add_subplot(gs[0, 1])
+    output_file = 'multi_2mile_by_load.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_speed_by_movement_type():
+    """生成30KG战斗负重下不同移动类型的速度对比图"""
+    fig, ax2 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     stamina_range = np.linspace(0.0, 1.0, 100)
     movement_types = ['walk', 'run', 'sprint']
     movement_labels = ['Walk', 'Run', 'Sprint']
@@ -443,20 +446,28 @@ def plot_multi_dimensional_analysis():
         ax2.plot(stamina_range * 100, speeds, color=color, linewidth=2, label=label)
     
     ax2.axhline(y=GAME_MAX_SPEED * SPRINT_MAX_SPEED_MULTIPLIER, color='orange', linestyle='--', linewidth=1.5, alpha=0.7, label='Sprint最高速度')
-    ax2.set_xlabel('体力（%） / Stamina (%)', fontsize=11)
-    ax2.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=11)
-    ax2.set_title('30KG战斗负重：不同移动类型速度对比 / 30kg: speed by movement type', fontsize=12, fontweight='bold')
+    ax2.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
+    ax2.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
+    ax2.set_title('30KG战斗负重：不同移动类型速度对比 / 30kg: speed by movement type', fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=9)
+    ax2.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图3: 30KG战斗负重下不同坡度的体力消耗对比 ==========
-    ax3 = fig.add_subplot(gs[0, 2])
+    output_file = 'multi_speed_by_movement_type.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_drain_by_slope():
+    """生成30KG战斗负重下不同坡度的体力消耗对比图"""
+    fig, ax3 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     slopes = [-10.0, -5.0, 0.0, 5.0, 10.0]
     colors_slope = ['cyan', 'lightblue', 'gray', 'orange', 'red']
     labels_slope = ['下坡10°', '下坡5°', '平地', '上坡5°', '上坡10°']
     
     stamina_test = np.linspace(1.0, 0.2, 50)
-    avg_speed = GAME_MAX_SPEED * calculate_speed_multiplier_by_stamina(0.6, combat_enc_percent, 'run')  # 60%体力时的平均速度
     
     for slope, color, label in zip(slopes, colors_slope, labels_slope):
         drains = []
@@ -464,17 +475,26 @@ def plot_multi_dimensional_analysis():
             speed_mult = calculate_speed_multiplier_by_stamina(st, combat_enc_percent, 'run')
             speed = GAME_MAX_SPEED * speed_mult
             drain = calculate_stamina_drain(speed, combat_enc_percent, 'run', slope)
-            drains.append(drain / UPDATE_INTERVAL * 100)  # 转换为每秒消耗率
+            drains.append(drain / UPDATE_INTERVAL * 100)
         ax3.plot(stamina_test * 100, drains, color=color, linewidth=2, label=label)
     
-    ax3.set_xlabel('体力（%） / Stamina (%)', fontsize=11)
-    ax3.set_ylabel('体力消耗率（%/秒） / Drain rate (%/s)', fontsize=11)
-    ax3.set_title('30KG战斗负重：不同坡度体力消耗 / 30kg: drain by slope', fontsize=12, fontweight='bold')
+    ax3.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
+    ax3.set_ylabel('体力消耗率（%/秒） / Drain rate (%/s)', fontsize=12)
+    ax3.set_title('30KG战斗负重：不同坡度体力消耗 / 30kg: drain by slope', fontsize=14, fontweight='bold')
     ax3.grid(True, alpha=0.3)
-    ax3.legend(fontsize=9)
+    ax3.legend(fontsize=10, ncol=2, framealpha=0.85)
     
-    # ========== 图4: 30KG战斗负重下不同移动类型和坡度的速度对比 ==========
-    ax4 = fig.add_subplot(gs[1, :])
+    output_file = 'multi_drain_by_slope.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_speed_types_slopes():
+    """生成30KG基准下不同移动类型&坡度速度对比图"""
+    fig, ax4 = plt.subplots(figsize=(12, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     scenarios = [
         ('run', 0.0, 'Run-平地', 'blue', '-'),
         ('run', 5.0, 'Run-上坡5°', 'orange', '-'),
@@ -497,12 +517,31 @@ def plot_multi_dimensional_analysis():
     ax4.axhline(y=TARGET_RUN_SPEED, color='gray', linestyle=':', linewidth=1, alpha=0.5, label='目标Run速度 (3.7 m/s)')
     ax4.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
     ax4.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
-    ax4.set_title('30KG基准：不同移动类型&坡度速度对比 / 30kg: speed (types & slopes)', fontsize=13, fontweight='bold')
+    ax4.set_title('30KG基准：不同移动类型&坡度速度对比 / 30kg: speed (types & slopes)', fontsize=14, fontweight='bold')
     ax4.grid(True, alpha=0.3)
-    ax4.legend(fontsize=9, loc='upper right', ncol=3)
+    ax4.legend(fontsize=10, loc='upper right', ncol=3, framealpha=0.85)
     
-    # ========== 图5: 30KG战斗负重下不同移动类型和坡度的体力消耗对比 ==========
-    ax5 = fig.add_subplot(gs[2, :])
+    output_file = 'multi_speed_types_slopes.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_drain_types_slopes():
+    """生成30KG基准下不同移动类型&坡度消耗对比图"""
+    fig, ax5 = plt.subplots(figsize=(12, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
+    scenarios = [
+        ('run', 0.0, 'Run-平地', 'blue', '-'),
+        ('run', 5.0, 'Run-上坡5°', 'orange', '-'),
+        ('run', -5.0, 'Run-下坡5°', 'cyan', '-'),
+        ('sprint', 0.0, 'Sprint-平地', 'red', '--'),
+        ('sprint', 5.0, 'Sprint-上坡5°', 'purple', '--'),
+        ('sprint', -5.0, 'Sprint-下坡5°', 'pink', '--'),
+    ]
+    
+    stamina_test = np.linspace(1.0, 0.2, 50)
     
     for movement_type, slope, label, color, linestyle in scenarios:
         drains = []
@@ -510,31 +549,37 @@ def plot_multi_dimensional_analysis():
             speed_mult = calculate_speed_multiplier_by_stamina(st, combat_enc_percent, movement_type)
             speed = GAME_MAX_SPEED * speed_mult
             drain = calculate_stamina_drain(speed, combat_enc_percent, movement_type, slope)
-            drains.append(drain / UPDATE_INTERVAL * 100)  # 转换为每秒消耗率
+            drains.append(drain / UPDATE_INTERVAL * 100)
         ax5.plot(stamina_test * 100, drains, color=color, linewidth=2, linestyle=linestyle, label=label)
     
     ax5.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
     ax5.set_ylabel('体力消耗率（%/秒） / Drain rate (%/s)', fontsize=12)
-    ax5.set_title('30KG基准：不同移动类型&坡度消耗对比 / 30kg: drain (types & slopes)', fontsize=13, fontweight='bold')
+    ax5.set_title('30KG基准：不同移动类型&坡度消耗对比 / 30kg: drain (types & slopes)', fontsize=14, fontweight='bold')
     ax5.grid(True, alpha=0.3)
-    ax5.legend(fontsize=9, loc='upper left', ncol=3)
+    ax5.legend(fontsize=10, loc='upper left', ncol=3, framealpha=0.85)
     
-    # ========== 图6: 30KG战斗负重下不同移动类型的2英里测试完成时间 ==========
-    ax6 = fig.add_subplot(gs[3, 0])
+    output_file = 'multi_drain_types_slopes.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_2mile_by_movement_type():
+    """生成30KG战斗负重下不同移动类型的2英里测试完成时间图"""
+    fig, ax6 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     movement_types_test = ['walk', 'run', 'sprint']
     movement_labels_test = ['Walk', 'Run', 'Sprint']
     colors_test = ['green', 'blue', 'red']
     completion_times = []
-    final_staminas = []
     
     for mt, label, color in zip(movement_types_test, movement_labels_test, colors_test):
         time_e, stamina_e, speed_e, dist_e, final_time, final_dist = simulate_2miles(combat_enc_percent, mt, 0.0)
         if final_dist >= DISTANCE_METERS:
             completion_times.append(final_time / 60)
-            final_staminas.append(stamina_e[-1] * 100 if len(stamina_e) > 0 else 0)
         else:
             completion_times.append(None)
-            final_staminas.append(None)
     
     valid_indices = [i for i, t in enumerate(completion_times) if t is not None]
     valid_times = [completion_times[i] for i in valid_indices]
@@ -542,21 +587,29 @@ def plot_multi_dimensional_analysis():
     valid_colors = [colors_test[i] for i in valid_indices]
     
     if valid_times:
-        bars = ax6.bar(valid_labels, valid_times, color=valid_colors, alpha=0.7, width=0.6)
+        ax6.bar(valid_labels, valid_times, color=valid_colors, alpha=0.7, width=0.6)
     else:
-        # 如果所有情况下都无法完成，显示提示文本
         ax6.text(0.5, 0.5, '30KG负重下\n无法完成2英里测试', 
-                ha='center', va='center', fontsize=12, color='red', 
+                ha='center', va='center', fontsize=14, color='red', 
                 transform=ax6.transAxes, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     ax6.axhline(y=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=2, label='目标时间')
-    ax6.set_ylabel('完成时间（分钟） / Finish time (min)', fontsize=11)
-    ax6.set_title('30KG战斗负重：不同移动类型2英里测试 / 30kg: 2-mile by movement type', fontsize=12, fontweight='bold')
+    ax6.set_ylabel('完成时间（分钟） / Finish time (min)', fontsize=12)
+    ax6.set_title('30KG战斗负重：不同移动类型2英里测试 / 30kg: 2-mile by movement type', fontsize=14, fontweight='bold')
     ax6.grid(True, alpha=0.3, axis='y')
-    ax6.legend(fontsize=9)
+    ax6.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图7: 30KG战斗负重下不同坡度的2英里测试完成时间 ==========
-    ax7 = fig.add_subplot(gs[3, 1])
+    output_file = 'multi_2mile_by_movement_type.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_2mile_by_slope():
+    """生成30KG战斗负重下不同坡度的2英里测试完成时间图"""
+    fig, ax7 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     slopes_test = [-5.0, 0.0, 5.0]
     labels_slope_test = ['下坡5°', '平地', '上坡5°']
     colors_slope_test = ['cyan', 'gray', 'orange']
@@ -575,24 +628,31 @@ def plot_multi_dimensional_analysis():
     valid_colors_slope = [colors_slope_test[i] for i in valid_indices_slope]
     
     if valid_times_slope:
-        bars = ax7.bar(valid_labels_slope, valid_times_slope, color=valid_colors_slope, alpha=0.7, width=0.6)
+        ax7.bar(valid_labels_slope, valid_times_slope, color=valid_colors_slope, alpha=0.7, width=0.6)
     else:
-        # 如果所有情况下都无法完成，显示提示文本
         ax7.text(0.5, 0.5, '30KG负重下\n无法完成2英里测试', 
-                ha='center', va='center', fontsize=12, color='red', 
+                ha='center', va='center', fontsize=14, color='red', 
                 transform=ax7.transAxes, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     ax7.axhline(y=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=2, label='目标时间')
-    ax7.set_ylabel('完成时间（分钟） / Finish time (min)', fontsize=11)
-    ax7.set_title('30KG战斗负重：不同坡度2英里测试 / 30kg: 2-mile by slope', fontsize=12, fontweight='bold')
+    ax7.set_ylabel('完成时间（分钟） / Finish time (min)', fontsize=12)
+    ax7.set_title('30KG战斗负重：不同坡度2英里测试 / 30kg: 2-mile by slope', fontsize=14, fontweight='bold')
     ax7.grid(True, alpha=0.3, axis='y')
-    ax7.legend(fontsize=9)
+    ax7.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图8: 30KG战斗负重基准下的速度-体力-消耗率三维关系 ==========
-    ax8 = fig.add_subplot(gs[3, 2])
+    output_file = 'multi_2mile_by_slope.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_speed_vs_drain():
+    """生成30KG战斗负重基准下的速度-体力-消耗率关系图"""
+    fig, ax8 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     stamina_range_3d = np.linspace(0.2, 1.0, 50)
     
-    # 计算速度和消耗率
     speeds_3d = []
     drains_3d = []
     for st in stamina_range_3d:
@@ -606,20 +666,46 @@ def plot_multi_dimensional_analysis():
     line1 = ax8.plot(stamina_range_3d * 100, speeds_3d, 'b-', linewidth=2, label='速度')
     line2 = ax8_twin.plot(stamina_range_3d * 100, drains_3d, 'r-', linewidth=2, label='消耗率')
     
-    ax8.set_xlabel('体力（%） / Stamina (%)', fontsize=11)
-    ax8.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=11, color='b')
-    ax8_twin.set_ylabel('体力消耗率（%/秒） / Drain rate (%/s)', fontsize=11, color='r')
-    ax8.set_title('30KG战斗负重：速度与消耗率关系 / 30kg: speed vs drain rate', fontsize=12, fontweight='bold')
+    ax8.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
+    ax8.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12, color='b')
+    ax8_twin.set_ylabel('体力消耗率（%/秒） / Drain rate (%/s)', fontsize=12, color='r')
+    ax8.set_title('30KG战斗负重：速度与消耗率关系 / 30kg: speed vs drain rate', fontsize=14, fontweight='bold')
     ax8.grid(True, alpha=0.3)
     
     lines = line1 + line2
     labels = [line.get_label() for line in lines]
-    ax8.legend(lines, labels, loc='upper right', fontsize=9)
+    ax8.legend(lines, labels, loc='upper right', fontsize=10, framealpha=0.85)
     
-    # 保存图表
-    output_file = 'multi_dimensional_analysis.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"\n多维度趋势图已保存为: {output_file}")
+    output_file = 'multi_speed_vs_drain.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_multi_dimensional_analysis():
+    """生成所有多维度趋势分析图（拆分为多个独立图表）"""
+    print("\n" + "="*70)
+    print("生成多维度趋势分析图（拆分为多个独立图表）")
+    print("="*70)
+    
+    # 生成所有图表
+    plot_2mile_by_load()
+    plot_speed_by_movement_type()
+    plot_drain_by_slope()
+    plot_speed_types_slopes()
+    plot_drain_types_slopes()
+    plot_2mile_by_movement_type()
+    plot_2mile_by_slope()
+    plot_speed_vs_drain()
+    
+    print("\n所有多维度趋势分析图已生成完成！")
+    
+    # 30KG战斗负重百分比
+    combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
+    movement_types_test = ['walk', 'run', 'sprint']
+    movement_labels_test = ['Walk', 'Run', 'Sprint']
+    slopes_test = [-5.0, 0.0, 5.0]
+    labels_slope_test = ['下坡5°', '平地', '上坡5°']
     
     # 打印统计信息
     print("\n" + "="*70)

@@ -23,6 +23,12 @@ from stamina_constants import *
 # 设置中文字体（用于图表）
 rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 rcParams['axes.unicode_minus'] = False
+rcParams['figure.titlesize'] = 15
+rcParams['axes.titlesize'] = 10
+rcParams['axes.labelsize'] = 9
+rcParams['legend.fontsize'] = 8
+rcParams['xtick.labelsize'] = 8
+rcParams['ytick.labelsize'] = 8
 
 # Whether to show figures interactively (default off; scripts are for PNG generation)
 SHOW_PLOTS = False
@@ -474,20 +480,10 @@ def simulate_recovery(start_stamina=0.2, target_stamina=1.0, exercise_duration_m
     return np.array(time_points), np.array(stamina_values)
 
 
-def plot_comprehensive_trends():
-    """生成综合趋势图"""
-    fig = plt.figure(figsize=(16, 12))
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+def plot_2mile_test():
+    """生成2英里测试图"""
+    fig, ax1 = plt.subplots(figsize=(10, 6), constrained_layout=True)
     
-    fig.suptitle(
-        'Realistic Stamina System (RSS) - 综合趋势分析 / Comprehensive Trends\n'
-        '（基于医学模型 / Based on physiological models）',
-        fontsize=18,
-        fontweight='bold'
-    )
-    
-    # ========== 图1: 2英里测试 ==========
-    ax1 = fig.add_subplot(gs[0, 0])
     time_2m, stamina_2m, speed_2m, dist_2m, final_time, final_dist = simulate_2miles(0.0, 'run')
     
     ax1_twin = ax1.twinx()
@@ -499,56 +495,67 @@ def plot_comprehensive_trends():
     ax1.axhline(y=25, color='b', linestyle=':', alpha=0.5)
     ax1.axvline(x=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=2, label='目标时间')
     
-    ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
-    ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=10, color='b')
-    ax1_twin.set_ylabel('速度（m/s） / Speed (m/s) | 距离（km） / Distance (km)', fontsize=10)
+    ax1.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
+    ax1.set_ylabel('体力（%） / Stamina (%)', fontsize=12, color='b')
+    ax1_twin.set_ylabel('速度（m/s） / Speed (m/s) | 距离（km） / Distance (km)', fontsize=12)
     ax1.set_title(
         f'2英里测试 / 2-mile test\n'
         f'完成时间 / Finish: {final_time:.1f}s ({final_time/60:.2f}min)',
-        fontsize=11,
+        fontsize=14,
         fontweight='bold'
     )
     ax1.grid(True, alpha=0.3)
     
     lines = line1 + line2 + line3
     labels = [line.get_label() for line in lines]
-    ax1.legend(lines, labels, loc='upper right', fontsize=8)
+    ax1.legend(lines, labels, loc='upper right', fontsize=10, framealpha=0.85)
     
-    # ========== 图2: 不同负重对比（以30KG战斗负重为基准）==========
-    ax2 = fig.add_subplot(gs[0, 1])
-    # 计算不同重量对应的负重百分比
-    weights_kg = [0.0, 15.0, 30.0, 40.5]  # 0kg, 15kg, 30kg(战斗负重), 40.5kg(最大负重)
+    output_file = 'comprehensive_2mile_test.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+    return time_2m, stamina_2m, speed_2m, dist_2m, final_time, final_dist
+
+
+def plot_load_comparison():
+    """生成不同负重对比图"""
+    fig, ax2 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
+    weights_kg = [0.0, 15.0, 30.0, 40.5]
     encumbrance_levels = [w / MAX_ENCUMBRANCE_WEIGHT for w in weights_kg]
     colors = ['blue', 'green', 'orange', 'red']
     labels = ['0kg', '15kg', '30kg(战斗)', '40.5kg(最大)']
     
     for enc, color, label in zip(encumbrance_levels, colors, labels):
         time_e, stamina_e, speed_e, dist_e, _, _ = simulate_2miles(enc, 'run', 0.0)
-        line_style = '-' if enc == COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT else '-'
         line_width = 3 if enc == COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT else 2
-        ax2.plot(time_e / 60, stamina_e * 100, color=color, linewidth=line_width, linestyle=line_style,
-                label=label)
+        ax2.plot(time_e / 60, stamina_e * 100, color=color, linewidth=line_width, label=label)
     
-    # 标记30KG战斗负重基准线
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     ax2.axvline(x=TARGET_TIME_SECONDS / 60, color='orange', linestyle='--', linewidth=1.5, alpha=0.5, label='目标时间')
     
-    ax2.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
-    ax2.set_ylabel('体力（%） / Stamina (%)', fontsize=10)
+    ax2.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
+    ax2.set_ylabel('体力（%） / Stamina (%)', fontsize=12)
     ax2.set_title(
         '不同负重下的体力消耗对比 / Stamina drain by load\n'
         '（30KG为战斗负重基准 / 30kg baseline）',
-        fontsize=11,
+        fontsize=14,
         fontweight='bold'
     )
     ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=8)
+    ax2.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图3: 不同移动类型的速度对比 ==========
-    ax3 = fig.add_subplot(gs[0, 2])
+    output_file = 'comprehensive_load_comparison.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_movement_type_speed():
+    """生成不同移动类型速度对比图"""
+    fig, ax3 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
     stamina_range = np.linspace(0.0, 1.0, 100)
-    
-    # 计算不同移动类型的速度
     speed_run = [GAME_MAX_SPEED * calculate_speed_multiplier_by_stamina(s, 0.0, 'run') for s in stamina_range]
     speed_sprint = [GAME_MAX_SPEED * calculate_speed_multiplier_by_stamina(s, 0.0, 'sprint') for s in stamina_range]
     speed_walk = [GAME_MAX_SPEED * calculate_speed_multiplier_by_stamina(s, 0.0, 'walk') for s in stamina_range]
@@ -561,14 +568,22 @@ def plot_comprehensive_trends():
     ax3.axhline(y=TARGET_RUN_SPEED, color='blue', 
                 linestyle=':', linewidth=1.5, alpha=0.7, label=f'Run目标速度 ({TARGET_RUN_SPEED:.2f} m/s)')
     
-    ax3.set_xlabel('体力（%） / Stamina (%)', fontsize=10)
-    ax3.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=10)
-    ax3.set_title('不同移动类型的速度对比 / Speed by movement type', fontsize=11, fontweight='bold')
+    ax3.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
+    ax3.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
+    ax3.set_title('不同移动类型的速度对比 / Speed by movement type', fontsize=14, fontweight='bold')
     ax3.grid(True, alpha=0.3)
-    ax3.legend(fontsize=8)
+    ax3.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图4: 体力恢复速度 ==========
-    ax4 = fig.add_subplot(gs[1, 0])
+    output_file = 'comprehensive_movement_type_speed.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_recovery_analysis():
+    """生成体力恢复速度分析图"""
+    fig, ax4 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
     start_levels = [0.1, 0.2, 0.3, 0.5, 0.7]
     colors_recovery = ['red', 'orange', 'yellow', 'lightblue', 'lightgreen']
     
@@ -577,59 +592,78 @@ def plot_comprehensive_trends():
         ax4.plot(time_r / 60, stamina_r * 100, color=color, linewidth=2, 
                 label=f'从 {start*100:.0f}% 恢复')
     
-    ax4.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
-    ax4.set_ylabel('体力（%） / Stamina (%)', fontsize=10)
-    ax4.set_title('体力恢复速度分析 / Recovery analysis', fontsize=11, fontweight='bold')
+    ax4.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
+    ax4.set_ylabel('体力（%） / Stamina (%)', fontsize=12)
+    ax4.set_title('体力恢复速度分析 / Recovery analysis', fontsize=14, fontweight='bold')
     ax4.grid(True, alpha=0.3)
-    ax4.legend(fontsize=8)
+    ax4.legend(fontsize=10, framealpha=0.85)
     ax4.set_ylim([0, 105])
     
-    # ========== 图5: 2英里测试速度曲线 ==========
-    ax5 = fig.add_subplot(gs[1, 1])
+    output_file = 'comprehensive_recovery_analysis.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_2mile_speed(time_2m, speed_2m):
+    """生成2英里测试速度变化图"""
+    fig, ax5 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
     ax5.plot(time_2m / 60, speed_2m, 'r-', linewidth=2, label='实际速度')
     ax5.axhline(y=TARGET_RUN_SPEED, color='orange', 
                 linestyle='--', linewidth=1.5, label=f'目标Run速度 ({TARGET_RUN_SPEED:.2f} m/s)')
-    ax5.axhline(y=TARGET_TIME_SECONDS / DISTANCE_METERS * DISTANCE_METERS / TARGET_TIME_SECONDS, 
+    ax5.axhline(y=DISTANCE_METERS/TARGET_TIME_SECONDS, 
                 color='green', linestyle=':', linewidth=1.5, label=f'所需平均速度 ({DISTANCE_METERS/TARGET_TIME_SECONDS:.2f} m/s)')
     
-    ax5.set_xlabel('时间（分钟） / Time (min)', fontsize=10)
-    ax5.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=10)
-    ax5.set_title('2英里测试速度变化 / Speed during 2-mile test', fontsize=11, fontweight='bold')
+    ax5.set_xlabel('时间（分钟） / Time (min)', fontsize=12)
+    ax5.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
+    ax5.set_title('2英里测试速度变化 / Speed during 2-mile test', fontsize=14, fontweight='bold')
     ax5.grid(True, alpha=0.3)
-    ax5.legend(fontsize=8)
+    ax5.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图6: 负重对速度的影响（以30KG为基准）==========
-    ax6 = fig.add_subplot(gs[1, 2])
+    output_file = 'comprehensive_2mile_speed.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_load_speed_penalty():
+    """生成负重对速度的影响图"""
+    fig, ax6 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    
     enc_range = np.linspace(0.0, 1.0, 50)
     speed_penalty = [enc * ENCUMBRANCE_SPEED_PENALTY_COEFF * 100 for enc in enc_range]
     
     ax6.plot(enc_range * 100, speed_penalty, 'r-', linewidth=2, label='速度惩罚')
     ax6.fill_between(enc_range * 100, 0, speed_penalty, alpha=0.3, color='red')
     
-    # 标记30KG战斗负重基准点
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
     combat_speed_penalty = combat_enc_percent * ENCUMBRANCE_SPEED_PENALTY_COEFF * 100
     ax6.axvline(x=combat_enc_percent * 100, color='orange', linestyle='--', linewidth=2, label='30KG战斗负重基准')
     ax6.plot(combat_enc_percent * 100, combat_speed_penalty, 'o', color='orange', markersize=10, label=f'30KG惩罚: {combat_speed_penalty:.1f}%')
     
-    ax6.set_xlabel('负重百分比（%） / Load (%)', fontsize=10)
-    ax6.set_ylabel('速度惩罚（%） / Speed penalty (%)', fontsize=10)
+    ax6.set_xlabel('负重百分比（%） / Load (%)', fontsize=12)
+    ax6.set_ylabel('速度惩罚（%） / Speed penalty (%)', fontsize=12)
     ax6.set_title(
         '负重对速度的影响 / Load vs speed penalty\n'
         '（30KG为战斗负重基准 / 30kg baseline）',
-        fontsize=11,
+        fontsize=14,
         fontweight='bold'
     )
     ax6.grid(True, alpha=0.3)
-    ax6.legend(fontsize=8)
+    ax6.legend(fontsize=10, framealpha=0.85)
     
-    # ========== 图7: 多维度对比 - 30KG战斗负重基准下的不同移动类型和坡度 ==========
-    ax7 = fig.add_subplot(gs[2, :])
+    output_file = 'comprehensive_load_speed_penalty.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_multi_factor_comparison():
+    """生成多维度对比图"""
+    fig, ax7 = plt.subplots(figsize=(12, 6), constrained_layout=True)
     
-    # 30KG战斗负重百分比
     combat_enc_percent = COMBAT_ENCUMBRANCE_WEIGHT / MAX_ENCUMBRANCE_WEIGHT
-    
-    # 测试场景：30KG负重，不同移动类型，不同坡度
     scenarios = [
         ('run', 0.0, 'Run-平地', 'blue', '-'),
         ('run', 5.0, 'Run-上坡5°', 'orange', '-'),
@@ -650,21 +684,39 @@ def plot_comprehensive_trends():
     
     ax7.axhline(y=TARGET_RUN_SPEED, color='gray', linestyle=':', linewidth=1, alpha=0.5, label='目标Run速度 (3.7 m/s)')
     
-    ax7.set_xlabel('体力（%） / Stamina (%)', fontsize=11)
-    ax7.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=11)
+    ax7.set_xlabel('体力（%） / Stamina (%)', fontsize=12)
+    ax7.set_ylabel('速度（m/s） / Speed (m/s)', fontsize=12)
     ax7.set_title(
         '多维度对比 / Multi-factor comparison (30kg baseline)\n'
         '（不同移动类型与坡度 / movement types & slopes）',
-        fontsize=12,
+        fontsize=14,
         fontweight='bold'
     )
     ax7.grid(True, alpha=0.3)
-    ax7.legend(fontsize=8, loc='upper right')
+    ax7.legend(fontsize=10, loc='upper right', ncol=2, framealpha=0.85)
     
-    # 保存图表
-    output_file = 'comprehensive_stamina_trends.png'
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    print(f"\n综合趋势图已保存为: {output_file}")
+    output_file = 'comprehensive_multi_factor_comparison.png'
+    plt.savefig(output_file, dpi=200)
+    plt.close()
+    print(f"已保存: {output_file}")
+
+
+def plot_comprehensive_trends():
+    """生成所有综合趋势图（拆分为多个独立图表）"""
+    print("\n" + "="*70)
+    print("生成综合趋势图（拆分为多个独立图表）")
+    print("="*70)
+    
+    # 生成所有图表
+    time_2m, stamina_2m, speed_2m, dist_2m, final_time, final_dist = plot_2mile_test()
+    plot_load_comparison()
+    plot_movement_type_speed()
+    plot_recovery_analysis()
+    plot_2mile_speed(time_2m, speed_2m)
+    plot_load_speed_penalty()
+    plot_multi_factor_comparison()
+    
+    print("\n所有综合趋势图已生成完成！")
     
     # 打印统计信息
     print("\n" + "="*70)
