@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.7+
+// Realistic Stamina System (RSS) - v2.8.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -49,6 +49,11 @@ modded class SCR_CharacterControllerComponent
     // ==================== UI信号桥接模块 ====================
     // 模块化拆分：使用独立的 UISignalBridge 类管理UI信号桥接
     protected ref UISignalBridge m_pUISignalBridge;
+    
+    // ==================== EPOC（过量耗氧）延迟机制 ====================
+    // 运动停止后，前几秒应该维持高代谢水平，延迟后才开始恢复
+    // 使用EpocState类管理EPOC延迟状态（因为EnforceScript不支持基本类型的ref参数）
+    protected ref EpocState m_pEpocState;
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -130,6 +135,9 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = new UISignalBridge();
         if (m_pUISignalBridge)
             m_pUISignalBridge.Init(owner);
+        
+        // 初始化EPOC状态管理
+        m_pEpocState = new EpocState();
         
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
@@ -369,104 +377,27 @@ modded class SCR_CharacterControllerComponent
         // Sprint时：基于Run的最终速度进行加乘（Run × 1.30）
         // Walk时：使用Run速度的70%
         
-        // ==================== 计算Run的基础速度倍数（完整逻辑，包含双稳态-平台期和阻尼过渡）====================
-        // 这一步必须在所有移动类型分支之前执行，确保Run和Sprint使用相同的基准
-        
-        // 获取坡度角度（用于自适应步幅逻辑）
-        float slopeAngleDegrees = 0.0;
-        CharacterAnimationComponent animComponentForSpeed = GetAnimationComponent();
-        if (animComponentForSpeed)
-        {
-            CharacterCommandHandlerComponent handlerForSpeed = animComponentForSpeed.GetCommandHandler();
-            if (handlerForSpeed)
-            {
-                CharacterCommandMove moveCmdForSpeed = handlerForSpeed.GetCommandMove();
-                if (moveCmdForSpeed)
-                {
-                    slopeAngleDegrees = moveCmdForSpeed.GetMovementSlopeAngle();
-                }
-            }
-        }
-        
-        // 计算坡度自适应目标速度（坡度-速度负反馈）
-        float baseTargetSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED; // 3.7 m/s
-        float slopeAdjustedTargetSpeed = RealisticStaminaSpeedSystem.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
-        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-        
-        // ==================== "撞墙"临界点检测和5秒阻尼过渡（模块化）====================
-        // 更新"撞墙"阻尼过渡模块状态
+        // ==================== 速度计算（模块化）====================
         float currentWorldTime = GetGame().GetWorld().GetWorldTime();
-        if (m_pCollapseTransition)
-            m_pCollapseTransition.Update(currentWorldTime, staminaPercent);
+        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this);
+        float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(staminaPercent, m_pCollapseTransition, currentWorldTime);
         
-        // 计算Run的基础速度倍数（包含双稳态-平台期和5秒阻尼过渡逻辑）
-        float runBaseSpeedMultiplier = 0.0;
-        
-        // 先计算正常情况下的基础速度倍数
-        float normalBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
-        
-        // 如果处于5秒阻尼过渡期间，使用模块计算过渡速度
-        if (m_pCollapseTransition && m_pCollapseTransition.IsInTransition())
-        {
-            // 使用模块计算阻尼过渡期间的速度倍数
-            runBaseSpeedMultiplier = m_pCollapseTransition.CalculateTransitionSpeedMultiplier(currentWorldTime, normalBaseSpeedMultiplier);
-        }
-        else
-        {
-            // 正常情况：使用静态工具类计算速度（基于坡度自适应目标速度，包含平滑过渡逻辑）
-            // 如果体力充足，就维持自适应速度；如果体力进入红区，就平滑降速
-            runBaseSpeedMultiplier = normalBaseSpeedMultiplier;
-        }
-        
-        // 将速度从基础目标速度（3.7 m/s）缩放到坡度自适应速度
+        // 计算坡度自适应目标速度倍数
+        float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
+        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
         float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
         runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
         
-        // ==================== 根据移动类型应用最终速度和负重惩罚 ====================
-        float finalSpeedMultiplier = 0.0;
-        
-        if (isSprinting || currentMovementPhase == 3) // Sprint
-        {
-            // ==================== Sprint速度计算（v2.5优化：完全基于Run速度的30%增量）====================
-            // 核心逻辑：Sprint = (Run基础倍率 × 1.30) - (负重惩罚 × 0.15)
-            // 这样Sprint完全继承Run的双稳态-平台期逻辑，无论Run如何调整，Sprint永远快30%
-            // 
-            // 爆发力逻辑：Sprint受负重惩罚的程度降低（0.15代替0.2），模拟肌肉爆发力
-            // 生理学上，短时间爆发（无氧）可以克服一部分负重带来的阻力
-            // 但维持极高的消耗倍数（3.0x），这样玩家能跑得快，但只能冲刺极短时间
-            
-            // Sprint速度 = Run基础倍率 × (1 + 30%)
-            float sprintMultiplier = 1.0 + RealisticStaminaSpeedSystem.SPRINT_SPEED_BOOST; // 1.30
-            finalSpeedMultiplier = (runBaseSpeedMultiplier * sprintMultiplier) - (encumbranceSpeedPenalty * 0.15);
-            
-            // Sprint最高速度限制（不超过游戏最大速度）
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
-        }
-        else if (currentMovementPhase == 2) // Run
-        {
-            // Run时：使用双稳态-应激性能模型（带平滑过渡 + 坡度自适应 + 5秒阻尼过渡）
-            // 注意：Run的基础速度倍数（runBaseSpeedMultiplier）已在上面统一计算
-            // 这里只需要应用负重惩罚即可
-            
-            // 负重主要影响"油耗"（体力消耗）而不是直接降低"最高档位"（速度）
-            // 负重对速度的影响大幅降低，让30kg负重时仍能短时间跑3.7 m/s，只是消耗更快
-            finalSpeedMultiplier = runBaseSpeedMultiplier - (encumbranceSpeedPenalty * 0.2); // 降低到20%的影响
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
-        }
-        else if (currentMovementPhase == 1) // Walk
-        {
-            // Walk时，速度约为Run的70%
-            // 使用静态工具类计算Run速度（已包含平滑过渡逻辑）
-            float walkBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
-            // Walk = Run × 0.7
-            finalSpeedMultiplier = walkBaseSpeedMultiplier * 0.7;
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.8);
-        }
-        else // Idle
-        {
-            // Idle时，速度倍数为0（但实际速度会由游戏引擎控制）
-            finalSpeedMultiplier = 0.0;
-        }
+        // 计算最终速度倍数（使用模块）
+        float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+            runBaseSpeedMultiplier,
+            encumbranceSpeedPenalty,
+            isSprinting,
+            currentMovementPhase,
+            isExhausted,
+            canSprint,
+            staminaPercent);
         
         // 注意：完全替换模式
         // - 速度限制：通过 OverrideMaxSpeed() 完全替换游戏原有的速度设置
@@ -646,36 +577,9 @@ modded class SCR_CharacterControllerComponent
             fatigueFactor = m_pExerciseTracker.CalculateFatigueFactor();
         }
         
-        // ==================== 代谢适应计算（Metabolic Adaptation）====================
-        // 基于个性化运动建模（Palumbo et al., 2018）
-        // 根据运动强度动态调整能量效率
-        float metabolicEfficiencyFactor = 1.0;
-        if (speedRatio < RealisticStaminaSpeedSystem.AEROBIC_THRESHOLD)
-        {
-            // 有氧区（<60% VO2max）：主要依赖脂肪，效率高
-            metabolicEfficiencyFactor = RealisticStaminaSpeedSystem.AEROBIC_EFFICIENCY_FACTOR; // 0.9（更高效）
-        }
-        else if (speedRatio < RealisticStaminaSpeedSystem.ANAEROBIC_THRESHOLD)
-        {
-            // 混合区（60-80% VO2max）：糖原+脂肪混合
-            // 线性插值：在0.6-0.8之间从0.9过渡到1.2
-            float t = (speedRatio - RealisticStaminaSpeedSystem.AEROBIC_THRESHOLD) / (RealisticStaminaSpeedSystem.ANAEROBIC_THRESHOLD - RealisticStaminaSpeedSystem.AEROBIC_THRESHOLD);
-            metabolicEfficiencyFactor = RealisticStaminaSpeedSystem.AEROBIC_EFFICIENCY_FACTOR + t * (RealisticStaminaSpeedSystem.ANAEROBIC_EFFICIENCY_FACTOR - RealisticStaminaSpeedSystem.AEROBIC_EFFICIENCY_FACTOR);
-        }
-        else
-        {
-            // 无氧区（≥80% VO2max）：主要依赖糖原，效率低但功率高
-            metabolicEfficiencyFactor = RealisticStaminaSpeedSystem.ANAEROBIC_EFFICIENCY_FACTOR; // 1.2（低效但高功率）
-        }
-        
-        // ==================== 健康状态影响计算 ====================
-        // 基于个性化运动建模（Palumbo et al., 2018）
-        // 训练有素者（fitness=1.0）能量效率提高18%
-        // 效率因子：1.0 - FITNESS_EFFICIENCY_COEFF × fitness_level
-        float fitnessEfficiencyFactor = 1.0 - (RealisticStaminaSpeedSystem.FITNESS_EFFICIENCY_COEFF * RealisticStaminaSpeedSystem.FITNESS_LEVEL);
-        fitnessEfficiencyFactor = Math.Clamp(fitnessEfficiencyFactor, 0.7, 1.0); // 限制在70%-100%之间
-        
-        // 综合效率因子 = 健康状态效率 × 代谢适应效率
+        // ==================== 效率因子计算（模块化）====================
+        float metabolicEfficiencyFactor = StaminaConsumptionCalculator.CalculateMetabolicEfficiencyFactor(speedRatio);
+        float fitnessEfficiencyFactor = StaminaConsumptionCalculator.CalculateFitnessEfficiencyFactor();
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
         
         // ==================== 性能优化：使用缓存的当前重量（模块化）====================
@@ -791,104 +695,42 @@ modded class SCR_CharacterControllerComponent
         // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
         baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2; // 转换为每0.2秒的消耗率
         
-        // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
-        // 注意：恢复时（baseDrainRateByVelocity < 0），不应用效率因子（恢复不受效率影响）
-        float baseDrainRate = 0.0;
-        if (baseDrainRateByVelocity < 0.0)
-        {
-            // 恢复时，直接使用恢复率（负数）
-            baseDrainRate = baseDrainRateByVelocity;
-        }
-        else
-        {
-            // 消耗时，应用效率因子和疲劳因子
-            // 注意：如果使用 Pandolf 模型，坡度项已经在公式中，不需要额外的坡度倍数
-            baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
-        }
-        
-        // 保留原有的速度相关项（用于平滑过渡和精细调整）
-        // 这些项在速度阈值附近提供平滑过渡
-        float speedLinearDrainRate = 0.00005 * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数，主要依赖分段消耗率
-        float speedSquaredDrainRate = 0.00005 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor; // 降低系数
-        
-        // ==================== 性能优化：使用缓存的负重消耗倍数（模块化）====================
-        // 使用缓存的体力消耗倍数（避免重复计算）
+        // ==================== 体力消耗计算（模块化）====================
+        float postureMultiplier = StaminaConsumptionCalculator.CalculatePostureMultiplier(currentSpeed, this);
         float encumbranceStaminaDrainMultiplier = 1.0;
         if (m_pEncumbranceCache)
             encumbranceStaminaDrainMultiplier = m_pEncumbranceCache.GetStaminaDrainMultiplier();
         
-        // 负重对速度平方项的额外影响（Pandolf 模型中负重与速度的交互项）
-        // 公式：负重额外消耗 = base_encumbrance_drain + speed_encumbrance_drain·V²
-        float encumbranceBaseDrainRate = 0.001 * (encumbranceStaminaDrainMultiplier - 1.0); // 负重基础消耗
-        float encumbranceSpeedDrainRate = 0.0002 * (encumbranceStaminaDrainMultiplier - 1.0) * speedRatio * speedRatio; // 负重速度相关消耗
-        
-        // ==================== 三维交互项（可选，用于精细调整）====================
-        // 注意：Pandolf 模型已经包含了坡度项，但可以添加额外的三维交互项用于精细调整
-        // 这主要用于在极端情况下（高速度+高负重+大坡度）进行微调
-        const float speedEncumbranceSlopeInteraction = 0.0;
-        
-        // 可选：计算速度×负重×坡度三维交互项（用于精细调整）
-        // 如果不需要精细调整，可以将此部分注释掉
-        // if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05 && Math.AbsFloat(gradePercent) > 1.0)
-        // {
-        //     float bodyMassPercent = 0.0;
-        //     if (m_bEncumbranceCacheValid)
-        //         bodyMassPercent = m_fCachedBodyMassPercent;
-        //     speedEncumbranceSlopeInteraction = RealisticStaminaSpeedSystem.CalculateSpeedEncumbranceSlopeInteraction(speedRatio, bodyMassPercent, slopeAngleDegrees);
-        // }
-        
-        // ==================== Sprint额外体力消耗 ====================
-        // Sprint时体力消耗大幅增加（类似于追击或逃命，追求速度但消耗巨大）
         float sprintMultiplier = 1.0;
         if (isSprinting || currentMovementPhase == 3)
-        {
             sprintMultiplier = RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER;
-        }
         
-        // ==================== 综合体力消耗率（基于 Pandolf 模型）====================
-        // Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
-        // 其中坡度项 G·(0.23 + 1.34·V²) 已经在 baseDrainRate 中
-        // 
-        // 综合公式：total = (base_pandolf + linear·V + squared·V² + enc_base + enc_speed·V²) × sprint_multiplier × efficiency × fatigue + 3d_interaction
-        // 其中：
-        //   base_pandolf 是基于 Pandolf 模型的基础消耗率（已包含坡度项）
-        //   efficiency 和 fatigue 是多维度特性（健康状态、累积疲劳、代谢适应）
-        //   3d_interaction 是速度×负重×坡度的三维交互项（可选，用于精细调整）
-        float baseDrainComponents = baseDrainRate + speedLinearDrainRate + speedSquaredDrainRate + encumbranceBaseDrainRate + encumbranceSpeedDrainRate;
+        float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
+        float totalDrainRate = StaminaConsumptionCalculator.CalculateStaminaConsumption(
+            currentSpeed,
+            currentWeight,
+            gradePercent,
+            terrainFactor,
+            postureMultiplier,
+            totalEfficiencyFactor,
+            fatigueFactor,
+            sprintMultiplier,
+            encumbranceStaminaDrainMultiplier,
+            m_pFatigueSystem,
+            baseDrainRateByVelocityForModule);
         
-        // 应用 Sprint 倍数和多维度修正
-        // 注意：恢复时（baseDrainRate < 0），不应用 Sprint 倍数
-        // 注意：坡度项已经在 Pandolf 模型中，不需要额外的坡度倍数
-        float totalDrainRate = 0.0;
-        if (baseDrainRate < 0.0)
+        // 如果模块计算的基础消耗率为0，使用本地计算的baseDrainRateByVelocity
+        if (baseDrainRateByVelocityForModule == 0.0 && baseDrainRateByVelocity > 0.0)
+            baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
+        
+        // ==================== EPOC（过量耗氧）延迟检测（模块化）====================
+        // 注意：currentWorldTime已在上面声明（第381行），这里重用
+        if (m_pEpocState)
         {
-            // 恢复时，直接使用恢复率（负数）
-            totalDrainRate = baseDrainRate;
-        }
-        else
-        {
-            // 消耗时，应用 Sprint 倍数
-            // 坡度项已经在 Pandolf 模型中，不需要额外的坡度倍数
-            totalDrainRate = (baseDrainComponents * sprintMultiplier) + (baseDrainComponents * speedEncumbranceSlopeInteraction);
-            
-            // ==================== 生理上限：防止负重+坡度爆炸 + 疲劳积累系统 ====================
-            // 无论负重多重、坡多陡，人的瞬时代谢率是有极限的（即 VO2 Max 峰值）
-            // 设定每 0.2s 最大体力消耗不超过 0.02（即每秒最多掉 10%）
-            // 这样即使玩家背着 30kg 爬 15 度坡，他也不会在 5 秒内暴毙
-            // 系统会强制限制他的最大消耗，同时由于"自适应步幅"逻辑，他的速度会自动降得很低
-            // 这既保证了硬核的真实性，又避免了数值上的溢出导致无法玩下去
-            const float MAX_DRAIN_RATE_PER_TICK = 0.02; // 每0.2秒最大消耗
-            
-            // 计算超出生理上限的消耗（用于疲劳积累，模块化）
-            float excessDrainRate = totalDrainRate - MAX_DRAIN_RATE_PER_TICK;
-            if (m_pFatigueSystem && excessDrainRate > 0.0)
-            {
-                // 将超出消耗转化为疲劳积累（使用模块）
-                m_pFatigueSystem.ProcessFatigueAccumulation(excessDrainRate);
-            }
-            
-            // 限制实际消耗不超过生理上限
-            totalDrainRate = Math.Min(totalDrainRate, MAX_DRAIN_RATE_PER_TICK);
+            bool isInEpocDelay = StaminaRecoveryCalculator.UpdateEpocDelay(
+                m_pEpocState,
+                currentSpeed,
+                currentWorldTime);
         }
         
         // ==================== 完全控制体力值（基于医学模型）====================
@@ -906,66 +748,52 @@ modded class SCR_CharacterControllerComponent
                 // 并且已经应用了地形系数（跑步模式）或地形系数+坡度修正（步行模式）
                 newTargetStamina = staminaPercent - totalDrainRate;
             }
-            // 如果角色完全静止（速度 <= 0.05 m/s），体力恢复（但需考虑静态站立消耗）
+            // 如果角色完全静止（速度 <= 0.05 m/s），根据EPOC延迟决定是消耗还是恢复
             else
             {
-                // ==================== 多维度恢复模型（考虑静态站立消耗）====================
-                // 基于个性化运动建模（Palumbo et al., 2018）和生理学恢复模型
-                // 考虑多个维度：
-                // 1. 当前体力百分比（非线性恢复）：体力越低恢复越快，体力越高恢复越慢
-                // 2. 健康状态/训练水平：训练有素者恢复更快
-                // 3. 休息时间：刚停止运动时恢复快（快速恢复期），长时间休息后恢复慢（慢速恢复期）
-                // 4. 年龄：年轻者恢复更快
-                // 5. 累积疲劳恢复：运动后的疲劳需要时间恢复
-                // 6. 静态站立消耗：背负重物站立会减缓恢复速度
-                // ==================== 性能优化：使用缓存的当前重量（模块化）====================
-                // 使用缓存的当前重量（避免重复查找组件）
-                float currentWeightForRecovery = 0.0;
-                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                    currentWeightForRecovery = m_pEncumbranceCache.GetCurrentWeight();
-                
-                // ==================== 趴下休息时的负重优化（Prone Rest Weight Reduction）====================
-                // 当角色趴下休息时，负重的影响应该降至最低（因为地面支撑了装备重量）
-                // 重装兵在趴下时，应该能够通过"卧倒休息"来快速恢复体力
-                // 生理学依据：趴下时，装备重量由地面支撑，身体只需维持基础代谢，无需承担负重负担
-                // 
-                // 使用 ECharacterStance 枚举来检测角色姿态
-                // ECharacterStance: STAND (0), CROUCH (1), PRONE (2)
-                ECharacterStance currentStance = GetStance();
-                if (currentStance == ECharacterStance.PRONE)
+                // ==================== EPOC延迟期间：继续应用消耗（模块化）====================
+                bool isInEpocDelay = false;
+                float speedBeforeStop = 0.0;
+                if (m_pEpocState)
                 {
-                    // 如果角色趴下（PRONE），将负重视为基准重量（BASE_WEIGHT），去除额外负重的影响
-                    // 这样负重恢复优化逻辑会将负重视为基准重量，允许快速恢复
-                    currentWeightForRecovery = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 基准重量（身体重量），去除额外负重
+                    isInEpocDelay = m_pEpocState.IsInEpocDelay();
+                    speedBeforeStop = m_pEpocState.GetSpeedBeforeStop();
                 }
                 
-                // 获取运动/休息时间（用于多维度恢复模型）
-                float restDurationMinutes = 0.0;
-                float exerciseDurationMinutes = 0.0;
-                if (m_pExerciseTracker)
+                if (isInEpocDelay)
                 {
-                    restDurationMinutes = m_pExerciseTracker.GetRestDurationMinutes();
-                    exerciseDurationMinutes = m_pExerciseTracker.GetExerciseDurationMinutes();
+                    float epocDrainRate = StaminaRecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+                    newTargetStamina = staminaPercent - epocDrainRate;
                 }
-                
-                float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
-                    staminaPercent, 
-                    restDurationMinutes, 
-                    exerciseDurationMinutes,
-                    currentWeightForRecovery
-                );
-                
-                // 从恢复率中减去静态站立消耗（如果存在）
-                // baseDrainRateByVelocity 在速度为0时已经计算了静态消耗
-                if (baseDrainRateByVelocity > 0.0)
+                // ==================== EPOC延迟结束后：正常恢复（模块化）====================
+                else
                 {
-                    // 静态站立消耗会减缓恢复速度
-                    // 例如：空载恢复 1%/s，40kg负重时静态消耗 0.04%/s，净恢复约 0.96%/s
-                    recoveryRate = Math.Max(recoveryRate - baseDrainRateByVelocity, -0.01); // 确保不会完全阻止恢复
+                    float currentWeightForRecovery = 0.0;
+                    if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+                        currentWeightForRecovery = m_pEncumbranceCache.GetCurrentWeight();
+                    
+                    currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, this);
+                    
+                    float restDurationMinutes = 0.0;
+                    float exerciseDurationMinutes = 0.0;
+                    if (m_pExerciseTracker)
+                    {
+                        restDurationMinutes = m_pExerciseTracker.GetRestDurationMinutes();
+                        exerciseDurationMinutes = m_pExerciseTracker.GetExerciseDurationMinutes();
+                    }
+                    
+                    float staticDrainForRecovery = baseDrainRateByVelocity;
+                    if (baseDrainRateByVelocityForModule > 0.0)
+                        staticDrainForRecovery = baseDrainRateByVelocityForModule;
+                    float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                        staminaPercent,
+                        restDurationMinutes,
+                        exerciseDurationMinutes,
+                        currentWeightForRecovery,
+                        staticDrainForRecovery);
+                    
+                    newTargetStamina = staminaPercent + recoveryRate;
                 }
-                
-                // 计算新的目标体力值（增加恢复）
-                newTargetStamina = staminaPercent + recoveryRate;
             }
             
             // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================

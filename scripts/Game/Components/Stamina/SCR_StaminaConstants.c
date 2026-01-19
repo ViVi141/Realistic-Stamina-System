@@ -257,5 +257,18 @@ class StaminaConstants
     static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
     
     // ==================== 恢复启动延迟常量 ====================
-    static const float RECOVERY_STARTUP_DELAY_SECONDS = 3.0; // 恢复启动延迟（秒）
+    static const float RECOVERY_STARTUP_DELAY_SECONDS = 3.0; // 恢复启动延迟（秒）- 用于负重恢复优化
+    
+    // ==================== EPOC（过量耗氧）延迟参数 ====================
+    // 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
+    // 参考：Brooks et al., 2000; LaForgia et al., 2006
+    static const float EPOC_DELAY_SECONDS = 4.0; // EPOC延迟时间（秒）- 运动停止后延迟4秒才开始恢复
+    static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
+    
+    // ==================== 姿态交互修正参数 ====================
+    // 生理学依据：不同姿态对体力的消耗不同
+    // 参考：Knapik et al., 1996; Pandolf et al., 1977
+    static const float POSTURE_CROUCH_MULTIPLIER = 1.8; // 蹲姿行走消耗倍数（1.6-2.0倍，取1.8）
+    static const float POSTURE_PRONE_MULTIPLIER = 3.0; // 匍匐爬行消耗倍数（与中速跑步相当）
+    static const float POSTURE_STAND_MULTIPLIER = 1.0; // 站立行走消耗倍数（基准）
 }

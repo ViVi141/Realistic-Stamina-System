@@ -6,13 +6,15 @@
 
 ## 当前状态
 
-- **PlayerBase.c**: 1464行（已优化，从2037行减少）
+- **PlayerBase.c**: 1283行（v2.8.0优化，从1554行减少，v2.7.0时从2037行减少）
 - **SCR_RealisticStaminaSystem.c**: 1144行（已优化，从1483行减少）
 - **SCR_StaminaOverride.c**: 241行（合理）
 
 ### 已完成的模块化工作
 
-✅ **10个模块化组件已创建**:
+✅ **14个模块化组件已创建**（v2.7.0 + v2.8.0）:
+
+**v2.7.0模块（10个）**:
 1. ✅ SCR_JumpVaultDetection.c (~300行) - 跳跃和翻越检测
 2. ✅ SCR_EncumbranceCache.c (~150行) - 负重缓存管理
 3. ✅ SCR_NetworkSync.c (~194行) - 网络同步管理
@@ -23,6 +25,12 @@
 8. ✅ SCR_CollapseTransition.c (~150行) - "撞墙"阻尼过渡
 9. ✅ SCR_StaminaConstants.c (~262行) - 常量定义
 10. ✅ SCR_StaminaHelpers.c (~94行) - 辅助函数
+
+**v2.8.0模块（4个）**:
+11. ✅ SCR_SpeedCalculation.c (~129行) - 速度计算模块
+12. ✅ SCR_StaminaConsumption.c (~187行) - 体力消耗计算模块
+13. ✅ SCR_StaminaRecovery.c (~122行) - 体力恢复计算模块
+14. ✅ SCR_DebugDisplay.c (~141行) - 调试信息显示模块
 
 ## 拆分策略
 
