@@ -85,7 +85,7 @@ class JumpVaultDetector
                 return 0.0;
             }
             {
-                float currentTime = GetGame().GetWorld().GetWorldTime();
+                float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
                 
                 // 连续跳跃惩罚（无氧欠债）：检测是否在2秒内连续跳跃
                 if (currentTime - m_fJumpTimer < RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_WINDOW)

@@ -301,7 +301,7 @@ class DebugDisplay
             return;
         
         // 检查时间间隔
-        float currentTime = GetGame().GetWorld().GetWorldTime();
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         if (currentTime < m_fNextDebugLogTime)
             return;
         
@@ -315,7 +315,7 @@ class DebugDisplay
         string encumbranceInfo = FormatEncumbranceInfo(params.debugCurrentWeight, params.combatEncumbrancePercent);
         
         // 获取地形信息
-        float currentTimeForDebug = GetGame().GetWorld().GetWorldTime();
+        float currentTimeForDebug = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         string terrainInfo = FormatTerrainInfo(params.terrainDetector, params.owner, currentTimeForDebug);
         
         // 获取环境因子信息
@@ -368,7 +368,7 @@ class DebugDisplay
             return;
         
         // 检查时间间隔
-        float currentTime = GetGame().GetWorld().GetWorldTime();
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         if (currentTime < m_fNextStatusLogTime)
             return;
         

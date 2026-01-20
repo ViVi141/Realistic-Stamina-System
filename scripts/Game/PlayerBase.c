@@ -110,7 +110,7 @@ modded class SCR_CharacterControllerComponent
         // 初始化运动持续时间跟踪模块
         m_pExerciseTracker = new ExerciseTracker();
         if (m_pExerciseTracker)
-            m_pExerciseTracker.Initialize(GetGame().GetWorld().GetWorldTime());
+            m_pExerciseTracker.Initialize(GetGame().GetWorld().GetWorldTime()); 
         
         // 初始化"撞墙"阻尼过渡模块
         m_pCollapseTransition = new CollapseTransition();
@@ -135,7 +135,7 @@ modded class SCR_CharacterControllerComponent
         m_pFatigueSystem = new FatigueSystem();
         if (m_pFatigueSystem)
         {
-            float currentTime = GetGame().GetWorld().GetWorldTime();
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
             m_pFatigueSystem.Initialize(currentTime);
         }
         
@@ -486,11 +486,11 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
-        float currentTime = GetGame().GetWorld().GetWorldTime();
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
         
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）
-        float currentTimeForExercise = currentTime;
+        float currentTimeForExercise = GetGame().GetWorld().GetWorldTime(); 
         
         // 如果游泳状态变化，重置调试标志
         if (isSwimming != m_bWasSwimming)
@@ -521,10 +521,10 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 环境因子更新（模块化）====================
         // 每5秒更新一次环境因子（性能优化）
-        // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算
+        // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算，传入游泳湿重用于总湿重计算
         if (m_pEnvironmentFactor)
         {
-            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, m_vComputedVelocity, terrainFactor);
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, m_vComputedVelocity, terrainFactor, m_fCurrentWetWeight);
         }
         
         // 获取热应激倍数（影响体力消耗和恢复）
@@ -635,7 +635,7 @@ modded class SCR_CharacterControllerComponent
         // 只有静止时间超过60秒后，疲劳才开始恢复
         if (m_pFatigueSystem)
         {
-            float currentTimeForFatigue = GetGame().GetWorld().GetWorldTime();
+            float currentTimeForFatigue = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
             m_pFatigueSystem.ProcessFatigueDecay(currentTimeForFatigue, currentSpeed);
         }
         
@@ -800,7 +800,7 @@ modded class SCR_CharacterControllerComponent
         // 游泳时跳过 EPOC：避免水面漂移/抖动导致"停下→EPOC"误触发
         if (m_pEpocState && !useSwimmingModel)
         {
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime();
+            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
             bool isInEpocDelay = StaminaRecoveryCalculator.UpdateEpocDelay(
                 m_pEpocState,
                 currentSpeed,

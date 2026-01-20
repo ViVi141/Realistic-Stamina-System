@@ -276,7 +276,7 @@ class RSSReportGenerator:
         # 页脚
         html.append("""    <div class="footer">
         <p>生成时间：""" + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
-        <p>版本：RSS v3.0.0</p>
+        <p>版本：RSS v3.2.0</p>
         <p>作者：ViVi141 (747384120@qq.com)</p>
     </div>
 </body>
@@ -420,7 +420,7 @@ class RSSReportGenerator:
 ---
 
 *生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
-*版本：RSS v3.0.0*
+*版本：RSS v3.2.0*
 *作者：ViVi141 (747384120@qq.com)*
 """)
         

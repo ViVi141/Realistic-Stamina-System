@@ -64,7 +64,7 @@ class StaminaUpdateCoordinator
         }
         
         // 计算速度倍数
-        float currentWorldTime = GetGame().GetWorld().GetWorldTime();
+        float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller);
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);

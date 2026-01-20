@@ -92,8 +92,9 @@ class EnvironmentFactor
     // @param owner 角色实体（用于室内检测和姿态判断）
     // @param playerVelocity 玩家速度向量（用于风阻计算）
     // @param terrainFactor 地形系数（用于泥泞计算）
+    // @param swimmingWetWeight 游泳湿重（kg，用于总湿重计算）
     // @return 是否需要更新（true表示已更新，false表示跳过）
-    bool UpdateEnvironmentFactors(float currentTime, IEntity owner = null, vector playerVelocity = vector.Zero, float terrainFactor = 1.0)
+    bool UpdateEnvironmentFactors(float currentTime, IEntity owner = null, vector playerVelocity = vector.Zero, float terrainFactor = 1.0, float swimmingWetWeight = 0.0)
     {
         // 防御性编程：如果天气管理器丢失，尝试重新获取
         if (!m_pCachedWeatherManager)
@@ -158,8 +159,8 @@ class EnvironmentFactor
         m_fCachedRainWeight = CalculateRainWeight(currentTime);
         
         // 更新总湿重（游泳湿重 + 降雨湿重，限制在最大值）
-        // 注意：游泳湿重由外部传入，这里暂时只考虑降雨湿重
-        m_fCurrentTotalWetWeight = Math.Clamp(m_fCachedRainWeight, 0.0, StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT);
+        // 使用 SwimmingStateManager 的方法计算总湿重
+        m_fCurrentTotalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(swimmingWetWeight, m_fCachedRainWeight);
         
         // 调试信息：环境因子更新（每5秒输出一次或值变化时）
         static int envDebugCounter = 0;
@@ -182,10 +183,11 @@ class EnvironmentFactor
             lastLoggedWindSpeed = m_fCachedWindSpeed;
             lastLoggedTemperature = m_fCachedTemperature;
             
-            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 风速=%4m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Wind Speed=%4m/s",
+            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
                 Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
+                Math.Round(m_fCurrentTotalWetWeight * 10.0) / 10.0,
                 Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
         }
         
@@ -651,10 +653,11 @@ class EnvironmentFactor
     // 手动更新环境因子（用于调试或强制更新）
     // @param currentTime 当前世界时间
     // @param owner 角色实体（用于室内检测，可为null）
-    void ForceUpdate(float currentTime, IEntity owner = null)
+    // @param swimmingWetWeight 游泳湿重（kg，默认0.0）
+    void ForceUpdate(float currentTime, IEntity owner = null, float swimmingWetWeight = 0.0)
     {
         m_fLastEnvironmentCheckTime = 0.0; // 重置时间，强制更新
-        UpdateEnvironmentFactors(currentTime, owner);
+        UpdateEnvironmentFactors(currentTime, owner, vector.Zero, 1.0, swimmingWetWeight);
     }
     
     // 设置角色实体引用（用于室内检测）

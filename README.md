@@ -1524,8 +1524,27 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v3.0.0** (当前版本) - 多目标优化系统
-  - 新增多目标优化系统（Multi-Objective Optimization System）：
+- **v3.2.0** (当前版本) - 时间单位错误修复
+    - 修复游泳湿重系统（Swimming Wet Weight Fix）
+    - 修复时间单位错误（Time Unit Bug Fixes）
+    - 修复 ExerciseTracker 时间单位错误
+    - 代码统计：12处修复，涉及5个文件
+    - 详细修复内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+    - **已知问题**：
+      - **体力恢复速度可能过快**
+        - 当前恢复速度基于 Optuna 优化的参数，可能在实际游戏中感觉过快
+        - 作者对目前体力恢复速度感到不满意，可能会在以后调整
+        - 恢复速度相关参数：
+          - `base_recovery_rate`: 基础恢复率（每 0.2 秒）
+          - `standing_recovery_multiplier`: 站姿恢复倍数
+          - `prone_recovery_multiplier`: 趴姿恢复倍数
+          - `FAST_RECOVERY_MULTIPLIER`: 快速恢复期倍数（3.5x）
+          - `MEDIUM_RECOVERY_MULTIPLIER`: 中等恢复期倍数（1.8x）
+        - 管理员可以通过修改配置文件中的 `m_sSelectedPreset` 字段切换预设
+        - 或者在 `Custom` 预设中手动调整恢复速度相关参数
+
+    - **v3.0.0** (2026-01-20) - 多目标优化系统（Multi-Objective Optimization System）
     - 数字孪生仿真器：完全复刻 EnforceScript 的体力系统逻辑
     - 标准测试工况库：13 个标准测试工况
     - 多目标优化器：支持 NSGA-II 和 Optuna 贝叶斯优化

@@ -1,7 +1,7 @@
 // RSS配置管理器 - 使用Reforger官方标准
 // 负责从服务器Profile目录读取或生成JSON配置文件
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c
-// 版本: v3.1.0
+// 版本: v3.2.0
 
 class SCR_RSS_ConfigManager
 {
@@ -23,7 +23,7 @@ class SCR_RSS_ConfigManager
     static void Load()
     {
         // 防止频繁重载
-        float currentTime = GetGame().GetWorld().GetWorldTime();
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         if (m_bIsLoaded && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
         {
             return;
@@ -83,7 +83,7 @@ class SCR_RSS_ConfigManager
         if (!presetName)
             presetName = "EliteStandard";
         
-        Print("[RSS] Realistic Stamina System v3.0.0 initialized (Debug Logs: " + debugStatus + ", Preset: " + presetName + ")");
+        Print("[RSS] Realistic Stamina System v3.2.0 initialized (Debug Logs: " + debugStatus + ", Preset: " + presetName + ")");
     }
     
     // 保存配置文件

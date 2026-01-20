@@ -276,7 +276,7 @@ class RSSReportGenerator:
         # Footer
         html.append("""    <div class="footer">
         <p>Generated at: """ + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
-        <p>Version: RSS v3.0.0</p>
+        <p>Version: RSS v3.2.0</p>
         <p>Author: ViVi141 (747384120@qq.com)</p>
     </div>
 </body>
@@ -420,7 +420,7 @@ Parameter optimization results based on Optuna Bayesian optimization
 ---
 
 *Generated at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*
-*Version: RSS v3.0.0*
+*Version: RSS v3.2.0*
 *Author: ViVi141 (747384120@qq.com)*
 """)
         

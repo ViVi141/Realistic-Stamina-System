@@ -778,7 +778,57 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v2.17.0** (当前版本) - Python模拟器完整优化
+- **v3.2.0** (当前版本) - 时间单位错误修复
+  - **游泳湿重系统修复（Swimming Wet Weight Fix）**
+    - 修复 `SCR_EnvironmentFactor.UpdateEnvironmentFactors()` 方法没有接收游泳湿重参数的问题
+    - 修复前：总湿重计算只考虑降雨湿重，完全忽略游泳湿重
+    - 修复后：正确接收并使用 `swimmingWetWeight` 参数，使用 `SwimmingStateManager.CalculateTotalWetWeight()` 计算总湿重
+    - 修复前：上岸后湿重不增加，体力消耗不受影响
+    - 修复后：上岸后立即获得 7.5kg 湿重，30秒内线性衰减到 0kg
+    - 更新调试信息，添加总湿重显示
+
+  - **时间单位错误修复（Time Unit Bug Fixes）**
+    - 修复 `GetWorldTime()` 返回毫秒但多处代码没有转换为秒的问题
+    - 修复前：所有时间相关的计算都错误了 1000 倍
+    - 修复后：所有时间计算正确使用秒作为单位
+    - 影响范围：
+      - `PlayerBase.c`: 6 处修复（FatigueSystem、SwimmingStateManager、EPOC延迟）
+      - `SCR_JumpVaultDetection.c`: 1 处修复（连续跳跃检测）
+      - `SCR_RSS_ConfigManager.c`: 1 处修复（配置重载冷却）
+      - `SCR_DebugDisplay.c`: 3 处修复（调试日志时间检查）
+      - `SCR_StaminaUpdateCoordinator.c`: 1 处修复（速度计算时间）
+
+  - **ExerciseTracker 时间单位修复**
+    - 修复 `ExerciseTracker` 期望接收毫秒但传入了秒的问题
+    - 修复前：时间被除以 1000.0 两次，运动时间和休息时间累积慢 1000 倍
+    - 修复后：正确传入毫秒，`ExerciseTracker` 内部转换为秒
+    - 影响范围：
+      - `PlayerBase.c:113`: `ExerciseTracker.Initialize()` 传入毫秒
+      - `PlayerBase.c:493`: `currentTimeForExercise` 使用毫秒
+    - 修复前的影响：
+      - 疲劳恢复需要 16.7 小时后才开始（而不是 60 秒）
+      - 快速恢复期持续 50 小时（而不是 3 分钟）
+      - 中等恢复期持续 167 小时（而不是 10 分钟）
+    - 修复后：所有时间相关功能正常工作
+
+  - **代码统计**：12处修复，涉及5个文件
+
+  - **已知问题**：
+    - **体力恢复速度可能过快**
+      - 当前恢复速度基于 Optuna 优化的参数，可能在实际游戏中感觉过快
+      - 作者对目前体力恢复速度感到不满意，可能会在以后调整
+      - 恢复速度相关参数：
+        - `base_recovery_rate`: 基础恢复率（每 0.2 秒）
+        - `standing_recovery_multiplier`: 站姿恢复倍数
+        - `prone_recovery_multiplier`: 趴姿恢复倍数
+        - `FAST_RECOVERY_MULTIPLIER`: 快速恢复期倍数（3.5x）
+        - `MEDIUM_RECOVERY_MULTIPLIER`: 中等恢复期倍数（1.8x）
+      - 管理员可以通过修改配置文件中的 `m_sSelectedPreset` 字段切换预设
+      - 或者在 `Custom` 预设中手动调整恢复速度相关参数
+
+  - 详细修复内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+- **v2.17.0** (2026-01-20) - Python模拟器完整优化
   - **地形因素影响系统**：铺装路面（1.0x）、碎石路（1.1x）、高草丛（1.2x）、重度灌木丛（1.5x）、软沙地（1.8x）
   - **环境因素影响系统**：
     - 温度影响：基于时间段的热应激计算（10:00-18:00，正午14:00达到峰值）
