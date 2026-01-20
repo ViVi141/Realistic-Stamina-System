@@ -22,6 +22,7 @@ class DebugInfoParams
     float heatStressMultiplier;
     float rainWeight;
     float swimmingWetWeight;
+    float currentSpeed;  // 当前实际速度（m/s）
 }
 
 class DebugDisplay
@@ -29,6 +30,8 @@ class DebugDisplay
     // ==================== 静态变量 ====================
     protected static float m_fNextDebugLogTime = 0.0; // 下次调试日志时间
     protected static float m_fNextStatusLogTime = 0.0; // 下次状态日志时间
+    protected static float m_fNextHintTime = 0.0; // 下次 Hint 显示时间
+    protected static string m_sLastStaminaStatus = ""; // 上次体力状态，用于检测状态变化
     
     // ==================== 公共方法 ====================
     
@@ -393,5 +396,180 @@ class DebugDisplay
         
         // 更新下次日志时间（状态信息每秒输出一次）
         m_fNextStatusLogTime = currentTime + 1.0;
+    }
+    
+    // ==================== Hint 显示系统 ====================
+    
+    // 格式化体力状态等级
+    // @param staminaPercent 体力百分比（0.0-1.0）
+    // @return 体力状态等级字符串
+    static string GetStaminaStatusLevel(float staminaPercent)
+    {
+        if (staminaPercent >= 0.8)
+            return "Excellent";
+        else if (staminaPercent >= 0.6)
+            return "Good";
+        else if (staminaPercent >= 0.4)
+            return "Normal";
+        else if (staminaPercent >= 0.2)
+            return "Tired";
+        else
+            return "Exhausted";
+    }
+    
+    // 格式化负重状态
+    // @param currentWeight 当前负重（kg）
+    // @param combatEncumbrancePercent 战斗负重百分比
+    // @return 负重状态字符串
+    static string GetEncumbranceStatus(float currentWeight, float combatEncumbrancePercent)
+    {
+        if (currentWeight <= 0.0)
+            return "";
+        
+        if (combatEncumbrancePercent > 1.0)
+            return "Overloaded";
+        else if (combatEncumbrancePercent >= 0.9)
+            return "Heavy";
+        else if (combatEncumbrancePercent >= 0.7)
+            return "Medium";
+        else
+            return "Light";
+    }
+    
+    // 构建简洁的 Hint 消息
+    // @param movementTypeStr 移动类型字符串
+    // @param staminaPercent 体力百分比
+    // @param finalSpeedMultiplier 最终速度倍数
+    // @param currentWeight 当前负重（kg）
+    // @param combatEncumbrancePercent 战斗负重百分比
+    // @return Hint 消息字符串
+    static string BuildHintMessage(
+        string movementTypeStr,
+        float staminaPercent,
+        float finalSpeedMultiplier,
+        float currentWeight,
+        float combatEncumbrancePercent)
+    {
+        string staminaStatus = GetStaminaStatusLevel(staminaPercent);
+        string encumbranceStatus = GetEncumbranceStatus(currentWeight, combatEncumbrancePercent);
+        
+        // Build compact message - single line format
+        string hintMsg = string.Format("[RSS] %1%% %2", 
+            Math.Round(staminaPercent * 100.0).ToString(),
+            staminaStatus);
+        
+        return hintMsg;
+    }
+    
+    // 构建详细的 Hint 第二行消息
+    // @param movementTypeStr 移动类型字符串
+    // @param finalSpeedMultiplier 最终速度倍数
+    // @param currentWeight 当前负重（kg）
+    // @param combatEncumbrancePercent 战斗负重百分比
+    // @return Hint 第二行消息字符串
+    static string BuildHintMessage2(
+        string movementTypeStr,
+        float finalSpeedMultiplier,
+        float currentWeight,
+        float combatEncumbrancePercent)
+    {
+        string encumbranceStatus = GetEncumbranceStatus(currentWeight, combatEncumbrancePercent);
+        
+        // Build second line message - compact format
+        string hintMsg2 = "";
+        if (currentWeight > 0.0)
+        {
+            hintMsg2 = string.Format("Spd:%1x Load:%2kg", 
+                Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+                Math.Round(currentWeight * 10.0) / 10.0);
+        }
+        else
+        {
+            hintMsg2 = string.Format("Spd:%1x %2", 
+                Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+                movementTypeStr);
+        }
+        
+        return hintMsg2;
+    }
+    
+    // 输出屏幕 Hint 信息（更新 HUD 显示）
+    // @param params 调试信息参数结构体
+    static void OutputHintInfo(DebugInfoParams params)
+    {
+        // ==================== 配置门禁检查 ====================
+        // 获取配置实例
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        
+        // 如果 Hint 显示没开启，直接退出
+        if (!settings || !settings.m_bHintDisplayEnabled)
+            return;
+        
+        // 只对本地控制的玩家输出
+        if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 计算总湿重（降雨 + 游泳）
+        float totalWetWeight = params.rainWeight + params.swimmingWetWeight;
+        
+        // 获取环境数据（从环境因子模块）
+        float temperature = 20.0;
+        float windSpeed = 0.0;
+        float windDirection = 0.0;
+        bool isIndoor = false;
+        
+        if (params.environmentFactor)
+        {
+            temperature = params.environmentFactor.GetTemperature();
+            windSpeed = params.environmentFactor.GetWindSpeed();
+            windDirection = params.environmentFactor.GetWindDirection();
+            isIndoor = params.environmentFactor.IsIndoor();
+        }
+        
+        // 获取地形密度（从地形检测模块）
+        float terrainDensity = -1.0;
+        if (params.terrainDetector)
+            terrainDensity = params.terrainDetector.GetCachedTerrainDensity();
+        
+        // 更新 HUD 的所有值（会自动在右上角显示）
+        SCR_StaminaHUDComponent.UpdateAllValues(
+            params.staminaPercent,
+            params.finalSpeedMultiplier,
+            params.currentSpeed,
+            params.debugCurrentWeight,
+            params.movementTypeStr,
+            params.slopeAngleDegrees,
+            temperature,
+            windSpeed,
+            windDirection,
+            isIndoor,
+            terrainDensity,
+            totalWetWeight
+        );
+    }
+    
+    // 输出简洁的状态 Hint（更新 HUD 显示）
+    // @param owner 角色实体
+    // @param staminaPercent 体力百分比
+    // @param speedMultiplier 速度倍数
+    // @param movementTypeStr 移动类型字符串
+    static void OutputQuickHint(
+        IEntity owner,
+        float staminaPercent,
+        float speedMultiplier,
+        string movementTypeStr)
+    {
+        // ==================== 配置门禁检查 ====================
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        
+        if (!settings || !settings.m_bHintDisplayEnabled)
+            return;
+        
+        // 只对本地控制的玩家输出
+        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        
+        // 更新 HUD 的体力值
+        SCR_StaminaHUDComponent.UpdateStaminaValue(staminaPercent);
     }
 }

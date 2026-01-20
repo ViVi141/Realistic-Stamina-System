@@ -110,7 +110,11 @@
     - 每5秒检测一次（与环境因子更新同步）
     - v2.14.1更新：使用建筑物边界框检测角色是否在室内
     - v2.14.1局限性：边界框可能包含建筑物周围的空间，导致角色在建筑物附近室外时被误判为室内
-- ✅ **实时状态显示**：每秒显示速度、体力、速度倍率、移动类型和坡度信息
+- ✅ **实时状态 HUD 显示**（v3.4.0）：屏幕右上角紧凑状态条，显示体力、速度、负重、移动类型、坡度、温度、风向风速、室内外、地面类型、湿重等 10 项信息
+  - 智能颜色编码：红色=危险，橙色=警告，白色=正常，绿色=良好，蓝色=寒冷/湿润
+  - 可通过配置文件开关（`m_bHintDisplayEnabled`）
+- ✅ **配置版本管理**（v3.4.0）：自动检测并迁移旧版本配置，保留用户设置
+- ✅ **实时状态显示**：每秒显示速度、体力、速度倍率、移动类型和坡度信息（控制台输出）
 - ✅ **调试信息增强**（v2.10.0/v2.11.0）：每5秒显示完整的环境因子信息（时间、热应激、降雨、室内状态、游泳湿重）
   - v2.11.0优化：统一调试信息输出接口，所有格式化逻辑集中在 DebugDisplay 模块
 - ✅ **精确医学模型**：基于[Pandolf能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)和耐力下降模型，不使用近似
@@ -151,7 +155,13 @@ RealisticStaminaSystem/
 │               ├── SCR_NetworkSync.c             # 网络同步模块
 │               ├── SCR_UISignalBridge.c          # UI信号桥接模块
 │               ├── SCR_StaminaConstants.c        # 常量定义模块（445行，v2.14.0扩展）
-│               └── SCR_StaminaHelpers.c          # 辅助函数模块
+│               ├── SCR_StaminaHelpers.c          # 辅助函数模块
+│               └── SCR_StaminaHUDComponent.c     # 实时状态HUD组件（约500行，v3.4.0新增）
+├── UI/                                   # UI布局文件
+│   └── layouts/
+│       └── HUD/
+│           └── StatsPanel/
+│               └── StaminaHUD.layout     # 状态HUD布局（约320行，v3.4.0新增）
 ├── Prefabs/                              # 预制体文件
 │   └── Characters/
 │       └── Core/
@@ -1524,7 +1534,28 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v3.3.0** (当前版本) - 贝叶斯优化器全参数扩展与三预设系统
+- **v3.4.0** (当前版本) - 实时状态 HUD 系统与配置版本管理
+    - **实时状态 HUD 显示系统（Real-time Status HUD）**
+      - 屏幕右上角显示紧凑的状态条，类似游戏原生的 FPS/Ping 显示
+      - 显示 10 项实时状态信息：体力、速度、负重、移动类型、坡度、温度、风向风速、室内外、地面类型、湿重
+      - 智能颜色编码：红色=危险/高消耗，橙色=警告，白色=正常，绿色=良好，蓝色=寒冷/湿润
+      - 性能优化：智能变化检测，避免不必要的 UI 更新
+    - **配置版本检测与自动迁移系统（Config Version Detection & Auto-Migration）**
+      - JSON 配置文件新增 `m_sConfigVersion` 字段
+      - 模组启动时自动检测配置版本与模组版本是否匹配
+      - 版本不匹配时自动迁移：保留用户配置，只添加新字段默认值
+      - 支持语义化版本号比较（如 "3.4.0" vs "3.3.0"）
+    - **新增配置项**
+      - `m_sConfigVersion` - 配置文件版本号
+      - `m_bHintDisplayEnabled` - HUD 显示开关
+      - `m_iHintUpdateInterval` - HUD 更新间隔
+      - `m_fHintDuration` - Hint 持续时间
+    - **新增文件**
+      - `SCR_StaminaHUDComponent.c` - HUD 组件（约 500 行）
+      - `UI/layouts/HUD/StatsPanel/StaminaHUD.layout` - UI 布局文件（约 320 行）
+    - 详细更新内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+- **v3.3.0** - 贝叶斯优化器全参数扩展与三预设系统
     - 将优化参数从 11 个扩展到 40 个，覆盖完整的体力系统
     - 新增 StandardMilsim 预设（标准平衡模式），作为默认预设
     - 完善三预设系统：EliteStandard（精英拟真）、StandardMilsim（标准平衡）、TacticalAction（战术动作）

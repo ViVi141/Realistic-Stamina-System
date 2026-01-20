@@ -5,6 +5,85 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.4.0] - 2026-01-21
+
+### 新增
+- **实时状态 HUD 显示系统（Real-time Status HUD Display System）**
+  - 在屏幕右上角显示完整的体力系统状态信息（类似游戏原生的 FPS/延迟显示条）
+  - 使用自定义 UI 布局文件（`StaminaHUD.layout`），水平排列的紧凑条状设计
+  - 每 0.2 秒更新一次，与体力系统同步
+  - 通过 `m_bHintDisplayEnabled` 配置项控制开关
+  - **显示内容（10项）**：
+    - **STA XX%** - 体力百分比（<20% 红色, <40% 橙色, 其他白色）
+    - **SPD X.Xm/s** - 当前实际速度（颜色基于速度倍数：≥95% 红色, ≥80% 橙色）
+    - **WT XXkg** - 当前负重（≥40kg 红色, ≥30kg 橙色）
+    - **Idle/Walk/Run/Sprint** - 移动类型
+    - **SLOPE ±Xdeg** - 坡度角度（≥20° 红色, ≥10° 橙色）
+    - **TEMP XXC** - 虚拟气温（≥35°C 红色, ≥28°C 橙色, 15-27°C 白色, 5-14°C 浅蓝, <5°C 蓝色）
+    - **WIND [方向] Xm/s** - 风速风向（≥15m/s 红色, ≥8m/s 橙色；无风显示 "Calm"；8方向：N/NE/E/SE/S/SW/W/NW）
+    - **Indoor/Outdoor** - 室内/室外状态（室内绿色, 室外白色）
+    - **地面类型** - 基于物理密度的地面材质（Wood/Floor/Grass/Dirt/Gravel/Paved/Sand/Rock）
+    - **WET Xkg** - 湿重（有湿重时青色, 无湿重白色）
+  - **SCR_StaminaHUDComponent.c** - HUD 组件模块（约 500 行）
+    - 单例模式管理，自动初始化和销毁
+    - 智能变化检测（只有数值变化时才更新 UI，优化性能）
+    - 丰富的颜色编码系统，直观反映状态好坏
+
+- **配置系统扩展**
+  - **SCR_RSS_Settings.c** 新增配置项：
+    - `m_sConfigVersion` - 配置文件版本号（用于自动迁移）
+    - `m_bHintDisplayEnabled` - HUD 显示开关（默认开启）
+    - `m_iHintUpdateInterval` - HUD 更新间隔（毫秒）
+    - `m_fHintDuration` - Hint 持续时间（秒）
+  - 工作台模式下自动开启 HUD 显示
+
+- **配置版本检测与自动迁移系统（Config Version Detection & Auto-Migration）**
+  - JSON 配置文件新增 `m_sConfigVersion` 字段，记录配置版本号
+  - 模组启动时自动检测配置版本与模组版本是否匹配
+  - 版本不匹配时自动执行迁移：
+    - 保留用户已有的配置值
+    - 只添加新版本新增字段的默认值
+    - 更新配置版本号并保存
+  - 日志输出迁移过程，方便服主排查问题
+  - 版本比较支持语义化版本号（如 "3.4.0" vs "3.3.0"）
+
+### 改进
+- **风向显示修复**
+  - 修复 API 返回"风吹向的方向"而非"风来自的方向"的问题
+  - 反转 180 度后正确显示风的来源方向（如游戏设置 SE 风，HUD 显示 SE）
+- **地面类型显示优化**
+  - 使用游戏 API 的物理密度值（`BallisticInfo.GetDensity()`）
+  - 基于实际密度范围判断地面类型（参考 `SCR_RealisticStaminaSystem.GetTerrainFactorFromDensity()`）：
+    - Wood (≤0.7): 木质表面 - 绿色
+    - Floor (≤1.15): 室内地板 - 绿色
+    - Grass (≤1.25): 草地 - 白色
+    - Dirt (≤1.4): 土质 - 白色
+    - Gravel (≤1.65): 鹅卵石/碎石路 - 橙色
+    - Paved (≤2.4): 沥青/混凝土 - 绿色
+    - Sand (≤2.8): 沙地 - 橙色
+    - Rock (>2.8): 岩石/碎石 - 红色
+- **颜色编码系统**
+  - 负重颜色基于战斗负重阈值（30kg 橙色）和最大负重（40kg 红色）
+  - 坡度颜色基于陡峭程度（≥10° 橙色, ≥20° 红色）
+  - 温度颜色基于舒适度（寒冷蓝色, 舒适白色, 炎热橙色, 高温红色）
+  - 地面颜色：绿色=良好路面，白色=普通，橙色=困难，红色=非常困难
+
+### 技术亮点
+- **模块化 HUD 架构**：独立的 HUD 组件，使用 `WorkspaceWidget.CreateWidgets()` 直接创建，不依赖复杂的 InfoDisplay 注册
+- **配置门禁**：通过 `m_bHintDisplayEnabled` 配置项控制 HUD 显示，支持热配置
+- **性能优化**：智能变化检测，构建完整文本哈希比对，避免不必要的 UI 更新
+- **国际化支持**：所有标签使用英文缩写，避免游戏字体不支持中文的问题
+- **颜色语义化**：红色=危险/高消耗，橙色=警告/中等，白色=正常，绿色=良好，蓝色=寒冷/湿润
+- **配置版本管理**：自动检测并迁移旧版本配置，保留用户设置的同时添加新功能
+
+### 代码统计
+- **SCR_StaminaHUDComponent.c**: 新建 HUD 组件（约 500 行）
+- **StaminaHUD.layout**: 新建 UI 布局文件（约 320 行）
+- **SCR_DebugDisplay.c**: 更新参数传递，新增环境数据获取（约 30 行修改）
+- **SCR_RSS_Settings.c**: 新增 HUD 配置项和版本号字段（约 30 行）
+- **SCR_RSS_ConfigManager.c**: 新增版本检测和自动迁移系统（约 80 行）
+- **PlayerBase.c**: 添加 currentSpeed 参数传递，HUD 初始化/销毁调用（约 10 行修改）
+
 ## [3.3.0] - 2026-01-21
 
 ### 新增

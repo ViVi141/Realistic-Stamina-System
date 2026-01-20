@@ -1,11 +1,12 @@
 // RSS配置管理器 - 使用Reforger官方标准
 // 负责从服务器Profile目录读取或生成JSON配置文件
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c
-// 版本: v3.3.0
+// 版本: v3.4.0
 
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
+    protected static const string CURRENT_VERSION = "3.4.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -42,6 +43,17 @@ class SCR_RSS_ConfigManager
             // 初始化预设默认值（如果从磁盘读取的预设为空）
             m_Settings.InitPresets();
             
+            // 检查版本号并执行迁移
+            string configVersion = m_Settings.m_sConfigVersion;
+            if (!configVersion || configVersion == "")
+                configVersion = "0.0.0";
+            
+            if (configVersion != CURRENT_VERSION)
+            {
+                Print("[RSS_ConfigManager] Config version mismatch: JSON=" + configVersion + ", Mod=" + CURRENT_VERSION);
+                MigrateConfig(configVersion);
+            }
+            
             // 验证配置
             if (!ValidateSettings(m_Settings))
             {
@@ -53,6 +65,14 @@ class SCR_RSS_ConfigManager
         {
             // 文件不存在，初始化预设并保存默认值
             m_Settings.InitPresets();
+            
+            // 设置版本号
+            m_Settings.m_sConfigVersion = CURRENT_VERSION;
+            
+            // 设置新增字段的默认值
+            m_Settings.m_bHintDisplayEnabled = true;  // 默认开启 Hint 显示
+            m_Settings.m_iHintUpdateInterval = 5000;  // 5秒刷新一次
+            m_Settings.m_fHintDuration = 2.0;         // 每条显示2秒
             
             // 工作台模式：默认使用 EliteStandard
             #ifdef WORKBENCH
@@ -67,10 +87,17 @@ class SCR_RSS_ConfigManager
         m_bIsLoaded = true;
         m_fLastLoadTime = currentTime;
         
-        // 工作台模式：强制开启调试
+        // 工作台模式：强制开启调试和 Hint 显示
         #ifdef WORKBENCH
             m_Settings.m_bDebugLogEnabled = true;
+            m_Settings.m_bHintDisplayEnabled = true;
         #endif
+        
+        // 确保新增字段有合理的默认值（兼容旧版本配置文件）
+        if (m_Settings.m_iHintUpdateInterval <= 0)
+            m_Settings.m_iHintUpdateInterval = 5000;
+        if (m_Settings.m_fHintDuration <= 0.0)
+            m_Settings.m_fHintDuration = 2.0;
         
         // 打印启动提示（让服主确认模组已正常加载）
         string debugStatus;
@@ -79,11 +106,97 @@ class SCR_RSS_ConfigManager
         else
             debugStatus = "OFF";
         
+        string hintStatus;
+        if (m_Settings.m_bHintDisplayEnabled)
+            hintStatus = "ON";
+        else
+            hintStatus = "OFF";
+        
         string presetName = m_Settings.m_sSelectedPreset;
         if (!presetName)
             presetName = "EliteStandard";
         
-        Print("[RSS] Realistic Stamina System v3.3.0 initialized (Debug Logs: " + debugStatus + ", Preset: " + presetName + ")");
+        Print("[RSS] Realistic Stamina System v" + CURRENT_VERSION + " initialized (Debug: " + debugStatus + ", Hint: " + hintStatus + ", Preset: " + presetName + ")");
+    }
+    
+    // 配置迁移：将旧版本配置升级到新版本
+    // 保留用户已有的配置值，只添加新字段的默认值
+    protected static void MigrateConfig(string oldVersion)
+    {
+        Print("[RSS_ConfigManager] Migrating config from v" + oldVersion + " to v" + CURRENT_VERSION);
+        
+        // 创建新的默认配置用于获取新字段的默认值
+        SCR_RSS_Settings defaultSettings = new SCR_RSS_Settings();
+        defaultSettings.InitPresets();
+        
+        // ==================== v3.4.0 新增字段 ====================
+        // HUD 显示系统
+        if (m_Settings.m_iHintUpdateInterval <= 0)
+        {
+            m_Settings.m_iHintUpdateInterval = 5000;
+            Print("[RSS_ConfigManager] Migration: Added m_iHintUpdateInterval = 5000");
+        }
+        if (m_Settings.m_fHintDuration <= 0.0)
+        {
+            m_Settings.m_fHintDuration = 2.0;
+            Print("[RSS_ConfigManager] Migration: Added m_fHintDuration = 2.0");
+        }
+        // m_bHintDisplayEnabled 默认为 false，需要显式设置为 true
+        // 但如果用户已经设置过，保留用户的设置
+        // 这里我们检查是否是从旧版本升级（没有这个字段）
+        // 由于 bool 默认为 false，无法区分"用户设置为 false"和"字段不存在"
+        // 所以我们只在版本号较旧时才设置默认值
+        if (CompareVersions(oldVersion, "3.4.0") < 0)
+        {
+            // 从 3.4.0 之前的版本升级，默认开启 HUD
+            m_Settings.m_bHintDisplayEnabled = true;
+            Print("[RSS_ConfigManager] Migration: Added m_bHintDisplayEnabled = true");
+        }
+        
+        // ==================== 更新版本号并保存 ====================
+        m_Settings.m_sConfigVersion = CURRENT_VERSION;
+        Save();
+        Print("[RSS_ConfigManager] Migration completed. Config saved with version " + CURRENT_VERSION);
+    }
+    
+    // 比较版本号
+    // 返回: -1 如果 v1 < v2, 0 如果 v1 == v2, 1 如果 v1 > v2
+    protected static int CompareVersions(string v1, string v2)
+    {
+        // 简单的版本比较：将版本号转换为数字进行比较
+        // 例如 "3.4.0" -> 3*10000 + 4*100 + 0 = 30400
+        int num1 = VersionToNumber(v1);
+        int num2 = VersionToNumber(v2);
+        
+        if (num1 < num2)
+            return -1;
+        else if (num1 > num2)
+            return 1;
+        else
+            return 0;
+    }
+    
+    // 将版本号字符串转换为数字
+    // "3.4.0" -> 30400
+    protected static int VersionToNumber(string version)
+    {
+        if (!version || version == "")
+            return 0;
+        
+        // 分割版本号
+        array<string> parts = new array<string>();
+        version.Split(".", parts, false);
+        
+        int result = 0;
+        int multiplier = 10000;
+        
+        for (int i = 0; i < parts.Count() && i < 3; i++)
+        {
+            result += parts[i].ToInt() * multiplier;
+            multiplier = multiplier / 100;
+        }
+        
+        return result;
     }
     
     // 保存配置文件

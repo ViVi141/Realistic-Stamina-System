@@ -213,6 +213,9 @@ modded class SCR_CharacterControllerComponent
                 // 调试输出
                 Print("[RealisticSystem] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
+            
+            // 初始化体力 HUD 显示（延迟初始化，确保 HUD 系统已加载）
+            GetGame().GetCallqueue().CallLater(InitStaminaHUD, 1000, false);
         }
         else
         {
@@ -224,7 +227,16 @@ modded class SCR_CharacterControllerComponent
                 inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
             }
+            
+            // 销毁体力 HUD 显示
+            SCR_StaminaHUDComponent.Destroy();
         }
+    }
+    
+    // 初始化体力 HUD 显示
+    void InitStaminaHUD()
+    {
+        SCR_StaminaHUDComponent.Init();
     }
     
     // 跳跃动作监听器回调函数
@@ -907,7 +919,11 @@ modded class SCR_CharacterControllerComponent
                 debugParams.heatStressMultiplier = heatStressMultiplier;
                 debugParams.rainWeight = rainWeight;
                 debugParams.swimmingWetWeight = m_fCurrentWetWeight;
+                debugParams.currentSpeed = currentSpeed;
                 DebugDisplay.OutputDebugInfo(debugParams);
+                
+                // 输出屏幕 Hint 信息（独立于控制台日志）
+                DebugDisplay.OutputHintInfo(debugParams);
             }
         }
         

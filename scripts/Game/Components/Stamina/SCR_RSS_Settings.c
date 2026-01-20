@@ -330,6 +330,13 @@ class SCR_RSS_Params
 [BaseContainerProps(configRoot: true)]
 class SCR_RSS_Settings
 {
+    // ==================== 配置版本号 ====================
+    // 用于检测配置文件版本，当模组更新时自动迁移旧配置
+    // 格式：主版本.次版本.修订版本（如 "3.4.0"）
+    // 当模组版本与配置版本不匹配时，会自动添加新字段的默认值
+    [Attribute("3.4.0", desc: "Config file version.\nUsed to detect config version and auto-migrate old configs.\nFormat: major.minor.patch (e.g. '3.4.0').\nWhen mod version differs from config version, new fields will be added with default values.\n配置文件版本号。\n用于检测配置版本并自动迁移旧配置。\n格式：主版本.次版本.修订版本（如 '3.4.0'）。\n当模组版本与配置版本不匹配时，会自动添加新字段的默认值。")]
+    string m_sConfigVersion;
+
     // ==================== 预设选择 ====================
     // 预设选择器：管理员可以选择使用哪个预设配置
     // EliteStandard：精英拟真模式（Optuna 优化出的最严格模式）
@@ -586,6 +593,25 @@ class SCR_RSS_Settings
     // 将日志输出到文件，便于长期保存和分析
     [Attribute("false", UIWidgets.CheckBox, "Enable logging to file (RSS_Log.txt).\nOutputs logs to file for long-term storage and analysis.\n启用日志输出到文件（RSS_Log.txt）。\n将日志输出到文件，便于长期保存和分析。")]
     bool m_bLogToFile;
+    
+    // ==================== 屏幕 Hint 显示配置 ====================
+    // 使用 SCR_PopUpNotification 在屏幕上显示体力状态信息
+    // 让玩家无需查看控制台也能了解当前体力状态
+    
+    // 启用屏幕 Hint 显示
+    // 使用 PopUpNotification 在屏幕上显示体力状态
+    [Attribute("true", UIWidgets.CheckBox, "Enable on-screen Hint display.\nShows stamina status using PopUpNotification on screen.\n启用屏幕 Hint 显示。\n使用 PopUpNotification 在屏幕上显示体力状态。")]
+    bool m_bHintDisplayEnabled;
+    
+    // Hint 显示间隔（毫秒）
+    // 控制屏幕 Hint 的刷新频率
+    [Attribute("5000", UIWidgets.EditBox, "Hint display interval in milliseconds.\nControls the frequency of on-screen Hint updates.\nHint 显示间隔（毫秒）。\n控制屏幕 Hint 的刷新频率。")]
+    int m_iHintUpdateInterval;
+    
+    // Hint 显示时长（秒）
+    // 每条 Hint 消息在屏幕上停留的时间
+    [Attribute("2.0", UIWidgets.EditBox, "Hint display duration in seconds.\nHow long each Hint message stays on screen.\nHint 显示时长（秒）。\n每条 Hint 消息在屏幕上停留的时间。")]
+    float m_fHintDuration;
     
     // ==================== 体力系统配置 ====================
     // 全局体力系统配置：控制体力的消耗和恢复
