@@ -1,6 +1,7 @@
 // RSS配置管理器 - 使用Reforger官方标准
 // 负责从服务器Profile目录读取或生成JSON配置文件
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c
+// 版本: v3.1.0
 
 class SCR_RSS_ConfigManager
 {
@@ -38,6 +39,9 @@ class SCR_RSS_ConfigManager
             loadContext.ReadValue("", m_Settings);
             Print("[RSS_ConfigManager] Settings loaded from " + CONFIG_PATH);
             
+            // 初始化预设默认值（如果从磁盘读取的预设为空）
+            m_Settings.InitPresets();
+            
             // 验证配置
             if (!ValidateSettings(m_Settings))
             {
@@ -47,7 +51,15 @@ class SCR_RSS_ConfigManager
         }
         else
         {
-            // 文件不存在，保存默认值
+            // 文件不存在，初始化预设并保存默认值
+            m_Settings.InitPresets();
+            
+            // 工作台模式：默认使用 EliteStandard
+            #ifdef WORKBENCH
+                m_Settings.m_sSelectedPreset = "EliteStandard";
+                Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
+            #endif
+            
             Save();
             Print("[RSS_ConfigManager] Default settings created at " + CONFIG_PATH);
         }
@@ -55,13 +67,23 @@ class SCR_RSS_ConfigManager
         m_bIsLoaded = true;
         m_fLastLoadTime = currentTime;
         
+        // 工作台模式：强制开启调试
+        #ifdef WORKBENCH
+            m_Settings.m_bDebugLogEnabled = true;
+        #endif
+        
         // 打印启动提示（让服主确认模组已正常加载）
         string debugStatus;
         if (m_Settings.m_bDebugLogEnabled)
             debugStatus = "ON";
         else
             debugStatus = "OFF";
-        Print("[RSS] Realistic Stamina System v2.15.0 initialized (Debug Logs: " + debugStatus + ")");
+        
+        string presetName = m_Settings.m_sSelectedPreset;
+        if (!presetName)
+            presetName = "EliteStandard";
+        
+        Print("[RSS] Realistic Stamina System v3.0.0 initialized (Debug Logs: " + debugStatus + ", Preset: " + presetName + ")");
     }
     
     // 保存配置文件
@@ -90,6 +112,7 @@ class SCR_RSS_ConfigManager
     static void ResetToDefaults()
     {
         m_Settings = new SCR_RSS_Settings();
+        m_Settings.InitPresets();
         Save();
     }
     

@@ -718,7 +718,7 @@ modded class SCR_CharacterControllerComponent
         
         float sprintMultiplier = 1.0;
         if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
-            sprintMultiplier = RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER;
+            sprintMultiplier = StaminaConstants.GetSprintStaminaDrainMultiplier();
         
         // 调试信息：体力消耗计算参数（每5秒输出一次）
         static int drainDebugCounter = 0;

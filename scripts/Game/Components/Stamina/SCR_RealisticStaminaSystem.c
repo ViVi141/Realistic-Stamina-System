@@ -20,6 +20,7 @@ class RealisticStaminaSpeedSystem
     
     // 为了保持向后兼容，保留一些常用的常量别名
     // 这些别名直接引用 StaminaConstants 中的值
+    // 注意：部分常量现在从配置管理器动态获取
     static const float GAME_MAX_SPEED = StaminaConstants.GAME_MAX_SPEED;
     static const float TARGET_RUN_SPEED = StaminaConstants.TARGET_RUN_SPEED;
     static const float TARGET_RUN_SPEED_MULTIPLIER = StaminaConstants.TARGET_RUN_SPEED_MULTIPLIER;
@@ -37,7 +38,7 @@ class RealisticStaminaSpeedSystem
     static const float EXHAUSTION_LIMP_SPEED = StaminaConstants.EXHAUSTION_LIMP_SPEED;
     static const float SPRINT_ENABLE_THRESHOLD = StaminaConstants.SPRINT_ENABLE_THRESHOLD;
     static const float SPRINT_SPEED_BOOST = StaminaConstants.SPRINT_SPEED_BOOST;
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = StaminaConstants.SPRINT_STAMINA_DRAIN_MULTIPLIER;
+    // 注意：SPRINT_STAMINA_DRAIN_MULTIPLIER 现在从配置管理器获取
     static const float RECOVERY_THRESHOLD_NO_LOAD = StaminaConstants.RECOVERY_THRESHOLD_NO_LOAD;
     static const float DRAIN_THRESHOLD_COMBAT_LOAD = StaminaConstants.DRAIN_THRESHOLD_COMBAT_LOAD;
     static const float SPRINT_VELOCITY_THRESHOLD = StaminaConstants.SPRINT_VELOCITY_THRESHOLD;
@@ -46,7 +47,7 @@ class RealisticStaminaSpeedSystem
     static const float FITNESS_LEVEL = StaminaConstants.FITNESS_LEVEL;
     static const float FITNESS_EFFICIENCY_COEFF = StaminaConstants.FITNESS_EFFICIENCY_COEFF;
     static const float FITNESS_RECOVERY_COEFF = StaminaConstants.FITNESS_RECOVERY_COEFF;
-    static const float BASE_RECOVERY_RATE = StaminaConstants.BASE_RECOVERY_RATE;
+    // 注意：BASE_RECOVERY_RATE 现在从配置管理器获取
     static const float RECOVERY_NONLINEAR_COEFF = StaminaConstants.RECOVERY_NONLINEAR_COEFF;
     static const float FAST_RECOVERY_DURATION_MINUTES = StaminaConstants.FAST_RECOVERY_DURATION_MINUTES;
     static const float FAST_RECOVERY_MULTIPLIER = StaminaConstants.FAST_RECOVERY_MULTIPLIER;
@@ -59,25 +60,19 @@ class RealisticStaminaSpeedSystem
     static const float AGE_REFERENCE = StaminaConstants.AGE_REFERENCE;
     static const float FATIGUE_RECOVERY_PENALTY = StaminaConstants.FATIGUE_RECOVERY_PENALTY;
     static const float FATIGUE_RECOVERY_DURATION_MINUTES = StaminaConstants.FATIGUE_RECOVERY_DURATION_MINUTES;
-    static const float STANDING_RECOVERY_MULTIPLIER = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
-    static const float CROUCHING_RECOVERY_MULTIPLIER = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
-    static const float PRONE_RECOVERY_MULTIPLIER = StaminaConstants.PRONE_RECOVERY_MULTIPLIER;
-    static const float LOAD_RECOVERY_PENALTY_COEFF = StaminaConstants.LOAD_RECOVERY_PENALTY_COEFF;
-    static const float LOAD_RECOVERY_PENALTY_EXPONENT = StaminaConstants.LOAD_RECOVERY_PENALTY_EXPONENT;
+    // 注意：STANDING_RECOVERY_MULTIPLIER, PRONE_RECOVERY_MULTIPLIER 现在从配置管理器获取
+    // 注意：LOAD_RECOVERY_PENALTY_COEFF, LOAD_RECOVERY_PENALTY_EXPONENT 现在从配置管理器获取
     static const float BODY_TOLERANCE_BASE = StaminaConstants.BODY_TOLERANCE_BASE;
     static const float MARGINAL_DECAY_THRESHOLD = StaminaConstants.MARGINAL_DECAY_THRESHOLD;
     static const float MARGINAL_DECAY_COEFF = StaminaConstants.MARGINAL_DECAY_COEFF;
     static const float MIN_RECOVERY_STAMINA_THRESHOLD = StaminaConstants.MIN_RECOVERY_STAMINA_THRESHOLD;
     static const float MIN_RECOVERY_REST_TIME_SECONDS = StaminaConstants.MIN_RECOVERY_REST_TIME_SECONDS;
-    static const float FATIGUE_ACCUMULATION_COEFF = StaminaConstants.FATIGUE_ACCUMULATION_COEFF;
-    static const float FATIGUE_START_TIME_MINUTES = StaminaConstants.FATIGUE_START_TIME_MINUTES;
-    static const float FATIGUE_MAX_FACTOR = StaminaConstants.FATIGUE_MAX_FACTOR;
+    // 注意：FATIGUE_ACCUMULATION_COEFF, FATIGUE_MAX_FACTOR 现在从配置管理器获取
     static const float AEROBIC_THRESHOLD = StaminaConstants.AEROBIC_THRESHOLD;
     static const float ANAEROBIC_THRESHOLD = StaminaConstants.ANAEROBIC_THRESHOLD;
     static const float AEROBIC_EFFICIENCY_FACTOR = StaminaConstants.AEROBIC_EFFICIENCY_FACTOR;
     static const float ANAEROBIC_EFFICIENCY_FACTOR = StaminaConstants.ANAEROBIC_EFFICIENCY_FACTOR;
-    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = StaminaConstants.ENCUMBRANCE_SPEED_PENALTY_COEFF;
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = StaminaConstants.ENCUMBRANCE_STAMINA_DRAIN_COEFF;
+    // 注意：ENCUMBRANCE_SPEED_PENALTY_COEFF, ENCUMBRANCE_STAMINA_DRAIN_COEFF 现在从配置管理器获取
     static const float JUMP_STAMINA_BASE_COST = StaminaConstants.JUMP_STAMINA_BASE_COST;
     static const float VAULT_STAMINA_START_COST = StaminaConstants.VAULT_STAMINA_START_COST;
     static const float CLIMB_STAMINA_TICK_COST = StaminaConstants.CLIMB_STAMINA_TICK_COST;
@@ -91,7 +86,7 @@ class RealisticStaminaSpeedSystem
     static const float PANDOLF_GRADE_VELOCITY_COEFF = StaminaConstants.PANDOLF_GRADE_VELOCITY_COEFF;
     static const float PANDOLF_STATIC_COEFF_1 = StaminaConstants.PANDOLF_STATIC_COEFF_1;
     static const float PANDOLF_STATIC_COEFF_2 = StaminaConstants.PANDOLF_STATIC_COEFF_2;
-    static const float ENERGY_TO_STAMINA_COEFF = StaminaConstants.ENERGY_TO_STAMINA_COEFF;
+    // 注意：ENERGY_TO_STAMINA_COEFF 现在从配置管理器获取
     static const float REFERENCE_WEIGHT = StaminaConstants.REFERENCE_WEIGHT;
     static const float GIVONI_CONSTANT = StaminaConstants.GIVONI_CONSTANT;
     static const float GIVONI_VELOCITY_EXPONENT = StaminaConstants.GIVONI_VELOCITY_EXPONENT;
@@ -343,7 +338,8 @@ class RealisticStaminaSpeedSystem
         
         // 应用真实医学模型：速度惩罚 = β * (负重/体重)
         // β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
-        float speedPenalty = ENCUMBRANCE_SPEED_PENALTY_COEFF * bodyMassPercent;
+        float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+        float speedPenalty = encumbranceSpeedPenaltyCoeff * bodyMassPercent;
         
         // 限制惩罚值在合理范围内（0.0-0.5，最多减少50%速度）
         // 即使负重超过100%体重，速度惩罚也不超过50%
@@ -463,7 +459,7 @@ class RealisticStaminaSpeedSystem
         // 体力越低，恢复越快；体力越高，恢复越慢
         // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
         float staminaRecoveryMultiplier = 1.0 + (RECOVERY_NONLINEAR_COEFF * (1.0 - staminaPercent));
-        float baseRecoveryRate = BASE_RECOVERY_RATE * staminaRecoveryMultiplier;
+        float baseRecoveryRate = StaminaConstants.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
         
         // ==================== 2. 健康状态/训练水平影响 ====================
         // 训练有素者（fitness=1.0）恢复速度增加25%
@@ -511,16 +507,16 @@ class RealisticStaminaSpeedSystem
         switch (stance)
         {
             case 0: // 站姿
-                stanceRecoveryMultiplier = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
+                stanceRecoveryMultiplier = StaminaConstants.GetStandingRecoveryMultiplier();
                 break;
             case 1: // 蹲姿
                 stanceRecoveryMultiplier = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
                 break;
             case 2: // 趴姿
-                stanceRecoveryMultiplier = StaminaConstants.PRONE_RECOVERY_MULTIPLIER;
+                stanceRecoveryMultiplier = StaminaConstants.GetProneRecoveryMultiplier();
                 break;
             default:
-                stanceRecoveryMultiplier = StaminaConstants.STANDING_RECOVERY_MULTIPLIER;
+                stanceRecoveryMultiplier = StaminaConstants.GetStandingRecoveryMultiplier();
                 break;
         }
         
@@ -537,7 +533,9 @@ class RealisticStaminaSpeedSystem
             float loadRatio = currentWeight / BODY_TOLERANCE_BASE; // 负重比例（相对于身体耐受基准）
             loadRatio = Math.Clamp(loadRatio, 0.0, 2.0); // 限制在0-2倍之间
             // 负重惩罚 = (负重比例)^2 * 惩罚系数
-            loadRecoveryPenalty = Math.Pow(loadRatio, LOAD_RECOVERY_PENALTY_EXPONENT) * LOAD_RECOVERY_PENALTY_COEFF;
+            float loadRecoveryPenaltyCoeff = StaminaConstants.GetLoadRecoveryPenaltyCoeff();
+            float loadRecoveryPenaltyExponent = StaminaConstants.GetLoadRecoveryPenaltyExponent();
+            loadRecoveryPenalty = Math.Pow(loadRatio, loadRecoveryPenaltyExponent) * loadRecoveryPenaltyCoeff;
         }
         
         // ==================== 深度生理压制：边际效应衰减机制 ====================
@@ -687,7 +685,8 @@ class RealisticStaminaSpeedSystem
         // - 基准负重（12kg，有效0kg）：1.0倍（正常消耗）
         // - 战斗负重（30kg，有效18kg，20%体重）：1.0 + 1.5 × 0.2 = 1.3倍（消耗增加30%）
         // - 最大负重（40.5kg，有效28.5kg，32%体重）：1.0 + 1.5 × 0.32 = 1.48倍（消耗增加48%）
-        float staminaDrainMultiplier = 1.0 + (ENCUMBRANCE_STAMINA_DRAIN_COEFF * bodyMassPercent);
+        float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();
+        float staminaDrainMultiplier = 1.0 + (encumbranceStaminaDrainCoeff * bodyMassPercent);
         
         // 限制消耗倍数在合理范围内（1.0-3.0）
         staminaDrainMultiplier = Math.Clamp(staminaDrainMultiplier, 1.0, 3.0);
@@ -920,7 +919,8 @@ class RealisticStaminaSpeedSystem
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
         // 从0.0001降低到0.000035，减少约65%的体力消耗速度
-        float staminaDrainRate = energyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
         
         // 限制消耗率在合理范围内（避免数值爆炸）
         staminaDrainRate = Math.Clamp(staminaDrainRate, 0.0, 0.05); // 最多每秒消耗5%
@@ -1096,7 +1096,8 @@ class RealisticStaminaSpeedSystem
         
         // 将能量消耗率（W）转换为体力消耗率（%/s）
         // 参考：CalculatePandolfEnergyExpenditure 的转换系数（使用类常量）
-        float staticDrainRate = staticEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
         
         // 限制消耗率在合理范围内
         // 空载时约0.0135%/s，40kg负重时约0.04%/s
@@ -1170,8 +1171,9 @@ class RealisticStaminaSpeedSystem
         
         float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
         
-        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（使用类常量）
-        float runningDrainRate = runningEnergyExpenditure * ENERGY_TO_STAMINA_COEFF;
+        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（从配置管理器获取）
+        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float runningDrainRate = runningEnergyExpenditure * energyToStaminaCoeff;
         
         // 限制消耗率在合理范围内
         runningDrainRate = Math.Clamp(runningDrainRate, 0.0, 0.05); // 最多每秒消耗5%

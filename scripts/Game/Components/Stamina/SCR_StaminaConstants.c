@@ -87,6 +87,7 @@ class StaminaConstants
     
     // 负重对速度的惩罚系数（β）- 基于体重的真实模型
     // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
+    // 注意：这些值现在从配置管理器获取（GetEncumbranceSpeedPenaltyCoeff(), GetEncumbranceStaminaDrainCoeff()）
     static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // 基于体重的速度惩罚系数（线性模型）
     static const float ENCUMBRANCE_SPEED_EXPONENT = 1.0; // 负重速度惩罚指数（1.0 = 线性）
     
@@ -135,6 +136,7 @@ class StaminaConstants
     // 深度生理压制：将基础全满时间（静止空载）从约5分钟延长至约10分钟
     // 计算逻辑：1.0(体力) / 600秒(10分钟) / 5(每秒tick数) = 0.00033
     // 建议值：0.0003（站立基础恢复全满约11分钟）
+    // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
     static const float BASE_RECOVERY_RATE = 0.0003; // 每0.2秒恢复0.03%
     
     // 恢复率非线性系数（基于当前体力百分比）
@@ -175,6 +177,7 @@ class StaminaConstants
     // 蹲姿：减少下肢肌肉紧张，+50%恢复速度
     // 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
+    // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
     static const float STANDING_RECOVERY_MULTIPLIER = 2.0; // 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
     static const float CROUCHING_RECOVERY_MULTIPLIER = 1.5; // 蹲姿恢复倍数（+50%，从1.3提升到1.5）
     static const float PRONE_RECOVERY_MULTIPLIER = 2.2; // 趴姿恢复倍数（+120%，从1.7提升到2.2）
@@ -186,6 +189,7 @@ class StaminaConstants
     // Penalty = (当前总重 / 身体耐受基准)^2 * 0.0004
     // 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除70%
     // 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
+    // 注意：这些值现在从配置管理器获取（GetLoadRecoveryPenaltyCoeff(), GetLoadRecoveryPenaltyExponent()）
     static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0004; // 负重恢复惩罚系数
     static const float LOAD_RECOVERY_PENALTY_EXPONENT = 2.0; // 负重恢复惩罚指数（2.0 = 平方）
     static const float BODY_TOLERANCE_BASE = 30.0; // 身体耐受基准（kg）
@@ -207,6 +211,7 @@ class StaminaConstants
     
     // ==================== 运动持续时间影响（累积疲劳）参数 ====================
     // 基于个性化运动建模（Palumbo et al., 2018）
+    // 注意：这些值现在从配置管理器获取（GetFatigueAccumulationCoeff(), GetFatigueMaxFactor()）
     static const float FATIGUE_ACCUMULATION_COEFF = 0.015; // 每分钟增加1.5%消耗（基于文献：30分钟增加约45%）
     static const float FATIGUE_START_TIME_MINUTES = 5.0; // 疲劳开始累积的时间（分钟），前5分钟无疲劳累积
     static const float FATIGUE_MAX_FACTOR = 2.0; // 最大疲劳因子（2.0倍，即消耗最多增加100%）
@@ -292,6 +297,7 @@ class StaminaConstants
     static const float PANDOLF_STATIC_COEFF_2 = 1.6; // 负重系数（W/kg），从2.0降低到1.6（降低20%）
     
     // 能量到体力的转换系数
+    // 注意：此值现在从配置管理器获取（GetEnergyToStaminaCoeff()）
     static const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
     
     // 参考体重（用于 Pandolf 模型）
@@ -445,6 +451,149 @@ class StaminaConstants
     
     // ==================== 配置系统桥接方法 ====================
     
+    // 获取能量到体力转换系数（从配置管理器）
+    static float GetEnergyToStaminaCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.energy_to_stamina_coeff;
+        }
+        return 0.000035; // 默认值
+    }
+    
+    // 获取基础恢复率（从配置管理器）
+    static float GetBaseRecoveryRate()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.base_recovery_rate;
+        }
+        return 0.0003; // 默认值
+    }
+    
+    // 获取站姿恢复倍数（从配置管理器）
+    static float GetStandingRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.standing_recovery_multiplier;
+        }
+        return 2.0; // 默认值
+    }
+    
+    // 获取趴姿恢复倍数（从配置管理器）
+    static float GetProneRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.prone_recovery_multiplier;
+        }
+        return 2.2; // 默认值
+    }
+    
+    // 获取负重恢复惩罚系数（从配置管理器）
+    static float GetLoadRecoveryPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.load_recovery_penalty_coeff;
+        }
+        return 0.0004; // 默认值
+    }
+    
+    // 获取负重恢复惩罚指数（从配置管理器）
+    static float GetLoadRecoveryPenaltyExponent()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.load_recovery_penalty_exponent;
+        }
+        return 2.0; // 默认值
+    }
+    
+    // 获取负重速度惩罚系数（从配置管理器）
+    static float GetEncumbranceSpeedPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.encumbrance_speed_penalty_coeff;
+        }
+        return 0.20; // 默认值
+    }
+    
+    // 获取负重体力消耗系数（从配置管理器）
+    static float GetEncumbranceStaminaDrainCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.encumbrance_stamina_drain_coeff;
+        }
+        return 1.5; // 默认值
+    }
+    
+    // 获取Sprint体力消耗倍数（从配置管理器）
+    static float GetSprintStaminaDrainMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.sprint_stamina_drain_multiplier;
+        }
+        return 3.0; // 默认值
+    }
+    
+    // 获取疲劳累积系数（从配置管理器）
+    static float GetFatigueAccumulationCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.fatigue_accumulation_coeff;
+        }
+        return 0.015; // 默认值
+    }
+    
+    // 获取最大疲劳因子（从配置管理器）
+    static float GetFatigueMaxFactor()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.fatigue_max_factor;
+        }
+        return 2.0; // 默认值
+    }
+    
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {
@@ -518,16 +667,6 @@ class StaminaConstants
             return settings.m_fSprintSpeedMultiplier;
         
         return 1.3; // 默认值
-    }
-    
-    // 获取Sprint体力消耗倍率
-    static float GetSprintStaminaDrainMultiplier()
-    {
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
-            return settings.m_fSprintStaminaDrainMultiplier;
-        
-        return 3.0; // 默认值
     }
     
     // 检查是否启用热应激系统

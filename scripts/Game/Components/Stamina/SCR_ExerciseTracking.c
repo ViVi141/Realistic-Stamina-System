@@ -129,9 +129,23 @@ class ExerciseTracker
     float CalculateFatigueFactor()
     {
         // 计算有效运动持续时间（减去启动时间）
-        float effectiveExerciseDuration = Math.Max(m_fExerciseDurationMinutes - RealisticStaminaSpeedSystem.FATIGUE_START_TIME_MINUTES, 0.0);
-        float fatigueFactor = 1.0 + (RealisticStaminaSpeedSystem.FATIGUE_ACCUMULATION_COEFF * effectiveExerciseDuration);
-        fatigueFactor = Math.Clamp(fatigueFactor, 1.0, RealisticStaminaSpeedSystem.FATIGUE_MAX_FACTOR); // 限制在1.0-2.0之间
+        float fatigueCoeff = StaminaConstants.GetFatigueAccumulationCoeff();
+        float fatigueMaxFactor = StaminaConstants.GetFatigueMaxFactor();
+        
+        // 疲劳启动时间：如果疲劳系数 > 0，使用5.0分钟；否则使用配置值
+        float fatigueStartTime = 5.0;
+        if (fatigueCoeff <= 0.0)
+        {
+            fatigueStartTime = 5.0;
+        }
+        else
+        {
+            fatigueStartTime = StaminaConstants.FATIGUE_START_TIME_MINUTES;
+        }
+        
+        float effectiveExerciseDuration = Math.Max(m_fExerciseDurationMinutes - fatigueStartTime, 0.0);
+        float fatigueFactor = 1.0 + (fatigueCoeff * effectiveExerciseDuration);
+        fatigueFactor = Math.Clamp(fatigueFactor, 1.0, fatigueMaxFactor); // 限制在1.0-2.0之间
         return fatigueFactor;
     }
     

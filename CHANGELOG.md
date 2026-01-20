@@ -5,6 +5,108 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.1.0] - 2026-01-20
+
+### 新增
+- **预设驱动配置系统（Preset-Driven Configuration）**
+  - **SCR_RSS_Params 类**：
+    - 新增预设参数包类，包含 11 个由 Optuna 优化的核心参数
+    - 每个参数都有详细的中英双语注释，包括参数说明、公式说明、Optuna 优化范围、预设值、影响说明
+    - 参数包括：
+      - energy_to_stamina_coeff：能量到体力转换系数
+      - base_recovery_rate：基础恢复率
+      - standing_recovery_multiplier：站姿恢复倍数
+      - prone_recovery_multiplier：趴姿恢复倍数
+      - load_recovery_penalty_coeff：负重恢复惩罚系数
+      - load_recovery_penalty_exponent：负重恢复惩罚指数
+      - encumbrance_speed_penalty_coeff：负重速度惩罚系数
+      - encumbrance_stamina_drain_coeff：负重体力消耗系数
+      - sprint_stamina_drain_multiplier：Sprint体力消耗倍数
+      - fatigue_accumulation_coeff：疲劳累积系数
+      - fatigue_max_factor：最大疲劳因子
+  - **SCR_RSS_Settings 类**：
+    - 新增预设选择器 `m_sSelectedPreset`（ComboBox）
+      - EliteStandard：精英拟真模式（Optuna 优化出的最严格模式）
+      - TacticalAction：战术动作模式（更流畅的游戏体验）
+      - Custom：自定义模式（管理员可以手动调整所有参数）
+    - 新增三个预设参数包属性：
+      - m_EliteStandard：精英拟真预设参数包
+      - m_TacticalAction：战术动作预设参数包
+      - m_Custom：自定义预设参数包
+    - 新增 `InitPresets()` 方法：初始化三个预设的默认值
+      - EliteStandard：11 个 Optuna 优化值（精英拟真）
+      - TacticalAction：11 个 Optuna 优化值（战术动作）
+      - Custom：11 个合理的默认备份值
+    - 为所有配置参数添加详细的中英双语注释：
+      - 预设选择器：包含三个预设的详细说明
+      - 预设参数包：包含每个预设的适用场景和特点
+      - 调试配置：包含调试日志的用途和自动启用机制
+      - 体力系统配置：包含全局体力消耗和恢复倍率
+      - 移动系统配置：包含 Sprint 速度和体力消耗倍率
+      - 环境因子配置：包含热应激、降雨湿重、风阻、泥泞惩罚系统
+      - 高级配置：包含疲劳积累、代谢适应、室内检测系统
+      - 性能配置：包含地形检测和环境因子更新间隔
+  - **SCR_StaminaConstants.c**：
+    - 新增 11 个配置桥接方法，从配置管理器动态获取参数：
+      - GetEnergyToStaminaCoeff()
+      - GetBaseRecoveryRate()
+      - GetStandingRecoveryMultiplier()
+      - GetProneRecoveryMultiplier()
+      - GetLoadRecoveryPenaltyCoeff()
+      - GetLoadRecoveryPenaltyExponent()
+      - GetEncumbranceSpeedPenaltyCoeff()
+      - GetEncumbranceStaminaDrainCoeff()
+      - GetSprintStaminaDrainMultiplier()
+      - GetFatigueAccumulationCoeff()
+      - GetFatigueMaxFactor()
+    - 更新常量定义注释，说明这些值现在从配置管理器获取
+  - **SCR_RealisticStaminaSystem.c**：
+    - 更新常量定义注释，说明部分常量现在从配置管理器获取
+    - 更新所有使用这些常量的位置，改为从配置管理器动态获取
+  - **SCR_StaminaConsumption.c**：
+    - 更新 CalculateFatigueFactor() 方法，从配置管理器获取疲劳参数
+  - **SCR_EncumbranceCache.c**：
+    - 更新 UpdateCache() 方法，从配置管理器获取负重参数
+  - **SCR_DebugDisplay.c**：
+    - 更新 FormatSprintInfo() 方法，从配置管理器获取 Sprint 消耗倍数
+  - **PlayerBase.c**：
+    - 更新体力消耗计算，从配置管理器获取 Sprint 消耗倍数
+  - **SCR_RSS_ConfigManager.c**：
+    - 更新版本号到 v3.1.0
+    - 在 Load() 方法中调用 InitPresets() 初始化预设默认值
+    - 在 Load() 方法中添加工作台模式检测和预设名称日志输出
+    - 在 ResetToDefaults() 方法中调用 InitPresets()
+  - **工作台自动化**：
+    - 工作台模式下自动使用 EliteStandard 预设
+    - 工作台模式下自动开启调试日志
+    - 输出工作台检测日志：`[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.`
+
+### 改进
+- **配置系统用户体验优化**
+  - 管理员可以通过修改 JSON 文件中的 `m_sSelectedPreset` 字段快速切换预设
+  - 所有参数都有详细的中英双语注释，方便管理员理解参数作用
+  - 预设参数包自动初始化，无需手动配置
+
+### 技术亮点
+- **预设驱动架构**：管理员只需修改一行 JSON 即可切换整个服务器的体能模型
+- **Optuna 优化集成**：EliteStandard 和 TacticalAction 预设使用 Optuna 优化的参数
+- **动态参数获取**：所有核心参数从配置管理器动态获取，支持热重载
+- **中英双语注释**：所有参数都有详细的中英双语注释，提升国际化支持
+- **工作台自动化**：工作台模式下自动使用 EliteStandard 预设并开启调试
+
+### 代码统计
+- **SCR_RSS_Settings.c**: 约 320 行（新增 11 个参数的详细注释）
+- **SCR_StaminaConstants.c**: 新增 11 个配置桥接方法（约 120 行）
+- **SCR_RSS_ConfigManager.c**: 更新版本号和预设初始化逻辑（约 10 行修改）
+- **SCR_RealisticStaminaSystem.c**: 更新常量使用位置（约 5 行修改）
+- **SCR_StaminaConsumption.c**: 更新疲劳计算方法（约 5 行修改）
+- **SCR_EncumbranceCache.c**: 更新负重缓存方法（约 5 行修改）
+- **SCR_DebugDisplay.c**: 更新 Sprint 信息格式化方法（约 5 行修改）
+- **PlayerBase.c**: 更新体力消耗计算（约 5 行修改）
+
+### 文档
+- 所有参数都有详细的中英双语注释，方便管理员理解和使用
+
 ## [3.0.0] - 2026-01-20
 
 ### 新增

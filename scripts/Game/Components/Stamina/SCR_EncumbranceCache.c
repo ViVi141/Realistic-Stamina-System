@@ -68,11 +68,13 @@ class EncumbranceCache
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
         // 计算速度惩罚（基于体重百分比）
-        m_fCachedEncumbranceSpeedPenalty = StaminaConstants.ENCUMBRANCE_SPEED_PENALTY_COEFF * m_fCachedBodyMassPercent;
+        float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * m_fCachedBodyMassPercent;
         m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.5);
         
         // 计算体力消耗倍数
-        m_fCachedEncumbranceStaminaDrainMultiplier = 1.0 + (StaminaConstants.ENCUMBRANCE_STAMINA_DRAIN_COEFF * m_fCachedBodyMassPercent);
+        float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();
+        m_fCachedEncumbranceStaminaDrainMultiplier = 1.0 + (encumbranceStaminaDrainCoeff * m_fCachedBodyMassPercent);
         m_fCachedEncumbranceStaminaDrainMultiplier = Math.Clamp(m_fCachedEncumbranceStaminaDrainMultiplier, 1.0, 3.0);
         
         m_bEncumbranceCacheValid = true;

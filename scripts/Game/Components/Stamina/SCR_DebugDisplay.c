@@ -85,8 +85,9 @@ class DebugDisplay
         if (!isSprinting && currentMovementPhase != 3)
             return "";
         
+        float sprintMultiplier = StaminaConstants.GetSprintStaminaDrainMultiplier();
         return string.Format(" | Sprint消耗倍数: %1x | Sprint Drain Multiplier: %1x", 
-            RealisticStaminaSpeedSystem.SPRINT_STAMINA_DRAIN_MULTIPLIER.ToString());
+            sprintMultiplier.ToString());
     }
     
     // 格式化负重信息字符串
