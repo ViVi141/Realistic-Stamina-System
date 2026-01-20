@@ -5,6 +5,86 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.0] - 2026-01-20
+
+### 新增
+- **多目标优化系统（Multi-Objective Optimization System）**
+  - **数字孪生仿真器（rss_digital_twin.py）**：
+    - 完全复刻 EnforceScript 的体力系统逻辑
+    - 支持所有核心特性：双稳态-应激性能模型、Pandolf 能量消耗模型、Givoni-Goldman 跑步模型、Santee 下坡修正模型
+    - 支持深度生理压制恢复系统、累积疲劳和代谢适应系统
+    - 支持游泳体力管理（3D物理模型）
+    - 支持环境因子系统（热应激、降雨湿重、风阻、泥泞度、气温）
+  - **标准测试工况库（rss_scenarios.py）**：
+    - 13 个标准测试工况：ACFT 2英里测试、Everon拉练、火力突击、趴姿恢复测试、游泳体力测试、环境因子测试、长时间耐力测试等
+    - 支持自定义测试工况
+  - **多目标优化器**：
+    - **Optuna 贝叶斯优化器（rss_optimizer_optuna.py）**：200 次采样，~47 秒优化时间，86 个帕累托前沿解
+    - **NSGA-II 遗传算法优化器（rss_optimizer.py）**：5000 次采样，~10 分钟优化时间，50 个帕累托前沿解
+    - 支持多目标优化：拟真度损失（Realism Loss）和可玩性负担（Playability Burden）
+    - 自动生成 3 种配置方案：平衡型、拟真优先、可玩性优先
+  - **可视化工具集（rss_visualization.py）**：
+    - 帕累托前沿散点图：显示拟真度 vs 可玩性的权衡
+    - 参数敏感度热力图：显示每个参数的变异系数
+    - 收敛曲线图：显示优化过程中的目标函数变化
+    - 参数分布图：显示帕累托前沿上参数的分布
+    - 雷达图：对比不同配置方案的参数
+  - **参数敏感性分析**：
+    - **局部敏感性分析（rss_sensitivity_analysis.py）**：分析单个参数对目标函数的影响
+    - **全局敏感性分析**：使用 Spearman 秩相关系数分析参数与目标函数的相关性
+    - **联合敏感性分析（rss_sensitivity_analysis_enhanced.py）**：同时调整多个参数，展示参数之间的交互效应
+  - **报告生成器**：
+    - **HTML 报告（rss_report_generator.py）**：美观的交互式 HTML 格式报告
+    - **Markdown 报告（rss_report_generator_english.py）**：标准 Markdown 格式报告
+    - 包含优化结果、敏感度分析、配置对比
+  - **完整优化流程脚本（run_complete_optimization.py）**：
+    - 一键运行完整优化流程
+    - 自动生成所有可视化图表和报告
+  - **基础趋势图生成脚本**：
+    - `simulate_stamina_system.py`：基础趋势图生成
+    - `generate_comprehensive_trends.py`：综合趋势图生成（包含移动类型对比）
+    - `multi_dimensional_analysis.py`：多维度趋势分析
+
+### 改进
+- **优化算法对比**：
+  - Optuna 贝叶斯优化：200 次采样 vs NSGA-II 5000 次采样（25x 更快）
+  - Optuna 解空间多样性更高（86 个帕累托前沿解 vs 50 个）
+- **配置方案推荐**：
+  - 硬核 Milsim 服务器：拟真优先配置
+  - 公共服务器：平衡型配置
+  - 休闲服务器：可玩性优先配置
+
+### 技术亮点
+- **科学性**：基于医学模型（Pandolf、Givoni-Goldman）
+- **效率**：200 次采样 vs 5000 次评估（25x 更快）
+- **可解释性**：参数敏感度分析
+- **灵活性**：3 种优化配置方案
+- **工业级**：使用 Optuna 贝叶斯优化
+
+### 代码统计
+- **rss_digital_twin.py**：数字孪生仿真器（约 800 行）
+- **rss_optimizer.py**：NSGA-II 多目标优化器（约 300 行）
+- **rss_optimizer_optuna.py**：Optuna 贝叶斯优化器（约 250 行）
+- **rss_scenarios.py**：标准测试工况库（约 400 行）
+- **rss_visualization.py**：可视化工具集（约 350 行）
+- **rss_sensitivity_analysis.py**：参数敏感性分析工具（约 300 行）
+- **rss_sensitivity_analysis_enhanced.py**：增强版敏感性分析工具（约 400 行）
+- **rss_report_generator.py**：报告生成器（约 300 行）
+- **rss_report_generator_english.py**：英文版报告生成器（约 300 行）
+- **run_complete_optimization.py**：完整优化流程脚本（约 200 行）
+- **simulate_stamina_system.py**：基础趋势图生成脚本（约 450 行）
+- **generate_comprehensive_trends.py**：综合趋势图生成脚本（约 350 行）
+- **multi_dimensional_analysis.py**：多维度趋势分析脚本（约 400 行）
+- **stamina_constants.py**：Python 常量定义（约 150 行）
+- **requirements.txt**：Python 依赖包（15 行）
+- **README.md**：Tools 模块完整使用指南（约 680 行）
+- **BUGFIX_SUMMARY.md**：问题修复总结（约 240 行）
+
+### 文档
+- 新增 [tools/README.md](tools/README.md)：Tools 模块完整使用指南
+- 新增 [tools/BUGFIX_SUMMARY.md](tools/BUGFIX_SUMMARY.md)：问题修复总结
+- 更新主 [README.md](README.md)：添加 Tools 模块说明
+
 ## [2.17.0] - 2026-01-20
 
 ### 新增

@@ -1,0 +1,20 @@
+{
+  "version": "2.18.0",
+  "description": "RSS 多目标优化配置（Optuna 贝叶斯优化）",
+  "optimization_method": "Optuna (TPE)",
+  "parameters": {
+    "energy_to_stamina_coeff": 2.9333625438507058e-05,
+    "base_recovery_rate": 0.0004692610402937321,
+    "standing_recovery_multiplier": 1.1142785136235296,
+    "prone_recovery_multiplier": 2.4332207019049976,
+    "load_recovery_penalty_coeff": 0.00023248757227695477,
+    "load_recovery_penalty_exponent": 1.0268827054394962,
+    "encumbrance_speed_penalty_coeff": 0.27968673729484517,
+    "encumbrance_stamina_drain_coeff": 1.8063565885296136,
+    "sprint_stamina_drain_multiplier": 3.122792411111143,
+    "fatigue_accumulation_coeff": 0.02801217072667917,
+    "fatigue_max_factor": 2.832373621447809,
+    "aerobic_efficiency_factor": 0.9423325845715474,
+    "anaerobic_efficiency_factor": 1.001955307280043
+  }
+}

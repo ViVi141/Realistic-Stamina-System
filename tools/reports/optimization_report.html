@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSS Multi-Objective Optimization Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            color: white;
+        }
+        .section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .section h2 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .metric-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            margin-top: 50px;
+            font-size: 12px;
+        }
+        .highlight {
+            color: #667eea;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 RSS Multi-Objective Optimization Report</h1>
+        <p style="color: rgba(255,255,255,0.8);">Parameter optimization results based on Optuna Bayesian optimization</p>
+    </div>
+<div class="section">
+    <h2>📊 Optimization Configuration Summary</h2>
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Optimization Method</td>
+            <td class="highlight">Optuna (TPE)</td>
+        </tr>
+        <tr>
+            <td>Number of Trials</td>
+            <td>200</td>
+        </tr>
+        <tr>
+            <td>Number of Scenarios</td>
+            <td>13</td>
+        </tr>
+        <tr>
+            <td>Number of Pareto Solutions</td>
+            <td>50</td>
+        </tr>
+        <tr>
+            <td>Optimization Time</td>
+            <td>~47 seconds</td>
+        </tr>
+    </table>
+</div><div class="section">
+    <h2>📈 Pareto Front Results</h2>
+    <div class="metric-card">
+        <div class="metric-label">Realism Loss Range</div>
+        <div class="metric-value">[59.21, 91.73]</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Playability Burden Range</div>
+        <div class="metric-value">[24.35, 162.88]</div>
+    </div>
+</div><div class="section">
+    <h2>🔍 Parameter Sensitivity Analysis</h2>
+    <table>
+        <tr>
+            <th>Parameter Name</th>
+            <th>Coefficient of Variation</th>
+            <th>Sensitivity</th>
+        </tr>
+        <tr>
+            <td>load_recovery_penalty_coeff</td>
+            <td>0.2848</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>fatigue_accumulation_coeff</td>
+            <td>0.2692</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>standing_recovery_multiplier</td>
+            <td>0.2618</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>encumbrance_speed_penalty_coeff</td>
+            <td>0.2249</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>energy_to_stamina_coeff</td>
+            <td>0.1837</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>encumbrance_stamina_drain_coeff</td>
+            <td>0.1809</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>load_recovery_penalty_exponent</td>
+            <td>0.1650</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>sprint_stamina_drain_multiplier</td>
+            <td>0.1486</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>fatigue_max_factor</td>
+            <td>0.1159</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>prone_recovery_multiplier</td>
+            <td>0.1129</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>anaerobic_efficiency_factor</td>
+            <td>0.1091</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>base_recovery_rate</td>
+            <td>0.1088</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>aerobic_efficiency_factor</td>
+            <td>0.0630</td>
+            <td class="highlight">Low</td>
+        </tr>
+    </table>
+</div><div class="section">
+    <h2>⚖️ Configuration Comparison</h2>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>平衡型配置（50% 拟真 + 50% 可玩性）</th>            <th>拟真优先配置（70% 拟真 + 30% 可玩性）</th>            <th>可玩性优先配置（30% 拟真 + 70% 可玩性）</th>        </tr>
+        <tr>
+            <td class="highlight">energy_to_stamina_coeff</td>
+            <td>0.000025</td>            <td>0.000025</td>            <td>0.000020</td>        </tr>
+        <tr>
+            <td class="highlight">base_recovery_rate</td>
+            <td>0.000499</td>            <td>0.000499</td>            <td>0.000440</td>        </tr>
+        <tr>
+            <td class="highlight">standing_recovery_multiplier</td>
+            <td>1.765886</td>            <td>1.765886</td>            <td>1.382203</td>        </tr>
+        <tr>
+            <td class="highlight">prone_recovery_multiplier</td>
+            <td>2.756956</td>            <td>2.756956</td>            <td>2.785653</td>        </tr>
+        <tr>
+            <td class="highlight">load_recovery_penalty_coeff</td>
+            <td>0.000302</td>            <td>0.000302</td>            <td>0.000161</td>        </tr>
+        <tr>
+            <td class="highlight">load_recovery_penalty_exponent</td>
+            <td>2.401259</td>            <td>2.401259</td>            <td>2.848409</td>        </tr>
+        <tr>
+            <td class="highlight">encumbrance_speed_penalty_coeff</td>
+            <td>0.272329</td>            <td>0.272329</td>            <td>0.217013</td>        </tr>
+        <tr>
+            <td class="highlight">encumbrance_stamina_drain_coeff</td>
+            <td>1.939689</td>            <td>1.939689</td>            <td>1.636593</td>        </tr>
+        <tr>
+            <td class="highlight">sprint_stamina_drain_multiplier</td>
+            <td>3.010818</td>            <td>3.010818</td>            <td>2.456596</td>        </tr>
+        <tr>
+            <td class="highlight">fatigue_accumulation_coeff</td>
+            <td>0.020043</td>            <td>0.020043</td>            <td>0.023566</td>        </tr>
+        <tr>
+            <td class="highlight">fatigue_max_factor</td>
+            <td>2.707786</td>            <td>2.707786</td>            <td>2.509931</td>        </tr>
+        <tr>
+            <td class="highlight">aerobic_efficiency_factor</td>
+            <td>0.815724</td>            <td>0.815724</td>            <td>0.915464</td>        </tr>
+        <tr>
+            <td class="highlight">anaerobic_efficiency_factor</td>
+            <td>1.142847</td>            <td>1.142847</td>            <td>1.466094</td>        </tr>
+    </table>
+</div>    <div class="footer">
+        <p>Generated at: 2026-01-20 22:25:28</p>
+        <p>Version: RSS v3.0.0</p>
+        <p>Author: ViVi141 (747384120@qq.com)</p>
+    </div>
+</body>
+</html>

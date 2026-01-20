@@ -1,0 +1,15 @@
+# Realistic Stamina System (RSS) - Multi-Objective Optimization Tools
+# 多目标优化工具依赖包
+
+# 核心依赖
+numpy>=1.21.0
+pymoo>=0.6.0
+optuna>=3.0.0
+
+# 可视化依赖
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# 开发依赖
+jupyter>=1.0.0
+ipython>=8.0.0
