@@ -141,6 +141,31 @@ class RSSConstants:
     SPRINT_MAX_SPEED_MULTIPLIER = 1.0
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0
     
+    # ==================== 动作消耗参数 ====================
+    JUMP_STAMINA_BASE_COST = 0.035
+    VAULT_STAMINA_START_COST = 0.02
+    CLIMB_STAMINA_TICK_COST = 0.01
+    JUMP_CONSECUTIVE_PENALTY = 0.5
+    
+    # ==================== 坡度系统参数 ====================
+    SLOPE_UPHILL_COEFF = 0.08
+    SLOPE_DOWNHILL_COEFF = 0.03
+    
+    # ==================== 游泳系统参数 ====================
+    SWIMMING_BASE_POWER = 25.0
+    SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0
+    SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0
+    SWIMMING_DYNAMIC_POWER_EFFICIENCY = 2.0
+    SWIMMING_ENERGY_TO_STAMINA_COEFF = 0.00005
+    
+    # ==================== 环境因子参数 ====================
+    ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3
+    ENV_RAIN_WEIGHT_MAX = 8.0
+    ENV_WIND_RESISTANCE_COEFF = 0.05
+    ENV_MUD_PENALTY_MAX = 0.4
+    ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02
+    ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = 0.05
+    
     # ==================== Pandolf 模型 ====================
     PANDOLF_BASE_COEFF = 2.7
     PANDOLF_VELOCITY_COEFF = 3.2

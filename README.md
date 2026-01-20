@@ -1524,7 +1524,14 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v3.2.0** (当前版本) - 时间单位错误修复
+- **v3.3.0** (当前版本) - 贝叶斯优化器全参数扩展与三预设系统
+    - 将优化参数从 11 个扩展到 40 个，覆盖完整的体力系统
+    - 新增 StandardMilsim 预设（标准平衡模式），作为默认预设
+    - 完善三预设系统：EliteStandard（精英拟真）、StandardMilsim（标准平衡）、TacticalAction（战术动作）
+    - 所有 40 个参数都有详细的 Optuna 优化值和中英双语注释
+    - 详细更新内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+- **v3.2.0** - 时间单位错误修复
     - 修复游泳湿重系统（Swimming Wet Weight Fix）
     - 修复时间单位错误（Time Unit Bug Fixes）
     - 修复 ExerciseTracker 时间单位错误

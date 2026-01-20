@@ -91,6 +91,7 @@ def main():
     
     # 参数名称
     param_names = [
+        # 基础参数（13个）
         'energy_to_stamina_coeff',
         'base_recovery_rate',
         'standing_recovery_multiplier',
@@ -103,7 +104,42 @@ def main():
         'fatigue_accumulation_coeff',
         'fatigue_max_factor',
         'aerobic_efficiency_factor',
-        'anaerobic_efficiency_factor'
+        'anaerobic_efficiency_factor',
+        # 恢复系统高级参数（8个）
+        'recovery_nonlinear_coeff',
+        'fast_recovery_multiplier',
+        'medium_recovery_multiplier',
+        'slow_recovery_multiplier',
+        'marginal_decay_threshold',
+        'marginal_decay_coeff',
+        'min_recovery_stamina_threshold',
+        'min_recovery_rest_time_seconds',
+        # Sprint系统高级参数（1个）
+        'sprint_speed_boost',
+        # 姿态系统参数（2个）
+        'posture_crouch_multiplier',
+        'posture_prone_multiplier',
+        # 动作消耗参数（4个）
+        'jump_stamina_base_cost',
+        'vault_stamina_start_cost',
+        'climb_stamina_tick_cost',
+        'jump_consecutive_penalty',
+        # 坡度系统参数（2个）
+        'slope_uphill_coeff',
+        'slope_downhill_coeff',
+        # 游泳系统参数（5个）
+        'swimming_base_power',
+        'swimming_encumbrance_threshold',
+        'swimming_static_drain_multiplier',
+        'swimming_dynamic_power_efficiency',
+        'swimming_energy_to_stamina_coeff',
+        # 环境因子参数（5个）
+        'env_heat_stress_max_multiplier',
+        'env_rain_weight_max',
+        'env_wind_resistance_coeff',
+        'env_mud_penalty_max',
+        'env_temperature_heat_penalty_coeff',
+        'env_temperature_cold_recovery_penalty_coeff'
     ]
     
     # 生成所有可视化图表
@@ -125,6 +161,7 @@ def main():
     base_params = balanced_solution['params']
     
     param_ranges = {
+        # 基础参数（13个）
         'energy_to_stamina_coeff': (2e-5, 5e-5),
         'base_recovery_rate': (1e-4, 5e-4),
         'standing_recovery_multiplier': (1.0, 3.0),
@@ -137,7 +174,42 @@ def main():
         'fatigue_accumulation_coeff': (0.005, 0.03),
         'fatigue_max_factor': (1.5, 3.0),
         'aerobic_efficiency_factor': (0.8, 1.0),
-        'anaerobic_efficiency_factor': (1.0, 1.5)
+        'anaerobic_efficiency_factor': (1.0, 1.5),
+        # 恢复系统高级参数（8个）
+        'recovery_nonlinear_coeff': (0.3, 0.7),
+        'fast_recovery_multiplier': (2.5, 4.5),
+        'medium_recovery_multiplier': (1.5, 2.5),
+        'slow_recovery_multiplier': (0.6, 1.0),
+        'marginal_decay_threshold': (0.7, 0.9),
+        'marginal_decay_coeff': (1.05, 1.15),
+        'min_recovery_stamina_threshold': (0.15, 0.25),
+        'min_recovery_rest_time_seconds': (5.0, 15.0),
+        # Sprint系统高级参数（1个）
+        'sprint_speed_boost': (0.25, 0.35),
+        # 姿态系统参数（2个）
+        'posture_crouch_multiplier': (1.5, 2.2),
+        'posture_prone_multiplier': (2.5, 3.5),
+        # 动作消耗参数（4个）
+        'jump_stamina_base_cost': (0.025, 0.045),
+        'vault_stamina_start_cost': (0.015, 0.025),
+        'climb_stamina_tick_cost': (0.008, 0.012),
+        'jump_consecutive_penalty': (0.4, 0.6),
+        # 坡度系统参数（2个）
+        'slope_uphill_coeff': (0.06, 0.10),
+        'slope_downhill_coeff': (0.02, 0.04),
+        # 游泳系统参数（5个）
+        'swimming_base_power': (20.0, 30.0),
+        'swimming_encumbrance_threshold': (20.0, 30.0),
+        'swimming_static_drain_multiplier': (2.5, 3.5),
+        'swimming_dynamic_power_efficiency': (1.5, 2.5),
+        'swimming_energy_to_stamina_coeff': (0.00004, 0.00006),
+        # 环境因子参数（5个）
+        'env_heat_stress_max_multiplier': (1.2, 1.4),
+        'env_rain_weight_max': (6.0, 10.0),
+        'env_wind_resistance_coeff': (0.03, 0.07),
+        'env_mud_penalty_max': (0.3, 0.5),
+        'env_temperature_heat_penalty_coeff': (0.015, 0.025),
+        'env_temperature_cold_recovery_penalty_coeff': (0.04, 0.06)
     }
     
     # 模拟目标函数

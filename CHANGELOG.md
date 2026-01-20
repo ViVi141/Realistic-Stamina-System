@@ -5,6 +5,59 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.3.0] - 2026-01-21
+
+### 新增
+- **贝叶斯优化器全参数扩展（Bayesian Optimizer Full Parameter Expansion）**
+  - 将优化参数从 11 个扩展到 40 个，覆盖完整的体力系统
+  - 新增参数类别：
+    - **有氧/无氧效率因子**：aerobic_efficiency_factor、anaerobic_efficiency_factor
+    - **恢复系统参数**：recovery_nonlinear_coeff、fast_recovery_multiplier、medium_recovery_multiplier、slow_recovery_multiplier、marginal_decay_threshold、marginal_decay_coeff、min_recovery_stamina_threshold、min_recovery_rest_time_seconds
+    - **Sprint和姿态参数**：sprint_speed_boost、posture_crouch_multiplier、posture_prone_multiplier
+    - **动作参数**：jump_stamina_base_cost、vault_stamina_start_cost、climb_stamina_tick_cost、jump_consecutive_penalty
+    - **坡度参数**：slope_uphill_coeff、slope_downhill_coeff
+    - **游泳参数**：swimming_base_power、swimming_encumbrance_threshold、swimming_static_drain_multiplier、swimming_dynamic_power_efficiency、swimming_energy_to_stamina_coeff
+    - **环境参数**：env_heat_stress_max_multiplier、env_rain_weight_max、env_wind_resistance_coeff、env_mud_penalty_max、env_temperature_heat_penalty_coeff、env_temperature_cold_recovery_penalty_coeff
+  - 优化范围更全面，覆盖体力消耗、恢复、移动、环境等所有系统
+
+- **三预设系统（Three-Preset Configuration System）**
+  - **SCR_RSS_Params 类扩展**：从 11 个参数扩展到 40 个参数
+  - **新增 StandardMilsim 预设**：标准平衡模式（Optuna 优化出的平衡配置）
+  - **预设系统完善**：
+    - EliteStandard：精英拟真模式（极致拟真，医学精确度优先）
+    - StandardMilsim：标准平衡模式（平衡拟真与可玩性，默认预设）
+    - TacticalAction：战术动作模式（流畅游戏体验，可玩性优先）
+    - Custom：自定义模式（管理员可以手动调整所有参数）
+  - **默认预设切换**：从 EliteStandard 切换到 StandardMilsim
+    - 工作台模式仍使用 EliteStandard（用于验证）
+    - 游戏模式默认使用 StandardMilsim（平衡体验）
+
+### 改进
+- **预设参数完整性**：所有 40 个参数都有详细的 Optuna 优化值
+- **配置系统用户体验**：
+  - 管理员可以通过修改 JSON 文件中的 `m_sSelectedPreset` 字段快速切换预设
+  - StandardMilsim 作为默认预设，提供平衡的游戏体验
+  - 所有参数都有详细的中英双语注释，方便管理员理解参数作用
+
+### 技术亮点
+- **全参数优化**：40 个参数覆盖完整的体力系统，优化更全面
+- **三预设架构**：完美覆盖帕累托前沿上的三个关键点（极致拟真、标准平衡、战术动作）
+- **Optuna 优化集成**：所有预设使用 Optuna 优化的参数
+- **动态参数获取**：所有核心参数从配置管理器动态获取，支持热重载
+- **中英双语注释**：所有参数都有详细的中英双语注释，提升国际化支持
+
+### 代码统计
+- **SCR_RSS_Params.c**: 从 11 个参数扩展到 40 个参数（约 320 行新增）
+- **SCR_RSS_Settings.c**: 更新 InitPresets() 方法，为所有 4 个预设配置 40 个参数（约 200 行修改）
+- **SCR_StaminaConstants.c**: 新增 29 个配置桥接方法（约 350 行新增）
+- **rss_digital_twin.py**: 新增 20+ 个常量定义（约 100 行新增）
+- **rss_optimizer_optuna.py**: 优化参数从 11 个扩展到 40 个（约 150 行修改）
+- **run_complete_optimization.py**: 更新参数列表（约 50 行修改）
+
+### 文档
+- 所有 40 个参数都有详细的中英双语注释
+- 更新预设选择器说明，包含三个预设的详细说明
+
 ## [3.2.0] - 2026-01-21
 
 ### 修复

@@ -110,6 +110,104 @@ class RSSOptunaOptimizer:
             'anaerobic_efficiency_factor', 1.0, 1.5
         )
         
+        # 恢复系统高级参数
+        recovery_nonlinear_coeff = trial.suggest_float(
+            'recovery_nonlinear_coeff', 0.3, 0.7
+        )
+        fast_recovery_multiplier = trial.suggest_float(
+            'fast_recovery_multiplier', 2.5, 4.5
+        )
+        medium_recovery_multiplier = trial.suggest_float(
+            'medium_recovery_multiplier', 1.5, 2.5
+        )
+        slow_recovery_multiplier = trial.suggest_float(
+            'slow_recovery_multiplier', 0.6, 1.0
+        )
+        marginal_decay_threshold = trial.suggest_float(
+            'marginal_decay_threshold', 0.7, 0.9
+        )
+        marginal_decay_coeff = trial.suggest_float(
+            'marginal_decay_coeff', 1.05, 1.15
+        )
+        min_recovery_stamina_threshold = trial.suggest_float(
+            'min_recovery_stamina_threshold', 0.15, 0.25
+        )
+        min_recovery_rest_time_seconds = trial.suggest_float(
+            'min_recovery_rest_time_seconds', 5.0, 15.0
+        )
+        
+        # Sprint系统高级参数
+        sprint_speed_boost = trial.suggest_float(
+            'sprint_speed_boost', 0.25, 0.35
+        )
+        
+        # 姿态系统参数
+        posture_crouch_multiplier = trial.suggest_float(
+            'posture_crouch_multiplier', 1.5, 2.2
+        )
+        posture_prone_multiplier = trial.suggest_float(
+            'posture_prone_multiplier', 2.5, 3.5
+        )
+        
+        # 动作消耗参数
+        jump_stamina_base_cost = trial.suggest_float(
+            'jump_stamina_base_cost', 0.025, 0.045
+        )
+        vault_stamina_start_cost = trial.suggest_float(
+            'vault_stamina_start_cost', 0.015, 0.025
+        )
+        climb_stamina_tick_cost = trial.suggest_float(
+            'climb_stamina_tick_cost', 0.008, 0.012
+        )
+        jump_consecutive_penalty = trial.suggest_float(
+            'jump_consecutive_penalty', 0.4, 0.6
+        )
+        
+        # 坡度系统参数
+        slope_uphill_coeff = trial.suggest_float(
+            'slope_uphill_coeff', 0.06, 0.10
+        )
+        slope_downhill_coeff = trial.suggest_float(
+            'slope_downhill_coeff', 0.02, 0.04
+        )
+        
+        # 游泳系统参数
+        swimming_base_power = trial.suggest_float(
+            'swimming_base_power', 20.0, 30.0
+        )
+        swimming_encumbrance_threshold = trial.suggest_float(
+            'swimming_encumbrance_threshold', 20.0, 30.0
+        )
+        swimming_static_drain_multiplier = trial.suggest_float(
+            'swimming_static_drain_multiplier', 2.5, 3.5
+        )
+        swimming_dynamic_power_efficiency = trial.suggest_float(
+            'swimming_dynamic_power_efficiency', 1.5, 2.5
+        )
+        swimming_energy_to_stamina_coeff = trial.suggest_float(
+            'swimming_energy_to_stamina_coeff', 0.00004, 0.00006
+        )
+        
+        # 环境因子参数
+        env_heat_stress_max_multiplier = trial.suggest_float(
+            'env_heat_stress_max_multiplier', 1.2, 1.4
+        )
+        env_rain_weight_max = trial.suggest_float(
+            'env_rain_weight_max', 6.0, 10.0
+        )
+        env_wind_resistance_coeff = trial.suggest_float(
+            'env_wind_resistance_coeff', 0.03, 0.07
+        )
+        env_mud_penalty_max = trial.suggest_float(
+            'env_mud_penalty_max', 0.3, 0.5
+        )
+        env_temperature_heat_penalty_coeff = trial.suggest_float(
+            'env_temperature_heat_penalty_coeff', 0.015, 0.025
+        )
+        env_temperature_cold_recovery_penalty_coeff = trial.suggest_float(
+            'env_temperature_cold_recovery_penalty_coeff', 0.04, 0.06
+        )
+        
         # ==================== 2. 创建参数对象 ====================
         
         class OptimizationParams:
@@ -127,6 +225,34 @@ class RSSOptunaOptimizer:
                 self.fatigue_max_factor = fatigue_max_factor
                 self.aerobic_efficiency_factor = aerobic_efficiency_factor
                 self.anaerobic_efficiency_factor = anaerobic_efficiency_factor
+                self.recovery_nonlinear_coeff = recovery_nonlinear_coeff
+                self.fast_recovery_multiplier = fast_recovery_multiplier
+                self.medium_recovery_multiplier = medium_recovery_multiplier
+                self.slow_recovery_multiplier = slow_recovery_multiplier
+                self.marginal_decay_threshold = marginal_decay_threshold
+                self.marginal_decay_coeff = marginal_decay_coeff
+                self.min_recovery_stamina_threshold = min_recovery_stamina_threshold
+                self.min_recovery_rest_time_seconds = min_recovery_rest_time_seconds
+                self.sprint_speed_boost = sprint_speed_boost
+                self.posture_crouch_multiplier = posture_crouch_multiplier
+                self.posture_prone_multiplier = posture_prone_multiplier
+                self.jump_stamina_base_cost = jump_stamina_base_cost
+                self.vault_stamina_start_cost = vault_stamina_start_cost
+                self.climb_stamina_tick_cost = climb_stamina_tick_cost
+                self.jump_consecutive_penalty = jump_consecutive_penalty
+                self.slope_uphill_coeff = slope_uphill_coeff
+                self.slope_downhill_coeff = slope_downhill_coeff
+                self.swimming_base_power = swimming_base_power
+                self.swimming_encumbrance_threshold = swimming_encumbrance_threshold
+                self.swimming_static_drain_multiplier = swimming_static_drain_multiplier
+                self.swimming_dynamic_power_efficiency = swimming_dynamic_power_efficiency
+                self.swimming_energy_to_stamina_coeff = swimming_energy_to_stamina_coeff
+                self.env_heat_stress_max_multiplier = env_heat_stress_max_multiplier
+                self.env_rain_weight_max = env_rain_weight_max
+                self.env_wind_resistance_coeff = env_wind_resistance_coeff
+                self.env_mud_penalty_max = env_mud_penalty_max
+                self.env_temperature_heat_penalty_coeff = env_temperature_heat_penalty_coeff
+                self.env_temperature_cold_recovery_penalty_coeff = env_temperature_cold_recovery_penalty_coeff
             
             def to_constants(self) -> RSSConstants:
                 constants = RSSConstants()
@@ -143,6 +269,34 @@ class RSSOptunaOptimizer:
                 constants.FATIGUE_MAX_FACTOR = self.fatigue_max_factor
                 constants.AEROBIC_EFFICIENCY_FACTOR = self.aerobic_efficiency_factor
                 constants.ANAEROBIC_EFFICIENCY_FACTOR = self.anaerobic_efficiency_factor
+                constants.RECOVERY_NONLINEAR_COEFF = self.recovery_nonlinear_coeff
+                constants.FAST_RECOVERY_MULTIPLIER = self.fast_recovery_multiplier
+                constants.MEDIUM_RECOVERY_MULTIPLIER = self.medium_recovery_multiplier
+                constants.SLOW_RECOVERY_MULTIPLIER = self.slow_recovery_multiplier
+                constants.MARGINAL_DECAY_THRESHOLD = self.marginal_decay_threshold
+                constants.MARGINAL_DECAY_COEFF = self.marginal_decay_coeff
+                constants.MIN_RECOVERY_STAMINA_THRESHOLD = self.min_recovery_stamina_threshold
+                constants.MIN_RECOVERY_REST_TIME_SECONDS = self.min_recovery_rest_time_seconds
+                constants.SPRINT_SPEED_BOOST = self.sprint_speed_boost
+                constants.POSTURE_CROUCH_MULTIPLIER = self.posture_crouch_multiplier
+                constants.POSTURE_PRONE_MULTIPLIER = self.posture_prone_multiplier
+                constants.JUMP_STAMINA_BASE_COST = self.jump_stamina_base_cost
+                constants.VAULT_STAMINA_START_COST = self.vault_stamina_start_cost
+                constants.CLIMB_STAMINA_TICK_COST = self.climb_stamina_tick_cost
+                constants.JUMP_CONSECUTIVE_PENALTY = self.jump_consecutive_penalty
+                constants.SLOPE_UPHILL_COEFF = self.slope_uphill_coeff
+                constants.SLOPE_DOWNHILL_COEFF = self.slope_downhill_coeff
+                constants.SWIMMING_BASE_POWER = self.swimming_base_power
+                constants.SWIMMING_ENCUMBRANCE_THRESHOLD = self.swimming_encumbrance_threshold
+                constants.SWIMMING_STATIC_DRAIN_MULTIPLIER = self.swimming_static_drain_multiplier
+                constants.SWIMMING_DYNAMIC_POWER_EFFICIENCY = self.swimming_dynamic_power_efficiency
+                constants.SWIMMING_ENERGY_TO_STAMINA_COEFF = self.swimming_energy_to_stamina_coeff
+                constants.ENV_HEAT_STRESS_MAX_MULTIPLIER = self.env_heat_stress_max_multiplier
+                constants.ENV_RAIN_WEIGHT_MAX = self.env_rain_weight_max
+                constants.ENV_WIND_RESISTANCE_COEFF = self.env_wind_resistance_coeff
+                constants.ENV_MUD_PENALTY_MAX = self.env_mud_penalty_max
+                constants.ENV_TEMPERATURE_HEAT_PENALTY_COEFF = self.env_temperature_heat_penalty_coeff
+                constants.ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = self.env_temperature_cold_recovery_penalty_coeff
                 return constants
         
         params = OptimizationParams()
@@ -214,7 +368,7 @@ class RSSOptunaOptimizer:
         print(f"\n优化配置：")
         print(f"  采样次数：{self.n_trials}")
         print(f"  测试工况数：{len(self.scenarios)}")
-        print(f"  优化变量数：13")
+        print(f"  优化变量数：40")
         print(f"  目标函数数：2")
         
         print(f"\n目标函数：")
@@ -276,6 +430,7 @@ class RSSOptunaOptimizer:
         
         # 提取所有参数值
         param_names = [
+            # 基础参数（13个）
             'energy_to_stamina_coeff',
             'base_recovery_rate',
             'standing_recovery_multiplier',
@@ -288,7 +443,42 @@ class RSSOptunaOptimizer:
             'fatigue_accumulation_coeff',
             'fatigue_max_factor',
             'aerobic_efficiency_factor',
-            'anaerobic_efficiency_factor'
+            'anaerobic_efficiency_factor',
+            # 恢复系统高级参数（8个）
+            'recovery_nonlinear_coeff',
+            'fast_recovery_multiplier',
+            'medium_recovery_multiplier',
+            'slow_recovery_multiplier',
+            'marginal_decay_threshold',
+            'marginal_decay_coeff',
+            'min_recovery_stamina_threshold',
+            'min_recovery_rest_time_seconds',
+            # Sprint系统高级参数（1个）
+            'sprint_speed_boost',
+            # 姿态系统参数（2个）
+            'posture_crouch_multiplier',
+            'posture_prone_multiplier',
+            # 动作消耗参数（4个）
+            'jump_stamina_base_cost',
+            'vault_stamina_start_cost',
+            'climb_stamina_tick_cost',
+            'jump_consecutive_penalty',
+            # 坡度系统参数（2个）
+            'slope_uphill_coeff',
+            'slope_downhill_coeff',
+            # 游泳系统参数（5个）
+            'swimming_base_power',
+            'swimming_encumbrance_threshold',
+            'swimming_static_drain_multiplier',
+            'swimming_dynamic_power_efficiency',
+            'swimming_energy_to_stamina_coeff',
+            # 环境因子参数（5个）
+            'env_heat_stress_max_multiplier',
+            'env_rain_weight_max',
+            'env_wind_resistance_coeff',
+            'env_mud_penalty_max',
+            'env_temperature_heat_penalty_coeff',
+            'env_temperature_cold_recovery_penalty_coeff'
         ]
         
         for name in param_names:
