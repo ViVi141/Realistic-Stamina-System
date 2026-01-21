@@ -11,6 +11,11 @@ class WetWeightUpdateResult
 
 class SwimmingStateManager
 {
+    // ==================== 游泳状态追踪 ====================
+    
+    protected static float m_fSwimStartTime = -1.0; // 游泳开始时间（秒）
+    protected static float m_fSwimDuration = 0.0; // 游泳持续时间（秒）
+    
     // ==================== 游泳状态检测 ====================
     
     // 检测角色是否在游泳（通过动画组件）
@@ -76,16 +81,35 @@ class SwimmingStateManager
         
         if (isSwimming)
         {
-            // 正在游泳：重置湿重计时器
+            // 正在游泳：湿重非线性增长
+            if (m_fSwimStartTime < 0.0)
+            {
+                // 首次进入游泳：记录开始时间
+                m_fSwimStartTime = currentTime;
+                m_fSwimDuration = 0.0;
+            }
+            
+            // 计算游泳持续时间
+            m_fSwimDuration = currentTime - m_fSwimStartTime;
+            
+            // 非线性增长：使用平方根函数，让湿重增长逐渐变慢
+            // 最大湿重：10kg（与降雨湿重共用）
+            // 增长公式：wetWeight = 10.0 * sqrt(duration / 60.0)
+            // 60秒时达到最大值10kg
+            float swimProgress = Math.Clamp(m_fSwimDuration / 60.0, 0.0, 1.0);
+            float swimWetWeight = 10.0 * Math.Sqrt(swimProgress);
+            
             result.wetWeightStartTime = -1.0;
-            result.currentWetWeight = 0.0;
+            result.currentWetWeight = swimWetWeight;
         }
         else if (wasSwimming && !isSwimming)
         {
             // 刚从水中上岸：启动湿重计时器
             result.wetWeightStartTime = currentTime;
-            // 使用固定湿重（7.5kg，介于5-10kg之间）
-            result.currentWetWeight = (StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0;
+            // 湿重保持不变（已经在游泳时设置了）
+            // 重置游泳时间
+            m_fSwimStartTime = -1.0;
+            m_fSwimDuration = 0.0;
         }
         else if (result.wetWeightStartTime > 0.0)
         {
@@ -101,7 +125,7 @@ class SwimmingStateManager
             {
                 // 湿重逐渐减少（线性衰减）
                 float wetWeightRatio = 1.0 - (wetWeightElapsed / StaminaConstants.WET_WEIGHT_DURATION);
-                result.currentWetWeight = ((StaminaConstants.WET_WEIGHT_MIN + StaminaConstants.WET_WEIGHT_MAX) / 2.0) * wetWeightRatio;
+                result.currentWetWeight = 10.0 * wetWeightRatio;
             }
         }
         
@@ -116,19 +140,8 @@ class SwimmingStateManager
     // @return 总湿重（kg），已应用饱和上限
     static float CalculateTotalWetWeight(float swimmingWetWeight, float rainWeight)
     {
-        float totalWetWeight = 0.0;
-        
-        if (swimmingWetWeight > 0.0 && rainWeight > 0.0)
-        {
-            // 如果两者都大于0，使用加权平均（更真实的物理模型）
-            // 加权平均：游泳湿重权重0.6，降雨湿重权重0.4（游泳更湿）
-            totalWetWeight = swimmingWetWeight * 0.6 + rainWeight * 0.4;
-        }
-        else
-        {
-            // 如果只有一个大于0，直接使用较大值
-            totalWetWeight = Math.Max(swimmingWetWeight, rainWeight);
-        }
+        // 游泳湿重和降雨湿重共用一个负重池，最大10KG
+        float totalWetWeight = swimmingWetWeight + rainWeight;
         
         // 应用饱和上限（防止数值爆炸）
         totalWetWeight = Math.Min(totalWetWeight, StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT);

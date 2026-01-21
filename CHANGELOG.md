@@ -5,6 +5,95 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.5.0] - 2026-01-21
+
+### 修复
+- **降雨湿重系统重构（Rain Wet Weight System Refactoring）**
+  - **问题描述**：降雨湿重计算存在双重方法冲突，室内检测失效
+  - **根本原因**：
+    - 存在两个湿重计算方法：`CalculateRainWeight()`（基于字符串匹配）和 `CalculateRainWetWeight()`（基于降雨强度API）
+    - `CalculateRainWeight()` 方法覆盖了 `CalculateRainWetWeight()` 的结果
+    - `CalculateRainWeight()` 不检查室内状态，立即设置湿重到最大值
+    - `deltaTime` 计算错误：`m_fLastUpdateTime` 在方法开始时就被更新，导致 `deltaTime` 永远是 0
+  - **修复方案**：
+    - **删除字符串匹配方法**：完全移除 `CalculateRainWeight()` 方法
+    - **统一数据源**：所有降雨计算都使用 `GetRainIntensity()` API（0.0-1.0范围）
+    - **修复deltaTime计算**：将 `m_fLastUpdateTime` 更新移到方法末尾，在方法开始时计算 `deltaTime`
+    - **修复室内检测**：室内时不增加湿重，只进行衰减
+    - **简化逻辑**：室内和室外使用统一的线性衰减逻辑
+  - **修复后行为**：
+    - 室外下雨：湿重逐渐增加（基于降雨强度）
+    - 室内下雨：湿重开始衰减（不增加）
+    - 室外停止降雨：湿重开始衰减
+    - 室内停止降雨：湿重继续衰减
+    - 室内开始下雨：湿重保持为0
+  - **删除的变量**：
+    - `m_bWasRaining` - 上一帧是否在下雨
+    - `m_bWasIndoor` - 上一帧是否在室内
+  - **修改的方法**：
+    - `SCR_EnvironmentFactor.CalculateRainWetWeight()`: 修改为接受 `deltaTime` 参数，简化逻辑
+    - `SCR_EnvironmentFactor.UpdateAdvancedEnvironmentFactors()`: 修复 `deltaTime` 计算位置
+    - `SCR_EnvironmentFactor.IsRaining()`: 改为基于降雨强度判断
+    - `SCR_RSS_ConfigManager`: 更新版本号到 v3.5.0
+
+- **游泳湿重系统优化（Swimming Wet Weight Optimization）**
+  - **问题描述**：游泳时湿重为0，上岸后才设置湿重
+  - **根本原因**：`UpdateWetWeight()` 方法在游泳时设置 `wetWeightStartTime = -1.0` 和 `currentWetWeight = 0.0`
+  - **修复方案**：
+    - **非线性增长**：游泳时湿重使用平方根函数增长：`wetWeight = 10.0 * sqrt(duration / 60.0)`
+    - **增长时间**：60秒时达到最大值10kg
+    - **即时生效**：游泳时湿重立即增加到负重，不是上岸后才生效
+    - **共用负重池**：游泳湿重和降雨湿重共用一个负重池：`totalWetWeight = swimmingWetWeight + rainWeight`
+    - **最大限制**：10KG
+  - **新增变量**：
+    - `m_fSwimStartTime` - 游泳开始时间（秒）
+    - `m_fSwimDuration` - 游泳持续时间（秒）
+  - **修改的方法**：
+    - `SCR_SwimmingState.UpdateWetWeight()`: 添加游泳时间追踪，修改湿重计算逻辑
+    - `SCR_SwimmingState.CalculateTotalWetWeight()`: 修改为简单相加，移除加权平均逻辑
+  - **修复后行为**：
+    - 游泳时：湿重非线性增长（0 → 10kg，60秒达到最大值）
+    - 上岸后：湿重保持不变，开始30秒线性衰减
+    - 游泳+下雨：总湿重 = 游泳湿重 + 降雨湿重（最大10kg）
+
+- **HUD显示更新（HUD Display Update）**
+  - **问题描述**：游泳时运动类型和地面材质显示不准确
+  - **修复方案**：
+    - **游泳时运动类型**：显示"Swim"而非当前移动类型
+    - **游泳时地面材质**：显示"Water"而非地面密度判断的材质
+    - **颜色编码**：Water使用蓝色（Color.FromRGBA(0, 150, 255, 255)）
+  - **新增参数**：
+    - `UpdateAllValues()` 方法：添加 `isSwimming` 参数
+    - `s_bCachedIsSwimming` - 缓存的游泳状态
+  - **修改的方法**：
+    - `SCR_StaminaHUDComponent.UpdateAllValues()`: 添加游泳状态参数
+    - `SCR_StaminaHUDComponent.UpdateDisplay()`: 添加游泳状态显示逻辑
+
+### 改进
+- **代码简化**：删除了约100行重复代码（`CalculateRainWeight()` 方法）
+- **逻辑清晰**：室内和室外使用统一的衰减逻辑，不再需要复杂的状态追踪
+- **性能优化**：减少不必要的状态变量和条件判断
+
+### 技术亮点
+- **统一数据源**：所有降雨计算都使用 `GetRainIntensity()` API，不再使用字符串匹配
+- **正确的deltaTime**：确保湿重增加和衰减都能正常工作
+- **非线性增长**：游泳湿重使用平方根函数，增长逐渐变慢
+- **共用负重池**：游泳湿重和降雨湿重相加，最大限制10KG
+- **HUD状态显示**：游泳时正确显示运动类型和地面材质
+
+### 代码统计
+- **SCR_EnvironmentFactor.c**: 删除 `CalculateRainWeight()` 方法，修复 `deltaTime` 计算（约80行修改）
+- **SCR_SwimmingState.c**: 修改湿重计算逻辑，添加游泳时间追踪（约50行修改）
+- **SCR_StaminaHUDComponent.c**: 添加游泳状态显示支持（约30行修改）
+- **SCR_DebugDisplay.c**: 更新调试信息显示游泳状态（约10行修改）
+- **SCR_RSS_ConfigManager.c**: 更新版本号到 v3.5.0（1行修改）
+
+### 文档
+- 更新 README.md 版本历史，添加 v3.5.0 更新内容
+- 更新 CHANGELOG.md，添加 v3.5.0 详细更新日志
+
+---
+
 ## [3.4.1] - 2026-01-21
 
 ### 修复

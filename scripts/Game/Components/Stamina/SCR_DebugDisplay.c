@@ -23,6 +23,7 @@ class DebugInfoParams
     float rainWeight;
     float swimmingWetWeight;
     float currentSpeed;  // 当前实际速度（m/s）
+    bool isSwimming;     // 是否在游泳
 }
 
 class DebugDisplay
@@ -215,6 +216,24 @@ class DebugDisplay
             timeStr = "未知";
         }
         
+        // 获取室内状态
+        bool isIndoorDebug = environmentFactor.IsIndoor();
+        string indoorStr = "";
+        string transitionStr = "";
+        
+        // 检测室内外状态变化
+        static bool s_wasLastIndoor = false;
+        if (isIndoorDebug && !s_wasLastIndoor)
+            transitionStr = " [进入室内]";
+        else if (!isIndoorDebug && s_wasLastIndoor)
+            transitionStr = " [离开室内]";
+        s_wasLastIndoor = isIndoorDebug;
+        
+        if (isIndoorDebug)
+            indoorStr = "室内";
+        else
+            indoorStr = "室外";
+        
         // 获取降雨信息
         bool isRainingDebug = environmentFactor.IsRaining();
         float rainIntensity = environmentFactor.GetRainIntensity();
@@ -228,10 +247,19 @@ class DebugDisplay
                 rainLevel = "中雨";
             else
                 rainLevel = "小雨";
-            rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%)", 
+            
+            // 显示室内/室外状态对降雨的影响
+            string rainStatus = "";
+            if (isIndoorDebug)
+                rainStatus = " (室内)";
+            else
+                rainStatus = " (室外)";
+            
+            rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%%4)", 
                 rainLevel,
                 Math.Round(rainWeight * 10.0) / 10.0,
-                Math.Round(rainIntensity * 100.0));
+                Math.Round(rainIntensity * 100.0),
+                rainStatus);
         }
         else if (rainWeight > 0.0)
         {
@@ -244,13 +272,8 @@ class DebugDisplay
             rainStr = "降雨: 无";
         }
         
-        // 获取室内状态
-        bool isIndoorDebug = environmentFactor.IsIndoor();
-        string indoorStr = "";
-        if (isIndoorDebug)
-            indoorStr = "室内";
-        else
-            indoorStr = "室外";
+        // 将转换状态添加到室内状态字符串中
+        indoorStr += transitionStr;
         
         // 获取游泳湿重
         string swimWetStr = "";
@@ -544,7 +567,8 @@ class DebugDisplay
             windDirection,
             isIndoor,
             terrainDensity,
-            totalWetWeight
+            totalWetWeight,
+            params.isSwimming
         );
     }
     

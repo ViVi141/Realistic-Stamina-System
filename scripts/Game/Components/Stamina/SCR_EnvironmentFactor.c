@@ -8,7 +8,6 @@ class EnvironmentFactor
     protected float m_fCachedHeatStressMultiplier = 1.0; // 缓存的热应激倍数
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
-    protected bool m_bWasRaining = false; // 上一帧是否在下雨
     protected float m_fRainStopTime = -1.0; // 停止降雨的时间（用于湿重衰减）
     protected TimeAndWeatherManagerEntity m_pCachedWeatherManager; // 缓存的天气管理器引用
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
@@ -49,7 +48,6 @@ class EnvironmentFactor
         m_fCachedHeatStressMultiplier = 1.0;
         m_fCachedRainWeight = 0.0;
         m_fLastEnvironmentCheckTime = 0.0;
-        m_bWasRaining = false;
         m_fRainStopTime = -1.0;
         m_fLastRainIntensity = 0.0;
         m_pCachedWeatherManager = null;
@@ -154,9 +152,8 @@ class EnvironmentFactor
         float oldHeatStress = m_fCachedHeatStressMultiplier;
         m_fCachedHeatStressMultiplier = CalculateHeatStressMultiplier(m_pCachedOwner);
         
-        // 更新降雨湿重
-        float oldRainWeight = m_fCachedRainWeight;
-        m_fCachedRainWeight = CalculateRainWeight(currentTime);
+        // 注意：降雨湿重已在 UpdateAdvancedEnvironmentFactors 中的 CalculateRainWetWeight 方法中计算
+        // 不需要在这里再次调用 CalculateRainWeight
         
         // 更新总湿重（游泳湿重 + 降雨湿重，限制在最大值）
         // 使用 SwimmingStateManager 的方法计算总湿重
@@ -535,120 +532,6 @@ class EnvironmentFactor
     // 停止降雨后，湿重使用二次方衰减（更自然的蒸发过程）
     // @param currentTime 当前世界时间
     // @return 降雨湿重（0.0-8.0 kg）
-    protected float CalculateRainWeight(float currentTime)
-    {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        float rainIntensity = 0.0;
-        bool isRaining = false;
-        bool isHeavyRain = false; // 在函数开始时声明，避免作用域问题
-        
-        // 优先尝试使用 GetRainIntensity() API（如果存在）
-        // 注意：如果 API 不存在，编译器会报错，需要注释掉或使用条件编译
-        // 暂时保留字符串匹配作为主要方法，GetRainIntensity 作为备选
-        
-        // 获取当前天气状态
-        BaseWeatherStateTransitionManager transitionManager = m_pCachedWeatherManager.GetTransitionManager();
-        if (!transitionManager)
-            return 0.0;
-        
-        WeatherState currentWeatherState = transitionManager.GetCurrentState();
-        if (!currentWeatherState)
-            return 0.0;
-        
-        string weatherStateName = currentWeatherState.GetStateName();
-        
-        // 方法1：尝试使用字符串匹配（当前主要方法）
-        if (weatherStateName.Contains("Rain") || weatherStateName.Contains("rain") || 
-            weatherStateName.Contains("RAIN") || weatherStateName.Contains("Rain"))
-        {
-            isRaining = true;
-            
-            // 根据天气状态名称判断强度
-            isHeavyRain = weatherStateName.Contains("heavy") || weatherStateName.Contains("Heavy") || 
-                          weatherStateName.Contains("storm") || weatherStateName.Contains("Storm") ||
-                          weatherStateName.Contains("HEAVY") || weatherStateName.Contains("STORM");
-            
-            if (isHeavyRain)
-            {
-                rainIntensity = 1.0; // 暴雨：100%强度
-            }
-            else
-            {
-                rainIntensity = 0.5; // 小雨/中雨：50%强度
-            }
-        }
-        
-        // 方法2：如果未来 API 支持，可以尝试直接获取降雨强度
-        // rainIntensity = m_pCachedWeatherManager.GetRainIntensity(); // 假设此方法存在
-        // isRaining = (rainIntensity > 0.01);
-        
-        // 检测降雨状态变化
-        if (isRaining && !m_bWasRaining)
-        {
-            // 开始下雨：重置停止时间，保存当前强度
-            m_fRainStopTime = -1.0;
-            m_fLastRainIntensity = rainIntensity;
-            
-            // 调试信息：开始下雨
-            string rainIntensityStr = "";
-            if (isHeavyRain)
-                rainIntensityStr = "暴雨 / Heavy Rain";
-            else
-                rainIntensityStr = "小雨/中雨 / Light/Moderate Rain";
-            PrintFormat("[RealisticSystem] 开始下雨 / Rain Started: %1 | 强度: %2%% | Intensity: %2%%", 
-                rainIntensityStr,
-                Math.Round(rainIntensity * 100.0).ToString());
-        }
-        else if (!isRaining && m_bWasRaining)
-        {
-            // 停止下雨：记录停止时间和最后强度
-            m_fRainStopTime = currentTime;
-            
-            // 调试信息：停止下雨
-            Print("[RealisticSystem] 停止下雨 / Rain Stopped: 湿重开始衰减 | Wet Weight Starts Decaying");
-        }
-        
-        m_bWasRaining = isRaining;
-        
-        // 计算湿重
-        float rainWeight = 0.0;
-        
-        if (isRaining)
-        {
-            // 正在下雨：根据降雨强度动态计算湿重
-            rainWeight = StaminaConstants.ENV_RAIN_WEIGHT_MIN + 
-                        (StaminaConstants.ENV_RAIN_WEIGHT_MAX - StaminaConstants.ENV_RAIN_WEIGHT_MIN) * rainIntensity;
-            m_fLastRainIntensity = rainIntensity; // 更新最后强度
-        }
-        else if (m_fRainStopTime > 0.0)
-        {
-            // 停止下雨后：湿重逐渐衰减（使用二次方衰减，模拟由湿变干的过程）
-            float elapsedTime = currentTime - m_fRainStopTime;
-            
-            if (elapsedTime < StaminaConstants.ENV_RAIN_WEIGHT_DURATION)
-            {
-                // 使用二次方衰减：t²，让水分蒸发感更自然
-                float t = Math.Clamp(elapsedTime / StaminaConstants.ENV_RAIN_WEIGHT_DURATION, 0.0, 1.0);
-                float decayRatio = 1.0 - (t * t); // 二次方衰减
-                
-                // 使用停止前的强度计算起始湿重
-                float startWeight = StaminaConstants.ENV_RAIN_WEIGHT_MIN + 
-                                  (StaminaConstants.ENV_RAIN_WEIGHT_MAX - StaminaConstants.ENV_RAIN_WEIGHT_MIN) * m_fLastRainIntensity;
-                rainWeight = startWeight * decayRatio;
-            }
-            else
-            {
-                // 湿重已完全消失
-                rainWeight = 0.0;
-                m_fRainStopTime = -1.0;
-                m_fLastRainIntensity = 0.0;
-            }
-        }
-        
-        return Math.Clamp(rainWeight, 0.0, StaminaConstants.ENV_RAIN_WEIGHT_MAX);
-    }
     
     // 手动更新环境因子（用于调试或强制更新）
     // @param currentTime 当前世界时间
@@ -701,10 +584,11 @@ class EnvironmentFactor
     }
     
     // 检查是否正在下雨（用于调试）
+// 判断是否正在下雨（基于降雨强度）
     // @return true表示正在下雨，false表示未下雨
     bool IsRaining()
     {
-        return m_bWasRaining;
+        return m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD;
     }
     
     // ==================== 高级环境因子计算方法（v2.14.0）====================
@@ -719,8 +603,8 @@ class EnvironmentFactor
         if (!m_pCachedWeatherManager)
             return;
         
-        // 更新时间戳
-        m_fLastUpdateTime = currentTime;
+        // 计算时间增量（在更新时间戳之前）
+        float deltaTime = currentTime - m_fLastUpdateTime;
         
         // 1. 获取降雨强度（优先使用API，失败则回退到字符串匹配）
         m_fCachedRainIntensity = CalculateRainIntensityFromAPI();
@@ -742,7 +626,7 @@ class EnvironmentFactor
         m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
         
         // 7. 计算降雨湿重（基于降雨强度）
-        CalculateRainWetWeight(currentTime);
+        CalculateRainWetWeight(deltaTime);
         
         // 8. 计算暴雨呼吸阻力
         CalculateRainBreathingPenalty();
@@ -849,6 +733,9 @@ class EnvironmentFactor
             lastLoggedColdStaticPenalty = m_fColdStaticPenalty;
             lastLoggedSurfaceWetnessPenalty = m_fSurfaceWetnessPenalty;
         }
+        
+        // 更新时间戳（在所有计算完成后）
+        m_fLastUpdateTime = currentTime;
     }
     
     // 从API获取降雨强度（带字符串回退）
@@ -1004,27 +891,53 @@ class EnvironmentFactor
     }
     
     // 计算降雨湿重（基于降雨强度）
-    // @param currentTime 当前时间（秒）
-    protected void CalculateRainWetWeight(float currentTime)
+    // @param deltaTime 时间增量（秒）
+    protected void CalculateRainWetWeight(float deltaTime)
     {
-        if (m_fCachedRainIntensity < StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
-            return;
-        
-        // 计算湿重增加速率（非线性增长）
-        float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
-                                 Math.Pow(m_fCachedRainIntensity, StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
-        
-        // 计算时间增量（秒）
-        float deltaTime = currentTime - m_fLastUpdateTime;
         if (deltaTime <= 0)
             return;
         
-        // 增加湿重
-        m_fCachedRainWeight = Math.Clamp(
-            m_fCachedRainWeight + accumulationRate * deltaTime,
-            0.0,
-            StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT
-        );
+        // 检查是否在室内（室内不受降雨影响）
+        bool isIndoor = IsUnderCover(m_pCachedOwner);
+        
+        // 检查是否在室外且正在下雨（超过阈值）
+        bool isOutdoorAndRaining = !isIndoor && m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD;
+        
+        if (isOutdoorAndRaining)
+        {
+            // 在室外且正在下雨：增加湿重
+            // 计算湿重增加速率（非线性增长）
+            float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
+                                     Math.Pow(m_fCachedRainIntensity, StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
+            
+            // 增加湿重
+            m_fCachedRainWeight = Math.Clamp(
+                m_fCachedRainWeight + accumulationRate * deltaTime,
+                0.0,
+                StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT
+            );
+        }
+        else
+        {
+            // 其他所有情况：减少湿重或为0
+            if (m_fCachedRainWeight > 0.0)
+            {
+                // 计算衰减速率
+                float decayRate = 1.0 / StaminaConstants.ENV_RAIN_WEIGHT_DURATION;
+                float decayAmount = m_fCachedRainWeight * decayRate * deltaTime;
+                
+                // 减少湿重
+                m_fCachedRainWeight = Math.Max(m_fCachedRainWeight - decayAmount, 0.0);
+                
+                // 如果湿重完全消失，重置状态
+                if (m_fCachedRainWeight <= 0.0)
+                {
+                    m_fCachedRainWeight = 0.0;
+                    m_fRainStopTime = -1.0;
+                    m_fLastRainIntensity = 0.0;
+                }
+            }
+        }
     }
     
     // 计算暴雨呼吸阻力

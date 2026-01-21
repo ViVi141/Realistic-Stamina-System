@@ -1533,7 +1533,29 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
    - **说明**：这些机制使体力系统能够更真实地模拟个体的生理响应
 
 ## 版本历史
-
+- **v3.5.0** (当前版本) - 降雨湿重系统重构与游泳湿重优化
+    - **降雨湿重系统重构（Rain Wet Weight System Refactoring）**
+      - **删除字符串匹配方法**：完全移除基于天气状态名称字符串匹配的 `CalculateRainWeight()` 方法
+      - **统一数据源**：所有降雨计算都使用 `GetRainIntensity()` API（0.0-1.0范围）
+      - **修复deltaTime计算错误**：将 `m_fLastUpdateTime` 更新移到方法末尾，确保正确的时间增量
+      - **修复室内检测**：室内时不增加湿重，只进行衰减
+      - **简化逻辑**：室内和室外使用统一的线性衰减逻辑
+    - **游泳湿重系统优化（Swimming Wet Weight Optimization）**
+      - **非线性增长**：游泳时湿重使用平方根函数增长：`wetWeight = 10.0 * sqrt(duration / 60.0)`
+      - **增长时间**：60秒时达到最大值10kg
+      - **即时生效**：游泳时湿重立即增加到负重，不是上岸后才生效
+    - **共用负重池**：游泳湿重和降雨湿重共用一个负重池
+      - 总湿重公式：`totalWetWeight = swimmingWetWeight + rainWeight`
+      - 最大限制：10KG
+    - **HUD显示更新**
+      - 游泳时运动类型UI显示"Swim"
+      - 游泳时地面材质UI显示"Water"（蓝色）
+    - **代码统计**：
+      - **SCR_EnvironmentFactor.c**: 删除CalculateRainWeight方法，修复deltaTime计算（约80行修改）
+      - **SCR_SwimmingState.c**: 修改湿重计算逻辑，添加游泳时间追踪（约50行修改）
+      - **SCR_StaminaHUDComponent.c**: 添加游泳状态显示支持（约30行修改）
+      - **SCR_DebugDisplay.c**: 更新调试信息显示游泳状态（约10行修改）
+    - 详细更新内容请参考 [CHANGELOG.md](CHANGELOG.md)
 - **v3.4.1** (当前版本) - 配置系统修复与 Custom 预设逻辑优化
     - **紧急修复**
       - 配置文件覆盖未生效：用户修改的预设参数值不再被默认值覆盖

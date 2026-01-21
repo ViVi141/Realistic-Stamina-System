@@ -920,6 +920,7 @@ modded class SCR_CharacterControllerComponent
                 debugParams.rainWeight = rainWeight;
                 debugParams.swimmingWetWeight = m_fCurrentWetWeight;
                 debugParams.currentSpeed = currentSpeed;
+                debugParams.isSwimming = isSwimming;
                 DebugDisplay.OutputDebugInfo(debugParams);
                 
                 // 输出屏幕 Hint 信息（独立于控制台日志）

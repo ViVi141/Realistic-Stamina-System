@@ -33,6 +33,7 @@ class SCR_StaminaHUDComponent
     protected static bool s_bCachedIsIndoor = false;     // 是否室内
     protected static float s_fCachedTerrainDensity = -1.0; // 地面密度
     protected static float s_fCachedWetWeight = 0.0;
+    protected static bool s_bCachedIsSwimming = false; // 是否在游泳
     
     // 上一次显示的值（用于减少不必要的更新）
     protected string m_sLastDisplayedText = "";
@@ -52,7 +53,8 @@ class SCR_StaminaHUDComponent
         float windDirection,
         bool isIndoor,
         float terrainDensity,
-        float wetWeight)
+        float wetWeight,
+        bool isSwimming)
     {
         s_fCachedStaminaPercent = staminaPercent;
         s_fCachedSpeedMultiplier = speedMultiplier;
@@ -66,6 +68,7 @@ class SCR_StaminaHUDComponent
         s_bCachedIsIndoor = isIndoor;
         s_fCachedTerrainDensity = terrainDensity;
         s_fCachedWetWeight = wetWeight;
+        s_bCachedIsSwimming = isSwimming;
         
         // 如果实例存在，更新显示
         if (s_Instance)
@@ -270,7 +273,13 @@ class SCR_StaminaHUDComponent
         // 更新移动类型
         if (m_wTextMove)
         {
-            m_wTextMove.SetText(s_sCachedMoveType);
+            string displayMoveType = s_sCachedMoveType;
+            
+            // 如果在游泳，显示Swim
+            if (s_bCachedIsSwimming)
+                displayMoveType = "Swim";
+            
+            m_wTextMove.SetText(displayMoveType);
             m_wTextMove.SetColor(GUIColors.DEFAULT);
         }
         
@@ -347,8 +356,21 @@ class SCR_StaminaHUDComponent
         // 更新地面类型
         if (m_wTextGround)
         {
-            string groundType = GetGroundTypeStr(s_fCachedTerrainDensity);
-            Color groundColor = GetGroundColor(s_fCachedTerrainDensity);
+            string groundType;
+            Color groundColor;
+            
+            // 如果在游泳，显示Water
+            if (s_bCachedIsSwimming)
+            {
+                groundType = "Water";
+                groundColor = Color.FromRGBA(0, 150, 255, 255); // 蓝色
+            }
+            else
+            {
+                groundType = GetGroundTypeStr(s_fCachedTerrainDensity);
+                groundColor = GetGroundColor(s_fCachedTerrainDensity);
+            }
+            
             m_wTextGround.SetText(groundType);
             m_wTextGround.SetColor(groundColor);
         }
