@@ -400,9 +400,10 @@ modded class SCR_CharacterControllerComponent
         // 限制在有效范围内
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
         
-        // 如果体力非常接近0（<0.01），强制设为0，确保体力为0时的逻辑正确
-        if (staminaPercent < 0.01)
-            staminaPercent = 0.0;
+        // [修复 v3.7.0] 移除了强制归零逻辑(staminaPercent < 0.01 = 0.0)
+        // 允许浮点数精度的微量恢复，防止进入归零死锁
+        // 原逻辑：if (staminaPercent < 0.01) staminaPercent = 0.0;
+        // 问题：这会导致体力在 0.9% 时被强制清零，与静态消耗形成死循环
         
         // ==================== 精疲力尽逻辑（融合模型）====================
         // 如果体力 ≤ 0，强制速度为跛行速度（1.0 m/s）

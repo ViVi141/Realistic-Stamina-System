@@ -116,8 +116,9 @@ class RSSConstants:
     MARGINAL_DECAY_COEFF = 1.1
     
     # ==================== 最低体力阈值 ====================
+    # [修复 v3.7.0] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
     MIN_RECOVERY_STAMINA_THRESHOLD = 0.2
-    MIN_RECOVERY_REST_TIME_SECONDS = 10.0
+    MIN_RECOVERY_REST_TIME_SECONDS = 3.0
     
     # ==================== 累积疲劳 ====================
     FATIGUE_ACCUMULATION_COEFF = 0.015

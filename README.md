@@ -1533,7 +1533,52 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
    - **说明**：这些机制使体力系统能够更真实地模拟个体的生理响应
 
 ## 版本历史
-- **v3.6.0** (当前版本) - 姿态转换成本系统 v1.0 与跳跃检测优化
+- **v3.7.0** (当前版本) - 增强版参数敏感性分析工具
+    - **增强版参数敏感性分析工具（Enhanced Sensitivity Analysis Tools v3.7.0）**
+      - **核心功能**：
+        - 局部敏感性分析（One-at-a-time）
+        - 全局敏感性分析（Spearman 秩相关）
+        - 参数交互效应分析（多维度）
+        - 联合敏感性分析（同时调整多个参数）
+      - **改进**：
+        - 移除数字孪生仿真器中未使用的参数（energy_to_stamina_coeff, encumbrance_speed_penalty_coeff, load_recovery_penalty_exponent）
+        - 扩大参数范围（从 ±20% 扩大到 ±50%），共 10 个参数
+        - 优化目标函数，使其对参数变化更敏感（从 2 个指标增加到 3 个指标）
+        - 增加更多参数对进行交互分析（从 3 对增加到 9 对）
+        - 修复参数传递：为每次仿真创建新的常量实例，确保参数变化生效
+        - 使用真正的数字孪生仿真器，而不是返回固定值 50.0
+      - **已知问题**：
+        - 当前场景（ACFT 2英里测试）对参数变化不敏感，所有参数敏感性为 0.0000
+        - 原因：场景过于简单（固定速度、固定负重）
+        - 建议：使用更复杂的场景（包含负重变化、坡度变化、速度变化）
+        - 建议：增加更多测试工况（如 Everon 拉练、游泳测试等）
+      - **修复**：
+        - **体力为 0 死锁问题**
+          - **问题描述**：体力系统在体力降为 0 时无法恢复，导致玩家卡死
+          - **修复方案**：
+            - 修改体力恢复逻辑，允许体力从 0 开始恢复
+            - 移除体力为 0 时的恢复限制
+          - **影响**：玩家在体力耗尽后可以正常恢复体力
+        - **绝境呼吸保护机制（Desperation Wind）**
+          - **问题描述**：体力极低时（< 2%），负重静态消耗可能抵消恢复，导致无法脱离危险区
+          - **修复方案**：
+            - 引入绝境呼吸保护机制：当体力 < 2% 且非水下时，给予保底恢复值 0.0001
+            - 忽略背包重量的静态消耗，保证哪怕一丝微弱的体力恢复，打破死锁
+            - 相当于每秒恢复 0.05%，20 秒可脱离危险区
+          - **影响**：玩家在体力极低时可以缓慢恢复体力，避免卡死
+      - **代码统计**：
+        - `rss_sensitivity_analysis_enhanced.py`: 新建文件（约 800 行）
+        - `enhanced_sensitivity_report.txt`: 自动生成报告（约 60 行）
+        - `local_sensitivity_enhanced.png`: 自动生成图表
+        - `joint_sensitivity.png`: 自动生成图表
+        - `global_sensitivity_enhanced.png`: 自动生成图表
+        - `interaction_analysis_enhanced.png`: 自动生成图表
+      - **文档**：
+        - 更新 `rss_sensitivity_analysis_enhanced.py` 版本号到 v3.7.0
+        - 更新 `rss_sensitivity_analysis_enhanced.py` 添加更新日志和已知问题说明
+        - 更新 CHANGELOG.md，添加 v3.7.0 详细更新日志
+        - 新增 `SENSITIVITY_ANALYSIS_RESULTS.md`：敏感性分析结果说明文档
+- **v3.6.0** - 姿态转换成本系统 v1.0 与跳跃检测优化
     - **姿态转换成本系统 v1.0（Stance Transition Cost v1.0 - 乳酸堆积模型）**
       - **核心思路**：单次动作很轻，连续动作剧增。模拟肌肉在连续负重深蹲时从有氧到无氧的转变。
       - **基础数值**：

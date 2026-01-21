@@ -127,13 +127,23 @@ class StaminaRecoveryCalculator
         // ==================== 原有恢复逻辑 ====================
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
-        // 禁止任何正向恢复，避免“静止踩水回血”等不合理情况。
+        // 禁止任何正向恢复，避免"静止踩水回血"等不合理情况。
         if (disablePositiveRecovery)
             return -Math.Max(baseDrainRateByVelocity, 0.0);
         
-        // 陆地静止：从恢复率中减去静态消耗（如果存在），允许净恢复。
-        if (baseDrainRateByVelocity > 0.0)
+        // ==================== [修复 v3.7.0] 绝境呼吸保护机制 (Desperation Wind) ====================
+        // 当体力极低 (<2%) 且非水下时，人体进入求生本能强制吸氧
+        // 此时忽略背包重量的静态消耗，保证哪怕一丝微弱的体力恢复，打破死锁
+        if (staminaPercent < 0.02)
+        {
+            // 给予一个极其微小的保底恢复值 (相当于每秒恢复 0.05%，20秒可脱离危险区)
+            recoveryRate = Math.Max(recoveryRate, 0.0001);
+        }
+        // 正常陆地静止：从恢复率中减去静态消耗
+        else if (baseDrainRateByVelocity > 0.0)
+        {
             recoveryRate = Math.Max(recoveryRate - baseDrainRateByVelocity, -0.01);
+        }
         
         return recoveryRate;
     }

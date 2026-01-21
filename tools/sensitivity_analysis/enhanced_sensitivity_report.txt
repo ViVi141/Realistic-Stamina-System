@@ -6,37 +6,43 @@ RSS Enhanced Parameter Sensitivity Analysis Report
 --------------------------------------------------------------------------------
 Parameter                                    Sensitivity           Range      Relative Change
 --------------------------------------------------------------------------------
-energy_to_stamina_coeff                           0.0000          0.0000                0.00%        Low       Weak
 base_recovery_rate                                0.0000          0.0000                0.00%        Low       Weak
 standing_recovery_multiplier                      0.0000          0.0000                0.00%        Low       Weak
 prone_recovery_multiplier                         0.0000          0.0000                0.00%        Low       Weak
 load_recovery_penalty_coeff                       0.0000          0.0000                0.00%        Low       Weak
+encumbrance_stamina_drain_coeff                   0.0000          0.0000                0.00%        Low       Weak
 
 2. Joint Sensitivity Analysis (Multi-dimensional)
 --------------------------------------------------------------------------------
 Parameter Group                                    Range      Relative Change
 --------------------------------------------------------------------------------
 standing_recovery_multiplier vs prone_recovery_multiplier          0.0000                0.00%       Weak
-encumbrance_speed_penalty_coeff vs encumbrance_stamina_drain_coeff          0.0000                0.00%       Weak
+load_recovery_penalty_coeff vs encumbrance_stamina_drain_coeff          0.0000                0.00%       Weak
 fatigue_accumulation_coeff vs fatigue_max_factor          0.0000                0.00%       Weak
 
 3. Global Sensitivity Analysis
 --------------------------------------------------------------------------------
 Parameter                                    Sensitivity     Correlation
 --------------------------------------------------------------------------------
-energy_to_stamina_coeff                           0.1181          0.0000     Medium       Weak
-base_recovery_rate                                0.0986          0.0000        Low       Weak
-standing_recovery_multiplier                      0.0985          0.0000        Low       Weak
-prone_recovery_multiplier                         0.0920          0.0000        Low       Weak
-load_recovery_penalty_coeff                       0.0996          0.0000        Low       Weak
+base_recovery_rate                                0.1015          0.0000     Medium       Weak
+standing_recovery_multiplier                      0.0986          0.0000        Low       Weak
+prone_recovery_multiplier                         0.1064          0.0000     Medium       Weak
+load_recovery_penalty_coeff                       0.1022          0.0000     Medium       Weak
+encumbrance_stamina_drain_coeff                   0.0873          0.0000        Low       Weak
 
 4. Parameter Interaction Analysis
 --------------------------------------------------------------------------------
 Parameter Pair                           Interaction Strength      Relative Change
 --------------------------------------------------------------------------------
 standing_recovery_multiplier vs prone_recovery_multiplier          0.0000                0.00%       Weak       Weak
-encumbrance_speed_penalty_coeff vs encumbrance_stamina_drain_coeff          0.0000                0.00%       Weak       Weak
+base_recovery_rate vs standing_recovery_multiplier          0.0000                0.00%       Weak       Weak
+load_recovery_penalty_coeff vs encumbrance_stamina_drain_coeff          0.0000                0.00%       Weak       Weak
 fatigue_accumulation_coeff vs fatigue_max_factor          0.0000                0.00%       Weak       Weak
+base_recovery_rate vs load_recovery_penalty_coeff          0.0000                0.00%       Weak       Weak
+standing_recovery_multiplier vs encumbrance_stamina_drain_coeff          0.0000                0.00%       Weak       Weak
+sprint_stamina_drain_multiplier vs aerobic_efficiency_factor          0.0000                0.00%       Weak       Weak
+encumbrance_stamina_drain_coeff vs anaerobic_efficiency_factor          0.0000                0.00%       Weak       Weak
+fatigue_accumulation_coeff vs aerobic_efficiency_factor          0.0000                0.00%       Weak       Weak
 
 ================================================================================
 Key Insights:

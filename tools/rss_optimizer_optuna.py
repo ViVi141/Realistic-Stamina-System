@@ -133,7 +133,7 @@ class RSSOptunaOptimizer:
             'min_recovery_stamina_threshold', 0.15, 0.25
         )
         min_recovery_rest_time_seconds = trial.suggest_float(
-            'min_recovery_rest_time_seconds', 5.0, 15.0
+            'min_recovery_rest_time_seconds', 1.0, 5.0
         )
         
         # Sprint系统高级参数

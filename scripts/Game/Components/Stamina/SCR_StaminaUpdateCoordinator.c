@@ -40,15 +40,7 @@ class StaminaUpdateCoordinator
         // 检查是否可以Sprint
         bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
         bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
-        
-        // 如果精疲力尽，强制速度为跛行速度
-        if (isExhausted)
-        {
-            float limpSpeedMultiplier = RealisticStaminaSpeedSystem.EXHAUSTION_LIMP_SPEED / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-            controller.OverrideMaxSpeed(limpSpeedMultiplier);
-            return limpSpeedMultiplier;
-        }
-        
+
         // 检测移动类型
         bool isSprinting = controller.IsSprinting();
         int currentMovementPhase = controller.GetCurrentMovementPhase();

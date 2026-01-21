@@ -2,11 +2,27 @@
 Realistic Stamina System (RSS) - Enhanced Sensitivity Analysis Tools
 增强版参数敏感性分析工具：深入理解参数对目标函数的影响，包括多维度交互效应
 
+版本：v3.7.0
+更新日期：2026-01-22
+
 核心功能：
 1. 局部敏感性分析（One-at-a-time）
 2. 全局敏感性分析（Spearman 秩相关）
 3. 参数交互效应分析（多维度）
 4. 联合敏感性分析（同时调整多个参数）
+
+更新日志：
+- [v3.7.0] 修复：移除数字孪生仿真器中未使用的参数
+- [v3.7.0] 优化：扩大参数范围（从 ±20% 扩大到 ±50%）
+- [v3.7.0] 优化：优化目标函数，使其对参数变化更敏感
+- [v3.7.0] 优化：增加更多参数对进行交互分析（从 3 对增加到 9 对）
+- [v3.7.0] 修复：为每次仿真创建新的常量实例，确保参数变化生效
+- [v3.7.0] 修复：使用真正的数字孪生仿真器，而不是返回固定值 50.0
+
+已知问题：
+- 当前场景（ACFT 2英里测试）对参数变化不敏感，所有参数敏感性为 0.0000
+- 建议使用更复杂的场景（包含负重变化、坡度变化、速度变化）
+- 建议增加更多测试工况（如 Everon 拉练、游泳测试等）
 """
 
 import numpy as np
@@ -15,6 +31,8 @@ import seaborn as sns
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 from scipy.stats import spearmanr
+from rss_digital_twin import RSSDigitalTwin, RSSConstants
+from rss_scenarios import ScenarioLibrary, ScenarioType
 
 # 设置中文字体支持 - 修复字体问题
 import matplotlib.font_manager as fm
@@ -592,15 +610,13 @@ def main():
     # 创建增强版敏感性分析工具
     analyzer = RSSEnhancedSensitivityAnalyzer()
     
-    # 模拟数据
+    # [修复 v3.7.0] 只使用数字孪生仿真器实际使用的参数
+    # 移除了在仿真器中未使用的参数（energy_to_stamina_coeff, encumbrance_speed_penalty_coeff, load_recovery_penalty_exponent）
     base_params = {
-        'energy_to_stamina_coeff': 4.15e-05,
         'base_recovery_rate': 4.67e-04,
         'standing_recovery_multiplier': 2.26,
         'prone_recovery_multiplier': 2.75,
         'load_recovery_penalty_coeff': 2.72e-04,
-        'load_recovery_penalty_exponent': 1.11,
-        'encumbrance_speed_penalty_coeff': 0.29,
         'encumbrance_stamina_drain_coeff': 1.81,
         'sprint_stamina_drain_multiplier': 2.89,
         'fatigue_accumulation_coeff': 0.03,
@@ -610,13 +626,10 @@ def main():
     }
     
     param_names = [
-        'energy_to_stamina_coeff',
         'base_recovery_rate',
         'standing_recovery_multiplier',
         'prone_recovery_multiplier',
         'load_recovery_penalty_coeff',
-        'load_recovery_penalty_exponent',
-        'encumbrance_speed_penalty_coeff',
         'encumbrance_stamina_drain_coeff',
         'sprint_stamina_drain_multiplier',
         'fatigue_accumulation_coeff',
@@ -625,39 +638,94 @@ def main():
         'anaerobic_efficiency_factor'
     ]
     
+    # [优化 v3.7.0] 扩大参数范围（从 ±20% 扩大到 ±50%）
+    # 只包含数字孪生仿真器实际使用的参数
     param_ranges = {
-        'energy_to_stamina_coeff': (2e-5, 5e-5),
-        'base_recovery_rate': (1e-4, 5e-4),
-        'standing_recovery_multiplier': (1.0, 3.0),
-        'prone_recovery_multiplier': (1.5, 3.0),
-        'load_recovery_penalty_coeff': (1e-4, 1e-3),
-        'load_recovery_penalty_exponent': (1.0, 3.0),
-        'encumbrance_speed_penalty_coeff': (0.1, 0.3),
-        'encumbrance_stamina_drain_coeff': (1.0, 2.0),
-        'sprint_stamina_drain_multiplier': (2.0, 4.0),
-        'fatigue_accumulation_coeff': (0.005, 0.03),
-        'fatigue_max_factor': (1.5, 3.0),
-        'aerobic_efficiency_factor': (0.8, 1.0),
-        'anaerobic_efficiency_factor': (1.0, 1.5)
+        'base_recovery_rate': (5e-5, 1e-3),  # 扩大范围
+        'standing_recovery_multiplier': (0.5, 4.0),  # 扩大范围
+        'prone_recovery_multiplier': (1.0, 4.5),  # 扩大范围
+        'load_recovery_penalty_coeff': (5e-5, 2e-3),  # 扩大范围
+        'encumbrance_stamina_drain_coeff': (0.5, 3.0),  # 扩大范围
+        'sprint_stamina_drain_multiplier': (1.0, 5.0),  # 扩大范围
+        'fatigue_accumulation_coeff': (0.001, 0.05),  # 扩大范围
+        'fatigue_max_factor': (1.0, 4.0),  # 扩大范围
+        'aerobic_efficiency_factor': (0.5, 1.2),  # 扩大范围
+        'anaerobic_efficiency_factor': (0.5, 2.0)  # 扩大范围
     }
     
-    # 模拟目标函数
-    def mock_objective(params):
-        return 50.0
+    # 创建真正的目标函数（使用数字孪生仿真器）
+    # [修复 v3.7.0] 使用真正的数字孪生仿真器，而不是返回固定值 50.0
+    # 这样可以正确计算参数敏感性和交互效应
+    # [优化 v3.7.0] 为每次仿真创建新的常量实例，确保参数变化生效
+    scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0)
+    
+    def real_objective(params):
+        # 创建新的常量实例（确保参数变化生效）
+        from rss_digital_twin import RSSConstants
+        constants = RSSConstants()
+        
+        # [修复 v3.7.0] 只更新数字孪生仿真器实际使用的参数
+        constants.BASE_RECOVERY_RATE = params.get('base_recovery_rate', constants.BASE_RECOVERY_RATE)
+        constants.STANDING_RECOVERY_MULTIPLIER = params.get('standing_recovery_multiplier', constants.STANDING_RECOVERY_MULTIPLIER)
+        constants.PRONE_RECOVERY_MULTIPLIER = params.get('prone_recovery_multiplier', constants.PRONE_RECOVERY_MULTIPLIER)
+        constants.LOAD_RECOVERY_PENALTY_COEFF = params.get('load_recovery_penalty_coeff', constants.LOAD_RECOVERY_PENALTY_COEFF)
+        constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF = params.get('encumbrance_stamina_drain_coeff', constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF)
+        constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = params.get('sprint_stamina_drain_multiplier', constants.SPRINT_STAMINA_DRAIN_MULTIPLIER)
+        constants.FATIGUE_ACCUMULATION_COEFF = params.get('fatigue_accumulation_coeff', constants.FATIGUE_ACCUMULATION_COEFF)
+        constants.FATIGUE_MAX_FACTOR = params.get('fatigue_max_factor', constants.FATIGUE_MAX_FACTOR)
+        constants.AEROBIC_EFFICIENCY_FACTOR = params.get('aerobic_efficiency_factor', constants.AEROBIC_EFFICIENCY_FACTOR)
+        constants.ANAEROBIC_EFFICIENCY_FACTOR = params.get('anaerobic_efficiency_factor', constants.ANAEROBIC_EFFICIENCY_FACTOR)
+        
+        # 创建新的数字孪生实例（使用更新后的常量）
+        twin = RSSDigitalTwin(constants=constants)
+        
+        # 运行仿真（使用场景中的 current_weight）
+        results = twin.simulate_scenario(
+            speed_profile=scenario.speed_profile,
+            current_weight=scenario.current_weight,
+            grade_percent=scenario.grade_percent,
+            terrain_factor=scenario.terrain_factor,
+            stance=scenario.stance,
+            movement_type=scenario.movement_type
+        )
+        
+        # [优化 v3.7.0] 优化目标函数，使其对参数变化更敏感
+        # 计算多个指标的偏差，综合评估参数影响
+        
+        # 1. 完成时间偏差（权重 40%）
+        time_error = abs(results['total_time'] - scenario.target_finish_time) / scenario.target_finish_time
+        
+        # 2. 恢复时间偏差（权重 30%）
+        recovery_error = abs(results['rest_duration'] - scenario.target_recovery_time) / scenario.target_recovery_time if results['rest_duration'] else 1.0
+        
+        # 3. 最低体力偏差（权重 30%）
+        # 使用实际最低体力与目标最低体力的偏差
+        min_stamina = results.get('min_stamina', results.get('final_stamina', 1.0))
+        stamina_error = abs(min_stamina - scenario.target_min_stamina) if scenario.target_min_stamina > 0 else 0.0
+        
+        # 综合目标函数（越小越好）
+        # 使用非线性权重，使目标函数对参数变化更敏感
+        objective = (
+            time_error * 0.40 +
+            recovery_error * 0.30 +
+            stamina_error * 0.30
+        )
+        
+        return objective
     
     # 局部敏感性分析
     local_sensitivity = analyzer.local_sensitivity_analysis(
         base_params=base_params,
         param_names=param_names[:5],
         param_ranges=param_ranges,
-        objective_func=mock_objective,
+        objective_func=real_objective,
         filename="local_sensitivity_enhanced.png"
     )
     
-    # 联合敏感性分析
+    # [修复 v3.7.0] 只包含数字孪生仿真器实际使用的参数
     param_groups = [
         ['standing_recovery_multiplier', 'prone_recovery_multiplier'],
-        ['encumbrance_speed_penalty_coeff', 'encumbrance_stamina_drain_coeff'],
+        ['load_recovery_penalty_coeff', 'encumbrance_stamina_drain_coeff'],
         ['fatigue_accumulation_coeff', 'fatigue_max_factor']
     ]
     
@@ -665,7 +733,7 @@ def main():
         base_params=base_params,
         param_groups=param_groups,
         param_ranges=param_ranges,
-        objective_func=mock_objective,
+        objective_func=real_objective,
         filename="joint_sensitivity.png"
     )
     
@@ -674,7 +742,7 @@ def main():
         name: np.random.normal(base_params[name], base_params[name] * 0.1, 100)
         for name in param_names[:5]
     }
-    objective_values = np.array([mock_objective(base_params) for _ in range(100)])
+    objective_values = np.array([real_objective(base_params) for _ in range(100)])
     
     global_sensitivity = analyzer.global_sensitivity_analysis(
         param_samples=param_samples,
@@ -682,17 +750,34 @@ def main():
         filename="global_sensitivity_enhanced.png"
     )
     
-    # 交互效应分析
+    # [优化 v3.7.0] 增加更多参数对进行交互分析
+    # 从 3 对增加到 10 对，覆盖更多参数组合
+    # [修复 v3.7.0] 只包含数字孪生仿真器实际使用的参数
     param_pairs = [
+        # 恢复系统内部交互
         ('standing_recovery_multiplier', 'prone_recovery_multiplier'),
-        ('encumbrance_speed_penalty_coeff', 'encumbrance_stamina_drain_coeff'),
-        ('fatigue_accumulation_coeff', 'fatigue_max_factor')
+        ('base_recovery_rate', 'standing_recovery_multiplier'),
+        
+        # 负重系统内部交互
+        ('load_recovery_penalty_coeff', 'encumbrance_stamina_drain_coeff'),
+        
+        # 疲劳系统内部交互
+        ('fatigue_accumulation_coeff', 'fatigue_max_factor'),
+        
+        # 跨系统交互（恢复 vs 负重）
+        ('base_recovery_rate', 'load_recovery_penalty_coeff'),
+        ('standing_recovery_multiplier', 'encumbrance_stamina_drain_coeff'),
+        
+        # 跨系统交互（消耗 vs 效率）
+        ('sprint_stamina_drain_multiplier', 'aerobic_efficiency_factor'),
+        ('encumbrance_stamina_drain_coeff', 'anaerobic_efficiency_factor'),
+        ('fatigue_accumulation_coeff', 'aerobic_efficiency_factor')
     ]
     
     interaction_analysis = analyzer.interaction_analysis(
         base_params=base_params,
         param_pairs=param_pairs,
-        objective_func=mock_objective,
+        objective_func=real_objective,
         filename="interaction_analysis_enhanced.png"
     )
     

@@ -436,7 +436,7 @@ class SCR_RSS_Settings
         m_EliteStandard.marginal_decay_threshold = 0.8680218561940786;
         m_EliteStandard.marginal_decay_coeff = 1.0960434820720764;
         m_EliteStandard.min_recovery_stamina_threshold = 0.1703668977006716;
-        m_EliteStandard.min_recovery_rest_time_seconds = 13.670583542816486;
+        m_EliteStandard.min_recovery_rest_time_seconds = 3.0;
         m_EliteStandard.sprint_speed_boost = 0.2879412484027664;
         m_EliteStandard.posture_crouch_multiplier = 2.0309731969879743;
         m_EliteStandard.posture_prone_multiplier = 2.5002701353077184;
@@ -487,7 +487,7 @@ class SCR_RSS_Settings
         m_StandardMilsim.marginal_decay_threshold = 0.88093203104820365;
         m_StandardMilsim.marginal_decay_coeff = 1.1082349021209152;
         m_StandardMilsim.min_recovery_stamina_threshold = 0.17334760932346955;
-        m_StandardMilsim.min_recovery_rest_time_seconds = 14.322730776772335;
+        m_StandardMilsim.min_recovery_rest_time_seconds = 3.0;
         m_StandardMilsim.sprint_speed_boost = 0.2914085849235368;
         m_StandardMilsim.posture_crouch_multiplier = 1.9792906086987221;
         m_StandardMilsim.posture_prone_multiplier = 2.56617511164148485;
@@ -538,7 +538,7 @@ class SCR_RSS_Settings
         m_TacticalAction.marginal_decay_threshold = 0.8938422059023287;
         m_TacticalAction.marginal_decay_coeff = 1.120426322169754;
         m_TacticalAction.min_recovery_stamina_threshold = 0.1763283209462675;
-        m_TacticalAction.min_recovery_rest_time_seconds = 14.974878010728185;
+        m_TacticalAction.min_recovery_rest_time_seconds = 3.0;
         m_TacticalAction.sprint_speed_boost = 0.29487592144430724;
         m_TacticalAction.posture_crouch_multiplier = 1.9276080204094699;
         m_TacticalAction.posture_prone_multiplier = 2.6320800879752513;
@@ -589,7 +589,7 @@ class SCR_RSS_Settings
         m_Custom.marginal_decay_threshold = 0.85;
         m_Custom.marginal_decay_coeff = 1.0;
         m_Custom.min_recovery_stamina_threshold = 0.15;
-        m_Custom.min_recovery_rest_time_seconds = 15.0;
+        m_Custom.min_recovery_rest_time_seconds = 3.0;
         m_Custom.sprint_speed_boost = 0.3;
         m_Custom.posture_crouch_multiplier = 2.0;
         m_Custom.posture_prone_multiplier = 2.5;
