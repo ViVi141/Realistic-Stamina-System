@@ -56,6 +56,11 @@ modded class SCR_CharacterControllerComponent
     // 使用EpocState类管理EPOC延迟状态（因为EnforceScript不支持基本类型的ref参数）
     protected ref EpocState m_pEpocState;
     
+    // ==================== 姿态转换管理模块 ====================
+    // 模块化拆分：使用独立的 StanceTransitionManager 类管理姿态转换的体力消耗
+    // 基于生物力学做功逻辑：重心在重力场中的垂直位移
+    protected ref StanceTransitionManager m_pStanceTransitionManager;
+    
     // ==================== 游泳状态和湿重跟踪 ====================
     // 湿重效应：上岸后30秒内，由于衣服吸水，临时增加5-10kg虚拟负重
     protected bool m_bWasSwimming = false; // 上一帧是否在游泳
@@ -106,6 +111,15 @@ modded class SCR_CharacterControllerComponent
         m_pJumpVaultDetector = new JumpVaultDetector();
         if (m_pJumpVaultDetector)
             m_pJumpVaultDetector.Initialize();
+        
+        // 初始化姿态转换管理模块
+        m_pStanceTransitionManager = new StanceTransitionManager();
+        if (m_pStanceTransitionManager)
+        {
+            m_pStanceTransitionManager.Initialize();
+            // 设置初始姿态（避免第一帧误判）
+            m_pStanceTransitionManager.SetInitialStance(GetStance());
+        }
         
         // 初始化运动持续时间跟踪模块
         m_pExerciseTracker = new ExerciseTracker();
@@ -616,6 +630,30 @@ modded class SCR_CharacterControllerComponent
             // 更新冷却时间（每0.2秒调用一次）
             m_pJumpVaultDetector.UpdateCooldowns();
             
+            // ==================== 姿态转换处理（模块化）====================
+            // 更新疲劳堆积（每0.2秒调用一次）
+            m_pStanceTransitionManager.UpdateFatigue(0.2);
+            
+            // 处理姿态转换的体力消耗（基于乳酸堆积模型）
+            bool stanceEncumbranceCacheValid = false;
+            float stanceEncumbranceCurrentWeight = 0.0;
+            if (m_pEncumbranceCache)
+            {
+                stanceEncumbranceCacheValid = m_pEncumbranceCache.IsCacheValid();
+                stanceEncumbranceCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
+            }
+            float stanceTransitionCost = m_pStanceTransitionManager.ProcessStanceTransition(
+                owner,
+                this,
+                staminaPercent,
+                stanceEncumbranceCacheValid,
+                stanceEncumbranceCurrentWeight
+            );
+            if (stanceTransitionCost > 0.0)
+            {
+                staminaPercent = staminaPercent - stanceTransitionCost;
+            }
+            
             // 限制体力值在有效范围内
             staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
         }
@@ -921,6 +959,7 @@ modded class SCR_CharacterControllerComponent
                 debugParams.swimmingWetWeight = m_fCurrentWetWeight;
                 debugParams.currentSpeed = currentSpeed;
                 debugParams.isSwimming = isSwimming;
+                debugParams.stanceTransitionManager = m_pStanceTransitionManager;
                 DebugDisplay.OutputDebugInfo(debugParams);
                 
                 // 输出屏幕 Hint 信息（独立于控制台日志）

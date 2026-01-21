@@ -24,6 +24,7 @@ class DebugInfoParams
     float swimmingWetWeight;
     float currentSpeed;  // 当前实际速度（m/s）
     bool isSwimming;     // 是否在游泳
+    StanceTransitionManager stanceTransitionManager; // 姿态转换管理器（新增）
 }
 
 class DebugDisplay
@@ -154,6 +155,7 @@ class DebugDisplay
     // @param sprintInfo Sprint信息字符串
     // @param encumbranceInfo 负重信息字符串
     // @param terrainInfo 地形信息字符串
+    // @param stanceTransitionInfo 姿态转换信息字符串
     // @return 调试消息字符串
     static string BuildDebugMessage(
         string movementTypeStr,
@@ -165,21 +167,25 @@ class DebugDisplay
         string slopeInfo,
         string sprintInfo,
         string encumbranceInfo,
-        string terrainInfo)
+        string terrainInfo,
+        string stanceTransitionInfo)
     {
         string debugMessage = string.Format(
-            "[RealisticSystem] 调试 / Debug: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%% | Type=%1 | Stamina=%2%% | Base Speed=%3 | Encumbrance Penalty=%4 | Final Speed=%5 | Grade=%6%%%7%8%9", 
+            "[RealisticSystem] 调试 / Debug: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%%%7", 
             movementTypeStr,
             Math.Round(staminaPercent * 100.0).ToString(),
             baseSpeedMultiplier.ToString(),
             encumbranceSpeedPenalty.ToString(),
             finalSpeedMultiplier.ToString(),
             Math.Round(gradeDisplay * 10.0) / 10.0,
-            slopeInfo,
-            sprintInfo,
-            encumbranceInfo);
+            slopeInfo);
         
-        return debugMessage + terrainInfo;
+        debugMessage += sprintInfo;
+        debugMessage += encumbranceInfo;
+        debugMessage += terrainInfo;
+        debugMessage += stanceTransitionInfo;
+        
+        return debugMessage;
     }
     
     // ==================== 环境因子信息格式化 ====================
@@ -296,6 +302,26 @@ class DebugDisplay
             swimWetStr);
     }
     
+    // 格式化姿态转换信息字符串（v2.0 乳酸堆积模型）
+    // @param stanceTransitionManager 姿态转换管理器
+    // @return 姿态转换信息字符串
+    static string FormatStanceTransitionInfo(StanceTransitionManager stanceTransitionManager)
+    {
+        if (!stanceTransitionManager)
+            return "";
+        
+        // 获取疲劳堆积值
+        float stanceFatigue = stanceTransitionManager.GetStanceFatigue();
+        
+        // 如果疲劳堆积为0，返回空字符串
+        if (stanceFatigue <= 0.0)
+            return "";
+        
+        // 构建疲劳堆积信息
+        return string.Format(" | 姿态疲劳: %1", 
+            Math.Round(stanceFatigue * 100.0) / 100.0);
+    }
+    
     // ==================== 统一调试信息输出 ====================
     
     // 输出完整调试信息（每5秒一次）
@@ -347,6 +373,9 @@ class DebugDisplay
         // 获取环境因子信息
         string envInfo = FormatEnvironmentInfo(params.environmentFactor, params.heatStressMultiplier, params.rainWeight, params.swimmingWetWeight);
         
+        // 获取姿态转换信息
+        string stanceTransitionInfo = FormatStanceTransitionInfo(params.stanceTransitionManager);
+        
         // 构建并输出调试消息
         string debugMessage = BuildDebugMessage(
             params.movementTypeStr,
@@ -358,7 +387,8 @@ class DebugDisplay
             slopeInfo,
             sprintInfo,
             encumbranceInfo,
-            terrainInfo);
+            terrainInfo,
+            stanceTransitionInfo);
         
         Print(debugMessage + envInfo);
         

@@ -1,9 +1,80 @@
 # 更新日志
+#
+# 所有重要的项目变更都会记录在此文件中。
+#
+# 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
+# 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+#
 
-所有重要的项目变更都会记录在此文件中。
+## [3.6.0] - 2026-01-21
 
-格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
-并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+### 新增
+- **姿态转换成本系统 v1.0（Stance Transition Cost v1.0 - 乳酸堆积模型）**
+  - **核心思路**：单次动作很轻，连续动作剧增。模拟肌肉在连续负重深蹲时从有氧到无氧的转变。
+  - **基础数值**：
+    - PRONE → STAND: 1.5%
+    - PRONE → CROUCH: 1.0%
+    - CROUCH → STAND: 0.5%
+    - STAND → PRONE: 0.3%
+    - 其他转换: 0.3%
+  - **疲劳堆积器（Stance Fatigue Accumulator）**：
+    - 引入隐藏变量 `m_fStanceFatigue`，模拟肌肉在连续负重深蹲时的乳酸堆积
+    - 增加：每次变换姿态，这个变量增加 1.0
+    - 衰减：每秒钟自动减少 0.5
+    - 影响：实际体力消耗 = BaseCost × WeightFactor × (1.0 + m_fStanceFatigue)
+  - **负重因子线性化**：将原来的 1.5 次幂改为线性（WeightFactor = CurrentWeight / 90.0）
+  - **协同保护逻辑**：
+    - 不触发"呼吸困顿期"：姿态转换属于瞬时消耗，不应该像 Sprint 停止后那样触发 5 秒禁止恢复的逻辑
+    - 体力阈值保护：当体力低于 10% 时，强制减慢姿态切换动画（如果能控制动画速度）或禁止直接从趴姿跳跃站起
+  - **新增模块**：
+    - `SCR_StanceTransitionManager.c`: 姿态转换管理模块（约 220 行）
+  - **新增常量**：
+    - `STANCE_COST_PRONE_TO_STAND`: 1.5%
+    - `STANCE_COST_PRONE_TO_CROUCH`: 1.0%
+    - `STANCE_COST_CROUCH_TO_STAND`: 0.5%
+    - `STANCE_COST_STAND_TO_PRONE`: 0.3%
+    - `STANCE_COST_OTHER`: 0.3%
+    - `STANCE_FATIGUE_ACCUMULATION`: 1.0
+    - `STANCE_FATIGUE_DECAY`: 0.5
+    - `STANCE_FATIGUE_MAX`: 10.0
+    - `STANCE_WEIGHT_BASE`: 90.0
+    - `STANCE_TRANSITION_MIN_STAMINA_THRESHOLD`: 0.10
+
+### 改进
+- **跳跃检测优化（Jump Detection Optimization）**
+  - **问题描述**：从趴/蹲姿跳跃时，同时扣除跳跃消耗和姿态转换消耗，导致体力骤降
+  - **修复方案**：
+    - 检查前一帧姿态：如果从趴着或蹲着跳跃，则不算跳跃消耗，而是姿态变换
+    - 新增 `m_eLastStance` 变量记录上一帧姿态
+    - 在所有返回路径中更新 `m_eLastStance`
+    - 添加调试信息显示原始姿态名称
+  - **修改的文件**：
+    - `SCR_JumpVaultDetection.c`: 添加姿态检查逻辑（约 30 行修改）
+  - **修复后行为**：
+    - 从站姿跳跃：扣除跳跃消耗（3.5%）
+    - 从蹲姿跳跃：不扣除跳跃消耗，由姿态转换系统处理（0.5%）
+    - 从趴姿跳跃：不扣除跳跃消耗，由姿态转换系统处理（1.5%）
+
+### 技术亮点
+- **乳酸堆积模型**：基于真实的肌肉疲劳机制，模拟从有氧到无氧的转变
+- **阶梯式累进惩罚**：单次动作很轻，连续动作剧增
+- **线性负重因子**：避免负重影响过快，更符合游戏平衡
+- **姿态感知跳跃检测**：准确判断是否从趴/蹲姿跳跃，避免重复扣除体力
+- **协同保护逻辑**：不触发"呼吸困顿期"，允许玩家在变换姿态后立即开始恢复
+
+### 代码统计
+- **SCR_StanceTransitionManager.c**: 新建文件（约 220 行）
+- **SCR_StaminaConstants.c**: 新增 8 个姿态转换相关常量（约 40 行修改）
+- **SCR_JumpVaultDetection.c**: 添加姿态检查逻辑（约 30 行修改）
+- **PlayerBase.c**: 集成姿态转换模块（约 5 行修改）
+- **SCR_DebugDisplay.c**: 更新调试信息显示（约 25 行修改）
+- **总计**: 约 150 行新增/修改
+
+### 文档
+- 更新 README.md 版本历史，添加 v3.6.0 更新内容
+- 更新 CHANGELOG.md，添加 v3.6.0 详细更新日志
+
+---
 
 ## [3.5.0] - 2026-01-21
 

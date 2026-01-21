@@ -771,4 +771,46 @@ class StaminaConstants
         
         return 5000; // 默认5秒
     }
+    
+    // ==================== 姿态转换成本常量（Posture Transition Cost 2.0 - 乳酸堆积模型）====================
+    // 核心思路：单次动作很轻，连续动作剧增。模拟肌肉在连续负重深蹲时从有氧到无氧的转变。
+    // 生理学依据：肌肉在连续爆发时会产生乳酸堆积，导致肌肉疲劳和力量下降
+    // 参考文献：Knapik et al., 1996; Pandolf et al., 1977; Brooks et al., 2000
+    
+    // 姿态转换基础消耗（0.0-1.0范围）- v2.0 优化：下调基础消耗，引入疲劳堆积机制
+    static const float STANCE_COST_PRONE_TO_STAND = 0.015; // 1.5% - 趴到站（模拟推地和起身的动作）
+    static const float STANCE_COST_PRONE_TO_CROUCH = 0.010; // 1.0% - 趴到蹲（中等）
+    static const float STANCE_COST_CROUCH_TO_STAND = 0.005; // 0.5% - 蹲到站（极轻，允许正常掩体观察）
+    static const float STANCE_COST_STAND_TO_PRONE = 0.003; // 0.3% - 站到趴（主要是离心控制）
+    static const float STANCE_COST_OTHER = 0.003; // 0.3% - 其他转换（如 STAND -> CROUCH）
+    
+    // ==================== 疲劳堆积器（Stance Fatigue Accumulator）====================
+    // 核心机制：引入隐藏变量 m_fStanceFatigue，模拟肌肉在连续负重深蹲时的乳酸堆积
+    // 增加：每次变换姿态，这个变量增加 1.0
+    // 衰减：每秒钟自动减少 0.5
+    // 影响：实际体力消耗 = BaseCost × (1.0 + m_fStanceFatigue)
+    
+    // 疲劳堆积增加量（每次姿态转换）
+    static const float STANCE_FATIGUE_ACCUMULATION = 1.0; // 每次姿态转换增加 1.0 疲劳值
+    
+    // 疲劳堆积衰减速率（每秒）
+    static const float STANCE_FATIGUE_DECAY = 0.5; // 每秒衰减 0.5 疲劳值
+    
+    // 疲劳堆积最大值（防止无限累积）
+    static const float STANCE_FATIGUE_MAX = 10.0; // 最大疲劳堆积值（10.0）
+    
+    // ==================== 负重因子（线性化）====================
+    // v2.0 优化：将原来的 1.5 次幂改为线性，避免负重影响过快
+    // WeightFactor = CurrentWeight / 90.0
+    // 对于 28KG 负重（总重118KG），因子约为 1.31，而不是 1.5 次幂后的 1.5
+    
+    // 负重基准重量（kg）
+    static const float STANCE_WEIGHT_BASE = 90.0; // 90kg 基准重量
+    
+    // ==================== 协同保护逻辑（针对 RSS 核心的优化）====================
+    // 不触发"呼吸困顿期"：姿态转换属于瞬时消耗，不应该像 Sprint 停止后那样触发 5 秒禁止恢复的逻辑
+    // 应该允许玩家在变换姿态后立即开始（被压制的）恢复
+    
+    // 体力阈值保护：当体力低于 10% 时，强制减慢姿态切换动画（如果能控制动画速度）或禁止直接从趴姿跳跃站起
+    static const float STANCE_TRANSITION_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力阈值
 }

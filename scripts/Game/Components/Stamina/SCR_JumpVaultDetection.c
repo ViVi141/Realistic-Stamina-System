@@ -8,6 +8,7 @@ class JumpVaultDetector
     // 跳跃相关
     protected bool m_bJumpInputTriggered = false; // 跳跃输入是否被触发（由动作监听器设置）
     protected int m_iJumpCooldownFrames = 0; // 跳跃冷却帧数（防止重复触发，2秒冷却）
+    protected ECharacterStance m_eLastStance; // 上一帧姿态（用于判断是否从趴/蹲姿跳跃）
     
     // 连续跳跃惩罚（无氧欠债）机制
     protected int m_iRecentJumpCount = 0; // 连续跳跃计数
@@ -25,6 +26,7 @@ class JumpVaultDetector
     {
         m_bJumpInputTriggered = false;
         m_iJumpCooldownFrames = 0;
+        m_eLastStance = ECharacterStance.STAND;
         m_iRecentJumpCount = 0;
         m_fJumpTimer = 0.0;
         m_bIsVaulting = false;
@@ -60,6 +62,9 @@ class JumpVaultDetector
         if (!owner || !controller)
             return 0.0;
         
+        // 获取当前姿态
+        ECharacterStance currentStance = controller.GetStance();
+        
         // 检测翻越/攀爬：使用 IsClimbing() 方法（更可靠）
         bool isClimbing = controller.IsClimbing();
         
@@ -69,12 +74,32 @@ class JumpVaultDetector
         // 如果检测到跳跃输入标志（且不在攀爬状态），则判定为跳跃
         if (!isClimbing && hasJumpInput)
         {
+            // 检查前一帧姿态：如果从趴着或蹲着跳跃，则不算跳跃消耗，而是姿态变换
+            if (m_eLastStance == ECharacterStance.PRONE || m_eLastStance == ECharacterStance.CROUCH)
+            {
+                // 保存原始姿态名称（在更新之前）
+                string originalStanceName = GetStanceName(m_eLastStance);
+                
+                // 从趴/蹲姿跳跃，不算跳跃消耗，由姿态转换系统处理
+                m_bJumpInputTriggered = false;
+                m_eLastStance = currentStance;
+                
+                // 调试输出（仅在客户端）
+                if (owner == SCR_PlayerController.GetLocalControlledEntity())
+                {
+                    PrintFormat("[RealisticSystem] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
+                }
+                
+                return 0.0;
+            }
+            
             // 跳跃冷却检查：2秒冷却时间（10个更新周期）
             if (m_iJumpCooldownFrames > 0)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
                 Print("[RealisticSystem] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
+                m_eLastStance = currentStance;
                 return 0.0;
             }
             
@@ -82,6 +107,7 @@ class JumpVaultDetector
             if (staminaPercent < RealisticStaminaSpeedSystem.JUMP_MIN_STAMINA_THRESHOLD)
             {
                 m_bJumpInputTriggered = false;
+                m_eLastStance = currentStance;
                 return 0.0;
             }
             {
@@ -155,11 +181,16 @@ class JumpVaultDetector
                 }
                 
                 m_bJumpInputTriggered = false;
+                m_eLastStance = currentStance;
                 return finalJumpCost;
             }
             
             m_bJumpInputTriggered = false;
+            m_eLastStance = currentStance;
         }
+        
+        // 更新上一帧姿态
+        m_eLastStance = currentStance;
         
         return 0.0;
     }
@@ -290,5 +321,20 @@ class JumpVaultDetector
     bool IsJumpOnCooldown()
     {
         return m_iJumpCooldownFrames > 0;
+    }
+    
+    // 获取姿态名称（用于调试输出）
+    // @param stance 姿态
+    // @return 姿态名称字符串
+    protected string GetStanceName(ECharacterStance stance)
+    {
+        if (stance == ECharacterStance.STAND)
+            return "站姿/STAND";
+        else if (stance == ECharacterStance.CROUCH)
+            return "蹲姿/CROUCH";
+        else if (stance == ECharacterStance.PRONE)
+            return "趴姿/PRONE";
+        else
+            return "未知/UNKNOWN";
     }
 }
