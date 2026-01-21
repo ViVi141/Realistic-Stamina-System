@@ -5,6 +5,73 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.4.1] - 2026-01-21
+
+### 修复
+- **紧急修复：配置文件覆盖未生效（Config Override Not Working）**
+  - **问题描述**：用户在 JSON 配置文件中修改的预设参数值被硬编码的默认值覆盖
+  - **根本原因**：`InitPresets()` 方法在从 JSON 读取配置后被调用，无条件覆盖所有预设参数
+  - **修复方案**：将 `InitPresets()` 拆分为 4 个独立的初始化方法，只有当预设对象为 `null` 时才初始化默认值
+    - `InitEliteStandardDefaults(bool shouldInit)`
+    - `InitStandardMilsimDefaults(bool shouldInit)`
+    - `InitTacticalActionDefaults(bool shouldInit)`
+    - `InitCustomDefaults(bool shouldInit)`
+  - **修复后行为**：
+    - 如果 JSON 中存在预设配置，保留用户的配置值
+    - 如果 JSON 中缺少某个预设，才使用硬编码的默认值
+
+- **紧急修复：配置字段默认值为空（Config Fields Empty）**
+  - **问题描述**：JSON 配置文件中 `m_sConfigVersion`、`m_sSelectedPreset` 等字段为空字符串，HUD 显示默认关闭
+  - **根本原因**：`[Attribute]` 的 `defvalue` 参数只是 UI 编辑器的默认值，不会在代码中自动初始化变量
+  - **修复方案**：新增 `EnsureDefaultValues()` 方法，在加载配置后检查并设置所有必要字段的默认值
+  - **处理的字段**：
+    - `m_sConfigVersion` - 默认为当前版本号
+    - `m_sSelectedPreset` - 默认为 "StandardMilsim"
+    - `m_bHintDisplayEnabled` - 旧版本配置默认开启（新版本保留用户设置）
+    - `m_iHintUpdateInterval` - 默认 5000ms
+    - `m_fHintDuration` - 默认 2.0s
+    - `m_iDebugUpdateInterval` - 默认 5000ms
+    - `m_iTerrainUpdateInterval` - 默认 5000ms
+    - `m_iEnvironmentUpdateInterval` - 默认 5000ms
+    - `m_fStaminaDrainMultiplier` - 默认 1.0
+    - `m_fStaminaRecoveryMultiplier` - 默认 1.0
+    - `m_fSprintSpeedMultiplier` - 默认 1.3
+    - `m_fSprintStaminaDrainMultiplier` - 默认 3.0
+  - **特殊处理**：`m_bHintDisplayEnabled` 由于 bool 默认为 false，无法区分"用户设置为 false"和"字段不存在"，所以只有在旧版本配置时才强制开启
+
+- **新增调试日志**：
+  - 加载时打印预设状态（`Elite=OK/NULL Standard=OK/NULL Tactical=OK/NULL Custom=OK/NULL`）
+  - 启动时打印当前激活预设的关键参数值
+  - 设置默认值时打印日志（便于排查问题）
+
+### 改进
+- **Custom 预设配置生效逻辑（Custom Preset Configuration Logic）**
+  - **问题描述**：全局配置项（体力倍率、环境因子开关、高级系统开关）在所有预设下都生效，与预设系统设计冲突
+  - **修复方案**：这些配置项现在**仅在选择 Custom 预设时生效**
+  - **配置生效规则**：
+    | 预设 | 40 个核心参数 | 全局配置项 |
+    |------|--------------|-----------|
+    | EliteStandard | `m_EliteStandard` | 忽略，使用默认值 |
+    | StandardMilsim | `m_StandardMilsim` | 忽略，使用默认值 |
+    | TacticalAction | `m_TacticalAction` | 忽略，使用默认值 |
+    | **Custom** | `m_Custom` | **读取用户配置** |
+  - **仅 Custom 预设生效的配置项**：
+    - 体力系统：`m_fStaminaDrainMultiplier`、`m_fStaminaRecoveryMultiplier`、`m_fEncumbranceSpeedPenaltyMultiplier`、`m_fSprintSpeedMultiplier`、`m_fSprintStaminaDrainMultiplier`
+    - 环境因子开关：`m_bEnableHeatStress`、`m_bEnableRainWeight`、`m_bEnableWindResistance`、`m_bEnableMudPenalty`
+    - 高级系统开关：`m_bEnableFatigueSystem`、`m_bEnableMetabolicAdaptation`、`m_bEnableIndoorDetection`
+  - **非 Custom 预设默认值**：所有倍率为 1.0（Sprint 速度为 1.3），所有开关为 true
+
+- **HUD 配置项描述更新**
+  - 更新 `m_bHintDisplayEnabled` 描述：说明它控制的是屏幕右上角 HUD 显示
+  - 标记 `m_iHintUpdateInterval` 和 `m_fHintDuration` 为已弃用（HUD 现在是实时更新的常驻显示）
+
+### 代码统计
+- **SCR_RSS_Settings.c**: 重构 `InitPresets()` 方法，更新配置项描述（约 50 行修改）
+- **SCR_RSS_ConfigManager.c**: 新增 `EnsureDefaultValues()` 方法和调试日志（约 120 行）
+- **SCR_StaminaConstants.c**: 新增 `IsCustomPreset()` 方法，修改 12 个配置获取函数（约 40 行修改）
+
+---
+
 ## [3.4.0] - 2026-01-21
 
 ### 新增

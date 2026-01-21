@@ -629,114 +629,127 @@ class StaminaConstants
         return 5000; // 默认5秒
     }
     
-    // 获取体力消耗倍率
+    // ==================== 以下配置仅在 Custom 预设下生效 ====================
+    // 当使用 EliteStandard/StandardMilsim/TacticalAction 预设时，这些配置返回默认值
+    // 只有选择 Custom 预设时，用户的自定义配置才会被读取
+    
+    // 检查是否为 Custom 预设
+    static bool IsCustomPreset()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings && settings.m_sSelectedPreset == "Custom")
+            return true;
+        return false;
+    }
+    
+    // 获取体力消耗倍率（仅 Custom 预设生效）
     static float GetStaminaDrainMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_fStaminaDrainMultiplier;
         
-        return 1.0; // 默认值
+        return 1.0; // 非 Custom 预设返回默认值
     }
     
-    // 获取体力恢复倍率
+    // 获取体力恢复倍率（仅 Custom 预设生效）
     static float GetStaminaRecoveryMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_fStaminaRecoveryMultiplier;
         
-        return 1.0; // 默认值
+        return 1.0; // 非 Custom 预设返回默认值
     }
     
-    // 获取负重速度惩罚倍率
+    // 获取负重速度惩罚倍率（仅 Custom 预设生效）
     static float GetEncumbranceSpeedPenaltyMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_fEncumbranceSpeedPenaltyMultiplier;
         
-        return 1.0; // 默认值
+        return 1.0; // 非 Custom 预设返回默认值
     }
     
-    // 获取Sprint速度倍率
+    // 获取Sprint速度倍率（仅 Custom 预设生效）
     static float GetSprintSpeedMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_fSprintSpeedMultiplier;
         
-        return 1.3; // 默认值
+        return 1.3; // 非 Custom 预设返回默认值
     }
     
-    // 检查是否启用热应激系统
+    // 检查是否启用热应激系统（仅 Custom 预设生效）
     static bool IsHeatStressEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableHeatStress;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用降雨湿重系统
+    // 检查是否启用降雨湿重系统（仅 Custom 预设生效）
     static bool IsRainWeightEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableRainWeight;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用风阻系统
+    // 检查是否启用风阻系统（仅 Custom 预设生效）
     static bool IsWindResistanceEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableWindResistance;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用泥泞惩罚系统
+    // 检查是否启用泥泞惩罚系统（仅 Custom 预设生效）
     static bool IsMudPenaltyEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableMudPenalty;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用疲劳积累系统
+    // 检查是否启用疲劳积累系统（仅 Custom 预设生效）
     static bool IsFatigueSystemEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableFatigueSystem;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用代谢适应系统
+    // 检查是否启用代谢适应系统（仅 Custom 预设生效）
     static bool IsMetabolicAdaptationEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableMetabolicAdaptation;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
-    // 检查是否启用室内检测系统
+    // 检查是否启用室内检测系统（仅 Custom 预设生效）
     static bool IsIndoorDetectionEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
+        if (settings && settings.m_sSelectedPreset == "Custom")
             return settings.m_bEnableIndoorDetection;
         
-        return true; // 默认启用
+        return true; // 非 Custom 预设默认启用
     }
     
     // 获取地形检测更新间隔

@@ -381,17 +381,38 @@ class SCR_RSS_Settings
     
     void InitPresets()
     {
-        if (!m_EliteStandard)
+        // 只有当预设对象不存在时才创建并初始化默认值
+        // 如果预设对象已存在（从 JSON 读取），则保留用户的配置值
+        bool initElite = !m_EliteStandard;
+        bool initStandard = !m_StandardMilsim;
+        bool initTactical = !m_TacticalAction;
+        bool initCustom = !m_Custom;
+        
+        if (initElite)
             m_EliteStandard = new SCR_RSS_Params();
         
-        if (!m_StandardMilsim)
+        if (initStandard)
             m_StandardMilsim = new SCR_RSS_Params();
         
-        if (!m_TacticalAction)
+        if (initTactical)
             m_TacticalAction = new SCR_RSS_Params();
         
-        if (!m_Custom)
+        if (initCustom)
             m_Custom = new SCR_RSS_Params();
+        
+        // 只有当预设是新创建的时才初始化默认值
+        // 如果预设已从 JSON 读取，则跳过（保留用户配置）
+        InitEliteStandardDefaults(initElite);
+        InitStandardMilsimDefaults(initStandard);
+        InitTacticalActionDefaults(initTactical);
+        InitCustomDefaults(initCustom);
+    }
+    
+    // 初始化 EliteStandard 预设默认值
+    protected void InitEliteStandardDefaults(bool shouldInit)
+    {
+        if (!shouldInit)
+            return;
         
         // EliteStandard 预设：精英拟真模式（最严格）
         // 适用于硬核拟真服务器，追求最真实的体力系统
@@ -436,6 +457,13 @@ class SCR_RSS_Settings
         m_EliteStandard.env_mud_penalty_max = 0.4625318937245148;
         m_EliteStandard.env_temperature_heat_penalty_coeff = 0.02094913037828594;
         m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.05054895135379026;
+    }
+    
+    // 初始化 StandardMilsim 预设默认值
+    protected void InitStandardMilsimDefaults(bool shouldInit)
+    {
+        if (!shouldInit)
+            return;
         
         // StandardMilsim 预设：标准军事模拟模式（平衡）
         // 适用于标准军事模拟服务器，追求平衡的游戏体验
@@ -480,6 +508,13 @@ class SCR_RSS_Settings
         m_StandardMilsim.env_mud_penalty_max = 0.46338859325481482;
         m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.0181339458707615775;
         m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.046764328269720965;
+    }
+    
+    // 初始化 TacticalAction 预设默认值
+    protected void InitTacticalActionDefaults(bool shouldInit)
+    {
+        if (!shouldInit)
+            return;
         
         // TacticalAction 预设：战术动作模式（更流畅）
         // 适用于动作导向的服务器，追求更流畅的游戏体验
@@ -524,6 +559,13 @@ class SCR_RSS_Settings
         m_TacticalAction.env_mud_penalty_max = 0.46424529278511484;
         m_TacticalAction.env_temperature_heat_penalty_coeff = 0.015318761363237215;
         m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.04297970518565167;
+    }
+    
+    // 初始化 Custom 预设默认值
+    protected void InitCustomDefaults(bool shouldInit)
+    {
+        if (!shouldInit)
+            return;
         
         // Custom 预设：自定义模式（合理的默认备份值）
         // 管理员可以手动调整所有参数
@@ -594,98 +636,114 @@ class SCR_RSS_Settings
     [Attribute("false", UIWidgets.CheckBox, "Enable logging to file (RSS_Log.txt).\nOutputs logs to file for long-term storage and analysis.\n启用日志输出到文件（RSS_Log.txt）。\n将日志输出到文件，便于长期保存和分析。")]
     bool m_bLogToFile;
     
-    // ==================== 屏幕 Hint 显示配置 ====================
-    // 使用 SCR_PopUpNotification 在屏幕上显示体力状态信息
+    // ==================== HUD 显示配置 ====================
+    // 在屏幕右上角显示实时体力状态信息（类似游戏原生的 FPS/Ping 显示）
     // 让玩家无需查看控制台也能了解当前体力状态
     
-    // 启用屏幕 Hint 显示
-    // 使用 PopUpNotification 在屏幕上显示体力状态
-    [Attribute("true", UIWidgets.CheckBox, "Enable on-screen Hint display.\nShows stamina status using PopUpNotification on screen.\n启用屏幕 Hint 显示。\n使用 PopUpNotification 在屏幕上显示体力状态。")]
+    // 启用屏幕 HUD 显示
+    // 在屏幕右上角显示体力、速度、负重、温度、风向等实时状态
+    [Attribute("true", UIWidgets.CheckBox, "Enable on-screen HUD display.\nShows real-time stamina status in top-right corner (stamina, speed, weight, temperature, wind, etc.).\n启用屏幕 HUD 显示。\n在屏幕右上角显示实时体力状态（体力、速度、负重、温度、风向等）。")]
     bool m_bHintDisplayEnabled;
     
-    // Hint 显示间隔（毫秒）
-    // 控制屏幕 Hint 的刷新频率
-    [Attribute("5000", UIWidgets.EditBox, "Hint display interval in milliseconds.\nControls the frequency of on-screen Hint updates.\nHint 显示间隔（毫秒）。\n控制屏幕 Hint 的刷新频率。")]
+    // [已弃用] Hint 显示间隔（毫秒）
+    // 注意：此配置项已弃用，HUD 现在是实时更新的（每 0.2 秒）
+    [Attribute("5000", UIWidgets.EditBox, "[DEPRECATED] Hint display interval in milliseconds.\nNote: This setting is deprecated. HUD now updates in real-time (every 0.2 seconds).\n[已弃用] Hint 显示间隔（毫秒）。\n注意：此配置项已弃用，HUD 现在是实时更新的（每 0.2 秒）。")]
     int m_iHintUpdateInterval;
     
-    // Hint 显示时长（秒）
-    // 每条 Hint 消息在屏幕上停留的时间
-    [Attribute("2.0", UIWidgets.EditBox, "Hint display duration in seconds.\nHow long each Hint message stays on screen.\nHint 显示时长（秒）。\n每条 Hint 消息在屏幕上停留的时间。")]
+    // [已弃用] Hint 显示时长（秒）
+    // 注意：此配置项已弃用，HUD 是常驻显示的
+    [Attribute("2.0", UIWidgets.EditBox, "[DEPRECATED] Hint display duration in seconds.\nNote: This setting is deprecated. HUD is now always visible.\n[已弃用] Hint 显示时长（秒）。\n注意：此配置项已弃用，HUD 是常驻显示的。")]
     float m_fHintDuration;
     
-    // ==================== 体力系统配置 ====================
+    // ==================== 体力系统配置（仅 Custom 预设生效） ====================
     // 全局体力系统配置：控制体力的消耗和恢复
-    // 这些倍率可以全局调整体力系统的难度
+    // 注意：这些配置仅在选择 Custom 预设时生效！
+    // 使用 EliteStandard/StandardMilsim/TacticalAction 预设时，这些配置将被忽略
     
     // 全局体力消耗倍率（0.1-5.0）
     // 值越大，体力消耗越快，游戏难度越高
-    [Attribute("1.0", UIWidgets.EditBox, "Global stamina consumption multiplier (0.1-5.0).\nHigher value = faster stamina drain, higher difficulty.\n全局体力消耗倍率（0.1-5.0）。\n值越大，体力消耗越快，游戏难度越高。")]
+    // 仅 Custom 预设生效
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Global stamina consumption multiplier (0.1-5.0).\nHigher value = faster stamina drain, higher difficulty.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 全局体力消耗倍率（0.1-5.0）。\n值越大，体力消耗越快，游戏难度越高。\n仅在选择 Custom 预设时生效。")]
     float m_fStaminaDrainMultiplier;
     
     // 全局体力恢复倍率（0.1-5.0）
     // 值越大，体力恢复越快，游戏难度越低
-    [Attribute("1.0", UIWidgets.EditBox, "Global stamina recovery multiplier (0.1-5.0).\nHigher value = faster stamina recovery, lower difficulty.\n全局体力恢复倍率（0.1-5.0）。\n值越大，体力恢复越快，游戏难度越低。")]
+    // 仅 Custom 预设生效
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Global stamina recovery multiplier (0.1-5.0).\nHigher value = faster stamina recovery, lower difficulty.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 全局体力恢复倍率（0.1-5.0）。\n值越大，体力恢复越快，游戏难度越低。\n仅在选择 Custom 预设时生效。")]
     float m_fStaminaRecoveryMultiplier;
     
     // 负重速度惩罚倍率（0.1-5.0）
     // 值越大，负重时移动速度越慢
-    [Attribute("1.0", UIWidgets.EditBox, "Encumbrance speed penalty multiplier (0.1-5.0).\nHigher value = slower movement under load.\n负重速度惩罚倍率（0.1-5.0）。\n值越大，负重时移动速度越慢。")]
+    // 仅 Custom 预设生效
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Encumbrance speed penalty multiplier (0.1-5.0).\nHigher value = slower movement under load.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 负重速度惩罚倍率（0.1-5.0）。\n值越大，负重时移动速度越慢。\n仅在选择 Custom 预设时生效。")]
     float m_fEncumbranceSpeedPenaltyMultiplier;
     
-    // ==================== 移动系统配置 ====================
+    // ==================== 移动系统配置（仅 Custom 预设生效） ====================
     // 移动系统配置：控制 Sprint 和 Run 的速度与体力消耗
+    // 注意：这些配置仅在选择 Custom 预设时生效！
     
     // Sprint 速度倍率（1.0-2.0）
     // 值越大，Sprint 时移动速度越快
-    [Attribute("1.3", UIWidgets.EditBox, "Sprint speed multiplier (1.0-2.0).\nHigher value = faster sprint speed.\nSprint速度倍率（1.0-2.0）。\n值越大，Sprint 时移动速度越快。")]
+    // 仅 Custom 预设生效
+    [Attribute("1.3", UIWidgets.EditBox, "[Custom preset only] Sprint speed multiplier (1.0-2.0).\nHigher value = faster sprint speed.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] Sprint速度倍率（1.0-2.0）。\n值越大，Sprint 时移动速度越快。\n仅在选择 Custom 预设时生效。")]
     float m_fSprintSpeedMultiplier;
     
     // Sprint 体力消耗倍率（1.0-10.0）
     // 值越大，Sprint 时体力消耗越快
-    [Attribute("3.0", UIWidgets.EditBox, "Sprint stamina drain multiplier (1.0-10.0).\nHigher value = faster stamina drain when sprinting.\nSprint体力消耗倍率（1.0-10.0）。\n值越大，Sprint 时体力消耗越快。")]
+    // 仅 Custom 预设生效
+    [Attribute("3.0", UIWidgets.EditBox, "[Custom preset only] Sprint stamina drain multiplier (1.0-10.0).\nHigher value = faster stamina drain when sprinting.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] Sprint体力消耗倍率（1.0-10.0）。\n值越大，Sprint 时体力消耗越快。\n仅在选择 Custom 预设时生效。")]
     float m_fSprintStaminaDrainMultiplier;
     
-    // ==================== 环境因子配置 ====================
+    // ==================== 环境因子配置（仅 Custom 预设生效） ====================
     // 环境因子配置：控制各种环境因素对体力系统的影响
-    // 这些系统可以单独启用或禁用
+    // 注意：这些配置仅在选择 Custom 预设时生效！
+    // 使用其他预设时，所有环境因子系统默认启用
     
     // 启用热应激系统（10:00-18:00）
     // 模拟高温环境对体力系统的影响
-    [Attribute("true", UIWidgets.CheckBox, "Enable heat stress system (10:00-18:00).\nSimulates the impact of high temperature on stamina system.\n启用热应激系统（10:00-18:00）。\n模拟高温环境对体力系统的影响。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable heat stress system (10:00-18:00).\nSimulates the impact of high temperature on stamina system.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用热应激系统（10:00-18:00）。\n模拟高温环境对体力系统的影响。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableHeatStress;
     
     // 启用降雨湿重系统（衣服湿重）
     // 模拟降雨导致衣服湿重增加对体力系统的影响
-    [Attribute("true", UIWidgets.CheckBox, "Enable rain weight system (clothes get wet).\nSimulates the impact of rain-soaked clothes on stamina system.\n启用降雨湿重系统（衣服湿重）。\n模拟降雨导致衣服湿重增加对体力系统的影响。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable rain weight system (clothes get wet).\nSimulates the impact of rain-soaked clothes on stamina system.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用降雨湿重系统（衣服湿重）。\n模拟降雨导致衣服湿重增加对体力系统的影响。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableRainWeight;
     
     // 启用风阻系统
     // 模拟风速对移动速度和体力消耗的影响
-    [Attribute("true", UIWidgets.CheckBox, "Enable wind resistance system.\nSimulates the impact of wind speed on movement speed and stamina drain.\n启用风阻系统。\n模拟风速对移动速度和体力消耗的影响。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable wind resistance system.\nSimulates the impact of wind speed on movement speed and stamina drain.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用风阻系统。\n模拟风速对移动速度和体力消耗的影响。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableWindResistance;
     
     // 启用泥泞惩罚系统（湿地形）
     // 模拟湿地形对移动速度和体力消耗的影响
-    [Attribute("true", UIWidgets.CheckBox, "Enable mud penalty system (wet terrain).\nSimulates the impact of wet terrain on movement speed and stamina drain.\n启用泥泞惩罚系统（湿地形）。\n模拟湿地形对移动速度和体力消耗的影响。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable mud penalty system (wet terrain).\nSimulates the impact of wet terrain on movement speed and stamina drain.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用泥泞惩罚系统（湿地形）。\n模拟湿地形对移动速度和体力消耗的影响。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableMudPenalty;
     
-    // ==================== 高级配置 ====================
+    // ==================== 高级配置（仅 Custom 预设生效） ====================
     // 高级配置：控制高级系统功能的启用或禁用
-    // 这些系统可以单独启用或禁用
+    // 注意：这些配置仅在选择 Custom 预设时生效！
+    // 使用其他预设时，所有高级系统默认启用
     
     // 启用疲劳积累系统
     // 模拟长时间运动后的疲劳累积效应
-    [Attribute("true", UIWidgets.CheckBox, "Enable fatigue accumulation system.\nSimulates fatigue accumulation effect after prolonged exercise.\n启用疲劳积累系统。\n模拟长时间运动后的疲劳累积效应。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable fatigue accumulation system.\nSimulates fatigue accumulation effect after prolonged exercise.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用疲劳积累系统。\n模拟长时间运动后的疲劳累积效应。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableFatigueSystem;
     
     // 启用代谢适应系统
     // 模拟长期训练后的代谢适应效应
-    [Attribute("true", UIWidgets.CheckBox, "Enable metabolic adaptation system.\nSimulates metabolic adaptation effect after long-term training.\n启用代谢适应系统。\n模拟长期训练后的代谢适应效应。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable metabolic adaptation system.\nSimulates metabolic adaptation effect after long-term training.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用代谢适应系统。\n模拟长期训练后的代谢适应效应。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableMetabolicAdaptation;
     
     // 启用室内检测系统
     // 检测玩家是否在室内，调整环境因子影响
-    [Attribute("true", UIWidgets.CheckBox, "Enable indoor detection system.\nDetects if player is indoors, adjusts environmental factor impact.\n启用室内检测系统。\n检测玩家是否在室内，调整环境因子影响。")]
+    // 仅 Custom 预设生效
+    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable indoor detection system.\nDetects if player is indoors, adjusts environmental factor impact.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用室内检测系统。\n检测玩家是否在室内，调整环境因子影响。\n仅在选择 Custom 预设时生效。")]
     bool m_bEnableIndoorDetection;
     
     // ==================== 性能配置 ====================

@@ -1534,7 +1534,22 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v3.4.0** (当前版本) - 实时状态 HUD 系统与配置版本管理
+- **v3.4.1** (当前版本) - 配置系统修复与 Custom 预设逻辑优化
+    - **紧急修复**
+      - 配置文件覆盖未生效：用户修改的预设参数值不再被默认值覆盖
+      - 配置字段默认值为空：新增 `EnsureDefaultValues()` 方法确保所有字段有默认值
+    - **Custom 预设配置生效逻辑**
+      - 全局配置项（体力倍率、环境因子开关、高级系统开关）现在**仅在选择 Custom 预设时生效**
+      - 使用 EliteStandard/StandardMilsim/TacticalAction 预设时，这些配置项被忽略，使用预设的完整参数
+      - 仅 Custom 预设生效的配置项：
+        - 体力系统：`m_fStaminaDrainMultiplier`、`m_fStaminaRecoveryMultiplier`、`m_fEncumbranceSpeedPenaltyMultiplier`、`m_fSprintSpeedMultiplier`、`m_fSprintStaminaDrainMultiplier`
+        - 环境因子开关：`m_bEnableHeatStress`、`m_bEnableRainWeight`、`m_bEnableWindResistance`、`m_bEnableMudPenalty`
+        - 高级系统开关：`m_bEnableFatigueSystem`、`m_bEnableMetabolicAdaptation`、`m_bEnableIndoorDetection`
+    - **HUD 配置项更新**
+      - `m_iHintUpdateInterval` 和 `m_fHintDuration` 标记为已弃用（HUD 现在是实时更新的常驻显示）
+    - 详细更新内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+- **v3.4.0** - 实时状态 HUD 系统与配置版本管理
     - **实时状态 HUD 显示系统（Real-time Status HUD）**
       - 屏幕右上角显示紧凑的状态条，类似游戏原生的 FPS/Ping 显示
       - 显示 10 项实时状态信息：体力、速度、负重、移动类型、坡度、温度、风向风速、室内外、地面类型、湿重
