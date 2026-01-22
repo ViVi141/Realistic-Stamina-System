@@ -34,8 +34,8 @@ def main():
     print("步骤 1：运行 Optuna 贝叶斯优化")
     print("=" * 80)
     
-    # 创建优化器
-    optimizer = RSSOptunaOptimizer(n_trials=200)
+    # 创建优化器（生产质量：3000次迭代）
+    optimizer = RSSOptunaOptimizer(n_trials=3000)
     
     # 执行优化
     results = optimizer.optimize(study_name="rss_optimization_complete")
@@ -286,7 +286,7 @@ def main():
     
     # 准备优化结果
     optimization_results = {
-        'n_trials': 200,
+        'n_trials': 3000,
         'n_scenarios': 13,
         'n_solutions': len(best_trials),
         'best_trials': best_trials,

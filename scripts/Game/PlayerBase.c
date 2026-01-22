@@ -370,7 +370,8 @@ modded class SCR_CharacterControllerComponent
                         baseDrainRateByVelocity,
                         false, // 不禁用正向恢复
                         0, // 站立姿态
-                        m_pEnvironmentFactor); // v2.15.0：传递环境因子模块
+                        m_pEnvironmentFactor, // v2.15.0：传递环境因子模块
+                        0.0); // 载具中视为静止，currentSpeed为0.0
                     
                     // 更新体力值
                     float newStamina = Math.Clamp(currentStamina + recoveryRate, 0.0, 1.0);

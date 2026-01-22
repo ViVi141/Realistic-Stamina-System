@@ -79,6 +79,7 @@ class StaminaRecoveryCalculator
     // @param disablePositiveRecovery 是否禁止正向恢复（例如：水中/踩水等场景）
     // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @param currentSpeed 当前速度 (m/s) - 新增参数用于静态保护逻辑
     // @return 恢复率（每0.2秒）
     static float CalculateRecoveryRate(
         float staminaPercent,
@@ -88,7 +89,8 @@ class StaminaRecoveryCalculator
         float baseDrainRateByVelocity,
         bool disablePositiveRecovery,
         int stance = 0,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        float currentSpeed = 0.0)
     {
         float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
             staminaPercent, 
@@ -131,7 +133,7 @@ class StaminaRecoveryCalculator
         if (disablePositiveRecovery)
             return -Math.Max(baseDrainRateByVelocity, 0.0);
         
-        // ==================== [修复 v3.7.0] 绝境呼吸保护机制 (Desperation Wind) ====================
+        // ==================== [修复 v3.6.1] 绝境呼吸保护机制 (Desperation Wind) ====================
         // 当体力极低 (<2%) 且非水下时，人体进入求生本能强制吸氧
         // 此时忽略背包重量的静态消耗，保证哪怕一丝微弱的体力恢复，打破死锁
         if (staminaPercent < 0.02)
@@ -143,6 +145,16 @@ class StaminaRecoveryCalculator
         else if (baseDrainRateByVelocity > 0.0)
         {
             recoveryRate = Math.Max(recoveryRate - baseDrainRateByVelocity, -0.01);
+        }
+        
+        // ==================== 静态保护逻辑 ====================
+        // 确保除非玩家严重超载(>40kg)，否则静止时总是缓慢恢复体力
+        if (currentSpeed < 0.1 && // 静止不动
+            recoveryRate < 0 && // 计算出的恢复率为负
+            currentWeightForRecovery < 40.0) // 重量在合理范围内
+        {
+            // 强制设置为一个小的正值（每0.2秒恢复0.005%，每秒恢复0.025%）
+            recoveryRate = 0.00005;
         }
         
         return recoveryRate;

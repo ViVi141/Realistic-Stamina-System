@@ -36,7 +36,7 @@ STAMINA_EXPONENT = 0.6  # 体力影响指数
 # ==================== 负重参数 ====================
 ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（线性模型）
 ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重速度惩罚指数（1.0 = 线性）
-ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 基于体重的体力消耗系数
+ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0  # 基于体重的体力消耗系数（Amplify weight effect）
 MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数
 MAX_SPEED_MULTIPLIER = 1.0  # 最大速度倍数限制
 
@@ -71,21 +71,21 @@ SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
 # ==================== Sprint（冲刺）相关参数 ====================
 SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%
 SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍（Make sprinting more draining）
 
 # ==================== Pandolf 模型常量 ====================
-PANDOLF_BASE_COEFF = 2.7  # 基础系数（W/kg）
-PANDOLF_VELOCITY_COEFF = 3.2  # 速度系数（W/kg）
+PANDOLF_BASE_COEFF = 1.5  # 基础系数（W/kg），恢复物理基线
+PANDOLF_VELOCITY_COEFF = 1.5  # 速度系数（W/kg），恢复物理基线
 PANDOLF_VELOCITY_OFFSET = 0.7  # 速度偏移（m/s）
 PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
 PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
 PANDOLF_STATIC_COEFF_1 = 1.2  # 静态基础系数（W/kg，v2.16.0从1.5降低到1.2）
 PANDOLF_STATIC_COEFF_2 = 1.6  # 静态负重系数（W/kg，v2.16.0从2.0降低到1.6）
-ENERGY_TO_STAMINA_COEFF = 0.000035  # 能量到体力的转换系数（优化后）
+ENERGY_TO_STAMINA_COEFF = 3.50e-05  # 能量到体力的转换系数（Increased from 1.25e-05 to 3.50e-05 to make scenario harder）
 REFERENCE_WEIGHT = 90.0  # 参考体重（kg）
 
 # ==================== Givoni-Goldman 跑步模型常量 ====================
-GIVONI_CONSTANT = 0.3  # 跑步常数（W/kg·m²/s²）
+GIVONI_CONSTANT = 0.15  # 跑步常数（W/kg·m²/s²），增加到0.15（Make running costly again）
 GIVONI_VELOCITY_EXPONENT = 2.2  # 速度指数（2.0-2.4，2.2为推荐值）
 
 # ==================== 坡度影响参数 ====================
@@ -112,10 +112,9 @@ TERRAIN_FACTOR_SAND = 1.8  # 软沙地
 # ==================== 多维度恢复模型参数（深度生理压制版本）====================
 # 核心概念：从"净增加"改为"代谢净值"
 # 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
-# 深度生理压制：将基础全满时间（静止空载）从约5分钟延长至约10分钟
-# 计算逻辑：1.0(体力) / 600秒(10分钟) / 5(每秒tick数) = 0.00033
-# 建议值：0.0003（站立基础恢复全满约11分钟）
-BASE_RECOVERY_RATE = 0.0003  # 基础恢复率（每0.2秒，在50%体力时的恢复率）
+# 自动校准：使用二分搜索确定最优值
+# 场景：Idle 60秒，起始体力0.10，目标结束体力0.40
+BASE_RECOVERY_RATE = 5.00e-04  # 基础恢复率（每0.2秒），Decreased from 5.00e-03 to 5.00e-04 (10x slower recovery)
 RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数
 # 拟真平衡点：模拟"喘匀第一口氧气"
 # 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
@@ -167,7 +166,7 @@ MARGINAL_DECAY_COEFF = 1.1  # 边际效应衰减系数
 # 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
 # 数学实现：体力低于20%时，必须处于静止状态10秒后才允许开始回血
 # 战术意图：防止玩家在极度疲劳时通过"跑两步停一下"的方式快速回血
-# [修复 v3.7.0] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
+# [修复 v3.6.1] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
 # 模拟深呼吸 3 秒后即可开始恢复，而不是发呆 10 秒
 MIN_RECOVERY_STAMINA_THRESHOLD = 0.2  # 最低体力阈值（20%）
 MIN_RECOVERY_REST_TIME_SECONDS = 3.0  # 最低体力时需要的休息时间（秒）

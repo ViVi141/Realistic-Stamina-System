@@ -338,7 +338,8 @@ class StaminaUpdateCoordinator
                     staticDrainForRecovery,
                     false,
                     stanceInt,
-                    environmentFactor);
+                    environmentFactor,
+                    currentSpeed);
                 
                 // ==================== 热应激对恢复的影响（模块化）====================
                 // 生理学依据：高温不仅让人动起来累，更让人休息不回来

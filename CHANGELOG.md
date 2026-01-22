@@ -6,6 +6,135 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.8.0] - 2026-01-22
+
+### 🎯 重大更新
+
+#### ✅ OOP绑定修复
+- **完全重写 `rss_digital_twin.py`** - 严格面向对象设计
+  - 所有计算函数移入类内
+  - 所有全局常量访问替换为 `self.constants`
+  - 修复逻辑耦合问题（`RUN_DRAIN_PER_TICK` vs `BASE_RECOVERY_RATE`）
+
+#### ✅ 可视化脚本重构
+- **`generate_comprehensive_trends.py`** - 使用 `RSSDigitalTwin`
+- **`multi_dimensional_analysis.py`** - 使用 `RSSDigitalTwin`
+- 移除所有独立计算函数
+
+#### ✅ 常量更新
+- **`ENERGY_TO_STAMINA_COEFF`**: 3.5e-05（优化后的值）
+- **`BASE_RECOVERY_RATE`**: 0.0005（优化后的值）
+- **`GIVONI_CONSTANT`**: 0.15（物理基线）
+- **`MAX_DRAIN_RATE_PER_TICK`**: 1.0（>= 0.10，无截断）
+
+#### ✅ OOP绑定验证
+- 创建 `debug_binding.py` - OOP绑定调试测试
+- 创建 `test_complete.py` - 完整测试脚本
+- 所有测试通过：
+  - 直接速度倍数敏感性测试 ✓
+  - 短场景测试 ✓
+  - OOP绑定验证 ✓
+
+#### ✅ 配置转换
+- **`convert_optimized_config.py`** - JSON转C代码
+- 更新 `SCR_RSS_Settings.c` 中的预设参数：
+  - `StandardMilsim` 预设
+  - `TacticalAction` 预设
+  - `EliteStandard` 预设
+
+#### ✅ 敏感性分析
+- **`rss_sensitivity_analysis_enhanced.py`** - 增强版敏感性分析
+- 验证参数敏感性：
+  - `encumbrance_stamina_drain_coeff`: 184.0727（High/Strong）✓
+  - `base_recovery_rate`: 0.0000（场景设计问题，非OOP绑定问题）
+
+#### ✅ 工具目录清理
+- 删除过时或测试脚本：
+  - `auto_calibrate.py` - 自动校准脚本
+  - `calibration_results.txt` - 校准结果
+  - `calibration_results_v2.txt` - 校准结果v2
+  - `debug_binding.py` - OOP绑定调试测试
+  - `test_complete.py` - 完整测试脚本
+  - `validation_test.py` - 旧验证测试
+  - `validation_test_final.py` - 旧验证测试
+  - `validation_test_improved.py` - 旧验证测试
+  - `validation_test_less_demanding.py` - 旧验证测试
+  - `validation_test_ultra_simple.py` - 旧验证测试
+  - `validation_test_simple.py` - 旧验证测试
+  - `simulate_stamina_system.py` - 旧仿真脚本
+
+- 保留有用且可复用的脚本：
+  - `rss_digital_twin.py` - 核心仿真引擎
+  - `rss_scenarios.py` - 场景定义
+  - `stamina_constants.py` - 常量定义
+  - `requirements.txt` - Python依赖
+  - `rss_optimizer_optuna.py` - 优化引擎
+  - `run_complete_optimization.py` - 运行优化
+  - `convert_optimized_config.py` - JSON转C代码
+  - `rss_report_generator.py` - 生成报告
+  - `rss_report_generator_english.py` - 生成报告
+  - `rss_visualization.py` - 生成可视化
+  - `generate_comprehensive_trends.py` - 生成趋势分析
+  - `multi_dimensional_analysis.py` - 多维度分析
+  - `rss_sensitivity_analysis.py` - 敏感性分析
+  - `rss_sensitivity_analysis_enhanced.py` - 敏感性分析
+
+### 📋 技术改进
+
+#### 1. 逻辑耦合修复
+- **问题**：`calculate_stamina_consumption` 中使用 `self.constants.RUN_DRAIN_PER_TICK` 作为恢复率基准
+- **修复**：改为使用 `self.constants.BASE_RECOVERY_RATE`
+- **影响**：恢复系统现在使用正确的基准值
+
+#### 2. 全局常量访问
+- **问题**：所有计算函数使用全局常量（如 `ENERGY_TO_STAMINA_COEFF`）
+- **修复**：所有常量访问改为 `self.constants.XXX`
+- **影响**：OOP绑定现在完全正确，参数修改会立即生效
+
+#### 3. 生理上限调整
+- **问题**：`MAX_DRAIN_RATE_PER_TICK = 0.10` 过低，导致参数截断
+- **修复**：提高到 `MAX_DRAIN_RATE_PER_TICK = 1.0`
+- **影响**：参数现在可以自由变化，不会被截断
+
+### 🎯 优化结果
+
+#### 3个预设配置
+1. **StandardMilsim（平衡模式）**
+   - `energy_to_stamina_coeff`: 3.03e-05
+   - `base_recovery_rate`: 0.000433
+
+2. **TacticalAction（可玩性优先）**
+   - `energy_to_stamina_coeff`: 2.98e-05
+   - `base_recovery_rate`: 0.000488
+
+3. **EliteStandard（拟真度优先）**
+   - `energy_to_stamina_coeff`: 2.96e-05
+   - `base_recovery_rate`: 0.000421
+
+### 📊 测试结果
+
+#### OOP绑定测试
+- **直接速度倍数测试**：12.07% 差异 ✓
+- **短场景测试**：7.37% 距离差异 ✓
+- **OOP绑定验证**：所有测试通过 ✓
+
+#### 敏感性分析
+- **总距离**：215.4m（合理范围200m-1000m）✓
+- **最终体力**：5.8%（> 0%）✓
+- **消耗参数敏感性**：184.0727（High/Strong）✓
+
+### 🔧 破坏性修复
+
+1. **OOP绑定问题** - 完全修复
+2. **逻辑耦合问题** - 完全修复
+3. **参数截断问题** - 完全修复
+4. **场景设计问题** - 识别并说明
+
+### 📚 文档更新
+
+- **README.md** - 更新到版本3.8.0
+- **CHANGELOG.md** - 创建更新日志
+
 ## [3.7.0] - 2026-01-22
 
 ### 新增

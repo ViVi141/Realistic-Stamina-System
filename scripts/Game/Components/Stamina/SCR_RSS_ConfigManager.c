@@ -5,7 +5,7 @@
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
-    protected static const string CURRENT_VERSION = "3.7.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.8.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;

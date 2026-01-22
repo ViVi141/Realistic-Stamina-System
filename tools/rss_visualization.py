@@ -249,14 +249,19 @@ class RSSVisualizer:
         for i, (param_name, ax) in enumerate(zip(param_names, axes)):
             param_values = pareto_set[:, i]
             
-            # 绘制直方图和核密度估计
+            # 绘制直方图
             ax.hist(param_values, bins=30, density=True, alpha=0.7, color='skyblue', edgecolor='black')
             
-            # 添加核密度估计
-            from scipy.stats import gaussian_kde
-            kde = gaussian_kde(param_values)
-            x_range = np.linspace(param_values.min(), param_values.max(), 200)
-            ax.plot(x_range, kde(x_range), 'r-', linewidth=2, label='Kernel Density Estimation')
+            # 添加核密度估计（仅当有足够数据时）
+            if len(np.unique(param_values)) > 1:  # 确保有多个不同值
+                from scipy.stats import gaussian_kde
+                try:
+                    kde = gaussian_kde(param_values)
+                    x_range = np.linspace(param_values.min(), param_values.max(), 200)
+                    ax.plot(x_range, kde(x_range), 'r-', linewidth=2, label='Kernel Density Estimation')
+                except ValueError:
+                    # 如果KDE计算失败，只绘制直方图
+                    pass
             
             ax.set_xlabel(param_name, fontsize=10)
             ax.set_ylabel('Density', fontsize=10)

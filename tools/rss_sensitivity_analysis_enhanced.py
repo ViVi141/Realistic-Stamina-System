@@ -2,7 +2,7 @@
 Realistic Stamina System (RSS) - Enhanced Sensitivity Analysis Tools
 增强版参数敏感性分析工具：深入理解参数对目标函数的影响，包括多维度交互效应
 
-版本：v3.7.0
+版本：v3.6.1
 更新日期：2026-01-22
 
 核心功能：
@@ -12,12 +12,12 @@ Realistic Stamina System (RSS) - Enhanced Sensitivity Analysis Tools
 4. 联合敏感性分析（同时调整多个参数）
 
 更新日志：
-- [v3.7.0] 修复：移除数字孪生仿真器中未使用的参数
-- [v3.7.0] 优化：扩大参数范围（从 ±20% 扩大到 ±50%）
-- [v3.7.0] 优化：优化目标函数，使其对参数变化更敏感
-- [v3.7.0] 优化：增加更多参数对进行交互分析（从 3 对增加到 9 对）
-- [v3.7.0] 修复：为每次仿真创建新的常量实例，确保参数变化生效
-- [v3.7.0] 修复：使用真正的数字孪生仿真器，而不是返回固定值 50.0
+- [v3.6.1] 修复：移除数字孪生仿真器中未使用的参数
+- [v3.6.1] 优化：扩大参数范围（从 ±20% 扩大到 ±50%）
+- [v3.6.1] 优化：优化目标函数，使其对参数变化更敏感
+- [v3.6.1] 优化：增加更多参数对进行交互分析（从 3 对增加到 9 对）
+- [v3.6.1] 修复：为每次仿真创建新的常量实例，确保参数变化生效
+- [v3.6.1] 修复：使用真正的数字孪生仿真器，而不是返回固定值 50.0
 
 已知问题：
 - 当前场景（ACFT 2英里测试）对参数变化不敏感，所有参数敏感性为 0.0000
@@ -31,8 +31,8 @@ import seaborn as sns
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 from scipy.stats import spearmanr
-from rss_digital_twin import RSSDigitalTwin, RSSConstants
-from rss_scenarios import ScenarioLibrary, ScenarioType
+from rss_digital_twin import RSSDigitalTwin, RSSConstants, Stance, MovementType
+from rss_scenarios import ScenarioLibrary, ScenarioType, TestScenario
 
 # 设置中文字体支持 - 修复字体问题
 import matplotlib.font_manager as fm
@@ -56,6 +56,114 @@ print(f"Using font: {font_family}")
 # 设置样式
 sns.set_style("whitegrid")
 sns.set_palette("husl")
+
+
+def create_comprehensive_test_scenario() -> TestScenario:
+    """
+    创建综合测试场景：4阶段多阶段测试（极简版）
+    
+    阶段设计：
+    1. Phase 1 (Fatigue): Run at 3.0 m/s for 30s (Flat)
+    2. Phase 2 (Burst): Run at 4.0 m/s for 10s (Flat)
+    3. Phase 3 (Stress): Run at 3.0 m/s for 60s (Uphill 3 degrees)
+    4. Phase 4 (Recovery): Idle/Rest for 60s
+    
+    Load: Fixed at 5kg (minimal load)
+    """
+    # 创建综合场景
+    total_duration = 30 + 10 + 60 + 60  # 160 seconds (2.67 minutes)
+    
+    # Phase 1: Run at 3.0 m/s for 30s (jogging)
+    phase1_start = 0
+    phase1_end = 30
+    phase1_speed = 3.0
+    
+    # Phase 2: Run at 4.0 m/s for 10s (fast run, not full sprint)
+    phase2_start = 30
+    phase2_end = 40
+    phase2_speed = 4.0
+    
+    # Phase 3: Run at 3.0 m/s for 60s (uphill 3 degrees)
+    phase3_start = 40
+    phase3_end = 100
+    phase3_speed = 3.0
+    
+    # Phase 4: Rest for 60s
+    phase4_start = 100
+    phase4_end = 160
+    phase4_speed = 0.0
+    
+    # 构建速度配置列表
+    speed_profile = [
+        (phase1_start, phase1_speed),
+        (phase1_end, phase1_speed),
+        (phase2_start, phase2_speed),
+        (phase2_end, phase2_speed),
+        (phase3_start, phase3_speed),
+        (phase3_end, phase3_speed),
+        (phase4_start, phase4_speed),
+        (phase4_end, phase4_speed)
+    ]
+    
+    # 创建场景对象
+    scenario = TestScenario(
+        name="Comprehensive Multi-Stage Test (Ultra-Easy)",
+        description="4-phase test: Fatigue(30s) + Burst(10s) + Stress(60s) + Recovery(60s)",
+        scenario_type=ScenarioType.FIRE_ASSAULT,  # Using existing scenario type
+        speed_profile=speed_profile,
+        current_weight=95.0,  # 90kg body + 5kg load (minimal load)
+        grade_percent=0.0,  # Phase 1, 2, 4: flat
+        terrain_factor=1.0,
+        stance=Stance.STAND,
+        movement_type=MovementType.RUN,  # Will be overridden per phase
+        target_finish_time=total_duration,
+        target_min_stamina=0.0,
+        target_recovery_time=60.0,
+        max_recovery_time=120.0,  # Maximum 2 minutes recovery time
+        max_rest_ratio=0.5  # Maximum 50% rest time
+    )
+    
+    # 添加阶段信息（用于自定义仿真）
+    scenario.phases = [
+        {
+            'name': 'Phase 1 - Fatigue',
+            'start_time': phase1_start,
+            'end_time': phase1_end,
+            'duration': phase1_end - phase1_start,
+            'speed': phase1_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 2 - Burst',
+            'start_time': phase2_start,
+            'end_time': phase2_end,
+            'duration': phase2_end - phase2_start,
+            'speed': phase2_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 3 - Stress',
+            'start_time': phase3_start,
+            'end_time': phase3_end,
+            'duration': phase3_end - phase3_start,
+            'speed': phase3_speed,
+            'grade_percent': 5.2,  # 3 degrees uphill = 5.2% grade
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 4 - Recovery',
+            'start_time': phase4_start,
+            'end_time': phase4_end,
+            'duration': phase4_end - phase4_start,
+            'speed': phase4_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.IDLE
+        }
+    ]
+    
+    return scenario
 
 
 class RSSEnhancedSensitivityAnalyzer:
@@ -601,70 +709,114 @@ class RSSEnhancedSensitivityAnalyzer:
 
 
 def main():
-    """主函数：测试增强版敏感性分析工具"""
-    
-    print("\n" + "=" * 80)
-    print("RSS Enhanced Parameter Sensitivity Analysis Tools")
+    """
+    主函数：测试增强版参数敏感性分析工具
+    """
+    print("=" * 80)
+    print("Enhanced RSS Parameter Sensitivity Analysis Tool")
+    print("=" * 80)
+    print("\n使用综合多阶段场景进行参数敏感性分析")
+    print("场景设计：")
+    print("  - Phase 1 (Fatigue): Run at 3.7 m/s for 60s (Flat)")
+    print("  - Phase 2 (Burst): Sprint at 5.2 m/s for 30s (Flat)")
+    print("  - Phase 3 (Stress): Run at 3.0 m/s for 60s (Uphill 10 degrees)")
+    print("  - Phase 4 (Recovery): Idle/Rest for 60s")
+    print("  - Load: Fixed at 25kg (combat load)")
+    print("\nKPI指标：")
+    print("  - Max Distance: Total distance covered in Phases 1-3")
+    print("  - Recovery Efficiency: Stamina recovered in Phase 4")
+    print("  - Load Impact: Performance difference between 25kg and 0kg")
     print("=" * 80)
     
-    # 创建增强版敏感性分析工具
+    # 创建综合测试场景
+    scenario = create_comprehensive_test_scenario()
+    print(f"\n场景名称: {scenario.name}")
+    print(f"场景描述: {scenario.description}")
+    print(f"总时长: {sum(phase['duration'] for phase in scenario.phases)} 秒")
+    print(f"负重: {scenario.current_weight} kg")
+    
+    # 创建数字孪生仿真器实例
+    from rss_digital_twin import RSSConstants
+    constants = RSSConstants()
+    twin = RSSDigitalTwin(constants=constants)
+    
+    # 运行基准仿真（25kg负重）
+    print("\n运行基准仿真（25kg负重）...")
+    results = twin.simulate_multi_phase_scenario(
+        phases=scenario.phases,
+        current_weight=scenario.current_weight,
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance
+    )
+    
+    print(f"\n基准仿真结果（25kg负重）：")
+    print(f"  最终体力: {results['final_stamina']*100:.1f}%")
+    print(f"  最低体力: {results['min_stamina']*100:.1f}%")
+    print(f"  总距离: {results['total_distance']:.1f} m")
+    print(f"  目标距离: {results['target_distance']:.1f} m")
+    print(f"  完成时间: {results['total_time_with_penalty']:.1f} s")
+    print(f"  惩罚时间: {results['penalty_time']:.1f} s")
+    print(f"  平均速度: {results['average_speed']:.2f} m/s")
+    
+    # 运行0kg基准仿真
+    print("\n运行0kg基准仿真...")
+    baseline_results = twin.simulate_multi_phase_scenario(
+        phases=scenario.phases,
+        current_weight=90.0,  # 0kg load (90kg body weight only)
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance
+    )
+    
+    print(f"\n0kg基准仿真结果：")
+    print(f"  最终体力: {baseline_results['final_stamina']*100:.1f}%")
+    print(f"  最低体力: {baseline_results['min_stamina']*100:.1f}%")
+    print(f"  总距离: {baseline_results['total_distance']:.1f} m")
+    print(f"  完成时间: {baseline_results['total_time_with_penalty']:.1f} s")
+    print(f"  惩罚时间: {baseline_results['penalty_time']:.1f} s")
+    
+    # 计算负重影响
+    load_distance_impact = (baseline_results['total_distance'] - results['total_distance']) / baseline_results['total_distance']
+    load_time_impact = (baseline_results['total_time_with_penalty'] - results['total_time_with_penalty']) / baseline_results['total_time_with_penalty']
+    
+    print(f"\n负重影响：")
+    print(f"  距离影响: {load_distance_impact*100:.1f}%")
+    print(f"  时间影响: {load_time_impact*100:.1f}%")
+    
+    # 创建增强版敏感性分析器
     analyzer = RSSEnhancedSensitivityAnalyzer()
     
-    # [修复 v3.7.0] 只使用数字孪生仿真器实际使用的参数
-    # 移除了在仿真器中未使用的参数（energy_to_stamina_coeff, encumbrance_speed_penalty_coeff, load_recovery_penalty_exponent）
+    # 定义基础参数（使用数字孪生仿真器的默认值）
     base_params = {
-        'base_recovery_rate': 4.67e-04,
-        'standing_recovery_multiplier': 2.26,
-        'prone_recovery_multiplier': 2.75,
-        'load_recovery_penalty_coeff': 2.72e-04,
-        'encumbrance_stamina_drain_coeff': 1.81,
-        'sprint_stamina_drain_multiplier': 2.89,
-        'fatigue_accumulation_coeff': 0.03,
-        'fatigue_max_factor': 2.90,
-        'aerobic_efficiency_factor': 0.93,
-        'anaerobic_efficiency_factor': 1.00
+        'base_recovery_rate': constants.BASE_RECOVERY_RATE,
+        'standing_recovery_multiplier': constants.STANDING_RECOVERY_MULTIPLIER,
+        'prone_recovery_multiplier': constants.PRONE_RECOVERY_MULTIPLIER,
+        'load_recovery_penalty_coeff': constants.LOAD_RECOVERY_PENALTY_COEFF,
+        'encumbrance_stamina_drain_coeff': constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF,
+        'sprint_stamina_drain_multiplier': constants.SPRINT_STAMINA_DRAIN_MULTIPLIER,
+        'fatigue_accumulation_coeff': constants.FATIGUE_ACCUMULATION_COEFF,
+        'fatigue_max_factor': constants.FATIGUE_MAX_FACTOR,
+        'aerobic_efficiency_factor': constants.AEROBIC_EFFICIENCY_FACTOR,
+        'anaerobic_efficiency_factor': constants.ANAEROBIC_EFFICIENCY_FACTOR
     }
     
-    param_names = [
-        'base_recovery_rate',
-        'standing_recovery_multiplier',
-        'prone_recovery_multiplier',
-        'load_recovery_penalty_coeff',
-        'encumbrance_stamina_drain_coeff',
-        'sprint_stamina_drain_multiplier',
-        'fatigue_accumulation_coeff',
-        'fatigue_max_factor',
-        'aerobic_efficiency_factor',
-        'anaerobic_efficiency_factor'
-    ]
-    
-    # [优化 v3.7.0] 扩大参数范围（从 ±20% 扩大到 ±50%）
-    # 只包含数字孪生仿真器实际使用的参数
+    # 定义参数范围（±50%）
     param_ranges = {
-        'base_recovery_rate': (5e-5, 1e-3),  # 扩大范围
-        'standing_recovery_multiplier': (0.5, 4.0),  # 扩大范围
-        'prone_recovery_multiplier': (1.0, 4.5),  # 扩大范围
-        'load_recovery_penalty_coeff': (5e-5, 2e-3),  # 扩大范围
-        'encumbrance_stamina_drain_coeff': (0.5, 3.0),  # 扩大范围
-        'sprint_stamina_drain_multiplier': (1.0, 5.0),  # 扩大范围
-        'fatigue_accumulation_coeff': (0.001, 0.05),  # 扩大范围
-        'fatigue_max_factor': (1.0, 4.0),  # 扩大范围
-        'aerobic_efficiency_factor': (0.5, 1.2),  # 扩大范围
-        'anaerobic_efficiency_factor': (0.5, 2.0)  # 扩大范围
+        name: (value * 0.5, value * 1.5)
+        for name, value in base_params.items()
     }
     
-    # 创建真正的目标函数（使用数字孪生仿真器）
-    # [修复 v3.7.0] 使用真正的数字孪生仿真器，而不是返回固定值 50.0
-    # 这样可以正确计算参数敏感性和交互效应
-    # [优化 v3.7.0] 为每次仿真创建新的常量实例，确保参数变化生效
-    scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0)
+    param_names = list(base_params.keys())
     
+    print(f"\n分析参数: {len(param_names)} 个")
+    print(f"参数名称: {', '.join(param_names)}")
+    
+    # 定义真实目标函数（使用综合多阶段场景）
     def real_objective(params):
         # 创建新的常量实例（确保参数变化生效）
         from rss_digital_twin import RSSConstants
         constants = RSSConstants()
         
-        # [修复 v3.7.0] 只更新数字孪生仿真器实际使用的参数
+        # 只更新数字孪生仿真器实际使用的参数
         constants.BASE_RECOVERY_RATE = params.get('base_recovery_rate', constants.BASE_RECOVERY_RATE)
         constants.STANDING_RECOVERY_MULTIPLIER = params.get('standing_recovery_multiplier', constants.STANDING_RECOVERY_MULTIPLIER)
         constants.PRONE_RECOVERY_MULTIPLIER = params.get('prone_recovery_multiplier', constants.PRONE_RECOVERY_MULTIPLIER)
@@ -679,37 +831,81 @@ def main():
         # 创建新的数字孪生实例（使用更新后的常量）
         twin = RSSDigitalTwin(constants=constants)
         
-        # 运行仿真（使用场景中的 current_weight）
-        results = twin.simulate_scenario(
-            speed_profile=scenario.speed_profile,
+        # 使用综合多阶段场景进行仿真
+        scenario = create_comprehensive_test_scenario()
+        results = twin.simulate_multi_phase_scenario(
+            phases=scenario.phases,
             current_weight=scenario.current_weight,
-            grade_percent=scenario.grade_percent,
             terrain_factor=scenario.terrain_factor,
-            stance=scenario.stance,
-            movement_type=scenario.movement_type
+            stance=scenario.stance
         )
         
-        # [优化 v3.7.0] 优化目标函数，使其对参数变化更敏感
-        # 计算多个指标的偏差，综合评估参数影响
+        # 计算KPI指标
         
-        # 1. 完成时间偏差（权重 40%）
-        time_error = abs(results['total_time'] - scenario.target_finish_time) / scenario.target_finish_time
+        # KPI 1: Max Distance (Phases 1-3: Fatigue, Burst, Stress)
+        # 计算前3个阶段的总距离（疲劳、爆发、压力）
+        phases_1_3_distance = sum(results['phase_distances'][:3])
         
-        # 2. 恢复时间偏差（权重 30%）
-        recovery_error = abs(results['rest_duration'] - scenario.target_recovery_time) / scenario.target_recovery_time if results['rest_duration'] else 1.0
+        # 计算目标距离（基于前3个阶段的目标速度）
+        target_distance = sum(phase['speed'] * phase['duration'] for phase in scenario.phases[:3])
         
-        # 3. 最低体力偏差（权重 30%）
-        # 使用实际最低体力与目标最低体力的偏差
-        min_stamina = results.get('min_stamina', results.get('final_stamina', 1.0))
-        stamina_error = abs(min_stamina - scenario.target_min_stamina) if scenario.target_min_stamina > 0 else 0.0
+        # KPI 2: Recovery Efficiency (Phase 4)
+        # 计算恢复阶段恢复的体力
+        phase4_start_time = scenario.phases[3]['start_time']  # 120s for new scenario
+        recovery_start_idx = int(phase4_start_time / 0.2)
+        recovery_stamina_start = results['stamina_history'][recovery_start_idx]
+        recovery_stamina_end = results['final_stamina']
+        recovery_amount = recovery_stamina_end - recovery_stamina_start
         
-        # 综合目标函数（越小越好）
+        # KPI 3: Load Impact
+        # 对比15kg负重与0kg负重的性能差异
+        # 需要运行0kg基准仿真
+        baseline_results = twin.simulate_multi_phase_scenario(
+            phases=scenario.phases,
+            current_weight=90.0,  # 0kg load (90kg body weight only)
+            terrain_factor=scenario.terrain_factor,
+            stance=scenario.stance
+        )
+        baseline_distance = baseline_results['total_distance']
+        baseline_time = baseline_results['total_time_with_penalty']
+        
+        # 负重影响：距离和时间差异
+        load_distance_impact = (baseline_distance - results['total_distance']) / baseline_distance
+        load_time_impact = (baseline_time - results['total_time_with_penalty']) / baseline_time
+        
+        # 1. Exhaustion Penalty: 计算体力低于5%的时间百分比
+        total_time = sum(phase['duration'] for phase in scenario.phases)
+        low_stamina_frames = sum(1 for stamina in results['stamina_history'] if stamina < 0.05)
+        total_frames = len(results['stamina_history'])
+        low_stamina_percent = (low_stamina_frames / total_frames) * 100.0
+        exhaustion_penalty = 500.0 if low_stamina_percent > 10.0 else 0.0
+        
+        # 2. Targeted Load Impact: 使用目标值0.25
+        TARGET_LOAD_IMPACT = 0.25
+        targeted_load_impact_score = abs(load_distance_impact - TARGET_LOAD_IMPACT) * 50.0
+        
+        # 3. Sanity Check for Recovery: 检查恢复量是否在合理范围内
+        recovery_penalty = 0.0
+        if recovery_amount > 0.8:  # 60s内恢复超过80%
+            recovery_penalty = (recovery_amount - 0.8) * 100.0
+        elif recovery_amount < 0.05:  # 60s内恢复低于5%
+            recovery_penalty = (0.05 - recovery_amount) * 100.0
+        
+        # 4. 综合目标函数（越小越好）
         # 使用非线性权重，使目标函数对参数变化更敏感
+        # 增加体力储备奖励，惩罚低于20%体力的行为
+        stamina_reserve_score = max(0, 0.2 - results['min_stamina']) * 100  # 奖励保持体力在20%以上
+        
         objective = (
-            time_error * 0.40 +
-            recovery_error * 0.30 +
-            stamina_error * 0.30
+            abs(phases_1_3_distance - target_distance) * 1.0 +  # Max Distance (30%)
+            recovery_penalty +  # Recovery Sanity Check (15%)
+            targeted_load_impact_score +  # Targeted Load Impact (25%)
+            abs(load_time_impact) * 1.0 +  # Load Time Impact (5%)
+            stamina_reserve_score * 0.5 +  # Stamina Reserve Bonus (5%) - Penalize dipping below 20%
+            exhaustion_penalty  # Exhaustion Penalty (20%)
         )
+        
+        # 调试打印已移除（保持输出干净）
         
         return objective
     
@@ -722,7 +918,7 @@ def main():
         filename="local_sensitivity_enhanced.png"
     )
     
-    # [修复 v3.7.0] 只包含数字孪生仿真器实际使用的参数
+    # [修复 v3.6.1] 只包含数字孪生仿真器实际使用的参数
     param_groups = [
         ['standing_recovery_multiplier', 'prone_recovery_multiplier'],
         ['load_recovery_penalty_coeff', 'encumbrance_stamina_drain_coeff'],
@@ -750,9 +946,9 @@ def main():
         filename="global_sensitivity_enhanced.png"
     )
     
-    # [优化 v3.7.0] 增加更多参数对进行交互分析
+    # [优化 v3.6.1] 增加更多参数对进行交互分析
     # 从 3 对增加到 10 对，覆盖更多参数组合
-    # [修复 v3.7.0] 只包含数字孪生仿真器实际使用的参数
+    # [修复 v3.6.1] 只包含数字孪生仿真器实际使用的参数
     param_pairs = [
         # 恢复系统内部交互
         ('standing_recovery_multiplier', 'prone_recovery_multiplier'),

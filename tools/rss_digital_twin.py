@@ -43,6 +43,9 @@ class RSSConstants:
     RECOVERY_THRESHOLD_NO_LOAD = 2.5  # m/s
     DRAIN_THRESHOLD_COMBAT_LOAD = 1.5  # m/s
     COMBAT_LOAD_WEIGHT = 30.0  # kg
+    MOVING_SPEED_THRESHOLD = 0.1  # m/s - Threshold for determining if moving
+    WALKING_RUNNING_THRESHOLD = 2.2  # m/s - Threshold between walking and running
+    EPOC_SPEED_THRESHOLD = 0.05  # m/s - Threshold for EPOC delay detection
     
     # ==================== 基础消耗率（pts/s）====================
     SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s
@@ -60,6 +63,8 @@ class RSSConstants:
     EXHAUSTION_THRESHOLD = 0.0
     EXHAUSTION_LIMP_SPEED = 1.0  # m/s
     SPRINT_ENABLE_THRESHOLD = 0.20
+    FORCED_REST_STAMINA_THRESHOLD = 0.05  # 5% - Trigger forced rest
+    FORCED_REST_RELEASE_THRESHOLD = 0.20  # 20% - Release forced rest
     
     # ==================== 目标速度 ====================
     TARGET_RUN_SPEED = 3.7  # m/s
@@ -75,7 +80,7 @@ class RSSConstants:
     STAMINA_EXPONENT = 0.6
     ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
     ENCUMBRANCE_SPEED_EXPONENT = 1.0
-    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5
+    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0  # Increased from 1.5 to 2.0 (Amplify weight effect)
     MIN_SPEED_MULTIPLIER = 0.15
     MAX_SPEED_MULTIPLIER = 1.0
     
@@ -87,7 +92,7 @@ class RSSConstants:
     FITNESS_RECOVERY_COEFF = 0.25
     
     # ==================== 多维度恢复模型 ====================
-    BASE_RECOVERY_RATE = 0.0003  # 每0.2秒
+    BASE_RECOVERY_RATE = 5.00e-04  # Decreased from 5.00e-03 to 5.00e-04 (10x slower recovery)
     RECOVERY_NONLINEAR_COEFF = 0.5
     FAST_RECOVERY_DURATION_MINUTES = 1.5
     FAST_RECOVERY_MULTIPLIER = 3.5
@@ -116,7 +121,7 @@ class RSSConstants:
     MARGINAL_DECAY_COEFF = 1.1
     
     # ==================== 最低体力阈值 ====================
-    # [修复 v3.7.0] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
+    # [修复 v3.6.1] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
     MIN_RECOVERY_STAMINA_THRESHOLD = 0.2
     MIN_RECOVERY_REST_TIME_SECONDS = 3.0
     
@@ -136,11 +141,12 @@ class RSSConstants:
     BASE_WEIGHT = 1.36  # kg
     MAX_ENCUMBRANCE_WEIGHT = 40.5  # kg
     COMBAT_ENCUMBRANCE_WEIGHT = 30.0  # kg
+    MAX_LOAD_FOR_RECOVERY = 40.0  # kg - Maximum load weight for recovery
     
     # ==================== Sprint 相关 ====================
     SPRINT_SPEED_BOOST = 0.30
     SPRINT_MAX_SPEED_MULTIPLIER = 1.0
-    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0
+    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Increased from 2.0 to 3.0 (Make sprinting more draining)
     
     # ==================== 动作消耗参数 ====================
     JUMP_STAMINA_BASE_COST = 0.035
@@ -168,18 +174,18 @@ class RSSConstants:
     ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = 0.05
     
     # ==================== Pandolf 模型 ====================
-    PANDOLF_BASE_COEFF = 2.7
-    PANDOLF_VELOCITY_COEFF = 3.2
+    PANDOLF_BASE_COEFF = 1.5  # Restored physics baseline
+    PANDOLF_VELOCITY_COEFF = 1.5  # Restored from 2.0 to 1.5 to reduce quadratic penalty of speed
     PANDOLF_VELOCITY_OFFSET = 0.7
     PANDOLF_GRADE_BASE_COEFF = 0.23
     PANDOLF_GRADE_VELOCITY_COEFF = 1.34
     PANDOLF_STATIC_COEFF_1 = 1.2
     PANDOLF_STATIC_COEFF_2 = 1.6
-    ENERGY_TO_STAMINA_COEFF = 0.000035
+    ENERGY_TO_STAMINA_COEFF = 3.50e-05  # Increased from 1.25e-05 to 3.50e-05 (Make scenario harder)
     REFERENCE_WEIGHT = 90.0
     
     # ==================== Givoni-Goldman 模型 ====================
-    GIVONI_CONSTANT = 0.3
+    GIVONI_CONSTANT = 0.15  # Increased from 0.1 to 0.15 (Make running costly again)
     GIVONI_VELOCITY_EXPONENT = 2.2
     
     # ==================== 地形系数 ====================
@@ -194,6 +200,12 @@ class RSSConstants:
     POSTURE_CROUCH_MULTIPLIER = 1.8
     POSTURE_PRONE_MULTIPLIER = 3.0
     
+    # ==================== 移动类型速度倍数 ====================
+    WALK_SPEED_MULTIPLIER = 0.7
+    WALK_MIN_SPEED_MULTIPLIER = 0.2
+    WALK_MAX_SPEED_MULTIPLIER = 0.8
+    SPRINT_MIN_SPEED_MULTIPLIER = 0.15
+    
     # ==================== 恢复启动延迟 ====================
     RECOVERY_STARTUP_DELAY_SECONDS = 5.0
     EPOC_DELAY_SECONDS = 2.0
@@ -201,10 +213,14 @@ class RSSConstants:
     
     # ==================== 更新间隔 ====================
     UPDATE_INTERVAL = 0.2  # 秒
+    
+    # ==================== 最大消耗率限制 ====================
+    # 移除硬编码上限，允许优化器调整参数
+    MAX_DRAIN_RATE_PER_TICK = 1.0  # 设置为足够高的值以防止截断
 
 
 class RSSDigitalTwin:
-    """数字孪生仿真器核心类"""
+    """数字孪生仿真器核心类 - 严格面向对象设计"""
     
     def __init__(self, constants: Optional[RSSConstants] = None):
         """
@@ -372,22 +388,23 @@ class RSSDigitalTwin:
             (total_drain_rate, base_drain_rate_by_velocity)
         """
         # 静态站立消耗
-        if speed < 0.1:
+        if speed < self.constants.MOVING_SPEED_THRESHOLD:
             body_weight = self.constants.CHARACTER_WEIGHT
             load_weight = max(current_weight - body_weight, 0.0)
             static_drain_rate = self.calculate_static_standing_cost(body_weight, load_weight)
-            base_drain_rate_by_velocity = static_drain_rate * 0.2  # 转换为每0.2秒
+            base_drain_rate_by_velocity = static_drain_rate * self.constants.UPDATE_INTERVAL  # 转换为每0.2秒
         # 跑步模型（速度 > 2.2 m/s）
-        elif speed > 2.2:
-            running_drain_rate = self.calculate_givoni_goldman_running(
+        elif speed > self.constants.WALKING_RUNNING_THRESHOLD:
+            energy_expenditure = self.calculate_givoni_goldman_running(
                 speed, current_weight, terrain_factor
             )
-            base_drain_rate_by_velocity = running_drain_rate * 0.2
+            base_drain_rate_by_velocity = energy_expenditure * self.constants.ENERGY_TO_STAMINA_COEFF * self.constants.UPDATE_INTERVAL
         # 步行模型（速度 <= 2.2 m/s）
         else:
-            base_drain_rate_by_velocity = self.calculate_pandolf_energy_expenditure(
+            energy_expenditure = self.calculate_pandolf_energy_expenditure(
                 speed, current_weight, grade_percent, terrain_factor, True
-            ) * 0.2
+            )
+            base_drain_rate_by_velocity = energy_expenditure * self.constants.ENERGY_TO_STAMINA_COEFF * self.constants.UPDATE_INTERVAL
         
         # 保存原始基础消耗率
         original_base_drain_rate = base_drain_rate_by_velocity
@@ -402,14 +419,15 @@ class RSSDigitalTwin:
         else:
             base_drain_rate = base_drain_rate_by_velocity * total_efficiency_factor * fatigue_factor
         
-        # 速度相关项
-        speed_ratio = np.clip(speed / 5.2, 0.0, 1.0)
-        speed_linear_drain_rate = 0.00005 * speed_ratio * total_efficiency_factor * fatigue_factor
-        speed_squared_drain_rate = 0.00005 * (speed_ratio ** 2) * total_efficiency_factor * fatigue_factor
+        # 速度相关项 - 使用基础消耗率作为参考（不是恢复率）
+        speed_ratio = np.clip(speed / self.constants.GAME_MAX_SPEED, 0.0, 1.0)
+        base_drain_ref = self.constants.RUN_DRAIN_PER_TICK
+        speed_linear_drain_rate = base_drain_ref * speed_ratio * total_efficiency_factor * fatigue_factor
+        speed_squared_drain_rate = base_drain_ref * (speed_ratio ** 2) * total_efficiency_factor * fatigue_factor
         
         # 负重相关消耗
-        encumbrance_base_drain_rate = 0.001 * (encumbrance_stamina_drain_multiplier - 1.0)
-        encumbrance_speed_drain_rate = 0.0002 * (encumbrance_stamina_drain_multiplier - 1.0) * (speed_ratio ** 2)
+        encumbrance_base_drain_rate = base_drain_ref * 10 * (encumbrance_stamina_drain_multiplier - 1.0)
+        encumbrance_speed_drain_rate = base_drain_ref * 2 * (encumbrance_stamina_drain_multiplier - 1.0) * (speed_ratio ** 2)
         
         # 综合体力消耗率
         base_drain_components = (base_drain_rate + speed_linear_drain_rate +
@@ -419,9 +437,8 @@ class RSSDigitalTwin:
         # 应用 Sprint 倍数
         total_drain_rate = base_drain_components * sprint_multiplier
         
-        # 生理上限
-        MAX_DRAIN_RATE_PER_TICK = 0.02
-        total_drain_rate = min(total_drain_rate, MAX_DRAIN_RATE_PER_TICK)
+        # 生理上限 - 使用常量而不是硬编码值
+        total_drain_rate = min(total_drain_rate, self.constants.MAX_DRAIN_RATE_PER_TICK)
         
         return total_drain_rate, original_base_drain_rate
     
@@ -545,8 +562,8 @@ class RSSDigitalTwin:
         Returns:
             是否处于 EPOC 延迟期
         """
-        was_moving = (self.last_speed > 0.05)
-        is_now_stopped = (current_speed <= 0.05)
+        was_moving = (self.last_speed > self.constants.EPOC_SPEED_THRESHOLD)
+        is_now_stopped = (current_speed <= self.constants.EPOC_SPEED_THRESHOLD)
         
         # 从运动状态变为静止状态，启动 EPOC 延迟
         if was_moving and is_now_stopped and not self.is_in_epoc_delay:
@@ -562,7 +579,7 @@ class RSSDigitalTwin:
                 self.epoc_delay_start_time = -1.0
         
         # 如果重新开始运动，取消 EPOC 延迟
-        if current_speed > 0.05:
+        if current_speed > self.constants.EPOC_SPEED_THRESHOLD:
             self.is_in_epoc_delay = False
             self.epoc_delay_start_time = -1.0
         
@@ -594,6 +611,88 @@ class RSSDigitalTwin:
             recovered_fatigue = excess_fatigue * fatigue_recovery_rate * rest_minutes
             self.fatigue_factor = max(1.0, self.fatigue_factor - recovered_fatigue)
     
+    def calculate_speed_multiplier_by_stamina(
+        self,
+        stamina_percent: float,
+        current_weight: float,
+        movement_type: MovementType = MovementType.RUN
+    ) -> float:
+        """
+        根据体力百分比、负重和移动类型计算速度倍数（双稳态-应激性能模型）
+        
+        速度性能分段（Performance Plateau）：
+        1. 平台期（Willpower Zone, Stamina 25% - 100%）：
+           只要体力高于25%，士兵可以强行维持设定的目标速度（3.7 m/s）。
+           这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
+        2. 衰减期（Failure Zone, Stamina 0% - 25%）：
+           只有当体力掉入最后25%时，生理机能开始真正崩塌，速度平滑下降到跛行。
+           使用SmoothStep函数实现25%-5%的平滑过渡缓冲区。
+        
+        Args:
+            stamina_percent: 当前体力百分比 (0.0-1.0)
+            current_weight: 当前重量（kg）
+            movement_type: 移动类型
+        
+        Returns:
+            速度倍数（相对于游戏最大速度）
+        """
+        stamina_percent = np.clip(stamina_percent, 0.0, 1.0)
+        
+        # 计算Run速度（使用双稳态模型，带平滑过渡）
+        run_speed_multiplier = 0.0
+        if stamina_percent >= self.constants.SMOOTH_TRANSITION_START:
+            # 意志力平台期（25%-100%）：保持恒定目标速度（3.7 m/s）
+            run_speed_multiplier = self.constants.TARGET_RUN_SPEED_MULTIPLIER
+        elif stamina_percent >= self.constants.SMOOTH_TRANSITION_END:
+            # 平滑过渡期（5%-25%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
+            t = (stamina_percent - self.constants.SMOOTH_TRANSITION_END) / \
+                  (self.constants.SMOOTH_TRANSITION_START - self.constants.SMOOTH_TRANSITION_END)
+            t = np.clip(t, 0.0, 1.0)
+            smooth_factor = t * t * (3.0 - 2.0 * t)  # smoothstep函数
+            
+            # 在目标速度和跛行速度之间平滑过渡
+            run_speed_multiplier = (self.constants.MIN_LIMP_SPEED_MULTIPLIER + 
+                                   (self.constants.TARGET_RUN_SPEED_MULTIPLIER - self.constants.MIN_LIMP_SPEED_MULTIPLIER) * smooth_factor)
+        else:
+            # 生理崩溃期（0%-5%）：速度快速线性下降到跛行速度
+            collapse_factor = stamina_percent / self.constants.SMOOTH_TRANSITION_END
+            run_speed_multiplier = self.constants.MIN_LIMP_SPEED_MULTIPLIER * collapse_factor
+            # 确保不会低于最小速度
+            run_speed_multiplier = max(run_speed_multiplier, self.constants.MIN_LIMP_SPEED_MULTIPLIER * 0.8)
+        
+        # 计算有效负重（减去基准重量）
+        effective_weight = max(current_weight - self.constants.CHARACTER_WEIGHT, 0.0)
+        
+        # 计算有效负重占体重的百分比（Body Mass Percentage）
+        body_mass_percent = effective_weight / self.constants.CHARACTER_WEIGHT
+        
+        # 应用真实医学模型：速度惩罚 = β * (负重/体重)
+        # β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
+        encumbrance_penalty = self.constants.ENCUMBRANCE_SPEED_PENALTY_COEFF * body_mass_percent
+        encumbrance_penalty = np.clip(encumbrance_penalty, 0.0, 0.5)  # 最多减少50%速度
+        
+        # 应用负重惩罚（直接从速度倍数中减去）
+        run_speed_multiplier = run_speed_multiplier * (1.0 - encumbrance_penalty)
+        
+        # 根据移动类型调整速度
+        if movement_type == MovementType.IDLE:
+            final_speed_multiplier = 0.0
+        elif movement_type == MovementType.WALK:
+            final_speed_multiplier = run_speed_multiplier * self.constants.WALK_SPEED_MULTIPLIER
+            final_speed_multiplier = np.clip(final_speed_multiplier, self.constants.WALK_MIN_SPEED_MULTIPLIER, self.constants.WALK_MAX_SPEED_MULTIPLIER)
+        elif movement_type == MovementType.SPRINT:
+            # Sprint速度 = Run速度 × (1 + 30%)，完全继承Run的双稳态-平台期逻辑
+            sprint_multiplier = 1.0 + self.constants.SPRINT_SPEED_BOOST  # 1.30
+            final_speed_multiplier = run_speed_multiplier * sprint_multiplier
+            final_speed_multiplier = np.clip(final_speed_multiplier, self.constants.SPRINT_MIN_SPEED_MULTIPLIER, self.constants.SPRINT_MAX_SPEED_MULTIPLIER)
+        else:  # MovementType.RUN
+            final_speed_multiplier = run_speed_multiplier
+            final_speed_multiplier = np.clip(final_speed_multiplier, 
+                                          self.constants.MIN_SPEED_MULTIPLIER, 
+                                          self.constants.MAX_SPEED_MULTIPLIER)
+        
+        return final_speed_multiplier
+    
     def step(
         self,
         speed: float,
@@ -620,7 +719,7 @@ class RSSDigitalTwin:
             (new_stamina, drain_rate)
         """
         # 判断是否在运动
-        is_moving = (speed > 0.05)
+        is_moving = (speed > self.constants.MOVING_SPEED_THRESHOLD)
         
         # 更新运动/休息时间
         if is_moving:
@@ -636,7 +735,7 @@ class RSSDigitalTwin:
         is_in_epoc_delay = self.update_epoc_delay(speed, current_time)
         
         # 计算综合效率因子
-        speed_ratio = np.clip(speed / 5.2, 0.0, 1.0)
+        speed_ratio = np.clip(speed / self.constants.GAME_MAX_SPEED, 0.0, 1.0)
         metabolic_efficiency_factor = self.calculate_metabolic_efficiency_factor(speed_ratio)
         fitness_efficiency_factor = self.calculate_fitness_efficiency_factor()
         total_efficiency_factor = metabolic_efficiency_factor * fitness_efficiency_factor
@@ -671,7 +770,7 @@ class RSSDigitalTwin:
         
         # 如果在 EPOC 延迟期，应用 EPOC 消耗
         if is_in_epoc_delay and not is_moving:
-            speed_ratio_for_epoc = np.clip(self.speed_before_stop / 5.2, 0.0, 1.0)
+            speed_ratio_for_epoc = np.clip(self.speed_before_stop / self.constants.GAME_MAX_SPEED, 0.0, 1.0)
             epoc_drain_rate = self.constants.EPOC_DRAIN_RATE * (1.0 + speed_ratio_for_epoc * 0.5)
             drain_rate = epoc_drain_rate
         
@@ -683,6 +782,14 @@ class RSSDigitalTwin:
                 self.stamina, rest_duration_minutes, exercise_duration_minutes,
                 current_weight, stance
             )
+            
+            # ==================== 静态保护逻辑 ====================
+            # 确保除非玩家严重超载(>40kg负重)，否则静止时总是缓慢恢复体力
+            load_weight = max(current_weight - self.constants.CHARACTER_WEIGHT, 0.0)
+            if not is_moving and recovery_rate < 0 and load_weight < self.constants.MAX_LOAD_FOR_RECOVERY:
+                # 强制设置为一个小的正值（每0.2秒恢复0.005%，每秒恢复0.025%）
+                recovery_rate = 0.00005
+            
             drain_rate = -recovery_rate
         
         # 更新体力
@@ -705,7 +812,7 @@ class RSSDigitalTwin:
         movement_type: MovementType = MovementType.RUN
     ) -> dict:
         """
-        模拟一个完整的测试工况
+        模拟一个完整的测试工况（Closed-Loop：速度随体力下降而降低）
         
         Args:
             speed_profile: 速度配置列表 [(time, speed), ...]
@@ -724,30 +831,210 @@ class RSSDigitalTwin:
         max_time = max(t for t, _ in speed_profile)
         times = np.arange(0, max_time, self.constants.UPDATE_INTERVAL)
         
-        # 插值速度
+        # 插值目标速度（玩家尝试达到的速度）
         speed_times = [t for t, _ in speed_profile]
         speed_values = [s for _, s in speed_profile]
-        speeds = np.interp(times, speed_times, speed_values)
+        target_speeds = np.interp(times, speed_times, speed_values)
         
-        # 仿真循环
-        for i, (t, speed) in enumerate(zip(times, speeds)):
+        # 仿真循环（Closed-Loop：速度随体力下降而降低）
+        actual_speeds = []
+        is_forced_resting = False  # 强制休息状态标志
+        for i, (t, target_speed) in enumerate(zip(times, target_speeds)):
+            # 1. 检查强制休息触发条件
+            if self.stamina < self.constants.FORCED_REST_STAMINA_THRESHOLD:
+                is_forced_resting = True
+            
+            # 2. 检查强制休息释放条件
+            if is_forced_resting and self.stamina > self.constants.FORCED_REST_RELEASE_THRESHOLD:
+                is_forced_resting = False
+            
+            # 3. 确定实际速度
+            if is_forced_resting:
+                # 强制休息：速度设为0.0，模拟玩家停止休息
+                actual_speed = 0.0
+            else:
+                # 正常逻辑：计算基于当前体力的最大允许速度
+                speed_multiplier = self.calculate_speed_multiplier_by_stamina(
+                    self.stamina, current_weight, movement_type
+                )
+                max_allowed_speed = self.constants.GAME_MAX_SPEED * speed_multiplier
+                
+                # 实际速度 = min(目标速度, 最大允许速度)
+                # 如果体力充足，可以维持目标速度
+                # 如果体力不足，速度会下降到最大允许速度
+                actual_speed = min(target_speed, max_allowed_speed)
+            
+            actual_speeds.append(actual_speed)
+            
+            # 4. 使用实际速度进行仿真步计算
             self.step(
-                speed, current_weight, grade_percent,
+                actual_speed, current_weight, grade_percent,
                 terrain_factor, stance, movement_type, t
             )
+        
+        # 计算实际覆盖的距离
+        total_distance = np.trapz(actual_speeds, dx=self.constants.UPDATE_INTERVAL)
+        
+        # 如果距离未达到目标距离，计算惩罚时间（以跛行速度完成剩余距离）
+        target_distance = target_speeds[-1] * max_time  # 目标距离 = 目标速度 × 时间
+        if total_distance < target_distance:
+            remaining_distance = target_distance - total_distance
+            limp_speed = self.constants.EXHAUSTION_LIMP_SPEED  # 跛行速度 1.0 m/s
+            penalty_time = remaining_distance / limp_speed
+            total_time_with_penalty = max_time + penalty_time
+        else:
+            penalty_time = 0.0
+            total_time_with_penalty = max_time
         
         # 返回结果
         return {
             'stamina_history': self.stamina_history,
-            'speed_history': self.speed_history,
+            'speed_history': actual_speeds,  # 使用实际速度历史
+            'target_speed_history': target_speeds,  # 添加目标速度历史
             'time_history': self.time_history,
             'final_stamina': self.stamina,
-            'total_distance': np.trapz(self.speed_history, dx=self.constants.UPDATE_INTERVAL),
+            'total_distance': total_distance,
+            'target_distance': target_distance,
             'total_time': max_time,
-            'average_speed': np.mean(self.speed_history),
+            'total_time_with_penalty': total_time_with_penalty,
+            'penalty_time': penalty_time,
+            'average_speed': np.mean(actual_speeds),
             'min_stamina': min(self.stamina_history),
             'exercise_duration': self.exercise_duration,
             'rest_duration': self.rest_duration
+        }
+    
+    def simulate_multi_phase_scenario(
+        self,
+        phases: List[dict],
+        current_weight: float,
+        terrain_factor: float = 1.0,
+        stance: Stance = Stance.STAND
+    ) -> dict:
+        """
+        模拟多阶段场景（支持每个阶段有不同的速度、坡度、移动类型）
+        
+        Args:
+            phases: 阶段列表，每个阶段包含：
+                - name: 阶段名称
+                - start_time: 开始时间（秒）
+                - end_time: 结束时间（秒）
+                - speed: 速度（m/s）
+                - grade_percent: 坡度百分比
+                - movement_type: 移动类型
+            current_weight: 当前重量（kg）
+            terrain_factor: 地形系数
+            stance: 当前姿态
+        
+        Returns:
+            仿真结果字典
+        """
+        self.reset()
+        
+        # 生成完整时间序列
+        max_time = max(phase['end_time'] for phase in phases)
+        times = np.arange(0, max_time, self.constants.UPDATE_INTERVAL)
+        
+        # 为每个阶段构建速度、坡度、移动类型配置
+        target_speeds = []
+        grade_percents = []
+        movement_types = []
+        
+        for phase in phases:
+            # 计算该阶段的持续时间（以0.2秒为单位）
+            phase_duration = phase['end_time'] - phase['start_time']
+            num_steps = int(phase_duration / self.constants.UPDATE_INTERVAL)
+            
+            # 添加该阶段的配置
+            target_speeds.extend([phase['speed']] * num_steps)
+            grade_percents.extend([phase['grade_percent']] * num_steps)
+            movement_types.extend([phase['movement_type']] * num_steps)
+        
+        # 插值到完整时间序列
+        target_speeds = np.array(target_speeds)
+        grade_percents = np.array(grade_percents)
+        movement_types = movement_types
+        
+        # 仿真循环（Closed-Loop：速度随体力下降而降低）
+        actual_speeds = []
+        is_forced_resting = False  # 强制休息状态标志
+        for i, (t, target_speed, grade_percent, movement_type) in enumerate(zip(times, target_speeds, grade_percents, movement_types)):
+            # 1. 检查强制休息触发条件
+            if self.stamina < self.constants.FORCED_REST_STAMINA_THRESHOLD:
+                is_forced_resting = True
+            
+            # 2. 检查强制休息释放条件
+            if is_forced_resting and self.stamina > self.constants.FORCED_REST_RELEASE_THRESHOLD:
+                is_forced_resting = False
+            
+            # 3. 确定实际速度
+            if is_forced_resting:
+                # 强制休息：速度设为0.0，模拟玩家停止休息
+                actual_speed = 0.0
+            else:
+                # 正常逻辑：计算基于当前体力的最大允许速度
+                speed_multiplier = self.calculate_speed_multiplier_by_stamina(
+                    self.stamina, current_weight, movement_type
+                )
+                max_allowed_speed = self.constants.GAME_MAX_SPEED * speed_multiplier
+                
+                # 实际速度 = min(目标速度, 最大允许速度)
+                actual_speed = min(target_speed, max_allowed_speed)
+            
+            actual_speeds.append(actual_speed)
+            
+            # 4. 使用实际速度、坡度、移动类型进行仿真步计算
+            self.step(
+                actual_speed, current_weight, grade_percent,
+                terrain_factor, stance, movement_type, t
+            )
+        
+        # 计算实际覆盖的距离
+        total_distance = np.trapz(actual_speeds, dx=self.constants.UPDATE_INTERVAL)
+        
+        # 计算各阶段距离
+        phase_distances = []
+        phase_start_idx = 0
+        for phase in phases:
+            phase_end_idx = int(phase['end_time'] / self.constants.UPDATE_INTERVAL)
+            phase_distance = np.trapz(
+                actual_speeds[phase_start_idx:phase_end_idx], 
+                dx=self.constants.UPDATE_INTERVAL
+            )
+            phase_distances.append(phase_distance)
+            phase_start_idx = phase_end_idx
+        
+        # 计算总目标距离（基于目标速度）
+        target_distance = sum(phase['speed'] * (phase['end_time'] - phase['start_time']) for phase in phases)
+        
+        # 如果距离未达到目标距离，计算惩罚时间（以跛行速度完成剩余距离）
+        if total_distance < target_distance:
+            remaining_distance = target_distance - total_distance
+            limp_speed = self.constants.EXHAUSTION_LIMP_SPEED
+            penalty_time = remaining_distance / limp_speed
+            total_time_with_penalty = max_time + penalty_time
+        else:
+            penalty_time = 0.0
+            total_time_with_penalty = max_time
+        
+        # 返回结果
+        return {
+            'stamina_history': self.stamina_history,
+            'speed_history': actual_speeds,
+            'target_speed_history': target_speeds,
+            'time_history': self.time_history,
+            'final_stamina': self.stamina,
+            'total_distance': total_distance,
+            'target_distance': target_distance,
+            'total_time': max_time,
+            'total_time_with_penalty': total_time_with_penalty,
+            'penalty_time': penalty_time,
+            'average_speed': np.mean(actual_speeds),
+            'min_stamina': min(self.stamina_history),
+            'exercise_duration': self.exercise_duration,
+            'rest_duration': self.rest_duration,
+            'phase_distances': phase_distances,
+            'phases': phases
         }
 
 
@@ -781,12 +1068,19 @@ if __name__ == '__main__':
         movement_type=MovementType.RUN
     )
     
-    print(f"\n仿真结果：")
+    print(f"\n仿真结果（Closed-Loop）：")
     print(f"最终体力：{result['final_stamina']*100:.1f}%")
     print(f"最低体力：{result['min_stamina']*100:.1f}%")
+    print(f"目标距离：{result['target_distance']:.1f} 米")
     print(f"实际距离：{result['total_distance']:.1f} 米")
     print(f"平均速度：{result['average_speed']:.2f} m/s")
     print(f"运动持续时间：{result['exercise_duration']:.1f} 秒")
     print(f"休息持续时间：{result['rest_duration']:.1f} 秒")
+    print(f"目标时间：{result['total_time']:.1f} 秒")
+    print(f"实际完成时间：{result['total_time_with_penalty']:.1f} 秒")
+    if result['penalty_time'] > 0:
+        print(f"惩罚时间：{result['penalty_time']:.1f} 秒（以跛行速度{result['penalty_time']/(result['target_distance']-result['total_distance']):.2f} m/s完成剩余{result['target_distance']-result['total_distance']:.1f}米）")
+    print(f"时间差异：{result['total_time_with_penalty']-result['total_time']:.1f} 秒")
     
     print("\n数字孪生仿真器测试完成！")
+    print("注意：Closed-Loop 模式下，速度会随体力下降而降低，影响完成时间。")

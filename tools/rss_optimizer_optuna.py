@@ -15,7 +15,115 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
 from rss_digital_twin import RSSDigitalTwin, MovementType, Stance, RSSConstants
-from rss_scenarios import ScenarioLibrary, ScenarioEvaluator, TestScenario
+from rss_scenarios import ScenarioLibrary, ScenarioEvaluator, TestScenario, ScenarioType
+
+
+def create_comprehensive_test_scenario() -> TestScenario:
+    """
+    创建综合测试场景：4阶段多阶段测试（极简版）
+    
+    阶段设计：
+    1. Phase 1 (Fatigue): Run at 3.0 m/s for 30s (Flat)
+    2. Phase 2 (Burst): Run at 4.0 m/s for 10s (Flat)
+    3. Phase 3 (Stress): Run at 3.0 m/s for 60s (Uphill 3 degrees)
+    4. Phase 4 (Recovery): Idle/Rest for 60s
+    
+    Load: Fixed at 5kg (minimal load)
+    """
+    # 创建综合场景
+    total_duration = 30 + 10 + 60 + 60  # 160 seconds (2.67 minutes)
+    
+    # Phase 1: Run at 3.0 m/s for 30s (jogging)
+    phase1_start = 0
+    phase1_end = 30
+    phase1_speed = 3.0
+    
+    # Phase 2: Run at 4.0 m/s for 10s (fast run, not full sprint)
+    phase2_start = 30
+    phase2_end = 40
+    phase2_speed = 4.0
+    
+    # Phase 3: Run at 3.0 m/s for 60s (uphill 3 degrees)
+    phase3_start = 40
+    phase3_end = 100
+    phase3_speed = 3.0
+    
+    # Phase 4: Rest for 60s
+    phase4_start = 100
+    phase4_end = 160
+    phase4_speed = 0.0
+    
+    # 构建速度配置列表
+    speed_profile = [
+        (phase1_start, phase1_speed),
+        (phase1_end, phase1_speed),
+        (phase2_start, phase2_speed),
+        (phase2_end, phase2_speed),
+        (phase3_start, phase3_speed),
+        (phase3_end, phase3_speed),
+        (phase4_start, phase4_speed),
+        (phase4_end, phase4_speed)
+    ]
+    
+    # 创建场景对象
+    scenario = TestScenario(
+        name="Comprehensive Multi-Stage Test (Ultra-Easy)",
+        description="4-phase test: Fatigue(30s) + Burst(10s) + Stress(60s) + Recovery(60s)",
+        scenario_type=ScenarioType.FIRE_ASSAULT,  # Using existing scenario type
+        speed_profile=speed_profile,
+        current_weight=95.0,  # 90kg body + 5kg load (minimal load)
+        grade_percent=0.0,  # Phase 1, 2, 4: flat
+        terrain_factor=1.0,
+        stance=Stance.STAND,
+        movement_type=MovementType.RUN,  # Will be overridden per phase
+        target_finish_time=total_duration,
+        target_min_stamina=0.0,
+        target_recovery_time=60.0,
+        max_recovery_time=120.0,  # Maximum 2 minutes recovery time
+        max_rest_ratio=0.5  # Maximum 50% rest time
+    )
+    
+    # 添加阶段信息（用于自定义仿真）
+    scenario.phases = [
+        {
+            'name': 'Phase 1 - Fatigue',
+            'start_time': phase1_start,
+            'end_time': phase1_end,
+            'duration': phase1_end - phase1_start,
+            'speed': phase1_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 2 - Burst',
+            'start_time': phase2_start,
+            'end_time': phase2_end,
+            'duration': phase2_end - phase2_start,
+            'speed': phase2_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 3 - Stress',
+            'start_time': phase3_start,
+            'end_time': phase3_end,
+            'duration': phase3_end - phase3_start,
+            'speed': phase3_speed,
+            'grade_percent': 5.2,  # 3 degrees uphill = 5.2% grade
+            'movement_type': MovementType.RUN
+        },
+        {
+            'name': 'Phase 4 - Recovery',
+            'start_time': phase4_start,
+            'end_time': phase4_end,
+            'duration': phase4_end - phase4_start,
+            'speed': phase4_speed,
+            'grade_percent': 0.0,
+            'movement_type': MovementType.IDLE
+        }
+    ]
+    
+    return scenario
 
 
 class RSSOptunaOptimizer:
@@ -24,14 +132,16 @@ class RSSOptunaOptimizer:
     def __init__(
         self,
         scenarios: Optional[List[TestScenario]] = None,
-        n_trials: int = 200
+        n_trials: int = 3000,
+        n_jobs: int = 1
     ):
         """
         初始化优化器
         
         Args:
             scenarios: 测试工况列表（如果为 None，使用标准测试套件）
-            n_trials: 采样次数（默认 200）
+            n_trials: 采样次数（默认 3000，生产质量优化）
+            n_jobs: 并行运行的线程数（默认 1，使用多线程设置为大于 1 的值）
         """
         # 创建标准测试套件
         if scenarios is None:
@@ -42,6 +152,9 @@ class RSSOptunaOptimizer:
         
         # 采样次数
         self.n_trials = n_trials
+        
+        # 并行线程数
+        self.n_jobs = n_jobs
         
         # 优化结果
         self.study = None
@@ -305,51 +418,95 @@ class RSSOptunaOptimizer:
         # ==================== 3. 创建数字孪生仿真器 ====================
         
         twin = RSSDigitalTwin(constants)
-        evaluator = ScenarioEvaluator(twin)
         
-        # ==================== 4. 评估所有测试工况 ====================
+        # ==================== 4. 使用综合多阶段场景进行仿真 ====================
         
-        total_realism_loss = 0.0
-        total_playability_burden = 0.0
-        constraint_violation = 0.0
+        # 创建综合测试场景
+        scenario = create_comprehensive_test_scenario()
         
-        for scenario in self.scenarios:
-            result = evaluator.evaluate_scenario(scenario)
-            
-            # 拟真度评估
-            realism_loss = result['realism_loss']
-            total_realism_loss += realism_loss
-            
-            # 可玩性评估（关键修复！）
-            recovery_time = result['recovery_time']
-            rest_ratio = result['rest_ratio']
-            
-            # 恢复时间惩罚：超过 90 秒就惩罚
-            recovery_penalty = max(0, recovery_time - 90)
-            
-            # 休息时间占比惩罚：超过 5% 就惩罚
-            rest_penalty = max(0, rest_ratio - 0.05) * 100.0
-            
-            # 最低体力惩罚：低于 15% 就惩罚
-            low_stamina_penalty = max(0, 0.15 - result['result']['min_stamina']) * 100.0
-            
-            # 综合可玩性负担
-            playability_burden = recovery_penalty * 1.0 + rest_penalty * 2.0 + low_stamina_penalty * 0.5
-            
-            total_playability_burden += playability_burden
-            
-            # 约束违反：恢复时间超过 180 秒
-            if recovery_time > 180:
-                constraint_violation += 1.0
+        # 运行仿真（25kg负重）
+        results = twin.simulate_multi_phase_scenario(
+            phases=scenario.phases,
+            current_weight=scenario.current_weight,
+            terrain_factor=scenario.terrain_factor,
+            stance=scenario.stance
+        )
         
-        # ==================== 5. 计算平均目标函数 ====================
+        # ==================== 5. 计算KPI指标 ====================
         
-        avg_realism_loss = total_realism_loss / len(self.scenarios)
-        avg_playability_burden = total_playability_burden / len(self.scenarios)
+        # KPI 1: Max Distance (Phases 1-3: Fatigue, Burst, Stress)
+        # 计算前3个阶段的总距离（疲劳、爆发、压力）
+        phases_1_3_distance = sum(results['phase_distances'][:3])
         
-        # ==================== 6. 返回两个目标函数 ====================
+        # 计算目标距离（基于前3个阶段的目标速度）
+        target_distance = sum(phase['speed'] * phase['duration'] for phase in scenario.phases[:3])
         
-        return avg_realism_loss, avg_playability_burden
+        # KPI 2: Recovery Efficiency (Phase 4)
+        # 计算恢复阶段恢复的体力
+        phase4_start_time = scenario.phases[3]['start_time']
+        recovery_start_idx = int(phase4_start_time / 0.2)
+        recovery_stamina_start = results['stamina_history'][recovery_start_idx]
+        recovery_stamina_end = results['final_stamina']
+        recovery_amount = recovery_stamina_end - recovery_stamina_start
+        
+        # KPI 3: Load Impact
+        # 对比25kg负重与0kg负重的性能差异
+        # 需要运行0kg基准仿真
+        baseline_twin = RSSDigitalTwin(constants)  # Create a new twin for baseline
+        baseline_results = baseline_twin.simulate_multi_phase_scenario(
+            phases=scenario.phases,
+            current_weight=90.0,  # 0kg load (90kg body weight only)
+            terrain_factor=scenario.terrain_factor,
+            stance=scenario.stance
+        )
+        baseline_distance = baseline_results['total_distance']
+        
+        # 负重影响：距离差异
+        load_distance_impact = (baseline_distance - results['total_distance']) / baseline_distance
+        
+        # ==================== 6. 计算惩罚项 ====================
+        
+        # 1. Exhaustion Penalty: 计算体力低于5%的时间百分比
+        total_time = sum(phase['duration'] for phase in scenario.phases)
+        low_stamina_frames = sum(1 for stamina in results['stamina_history'] if stamina < 0.05)
+        total_frames = len(results['stamina_history'])
+        low_stamina_percent = (low_stamina_frames / total_frames) * 100.0
+        exhaustion_penalty = 500.0 if low_stamina_percent > 10.0 else 0.0
+        
+        # 2. Targeted Load Impact: 使用目标值0.25
+        TARGET_LOAD_IMPACT = 0.25
+        targeted_load_impact_score = abs(load_distance_impact - TARGET_LOAD_IMPACT) * 50.0
+        
+        # 3. Sanity Check for Recovery: 检查恢复量是否在合理范围内
+        recovery_sanity = 0.0
+        if recovery_amount > 0.8:  # 60s内恢复超过80%
+            recovery_sanity = (recovery_amount - 0.8) * 100.0
+        elif recovery_amount < 0.05:  # 60s内恢复低于5%
+            recovery_sanity = (0.05 - recovery_amount) * 100.0
+        
+        # 4. Stamina Reserve Score: 奖励保持体力在20%以上
+        stamina_reserve_score = max(0, 0.2 - results['min_stamina']) * 100  # 奖励保持体力在20%以上
+        
+        # ==================== 7. 计算最终目标函数 ====================
+        
+        # Realism Loss: 拟真度损失（越小越好）
+        # 包含：距离目标差异 + 负载影响分数
+        realism_loss = (
+            abs(phases_1_3_distance - target_distance) * 1.0 +
+            targeted_load_impact_score
+        )
+        
+        # Playability Burden: 可玩性负担（越小越好）
+        # 包含：疲劳惩罚 + 恢复合理性 + 体力储备分数
+        playability_burden = (
+            exhaustion_penalty +
+            recovery_sanity +
+            stamina_reserve_score * 0.5
+        )
+        
+        # ==================== 8. 返回两个目标函数 ====================
+        
+        return realism_loss, playability_burden
     
     def optimize(self, study_name: str = "rss_optimization") -> Dict:
         """
@@ -365,11 +522,12 @@ class RSSOptunaOptimizer:
         print("RSS 多目标优化器 - Optuna 贝叶斯优化")
         print("=" * 80)
         
-        print(f"\n优化配置：")
+        print(f"优化配置：")
         print(f"  采样次数：{self.n_trials}")
         print(f"  测试工况数：{len(self.scenarios)}")
         print(f"  优化变量数：40")
         print(f"  目标函数数：2")
+        print(f"  并行线程数：{self.n_jobs}")
         
         print(f"\n目标函数：")
         print(f"  1. 拟真度损失（Realism Loss）- 越小越好")
@@ -386,11 +544,25 @@ class RSSOptunaOptimizer:
             pruner=optuna.pruners.MedianPruner()
         )
         
+        # 进度日志回调函数（每100次试验打印一次）
+        def progress_callback(study, trial):
+            if trial.number % 100 == 0 and trial.number > 0:
+                best_trials = study.best_trials
+                if len(best_trials) > 0:
+                    realism_values = [t.values[0] for t in best_trials]
+                    playability_values = [t.values[1] for t in best_trials]
+                    print(f"\n进度更新 [试验 {trial.number}/{self.n_trials}]: "
+                          f"帕累托解数量={len(best_trials)}, "
+                          f"拟真度损失=[{min(realism_values):.2f}, {max(realism_values):.2f}], "
+                          f"可玩性负担=[{min(playability_values):.2f}, {max(playability_values):.2f}]")
+        
         # 执行优化
         self.study.optimize(
             self.objective,
             n_trials=self.n_trials,
-            show_progress_bar=True
+            show_progress_bar=True,
+            callbacks=[progress_callback],
+            n_jobs=self.n_jobs
         )
         
         print("-" * 80)
@@ -596,8 +768,12 @@ def main():
     print("基于仿真的多目标优化（Optuna 贝叶斯优化）")
     print("=" * 80)
     
+    # 使用CPU核心数作为默认线程数
+    import multiprocessing
+    n_jobs = multiprocessing.cpu_count()
+    
     # 创建优化器
-    optimizer = RSSOptunaOptimizer(n_trials=200)
+    optimizer = RSSOptunaOptimizer(n_trials=3000, n_jobs=n_jobs)
     
     # 执行优化
     results = optimizer.optimize(study_name="rss_optimization")
