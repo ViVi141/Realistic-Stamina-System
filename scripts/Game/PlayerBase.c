@@ -76,6 +76,8 @@ modded class SCR_CharacterControllerComponent
     protected vector m_vComputedVelocity = vector.Zero; // 上次更新周期计算得到的速度（m/s）
     
     // ==================== 游泳状态缓存（用于调试显示）====================
+    protected CompartmentAccessComponent m_pCompartmentAccess;
+    protected CharacterAnimationComponent m_pAnimComponent;
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -174,6 +176,14 @@ modded class SCR_CharacterControllerComponent
         // 初始化EPOC状态管理
         m_pEpocState = new EpocState();
         
+        // 缓存组件，避免在每0.2s的更新循环中重复查找
+        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            m_pCompartmentAccess = character.GetCompartmentAccessComponent();
+            m_pAnimComponent = character.GetAnimationComponent();
+        }
+        
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
     }
@@ -192,11 +202,10 @@ modded class SCR_CharacterControllerComponent
     // ==================== 游泳状态检测（用于调试显示/分支判断）====================
     protected bool IsSwimmingByCommand()
     {
-        CharacterAnimationComponent animComponent = GetAnimationComponent();
-        if (!animComponent)
+        if (!m_pAnimComponent)
             return false;
         
-        CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
+        CharacterCommandHandlerComponent handler = m_pAnimComponent.GetCommandHandler();
         if (!handler)
             return false;
         
@@ -263,13 +272,8 @@ modded class SCR_CharacterControllerComponent
         
         // 检查是否在载具中（载具中的 "Jump" 是离开载具的动作，不是跳跃）
         bool isInVehicle = false;
-        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
-        if (character)
-        {
-            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
-            if (compAccess && compAccess.GetCompartment())
-                isInVehicle = true;
-        }
+        if (m_pCompartmentAccess && m_pCompartmentAccess.GetCompartment())
+            isInVehicle = true;
         
         // 如果不在载具中，设置跳跃输入标志（使用模块方法）
         if (!isInVehicle && m_pJumpVaultDetector)
@@ -290,13 +294,8 @@ modded class SCR_CharacterControllerComponent
         
         // 检查是否在载具中
         bool isInVehicle = false;
-        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
-        if (character)
-        {
-            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
-            if (compAccess && compAccess.GetCompartment())
-                isInVehicle = true;
-        }
+        if (m_pCompartmentAccess && m_pCompartmentAccess.GetCompartment())
+            isInVehicle = true;
         
         // 备用检测：如果在 OnPrepareControls 中检测到跳跃输入，也设置标志（使用模块方法）
         if (!isInVehicle && am.GetActionTriggered("Jump") && m_pJumpVaultDetector)
@@ -326,13 +325,8 @@ modded class SCR_CharacterControllerComponent
         // ==================== 载具检测：如果在载具中，不消耗体力 ====================
         // 检查是否在载具中（载具中不应该消耗体力）
         bool isInVehicle = false;
-        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
-        if (character)
-        {
-            CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
-            if (compAccess && compAccess.GetCompartment())
-                isInVehicle = true;
-        }
+        if (m_pCompartmentAccess && m_pCompartmentAccess.GetCompartment())
+            isInVehicle = true;
         
         // 如果在载具中，只恢复体力，不消耗体力，也不更新速度
         if (isInVehicle)
@@ -821,7 +815,8 @@ modded class SCR_CharacterControllerComponent
                 encumbranceStaminaDrainMultiplier,
                 m_pFatigueSystem,
                 baseDrainRateByVelocityForModule,
-                m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
+                m_pEnvironmentFactor, // v2.14.0：传递环境因子模块
+                owner); // v2.15.0：传递角色实体，用于手持物品检测
             
             // 应用热应激倍数（影响体力消耗）
             float drainRateBeforeHeat = totalDrainRate;
