@@ -109,9 +109,18 @@ class StaminaUpdateCoordinator
             float deltaLen = deltaPos.Length();
             
             // 防止传送/同步跳变导致天文速度
-            if (deltaLen < 20.0 && dtSeconds > 0.001)
+            // 在0.2s采样周期内，如果位移超过1.6米（对应时速约28.8km/h，超过人体Sprint极限），判定为异常跳变
+            if (deltaLen < 1.6 && dtSeconds > 0.001)
             {
                 velocity = deltaPos / dtSeconds;
+                // 增加物理硬上限保护：强制将velocity模长限制在7.0 m/s以内
+                if (velocity.Length() > 7.0)
+                    velocity = velocity.Normalized() * 7.0;
+            }
+            else
+            {
+                // 异常跳变时，保持上一周期的速度
+                velocity = computedVelocity;
             }
         }
         
@@ -119,6 +128,9 @@ class StaminaUpdateCoordinator
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0; // 忽略垂直速度
         float currentSpeed = horizontalVelocity.Length();
+        
+        // 确保currentSpeed不超过物理上限
+        currentSpeed = Math.Min(currentSpeed, 7.0);
         
         SpeedCalculationResult result = new SpeedCalculationResult();
         result.currentSpeed = currentSpeed;

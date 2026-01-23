@@ -19,6 +19,7 @@ class StaminaConsumptionCalculator
     // @param fatigueSystem 疲劳积累系统模块引用
     // @param out baseDrainRateByVelocity 基础消耗率（输出，用于恢复计算）
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @param owner 角色实体引用（用于手持物品检测，v2.15.0新增）
     // @return 体力消耗率（每0.2秒）
     static float CalculateStaminaConsumption(
         float currentSpeed,
@@ -32,7 +33,8 @@ class StaminaConsumptionCalculator
         float encumbranceStaminaDrainMultiplier,
         FatigueSystem fatigueSystem,
         out float baseDrainRateByVelocity,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        IEntity owner = null)
     {
         // ==================== v2.14.0 环境因子修正 ====================
         
@@ -50,6 +52,40 @@ class StaminaConsumptionCalculator
             mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
             totalWetWeight = environmentFactor.GetTotalWetWeight();
             coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+        }
+        
+        // ==================== 手持重物额外消耗 ====================
+        float itemBonus = 1.0; // 默认无额外消耗
+        
+        if (owner)
+        {
+            // 通过 InventoryStorageManagerComponent 检测玩家右手或双手插槽
+            // TODO: 实现手持物品检测逻辑
+            // 预留：根据物品重量或 Tag 判断的逻辑结构
+            // 示例逻辑：
+            /*
+            InventoryStorageManagerComponent inventoryManager = InventoryStorageManagerComponent.Cast(owner.FindComponent(InventoryStorageManagerComponent));
+            if (inventoryManager)
+            {
+                // 获取右手或双手插槽的物品
+                IEntity rightHandItem = inventoryManager.GetItemInSlot("RightHand");
+                IEntity twoHandedItem = inventoryManager.GetItemInSlot("TwoHanded");
+                
+                if (rightHandItem || twoHandedItem)
+                {
+                    // 检测到手持实体，增加消耗乘数
+                    itemBonus = 1.2; // 暂时固定为1.2倍，后续可根据物品重量或Tag调整
+                    
+                    // TODO: 根据物品重量或Tag调整消耗乘数
+                    // 例如：
+                    // float itemWeight = rightHandItem ? rightHandItem.GetWeight() : (twoHandedItem ? twoHandedItem.GetWeight() : 0.0);
+                    // if (itemWeight > 5.0) // 大于5kg的物品
+                    //     itemBonus = 1.5;
+                    // else if (itemWeight > 2.0) // 大于2kg的物品
+                    //     itemBonus = 1.2;
+                }
+            }
+            */
         }
         
         // 应用泥泞地形系数（修正地形因子）
@@ -152,6 +188,9 @@ class StaminaConsumptionCalculator
         {
             // 消耗时，应用 Sprint 倍数
             totalDrainRate = baseDrainComponents * sprintMultiplier;
+            
+            // 应用手持重物额外消耗
+            totalDrainRate = totalDrainRate * itemBonus;
             
             // 生理上限：防止负重+坡度爆炸
             const float MAX_DRAIN_RATE_PER_TICK = 0.02; // 每0.2秒最大消耗

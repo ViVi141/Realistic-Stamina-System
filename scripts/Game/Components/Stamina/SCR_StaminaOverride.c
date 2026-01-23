@@ -108,10 +108,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         m_bIsMonitoring = true;
         
         // 启动监控循环（高频检查，确保完全覆盖原生系统）
-        // 使用合理的间隔（50ms = 每秒检查20次）
+        // 使用16ms间隔，匹配60Hz服务器的仿真周期
         // 这个频率既能及时拦截原生系统，又不会造成性能负担
-        // 考虑到我们的主要更新频率是200ms，50ms的监测频率已经足够
-        GetGame().GetCallqueue().CallLater(MonitorStamina, 50, false);
+        GetGame().GetCallqueue().CallLater(MonitorStamina, 16, false);
     }
     
     // 停止主动监控
@@ -133,8 +132,8 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         float currentStamina = GetStamina();
         
         // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
-        // 降低阈值到0.0005（0.05%），更敏感地检测原生系统干扰
-        if (currentStamina >= 0.0 && Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.0005)
+        // 提高精度到0.0001，确保与60Hz服务器同步
+        if (currentStamina >= 0.0 && Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.0001)
         {
             // 检测到原生系统干扰，记录调试信息
             float deviation = currentStamina - m_fTargetStamina;
@@ -162,9 +161,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             CorrectStaminaToTarget();
         }
         
-        // 继续下一次监控（每50ms，每秒检查20次）
+        // 继续下一次监控（每16ms，60Hz频率）
         // 这个频率既能及时拦截原生系统，又不会造成性能负担
-        GetGame().GetCallqueue().CallLater(MonitorStamina, 50, false);
+        GetGame().GetCallqueue().CallLater(MonitorStamina, 16, false);
     }
     
     // 设置目标体力值（由我们的自定义系统调用）
