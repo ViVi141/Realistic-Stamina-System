@@ -1,0 +1,171 @@
+// 速度计算模块
+// 负责计算基础速度倍数、移动类型处理、Sprint速度计算等
+// 模块化拆分：从 PlayerBase.c 提取的速度计算逻辑
+
+// 坡度计算结果结构体
+class GradeCalculationResult
+{
+    float gradePercent;
+    float slopeAngleDegrees;
+}
+
+class SpeedCalculator
+{
+    // ==================== 公共方法 ====================
+    
+    // 计算基础速度倍数（根据体力百分比）
+    // @param staminaPercent 当前体力百分比 (0.0-1.0)
+    // @param collapseTransition "撞墙"阻尼过渡模块引用
+    // @param currentWorldTime 当前世界时间
+    // @return 基础速度倍数
+    static float CalculateBaseSpeedMultiplier(float staminaPercent, CollapseTransition collapseTransition, float currentWorldTime)
+    {
+        // 更新"撞墙"阻尼过渡模块状态
+        if (collapseTransition)
+            collapseTransition.Update(currentWorldTime, staminaPercent);
+        
+        // 先计算正常情况下的基础速度倍数
+        float normalBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
+        
+        // 如果处于5秒阻尼过渡期间，使用模块计算过渡速度
+        if (collapseTransition && collapseTransition.IsInTransition())
+        {
+            return collapseTransition.CalculateTransitionSpeedMultiplier(currentWorldTime, normalBaseSpeedMultiplier);
+        }
+        
+        return normalBaseSpeedMultiplier;
+    }
+    
+    // 计算坡度自适应目标速度
+    // @param baseTargetSpeed 基础目标速度 (m/s)
+    // @param slopeAngleDegrees 坡度角度（度）
+    // @return 坡度自适应后的目标速度 (m/s)
+    static float CalculateSlopeAdjustedTargetSpeed(float baseTargetSpeed, float slopeAngleDegrees)
+    {
+        return RealisticStaminaSpeedSystem.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
+    }
+    
+    // 计算最终速度倍数（根据移动类型）
+    // @param runBaseSpeedMultiplier Run的基础速度倍数
+    // @param encumbranceSpeedPenalty 负重速度惩罚
+    // @param isSprinting 是否正在Sprint
+    // @param currentMovementPhase 当前移动阶段 (0=idle, 1=walk, 2=run, 3=sprint)
+    // @param isExhausted 是否精疲力尽
+    // @param canSprint 是否可以Sprint
+    // @return 最终速度倍数
+    static float CalculateFinalSpeedMultiplier(
+        float runBaseSpeedMultiplier,
+        float encumbranceSpeedPenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        bool isExhausted,
+        bool canSprint,
+        float staminaPercent)
+    {
+        // 如果精疲力尽，禁用Sprint
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                currentMovementPhase = 2; // 强制切换到Run
+                isSprinting = false;
+            }
+        }
+        
+        // 计算坡度自适应目标速度倍数
+        float slopeAdjustedTargetSpeed = CalculateSlopeAdjustedTargetSpeed(
+            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED,
+            0.0 // 坡度角度在调用处获取
+        );
+        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+        
+        // 将速度从基础目标速度（3.7 m/s）缩放到坡度自适应速度
+        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        float scaledRunSpeed = runBaseSpeedMultiplier * speedScaleFactor;
+        
+        float finalSpeedMultiplier = 0.0;
+        
+        if (isSprinting || currentMovementPhase == 3) // Sprint
+        {
+            // Sprint速度 = Run基础倍率 × (1 + 30%)
+            float sprintMultiplier = 1.0 + RealisticStaminaSpeedSystem.SPRINT_SPEED_BOOST; // 1.30
+            finalSpeedMultiplier = (scaledRunSpeed * sprintMultiplier) - (encumbranceSpeedPenalty * 0.15);
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
+        }
+        else if (currentMovementPhase == 2) // Run
+        {
+            finalSpeedMultiplier = scaledRunSpeed - (encumbranceSpeedPenalty * 0.2);
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
+        }
+        else if (currentMovementPhase == 1) // Walk
+        {
+            float walkBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
+            finalSpeedMultiplier = walkBaseSpeedMultiplier * 0.7;
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.8);
+        }
+        else // Idle
+        {
+            finalSpeedMultiplier = 0.0;
+        }
+        
+        return finalSpeedMultiplier;
+    }
+    
+    // 获取坡度角度
+    // @param controller 角色控制器组件
+    // @return 坡度角度（度）
+    static float GetSlopeAngle(SCR_CharacterControllerComponent controller)
+    {
+        float slopeAngleDegrees = 0.0;
+        CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
+        if (animComponent)
+        {
+            CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
+            if (handler)
+            {
+                CharacterCommandMove moveCmd = handler.GetCommandMove();
+                if (moveCmd)
+                {
+                    slopeAngleDegrees = moveCmd.GetMovementSlopeAngle();
+                }
+            }
+        }
+        return slopeAngleDegrees;
+    }
+    
+    // 计算坡度百分比（考虑攀爬和跳跃状态）
+    // @param controller 角色控制器组件
+    // @param currentSpeed 当前速度（m/s）
+    // @param jumpVaultDetector 跳跃检测器（可选）
+    // @param slopeAngleDegrees 坡度角度（输入，通常为0.0）
+    // @return 坡度计算结果（包含坡度百分比和角度）
+    static GradeCalculationResult CalculateGradePercent(
+        SCR_CharacterControllerComponent controller,
+        float currentSpeed,
+        JumpVaultDetector jumpVaultDetector,
+        float slopeAngleDegrees)
+    {
+        GradeCalculationResult result = new GradeCalculationResult();
+        result.gradePercent = 0.0;
+        result.slopeAngleDegrees = slopeAngleDegrees;
+        
+        // 检查是否在攀爬或跳跃状态
+        bool isClimbingForSlope = controller.IsClimbing();
+        bool isJumpingForSlope = false;
+        if (jumpVaultDetector)
+            isJumpingForSlope = jumpVaultDetector.GetJumpInputTriggered();
+        
+        // 只在非攀爬、非跳跃状态下获取坡度
+        if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
+        {
+            // 获取坡度角度
+            result.slopeAngleDegrees = GetSlopeAngle(controller);
+            
+            // 将坡度角度（度）转换为坡度百分比
+            // 坡度百分比 = tan(坡度角度) × 100
+            result.gradePercent = Math.Tan(result.slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
+        }
+        
+        return result;
+    }
+}

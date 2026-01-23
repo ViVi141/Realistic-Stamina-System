@@ -1,0 +1,322 @@
+FrameWidgetClass {
+ Name "rootFrame"
+ Slot FrameWidgetSlot "{5D9940FCD3D2AE99}" {
+  OffsetLeft 0
+  OffsetTop 0
+  SizeX 1920
+  OffsetRight -1920
+  SizeY 1080
+  OffsetBottom -1080
+ }
+ {
+  HorizontalLayoutWidgetClass "{6869608AB4C8F6CE}" {
+   Name "Grid"
+   Slot FrameWidgetSlot "{5EF7041BF743E293}" {
+    Anchor 1 0 1 0
+    PositionX -1.238
+    OffsetLeft -1.238
+    PositionY 35.9
+    OffsetTop 35.9
+    SizeX 100
+    OffsetRight -98.762
+    SizeY 30
+    OffsetBottom -65.9
+    Alignment 1 0
+    SizeToContent 1
+   }
+   components {
+    SCR_SlotLabelsComponent "{5D9940F802C3032D}" {
+    }
+   }
+   {
+    OverlayWidgetClass "{6869608AB4C8F6D3}" {
+     Name "Slot-ServerFPS"
+     Slot LayoutSlot "{5D9940F879932E9F}" {
+      Padding 4 0 4 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C8F6D2}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF6B4A90BE80D0A}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{6869608AB4C8E18E}" {
+     Name "Slot-PacketLoss"
+     Slot LayoutSlot "{5D9940F879932E9F}" {
+      Padding 4 0 4 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C8E188}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF6B4A90A5FBEB5}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{6869608AB4C87B79}" {
+     Name "Slot-Latency"
+     Slot LayoutSlot "{5D9940F879932E9F}" {
+      Padding 4 0 4 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C87B7A}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF6B4A90A823DF4}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{6869608AB4C9FCBD}" {
+     Name "Slot-LocalFPS"
+     Slot LayoutSlot "{5D9940F879932E9F}" {
+      Padding 4 0 4 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C9B864}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF6B4A90C761351}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{6869608AB4C9B865}" {
+     Name "Slot-ServerName"
+     Slot LayoutSlot "{625ABC75F52382DA}" {
+      Padding 16 0 0 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C956DA}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF6B4A90BE80D0A}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{6869608AB4C956D5}" {
+     Name "Slot-Watermark"
+     Slot LayoutSlot "{5D9940F879932E9F}" {
+      Padding 16 0 0 0
+     }
+     {
+      ImageWidgetClass "{6869608AB4C9380F}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{5EF7041BEB945501}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.1
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+     }
+    }
+    OverlayWidgetClass "{A1B2C3D4E5F60001}" {
+     Name "Slot-RSS"
+     Slot LayoutSlot "{A1B2C3D4E5F60002}" {
+      Padding 4 0 4 0
+     }
+     {
+      ImageWidgetClass "{A1B2C3D4E5F60003}" {
+       Name "Background"
+       Slot OverlayWidgetSlot "{A1B2C3D4E5F60004}" {
+        HorizontalAlign 3
+        VerticalAlign 3
+       }
+       Opacity 0.15
+       Color 0 0 0 1
+       Texture "{6B1061B6BBB6F27C}UI/Textures/Common/GradientShadow-Diamond_UI.edds"
+       Size 0 0
+       "Transition width" 0.5
+       Progress 0
+      }
+      HorizontalLayoutWidgetClass "{A1B2C3D4E5F60010}" {
+       Name "RSS-Container"
+       Slot OverlayWidgetSlot "{A1B2C3D4E5F60011}" {
+        HorizontalAlign 1
+        VerticalAlign 1
+        Padding 2 2 2 2
+       }
+       {
+        TextWidgetClass "{A1B2C3D4E5F60005}" {
+         Name "Text-Stamina"
+         Slot LayoutSlot "{A1B2C3D4E5F60006}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "STA 100%"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60007}" {
+         Name "Text-Speed"
+         Slot LayoutSlot "{A1B2C3D4E5F60008}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "SPD 100%"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60009}" {
+         Name "Text-Weight"
+         Slot LayoutSlot "{A1B2C3D4E5F6000A}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "WT 0kg"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F6000B}" {
+         Name "Text-Move"
+         Slot LayoutSlot "{A1B2C3D4E5F6000C}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "Idle"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F6000D}" {
+         Name "Text-Slope"
+         Slot LayoutSlot "{A1B2C3D4E5F6000E}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "SLOPE 0deg"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F6000F}" {
+         Name "Text-Heat"
+         Slot LayoutSlot "{A1B2C3D4E5F60012}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "TEMP 20C"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60015}" {
+         Name "Text-Wind"
+         Slot LayoutSlot "{A1B2C3D4E5F60016}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "WIND Calm"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60017}" {
+         Name "Text-Location"
+         Slot LayoutSlot "{A1B2C3D4E5F60018}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "Outdoor"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60019}" {
+         Name "Text-Ground"
+         Slot LayoutSlot "{A1B2C3D4E5F6001A}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "Normal"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+        TextWidgetClass "{A1B2C3D4E5F60013}" {
+         Name "Text-Wet"
+         Slot LayoutSlot "{A1B2C3D4E5F60014}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "WET 0kg"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSS Multi-Objective Optimization Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            color: white;
+        }
+        .section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .section h2 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .metric-label {
+            color: #666;
+            font-size: 14px;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            margin-top: 50px;
+            font-size: 12px;
+        }
+        .highlight {
+            color: #667eea;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 RSS Multi-Objective Optimization Report</h1>
+        <p style="color: rgba(255,255,255,0.8);">Parameter optimization results based on Optuna Bayesian optimization</p>
+    </div>
+<div class="section">
+    <h2>📊 Optimization Configuration Summary</h2>
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Optimization Method</td>
+            <td class="highlight">Optuna (TPE)</td>
+        </tr>
+        <tr>
+            <td>Number of Trials</td>
+            <td>200</td>
+        </tr>
+        <tr>
+            <td>Number of Scenarios</td>
+            <td>13</td>
+        </tr>
+        <tr>
+            <td>Number of Pareto Solutions</td>
+            <td>36</td>
+        </tr>
+        <tr>
+            <td>Optimization Time</td>
+            <td>~47 seconds</td>
+        </tr>
+    </table>
+</div><div class="section">
+    <h2>📈 Pareto Front Results</h2>
+    <div class="metric-card">
+        <div class="metric-label">Realism Loss Range</div>
+        <div class="metric-value">[61.21, 90.21]</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Playability Burden Range</div>
+        <div class="metric-value">[24.35, 147.10]</div>
+    </div>
+</div><div class="section">
+    <h2>🔍 Parameter Sensitivity Analysis</h2>
+    <table>
+        <tr>
+            <th>Parameter Name</th>
+            <th>Coefficient of Variation</th>
+            <th>Sensitivity</th>
+        </tr>
+        <tr>
+            <td>base_recovery_rate</td>
+            <td>0.5876</td>
+            <td class="highlight">High</td>
+        </tr>
+        <tr>
+            <td>fatigue_accumulation_coeff</td>
+            <td>0.3480</td>
+            <td class="highlight">High</td>
+        </tr>
+        <tr>
+            <td>energy_to_stamina_coeff</td>
+            <td>0.3203</td>
+            <td class="highlight">High</td>
+        </tr>
+        <tr>
+            <td>min_recovery_rest_time_seconds</td>
+            <td>0.2556</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>load_recovery_penalty_exponent</td>
+            <td>0.2552</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>standing_recovery_multiplier</td>
+            <td>0.2512</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>encumbrance_stamina_drain_coeff</td>
+            <td>0.2461</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>jump_stamina_base_cost</td>
+            <td>0.1850</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>slope_downhill_coeff</td>
+            <td>0.1677</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>recovery_nonlinear_coeff</td>
+            <td>0.1615</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>encumbrance_speed_penalty_coeff</td>
+            <td>0.1595</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>env_temperature_heat_penalty_coeff</td>
+            <td>0.1506</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>fatigue_max_factor</td>
+            <td>0.1498</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>env_wind_resistance_coeff</td>
+            <td>0.1483</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>slow_recovery_multiplier</td>
+            <td>0.1471</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>slope_uphill_coeff</td>
+            <td>0.1373</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>env_rain_weight_max</td>
+            <td>0.1317</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>fast_recovery_multiplier</td>
+            <td>0.1300</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>sprint_stamina_drain_multiplier</td>
+            <td>0.1282</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>load_recovery_penalty_coeff</td>
+            <td>0.1272</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>swimming_base_power</td>
+            <td>0.1134</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>swimming_encumbrance_threshold</td>
+            <td>0.1122</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>min_recovery_stamina_threshold</td>
+            <td>0.1092</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>env_temperature_cold_recovery_penalty_coeff</td>
+            <td>0.1055</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>prone_recovery_multiplier</td>
+            <td>0.1032</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>swimming_energy_to_stamina_coeff</td>
+            <td>0.1005</td>
+            <td class="highlight">Medium</td>
+        </tr>
+        <tr>
+            <td>vault_stamina_start_cost</td>
+            <td>0.0980</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>medium_recovery_multiplier</td>
+            <td>0.0927</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>swimming_dynamic_power_efficiency</td>
+            <td>0.0918</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>sprint_speed_boost</td>
+            <td>0.0859</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>swimming_static_drain_multiplier</td>
+            <td>0.0833</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>jump_consecutive_penalty</td>
+            <td>0.0758</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>env_mud_penalty_max</td>
+            <td>0.0722</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>posture_prone_multiplier</td>
+            <td>0.0697</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>marginal_decay_threshold</td>
+            <td>0.0625</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>posture_crouch_multiplier</td>
+            <td>0.0588</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>climb_stamina_tick_cost</td>
+            <td>0.0506</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>aerobic_efficiency_factor</td>
+            <td>0.0491</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>env_heat_stress_max_multiplier</td>
+            <td>0.0402</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>anaerobic_efficiency_factor</td>
+            <td>0.0369</td>
+            <td class="highlight">Low</td>
+        </tr>
+        <tr>
+            <td>marginal_decay_coeff</td>
+            <td>0.0174</td>
+            <td class="highlight">Low</td>
+        </tr>
+    </table>
+</div><div class="section">
+    <h2>⚖️ Configuration Comparison</h2>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>平衡型配置（50% 拟真 + 50% 可玩性）</th>            <th>拟真优先配置（70% 拟真 + 30% 可玩性）</th>            <th>可玩性优先配置（30% 拟真 + 70% 可玩性）</th>        </tr>
+        <tr>
+            <td class="highlight">energy_to_stamina_coeff</td>
+            <td>0.000029</td>            <td>0.000029</td>            <td>0.000021</td>        </tr>
+        <tr>
+            <td class="highlight">base_recovery_rate</td>
+            <td>0.000435</td>            <td>0.000435</td>            <td>0.000156</td>        </tr>
+        <tr>
+            <td class="highlight">standing_recovery_multiplier</td>
+            <td>1.627813</td>            <td>1.627813</td>            <td>1.383328</td>        </tr>
+        <tr>
+            <td class="highlight">prone_recovery_multiplier</td>
+            <td>2.996284</td>            <td>2.996284</td>            <td>2.122086</td>        </tr>
+        <tr>
+            <td class="highlight">load_recovery_penalty_coeff</td>
+            <td>0.000276</td>            <td>0.000276</td>            <td>0.000291</td>        </tr>
+        <tr>
+            <td class="highlight">load_recovery_penalty_exponent</td>
+            <td>2.215715</td>            <td>2.215715</td>            <td>1.171550</td>        </tr>
+        <tr>
+            <td class="highlight">encumbrance_speed_penalty_coeff</td>
+            <td>0.247094</td>            <td>0.247094</td>            <td>0.269459</td>        </tr>
+        <tr>
+            <td class="highlight">encumbrance_stamina_drain_coeff</td>
+            <td>1.885040</td>            <td>1.885040</td>            <td>1.106133</td>        </tr>
+        <tr>
+            <td class="highlight">sprint_stamina_drain_multiplier</td>
+            <td>2.864645</td>            <td>2.864645</td>            <td>3.950201</td>        </tr>
+        <tr>
+            <td class="highlight">fatigue_accumulation_coeff</td>
+            <td>0.016410</td>            <td>0.016410</td>            <td>0.011541</td>        </tr>
+        <tr>
+            <td class="highlight">fatigue_max_factor</td>
+            <td>2.161953</td>            <td>2.161953</td>            <td>1.696312</td>        </tr>
+        <tr>
+            <td class="highlight">aerobic_efficiency_factor</td>
+            <td>0.957964</td>            <td>0.957964</td>            <td>0.945722</td>        </tr>
+        <tr>
+            <td class="highlight">anaerobic_efficiency_factor</td>
+            <td>1.389996</td>            <td>1.389996</td>            <td>1.437468</td>        </tr>
+        <tr>
+            <td class="highlight">recovery_nonlinear_coeff</td>
+            <td>0.571668</td>            <td>0.571668</td>            <td>0.576102</td>        </tr>
+        <tr>
+            <td class="highlight">fast_recovery_multiplier</td>
+            <td>3.650166</td>            <td>3.650166</td>            <td>3.762541</td>        </tr>
+        <tr>
+            <td class="highlight">medium_recovery_multiplier</td>
+            <td>1.843309</td>            <td>1.843309</td>            <td>1.591475</td>        </tr>
+        <tr>
+            <td class="highlight">slow_recovery_multiplier</td>
+            <td>0.638701</td>            <td>0.638701</td>            <td>0.727726</td>        </tr>
+        <tr>
+            <td class="highlight">marginal_decay_threshold</td>
+            <td>0.868022</td>            <td>0.868022</td>            <td>0.893842</td>        </tr>
+        <tr>
+            <td class="highlight">marginal_decay_coeff</td>
+            <td>1.096043</td>            <td>1.096043</td>            <td>1.120426</td>        </tr>
+        <tr>
+            <td class="highlight">min_recovery_stamina_threshold</td>
+            <td>0.170367</td>            <td>0.170367</td>            <td>0.176328</td>        </tr>
+        <tr>
+            <td class="highlight">min_recovery_rest_time_seconds</td>
+            <td>13.670584</td>            <td>13.670584</td>            <td>14.974878</td>        </tr>
+        <tr>
+            <td class="highlight">sprint_speed_boost</td>
+            <td>0.287941</td>            <td>0.287941</td>            <td>0.294876</td>        </tr>
+        <tr>
+            <td class="highlight">posture_crouch_multiplier</td>
+            <td>2.030973</td>            <td>2.030973</td>            <td>1.927608</td>        </tr>
+        <tr>
+            <td class="highlight">posture_prone_multiplier</td>
+            <td>2.500270</td>            <td>2.500270</td>            <td>2.632080</td>        </tr>
+        <tr>
+            <td class="highlight">jump_stamina_base_cost</td>
+            <td>0.041871</td>            <td>0.041871</td>            <td>0.026853</td>        </tr>
+        <tr>
+            <td class="highlight">vault_stamina_start_cost</td>
+            <td>0.016469</td>            <td>0.016469</td>            <td>0.019709</td>        </tr>
+        <tr>
+            <td class="highlight">climb_stamina_tick_cost</td>
+            <td>0.011587</td>            <td>0.011587</td>            <td>0.011182</td>        </tr>
+        <tr>
+            <td class="highlight">jump_consecutive_penalty</td>
+            <td>0.549338</td>            <td>0.549338</td>            <td>0.557846</td>        </tr>
+        <tr>
+            <td class="highlight">slope_uphill_coeff</td>
+            <td>0.073105</td>            <td>0.073105</td>            <td>0.070983</td>        </tr>
+        <tr>
+            <td class="highlight">slope_downhill_coeff</td>
+            <td>0.038085</td>            <td>0.038085</td>            <td>0.035410</td>        </tr>
+        <tr>
+            <td class="highlight">swimming_base_power</td>
+            <td>22.162963</td>            <td>22.162963</td>            <td>20.570954</td>        </tr>
+        <tr>
+            <td class="highlight">swimming_encumbrance_threshold</td>
+            <td>23.974364</td>            <td>23.974364</td>            <td>23.001678</td>        </tr>
+        <tr>
+            <td class="highlight">swimming_static_drain_multiplier</td>
+            <td>3.486432</td>            <td>3.486432</td>            <td>3.450024</td>        </tr>
+        <tr>
+            <td class="highlight">swimming_dynamic_power_efficiency</td>
+            <td>2.209226</td>            <td>2.209226</td>            <td>2.170739</td>        </tr>
+        <tr>
+            <td class="highlight">swimming_energy_to_stamina_coeff</td>
+            <td>0.000055</td>            <td>0.000055</td>            <td>0.000056</td>        </tr>
+        <tr>
+            <td class="highlight">env_heat_stress_max_multiplier</td>
+            <td>1.263299</td>            <td>1.263299</td>            <td>1.213359</td>        </tr>
+        <tr>
+            <td class="highlight">env_rain_weight_max</td>
+            <td>7.058414</td>            <td>7.058414</td>            <td>7.703978</td>        </tr>
+        <tr>
+            <td class="highlight">env_wind_resistance_coeff</td>
+            <td>0.052385</td>            <td>0.052385</td>            <td>0.061370</td>        </tr>
+        <tr>
+            <td class="highlight">env_mud_penalty_max</td>
+            <td>0.462532</td>            <td>0.462532</td>            <td>0.464245</td>        </tr>
+        <tr>
+            <td class="highlight">env_temperature_heat_penalty_coeff</td>
+            <td>0.020949</td>            <td>0.020949</td>            <td>0.015319</td>        </tr>
+        <tr>
+            <td class="highlight">env_temperature_cold_recovery_penalty_coeff</td>
+            <td>0.050549</td>            <td>0.050549</td>            <td>0.042980</td>        </tr>
+    </table>
+</div>    <div class="footer">
+        <p>Generated at: 2026-01-21 01:55:33</p>
+        <p>Version: RSS v3.2.0</p>
+        <p>Author: ViVi141 (747384120@qq.com)</p>
+    </div>
+</body>
+</html>

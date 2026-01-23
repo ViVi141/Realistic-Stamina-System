@@ -1,0 +1,40 @@
+# Arma Reforger Workbench files
+*.rdb
+*.rdb.meta
+*.gproj.meta
+UserMaps.desc.meta
+*.et.meta
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated images (optional - uncomment if you don't want to track generated images)
+# *.png
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp

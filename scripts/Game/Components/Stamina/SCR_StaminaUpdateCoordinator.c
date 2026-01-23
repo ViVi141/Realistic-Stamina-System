@@ -1,0 +1,393 @@
+// 体力更新协调器模块
+// 负责协调体力消耗和恢复的计算流程
+// 模块化拆分：从 PlayerBase.c 提取的体力更新协调逻辑
+
+// 速度计算结果结构体
+class SpeedCalculationResult
+{
+    float currentSpeed;
+    vector lastPositionSample;
+    bool hasLastPositionSample;
+    vector computedVelocity;
+}
+
+// 基础消耗率计算结果结构体
+class BaseDrainRateResult
+{
+    float baseDrainRate;
+    bool swimmingVelocityDebugPrinted;
+}
+
+class StaminaUpdateCoordinator
+{
+    // ==================== 速度计算和更新 ====================
+    
+    // 更新速度（基于体力和负重）
+    // @param controller 角色控制器组件
+    // @param staminaPercent 当前体力百分比
+    // @param encumbranceSpeedPenalty 负重速度惩罚
+    // @param collapseTransition "撞墙"阻尼过渡模块
+    // @return 最终速度倍数
+    static float UpdateSpeed(
+        SCR_CharacterControllerComponent controller,
+        float staminaPercent,
+        float encumbranceSpeedPenalty,
+        CollapseTransition collapseTransition)
+    {
+        if (!controller)
+            return 1.0;
+        
+        // 检查是否可以Sprint
+        bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
+        bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
+
+        // 检测移动类型
+        bool isSprinting = controller.IsSprinting();
+        int currentMovementPhase = controller.GetCurrentMovementPhase();
+        
+        // 如果精疲力尽，禁用Sprint
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                currentMovementPhase = 2;
+                isSprinting = false;
+            }
+        }
+        
+        // 计算速度倍数
+        float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller);
+        float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
+            staminaPercent, collapseTransition, currentWorldTime);
+        
+        // 计算坡度自适应目标速度倍数
+        float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
+        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
+        
+        // 计算最终速度倍数
+        float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+            runBaseSpeedMultiplier,
+            encumbranceSpeedPenalty,
+            isSprinting,
+            currentMovementPhase,
+            isExhausted,
+            canSprint,
+            staminaPercent);
+        
+        // 应用速度倍数
+        controller.OverrideMaxSpeed(finalSpeedMultiplier);
+        
+        return finalSpeedMultiplier;
+    }
+    
+    // ==================== 速度计算（位置差分测速）====================
+    
+    // 计算当前速度（使用位置差分测速，适用于游泳）
+    // @param owner 角色实体
+    // @param lastPositionSample 上一帧位置（输入）
+    // @param hasLastPositionSample 是否有上一帧位置（输入）
+    // @param computedVelocity 计算得到的速度（输入，通常为vector.Zero）
+    // @param dtSeconds 时间步长（秒）
+    // @return 速度计算结果（包含速度、位置、标志和速度向量）
+    static SpeedCalculationResult CalculateCurrentSpeed(
+        IEntity owner,
+        vector lastPositionSample,
+        bool hasLastPositionSample,
+        vector computedVelocity,
+        float dtSeconds)
+    {
+        vector currentPos = owner.GetOrigin();
+        vector velocity = vector.Zero;
+        
+        if (hasLastPositionSample)
+        {
+            vector deltaPos = currentPos - lastPositionSample;
+            float deltaLen = deltaPos.Length();
+            
+            // 防止传送/同步跳变导致天文速度
+            if (deltaLen < 20.0 && dtSeconds > 0.001)
+            {
+                velocity = deltaPos / dtSeconds;
+            }
+        }
+        
+        // 计算水平速度
+        vector horizontalVelocity = velocity;
+        horizontalVelocity[1] = 0.0; // 忽略垂直速度
+        float currentSpeed = horizontalVelocity.Length();
+        
+        SpeedCalculationResult result = new SpeedCalculationResult();
+        result.currentSpeed = currentSpeed;
+        result.lastPositionSample = currentPos;
+        result.hasLastPositionSample = true;
+        result.computedVelocity = velocity;
+        
+        return result;
+    }
+    
+    // ==================== 基础消耗率计算 ====================
+    
+    // 计算基础消耗率（游泳或陆地）
+    // @param isSwimming 是否在游泳
+    // @param currentSpeed 当前速度（m/s）
+    // @param currentWeight 当前重量（kg）
+    // @param currentWeightWithWet 包含湿重的总重量（kg）
+    // @param gradePercent 坡度百分比
+    // @param terrainFactor 地形系数
+    // @param computedVelocity 计算得到的速度向量（用于游泳）
+    // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（输入）
+    // @param owner 角色实体（用于调试）
+    // @return 基础消耗率结果（包含消耗率和调试标志）
+    static BaseDrainRateResult CalculateBaseDrainRate(
+        bool isSwimming,
+        float currentSpeed,
+        float currentWeight,
+        float currentWeightWithWet,
+        float gradePercent,
+        float terrainFactor,
+        vector computedVelocity,
+        bool swimmingVelocityDebugPrinted,
+        IEntity owner)
+    {
+        float baseDrainRate = 0.0;
+        
+        if (isSwimming)
+        {
+            // ==================== 游泳体力消耗模型（物理阻力模型）====================
+            // 调试信息：只在第一次检测到游泳速度仍为 0 时输出（避免刷屏）
+            if (owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
+            {
+                float swimVelLen = computedVelocity.Length();
+                if (swimVelLen < 0.01)
+                {
+                    Print("[游泳速度] 位置差分测速仍为0：可能未发生位移（静止/卡住/命令未推动位置）");
+                    swimmingVelocityDebugPrinted = true;
+                }
+            }
+            
+            float swimmingDrainRate = RealisticStaminaSpeedSystem.CalculateSwimmingStaminaDrain3D(computedVelocity, currentWeightWithWet);
+            baseDrainRate = swimmingDrainRate * 0.2; // 转换为每0.2秒的消耗率
+        }
+        else
+        {
+            // ==================== 陆地移动模式判断（Givoni-Goldman / Pandolf）====================
+            // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
+            // 否则使用标准 Pandolf 步行模型
+            bool isRunning = (currentSpeed > 2.2);
+            
+            if (currentSpeed < 0.1)
+            {
+                // ==================== 静态负重站立消耗（Pandolf 静态项）====================
+                float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
+                float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0); // 负重（去除身体重量）
+                
+                float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
+                baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
+            }
+            else if (isRunning)
+            {
+                // ==================== Givoni-Goldman 跑步模型 ====================
+                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+                
+                // 应用地形系数（跑步时同样受地形影响）
+                runningDrainRate = runningDrainRate * terrainFactor;
+                
+                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+            }
+            else
+            {
+                // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
+                baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    currentSpeed, 
+                    currentWeightWithWet, 
+                    gradePercent,
+                    terrainFactor,  // 地形系数
+                    true            // 使用 Santee 下坡修正
+                );
+                
+                // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
+                baseDrainRate = baseDrainRate * 0.2;
+            }
+        }
+        
+        BaseDrainRateResult result = new BaseDrainRateResult();
+        result.baseDrainRate = baseDrainRate;
+        result.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
+        return result;
+    }
+    
+    // ==================== 体力更新协调 ====================
+    
+    // 协调体力消耗和恢复计算，更新目标体力值
+    // @param staminaComponent 体力组件
+    // @param staminaPercent 当前体力百分比
+    // @param useSwimmingModel 是否使用游泳模型
+    // @param currentSpeed 当前速度（m/s）
+    // @param totalDrainRate 总消耗率（每0.2秒）
+    // @param baseDrainRateByVelocity 基础消耗率（每0.2秒）
+    // @param baseDrainRateByVelocityForModule 模块计算的基础消耗率（每0.2秒）
+    // @param heatStressMultiplier 热应激倍数
+    // @param epocState EPOC状态管理
+    // @param encumbranceCache 负重缓存
+    // @param exerciseTracker 运动跟踪器
+    // @param fatigueSystem 疲劳系统
+    // @param controller 角色控制器组件
+    // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @return 新的目标体力值
+    static float UpdateStaminaValue(
+        SCR_CharacterStaminaComponent staminaComponent,
+        float staminaPercent,
+        bool useSwimmingModel,
+        float currentSpeed,
+        float totalDrainRate,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        EpocState epocState,
+        EncumbranceCache encumbranceCache,
+        ExerciseTracker exerciseTracker,
+        FatigueSystem fatigueSystem,
+        SCR_CharacterControllerComponent controller,
+        EnvironmentFactor environmentFactor = null)
+    {
+        if (!staminaComponent)
+            return staminaPercent;
+        
+        float newTargetStamina = staminaPercent;
+        
+        // 关键修复：只要在游泳状态（包括静止踩水），就必须走"消耗分支"
+        // 仅在非游泳且静止时，才进入恢复分支
+        if (useSwimmingModel || currentSpeed > 0.05)
+        {
+            // 计算新的目标体力值（扣除消耗）
+            newTargetStamina = staminaPercent - totalDrainRate;
+            
+            // 调试信息：体力消耗（每5秒输出一次）
+            static int staminaUpdateDebugCounter = 0;
+            staminaUpdateDebugCounter++;
+            if (staminaUpdateDebugCounter >= 25)
+            {
+                staminaUpdateDebugCounter = 0;
+                PrintFormat("[RealisticSystem] 体力消耗 / Stamina Consumption: %1%% → %2%% (消耗: %3/0.2s) | %1%% → %2%% (Drain: %3/0.2s)",
+                    Math.Round(staminaPercent * 100.0).ToString(),
+                    Math.Round(newTargetStamina * 100.0).ToString(),
+                    Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
+            }
+        }
+        // 如果角色完全静止（速度 <= 0.05 m/s），根据EPOC延迟决定是消耗还是恢复
+        else
+        {
+            // ==================== EPOC延迟期间：继续应用消耗（模块化）====================
+            bool isInEpocDelay = false;
+            float speedBeforeStop = 0.0;
+            if (epocState)
+            {
+                isInEpocDelay = epocState.IsInEpocDelay();
+                speedBeforeStop = epocState.GetSpeedBeforeStop();
+            }
+            
+            if (isInEpocDelay)
+            {
+                float epocDrainRate = StaminaRecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+                newTargetStamina = staminaPercent - epocDrainRate;
+            }
+            // ==================== EPOC延迟结束后：正常恢复（模块化）====================
+            else
+            {
+                float currentWeightForRecovery = 0.0;
+                if (encumbranceCache && encumbranceCache.IsCacheValid())
+                    currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
+                
+                currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
+                
+                float restDurationMinutes = 0.0;
+                float exerciseDurationMinutes = 0.0;
+                if (exerciseTracker)
+                {
+                    restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
+                    exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
+                }
+                
+                float staticDrainForRecovery = baseDrainRateByVelocity;
+                if (baseDrainRateByVelocityForModule > 0.0)
+                    staticDrainForRecovery = baseDrainRateByVelocityForModule;
+                
+                // 趴下休息：不应沿用"静态站立消耗"，否则会把恢复压成持续损耗
+                ECharacterStance stanceForRecovery = controller.GetStance();
+                if (stanceForRecovery == ECharacterStance.PRONE)
+                    staticDrainForRecovery = 0.0;
+                
+                // 将姿态转换为整数（0=站立，1=蹲姿，2=趴姿）
+                int stanceInt = 0;
+                if (stanceForRecovery == ECharacterStance.PRONE)
+                    stanceInt = 2;
+                else if (stanceForRecovery == ECharacterStance.CROUCH)
+                    stanceInt = 1;
+                else
+                    stanceInt = 0;
+                
+                float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                    staminaPercent,
+                    restDurationMinutes,
+                    exerciseDurationMinutes,
+                    currentWeightForRecovery,
+                    staticDrainForRecovery,
+                    false,
+                    stanceInt,
+                    environmentFactor,
+                    currentSpeed);
+                
+                // ==================== 热应激对恢复的影响（模块化）====================
+                // 生理学依据：高温不仅让人动起来累，更让人休息不回来
+                // 热应激越大，恢复倍数越小（恢复速度越慢）
+                float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
+                float recoveryRateBeforeHeat = recoveryRate;
+                recoveryRate = recoveryRate * heatRecoveryPenalty;
+                
+                newTargetStamina = staminaPercent + recoveryRate;
+                
+                // 调试信息：体力恢复（每5秒输出一次）
+                static int recoveryDebugCounter = 0;
+                recoveryDebugCounter++;
+                if (recoveryDebugCounter >= 25)
+                {
+                    recoveryDebugCounter = 0;
+                    PrintFormat("[RealisticSystem] 体力恢复 / Stamina Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s) | 休息时间: %4分钟 | Rest Duration: %4 min",
+                        Math.Round(staminaPercent * 100.0).ToString(),
+                        Math.Round(newTargetStamina * 100.0).ToString(),
+                        Math.Round(recoveryRate * 1000000.0) / 1000000.0,
+                        Math.Round(restDurationMinutes * 10.0) / 10.0);
+                    
+                    if (heatStressMultiplier > 1.01)
+                    {
+                        PrintFormat("[RealisticSystem] 热应激恢复影响 / Heat Stress Recovery Effect: 恢复率 %1 → %2 (惩罚: %3x) | Recovery Rate %1 → %2 (Penalty: %3x)",
+                            Math.Round(recoveryRateBeforeHeat * 1000000.0) / 1000000.0,
+                            Math.Round(recoveryRate * 1000000.0) / 1000000.0,
+                            Math.Round(heatRecoveryPenalty * 100.0) / 100.0);
+                    }
+                }
+            }
+        }
+        
+        // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================
+        float maxStaminaCap = 1.0;
+        if (fatigueSystem)
+            maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
+        
+        // 限制体力值在有效范围内（0.0 - maxStaminaCap）
+        newTargetStamina = Math.Clamp(newTargetStamina, 0.0, maxStaminaCap);
+        
+        // 如果当前体力超过疲劳惩罚后的上限，需要降低
+        if (staminaPercent > maxStaminaCap)
+        {
+            // 立即降低到上限（模拟疲劳导致的体力上限降低）
+            newTargetStamina = maxStaminaCap;
+        }
+        
+        return newTargetStamina;
+    }
+}

@@ -1,0 +1,7 @@
+# Git attributes for Arma Reforger mod
+*.c text eol=lf
+*.et text eol=lf
+*.gproj text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.png binary
