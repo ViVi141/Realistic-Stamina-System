@@ -27,12 +27,14 @@ class StaminaUpdateCoordinator
     // @param staminaPercent 当前体力百分比
     // @param encumbranceSpeedPenalty 负重速度惩罚
     // @param collapseTransition "撞墙"阻尼过渡模块
+    // @param currentSpeed 当前速度 (m/s)
     // @return 最终速度倍数
     static float UpdateSpeed(
         SCR_CharacterControllerComponent controller,
         float staminaPercent,
         float encumbranceSpeedPenalty,
-        CollapseTransition collapseTransition)
+        CollapseTransition collapseTransition,
+        float currentSpeed = 0.0)
     {
         if (!controller)
             return 1.0;
@@ -76,7 +78,8 @@ class StaminaUpdateCoordinator
             currentMovementPhase,
             isExhausted,
             canSprint,
-            staminaPercent);
+            staminaPercent,
+            currentSpeed);
         
         // 应用速度倍数
         controller.OverrideMaxSpeed(finalSpeedMultiplier);

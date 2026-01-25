@@ -9,14 +9,14 @@ class NetworkSyncManager
     protected float m_fServerValidatedSpeedMultiplier = 1.0; // 服务器端验证的速度倍数
     protected float m_fLastReportedStaminaPercent = 1.0; // 上次客户端报告的体力百分比
     protected float m_fLastReportedWeight = 0.0; // 上次客户端报告的重量
-    protected const float VALIDATION_TOLERANCE = 0.05; // 验证容差（5%差异视为正常）
+    protected const float VALIDATION_TOLERANCE = 0.1; // 验证容差（10%差异视为正常）
     protected const float NETWORK_SYNC_INTERVAL = 1.0; // 网络同步间隔（秒）
     protected float m_fLastNetworkSyncTime = 0.0; // 上次网络同步时间
     
     // 网络同步容差优化：连续偏差累计触发
     protected float m_fDeviationStartTime = -1.0; // 偏差开始时间（-1表示无偏差）
     protected const float DEVIATION_TRIGGER_DURATION = 2.0; // 偏差触发持续时间（秒），连续超过此时间才触发同步
-    protected const float SMOOTH_TRANSITION_DURATION = 0.5; // 速度插值平滑过渡时间（秒）
+    protected const float SMOOTH_TRANSITION_DURATION = 0.1; // 速度插值平滑过渡时间（秒）
     protected float m_fTargetSpeedMultiplier = 1.0; // 目标速度倍数（用于插值）
     protected float m_fSmoothedSpeedMultiplier = 1.0; // 平滑后的速度倍数
     protected float m_fLastSmoothUpdateTime = 0.0; // 上次平滑更新时间（用于内部时间管理）

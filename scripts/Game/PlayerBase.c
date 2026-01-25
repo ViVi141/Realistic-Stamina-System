@@ -11,7 +11,7 @@ modded class SCR_CharacterControllerComponent
     protected const int SPEED_SAMPLE_INTERVAL_MS = 1000; // 每秒采集一次速度样本
     
     // 速度更新相关
-    protected const int SPEED_UPDATE_INTERVAL_MS = 200; // 每0.2秒更新一次速度
+    protected const int SPEED_UPDATE_INTERVAL_MS = 50; // 每0.05秒更新一次速度
     
     // 状态信息缓存
     protected float m_fLastStaminaPercent = 1.0;
@@ -439,13 +439,30 @@ modded class SCR_CharacterControllerComponent
         if (m_pEncumbranceCache)
             encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
         
+        // ==================== 获取当前实际速度（m/s）====================
+        // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能为 0
+        // 解决：使用位置差分测速（每 0.2 秒一次），得到更可靠的速度向量
+        // 模块化：使用 StaminaUpdateCoordinator 计算速度
+        float dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
+        SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
+            owner,
+            m_vLastPositionSample,
+            m_bHasLastPositionSample,
+            m_vComputedVelocity,
+            dtSeconds);
+        float currentSpeed = speedResult.currentSpeed;
+        m_vLastPositionSample = speedResult.lastPositionSample;
+        m_bHasLastPositionSample = speedResult.hasLastPositionSample;
+        m_vComputedVelocity = speedResult.computedVelocity;
+        
         // ==================== 速度计算和更新（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 更新速度
         float finalSpeedMultiplier = StaminaUpdateCoordinator.UpdateSpeed(
             this,
             staminaPercent,
             encumbranceSpeedPenalty,
-            m_pCollapseTransition);
+            m_pCollapseTransition,
+            currentSpeed);
         
         // 获取基础速度倍数（用于调试显示）
         float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
@@ -466,22 +483,6 @@ modded class SCR_CharacterControllerComponent
         // 对于游戏实现，我们使用相对化的版本：
         // 体力消耗率 = a + b·V + c·V² + d·M_encumbrance·(1 + e·V²)
         // 其中 M_encumbrance 是负重相对于身体重量的比例
-        
-        // ==================== 获取当前实际速度（m/s）====================
-        // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能为 0
-        // 解决：使用位置差分测速（每 0.2 秒一次），得到更可靠的速度向量
-        // 模块化：使用 StaminaUpdateCoordinator 计算速度
-        float dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
-        SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
-            owner,
-            m_vLastPositionSample,
-            m_bHasLastPositionSample,
-            m_vComputedVelocity,
-            dtSeconds);
-        float currentSpeed = speedResult.currentSpeed;
-        m_vLastPositionSample = speedResult.lastPositionSample;
-        m_bHasLastPositionSample = speedResult.hasLastPositionSample;
-        m_vComputedVelocity = speedResult.computedVelocity;
         
         // 调试信息：速度计算（每5秒输出一次）
         static int speedDebugCounter = 0;

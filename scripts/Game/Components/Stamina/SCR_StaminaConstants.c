@@ -326,8 +326,8 @@ class StaminaConstants
     // ==================== EPOC（过量耗氧）延迟参数 ====================
     // 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
     // 参考：Brooks et al., 2000; LaForgia et al., 2006
-    // 拟真平衡点：缩短到2秒，与恢复启动延迟保持一致
-    static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）- 从4秒降到2秒
+    // 拟真平衡点：缩短到0.5秒，减少按键无响应感
+    static const float EPOC_DELAY_SECONDS = 0.5; // EPOC延迟时间（秒）- 从2秒降到0.5秒
     static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
     
     // ==================== 姿态交互修正参数 ====================
