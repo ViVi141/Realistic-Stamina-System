@@ -179,7 +179,7 @@ class RSSOptunaOptimizer:
         
         # 恢复系统相关
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1e-4, 5e-4, log=True
+            'base_recovery_rate', 2e-4, 6e-4, log=True  # 调整范围，包含新的4e-4设置
         )
         standing_recovery_multiplier = trial.suggest_float(
             'standing_recovery_multiplier', 1.0, 3.0
@@ -286,7 +286,7 @@ class RSSOptunaOptimizer:
         
         # 游泳系统参数
         swimming_base_power = trial.suggest_float(
-            'swimming_base_power', 20.0, 30.0
+            'swimming_base_power', 15.0, 25.0  # 调整范围，包含新的20.0设置
         )
         swimming_encumbrance_threshold = trial.suggest_float(
             'swimming_encumbrance_threshold', 20.0, 30.0
@@ -303,7 +303,7 @@ class RSSOptunaOptimizer:
         
         # 环境因子参数
         env_heat_stress_max_multiplier = trial.suggest_float(
-            'env_heat_stress_max_multiplier', 1.2, 1.4
+            'env_heat_stress_max_multiplier', 1.2, 1.6  # 提高上限到1.6，包含新的1.5设置
         )
         env_rain_weight_max = trial.suggest_float(
             'env_rain_weight_max', 6.0, 10.0

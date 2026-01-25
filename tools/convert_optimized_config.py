@@ -11,15 +11,27 @@ import json
 import os
 import re
 
-# 配置文件路径
+# 获取当前脚本目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录（脚本目录的父目录）
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
+# 配置文件路径（相对路径）
 CONFIG_FILES = {
-    "balanced": r"c:\Users\74738\Documents\My Games\ArmaReforgerWorkbench\addons\test_rubn_speed\tools\optimized_rss_config_balanced_optuna.json",
-    "playability": r"c:\Users\74738\Documents\My Games\ArmaReforgerWorkbench\addons\test_rubn_speed\tools\optimized_rss_config_playability_optuna.json",
-    "realism": r"c:\Users\74738\Documents\My Games\ArmaReforgerWorkbench\addons\test_rubn_speed\tools\optimized_rss_config_realism_optuna.json"
+    "balanced": os.path.join(SCRIPT_DIR, "optimized_rss_config_balanced_optuna.json"),
+    "playability": os.path.join(SCRIPT_DIR, "optimized_rss_config_playability_optuna.json"),
+    "realism": os.path.join(SCRIPT_DIR, "optimized_rss_config_realism_optuna.json")
 }
 
-# C文件路径
-C_FILE_PATH = r"c:\Users\74738\Documents\My Games\ArmaReforgerWorkbench\addons\test_rubn_speed\scripts\Game\Components\Stamina\SCR_RSS_Settings.c"
+# C文件路径（相对路径）
+C_FILE_PATH = os.path.join(
+    PROJECT_ROOT, 
+    "scripts", 
+    "Game", 
+    "Components", 
+    "Stamina", 
+    "SCR_RSS_Settings.c"
+)
 
 # 预设映射
 PRESET_MAP = {

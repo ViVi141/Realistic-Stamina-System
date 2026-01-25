@@ -50,7 +50,7 @@ class RSSConstants:
     # ==================== 基础消耗率（pts/s）====================
     SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s
     RUN_BASE_DRAIN_RATE = 0.075  # pts/s
-    WALK_BASE_DRAIN_RATE = 0.060  # pts/s
+    WALK_BASE_DRAIN_RATE = 0.045  # pts/s（降低消耗率以突出与跑步的差距）
     REST_RECOVERY_RATE = 0.250  # pts/s
     
     # ==================== 转换为每0.2秒的消耗率 ====================
@@ -92,7 +92,7 @@ class RSSConstants:
     FITNESS_RECOVERY_COEFF = 0.25
     
     # ==================== 多维度恢复模型 ====================
-    BASE_RECOVERY_RATE = 5.00e-04  # Decreased from 5.00e-03 to 5.00e-04 (10x slower recovery)
+    BASE_RECOVERY_RATE = 4.00e-04  # 调整为更合理的恢复速度
     RECOVERY_NONLINEAR_COEFF = 0.5
     FAST_RECOVERY_DURATION_MINUTES = 1.5
     FAST_RECOVERY_MULTIPLIER = 3.5
@@ -159,14 +159,14 @@ class RSSConstants:
     SLOPE_DOWNHILL_COEFF = 0.03
     
     # ==================== 游泳系统参数 ====================
-    SWIMMING_BASE_POWER = 25.0
+    SWIMMING_BASE_POWER = 20.0  # 降低以提高水中存活率
     SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0
     SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0
     SWIMMING_DYNAMIC_POWER_EFFICIENCY = 2.0
     SWIMMING_ENERGY_TO_STAMINA_COEFF = 0.00005
     
     # ==================== 环境因子参数 ====================
-    ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3
+    ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5  # 提高热应激影响
     ENV_RAIN_WEIGHT_MAX = 8.0
     ENV_WIND_RESISTANCE_COEFF = 0.05
     ENV_MUD_PENALTY_MAX = 0.4
@@ -207,7 +207,7 @@ class RSSConstants:
     SPRINT_MIN_SPEED_MULTIPLIER = 0.15
     
     # ==================== 恢复启动延迟 ====================
-    RECOVERY_STARTUP_DELAY_SECONDS = 5.0
+    RECOVERY_STARTUP_DELAY_SECONDS = 3.0  # 从5秒缩短到3秒，提高游戏流畅度
     EPOC_DELAY_SECONDS = 2.0
     EPOC_DRAIN_RATE = 0.001
     

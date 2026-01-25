@@ -51,7 +51,7 @@ COMBAT_LOAD_WEIGHT = 30.0  # kg，战斗负重（用于计算动态阈值）
 # ==================== 基础消耗率（pts/s，每秒消耗的点数）====================
 SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s（Sprint）
 RUN_BASE_DRAIN_RATE = 0.075  # pts/s（Run，优化后约22分钟耗尽）
-WALK_BASE_DRAIN_RATE = 0.060  # pts/s（Walk）
+WALK_BASE_DRAIN_RATE = 0.045  # pts/s（Walk，降低消耗率以突出与跑步的差距）
 REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
 
 # 转换为每0.2秒的消耗率
@@ -114,7 +114,7 @@ TERRAIN_FACTOR_SAND = 1.8  # 软沙地
 # 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
 # 自动校准：使用二分搜索确定最优值
 # 场景：Idle 60秒，起始体力0.10，目标结束体力0.40
-BASE_RECOVERY_RATE = 5.00e-04  # 基础恢复率（每0.2秒），Decreased from 5.00e-03 to 5.00e-04 (10x slower recovery)
+BASE_RECOVERY_RATE = 4.00e-04  # 基础恢复率（每0.2秒），调整为更合理的恢复速度
 RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数
 # 拟真平衡点：模拟"喘匀第一口氧气"
 # 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
@@ -194,11 +194,11 @@ JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0  # m/s，跳跃检测阈值（垂直速�
 VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5  # m/s，翻越检测阈值（垂直速度）
 
 # ==================== 恢复启动延迟常量（深度生理压制版本）====================
-# 深度生理压制：停止运动后5秒内系统完全不处理恢复
+# 深度生理压制：停止运动后3秒内系统完全不处理恢复
 # 医学解释：剧烈运动停止后的前10-15秒，身体处于摄氧量极度不足状态（Oxygen Deficit）
 # 此时血液流速仍处于峰值，心脏负担极重，体能并不会开始"恢复"，而是在维持不崩塌
-# 目的：消除"跑两步停一下瞬间回血"的游击战式打法
-RECOVERY_STARTUP_DELAY_SECONDS = 5.0  # 恢复启动延迟（秒）- 从1.5秒增加到5秒
+# 目的：消除"跑两步停一下瞬间回血"的游击战式打法，同时提高游戏流畅度
+RECOVERY_STARTUP_DELAY_SECONDS = 3.0  # 恢复启动延迟（秒）- 从5秒缩短到3秒
 
 # ==================== EPOC（过量耗氧）延迟参数 ====================
 # 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
@@ -216,7 +216,7 @@ POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走消耗倍数（基准）
 SWIMMING_DRAG_COEFFICIENT = 0.5  # 阻力系数（C_d）
 SWIMMING_WATER_DENSITY = 1000.0  # 水密度（ρ，kg/m³）
 SWIMMING_FRONTAL_AREA = 0.5  # 正面面积（A，m²）
-SWIMMING_BASE_POWER = 25.0  # 基础游泳功率（W）
+SWIMMING_BASE_POWER = 20.0  # 基础游泳功率（W），降低以提高水中存活率
 SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0  # kg，超过此重量时静态消耗大幅增加
 SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0  # 超过阈值时的静态消耗倍数
 SWIMMING_FULL_PENALTY_WEIGHT = 40.0  # kg，达到此重量时应用满额惩罚
@@ -246,7 +246,7 @@ SWIMMING_VERTICAL_VELOCITY_THRESHOLD = -0.5  # m/s，垂直速度阈值（检测
 ENV_HEAT_STRESS_START_HOUR = 10.0  # 热应激开始时间（小时）
 ENV_HEAT_STRESS_PEAK_HOUR = 14.0  # 热应激峰值时间（小时，正午）
 ENV_HEAT_STRESS_END_HOUR = 18.0  # 热应激结束时间（小时）
-ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3  # 热应激最大倍数（30%消耗增加）
+ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5  # 热应激最大倍数（50%消耗增加，提高环境影响）
 ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0  # 热应激基础倍数（无影响）
 ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5  # 室内热应激减少比例（50%）
 ENV_RAIN_WEIGHT_MIN = 2.0  # kg，小雨时的湿重
