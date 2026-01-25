@@ -271,118 +271,101 @@ class StaminaUpdateCoordinator
         
         float newTargetStamina = staminaPercent;
         
-        // 关键修复：只要在游泳状态（包括静止踩水），就必须走"消耗分支"
-        // 仅在非游泳且静止时，才进入恢复分支
-        if (useSwimmingModel || currentSpeed > 0.05)
+        // ==================== 代谢净值算法：netChange = recoveryRate - totalDrainRate ====================
+        
+        // 计算恢复率（无论是否运动，都计算恢复率）
+        float recoveryRate = 0.0;
+        
+        // 检查是否处于EPOC延迟期间
+        bool isInEpocDelay = false;
+        float speedBeforeStop = 0.0;
+        if (epocState)
         {
-            // 计算新的目标体力值（扣除消耗）
-            newTargetStamina = staminaPercent - totalDrainRate;
-            
-            // 调试信息：体力消耗（每5秒输出一次）
-            static int staminaUpdateDebugCounter = 0;
-            staminaUpdateDebugCounter++;
-            if (staminaUpdateDebugCounter >= 25)
-            {
-                staminaUpdateDebugCounter = 0;
-                PrintFormat("[RealisticSystem] 体力消耗 / Stamina Consumption: %1%% → %2%% (消耗: %3/0.2s) | %1%% → %2%% (Drain: %3/0.2s)",
-                    Math.Round(staminaPercent * 100.0).ToString(),
-                    Math.Round(newTargetStamina * 100.0).ToString(),
-                    Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
-            }
+            isInEpocDelay = epocState.IsInEpocDelay();
+            speedBeforeStop = epocState.GetSpeedBeforeStop();
         }
-        // 如果角色完全静止（速度 <= 0.05 m/s），根据EPOC延迟决定是消耗还是恢复
-        else
+        
+        if (!isInEpocDelay)
         {
-            // ==================== EPOC延迟期间：继续应用消耗（模块化）====================
-            bool isInEpocDelay = false;
-            float speedBeforeStop = 0.0;
-            if (epocState)
+            // 计算恢复相关参数
+            float currentWeightForRecovery = 0.0;
+            if (encumbranceCache && encumbranceCache.IsCacheValid())
+                currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
+            
+            currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
+            
+            float restDurationMinutes = 0.0;
+            float exerciseDurationMinutes = 0.0;
+            if (exerciseTracker)
             {
-                isInEpocDelay = epocState.IsInEpocDelay();
-                speedBeforeStop = epocState.GetSpeedBeforeStop();
+                restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
+                exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
             }
             
-            if (isInEpocDelay)
-            {
-                float epocDrainRate = StaminaRecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
-                newTargetStamina = staminaPercent - epocDrainRate;
-            }
-            // ==================== EPOC延迟结束后：正常恢复（模块化）====================
+            float staticDrainForRecovery = baseDrainRateByVelocity;
+            if (baseDrainRateByVelocityForModule > 0.0)
+                staticDrainForRecovery = baseDrainRateByVelocityForModule;
+            
+            // 趴下休息：不应沿用"静态站立消耗"，否则会把恢复压成持续损耗
+            ECharacterStance stanceForRecovery = controller.GetStance();
+            if (stanceForRecovery == ECharacterStance.PRONE)
+                staticDrainForRecovery = 0.0;
+            
+            // 将姿态转换为整数（0=站立，1=蹲姿，2=趴姿）
+            int stanceInt = 0;
+            if (stanceForRecovery == ECharacterStance.PRONE)
+                stanceInt = 2;
+            else if (stanceForRecovery == ECharacterStance.CROUCH)
+                stanceInt = 1;
             else
-            {
-                float currentWeightForRecovery = 0.0;
-                if (encumbranceCache && encumbranceCache.IsCacheValid())
-                    currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
-                
-                currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
-                
-                float restDurationMinutes = 0.0;
-                float exerciseDurationMinutes = 0.0;
-                if (exerciseTracker)
-                {
-                    restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
-                    exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
-                }
-                
-                float staticDrainForRecovery = baseDrainRateByVelocity;
-                if (baseDrainRateByVelocityForModule > 0.0)
-                    staticDrainForRecovery = baseDrainRateByVelocityForModule;
-                
-                // 趴下休息：不应沿用"静态站立消耗"，否则会把恢复压成持续损耗
-                ECharacterStance stanceForRecovery = controller.GetStance();
-                if (stanceForRecovery == ECharacterStance.PRONE)
-                    staticDrainForRecovery = 0.0;
-                
-                // 将姿态转换为整数（0=站立，1=蹲姿，2=趴姿）
-                int stanceInt = 0;
-                if (stanceForRecovery == ECharacterStance.PRONE)
-                    stanceInt = 2;
-                else if (stanceForRecovery == ECharacterStance.CROUCH)
-                    stanceInt = 1;
-                else
-                    stanceInt = 0;
-                
-                float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
-                    staminaPercent,
-                    restDurationMinutes,
-                    exerciseDurationMinutes,
-                    currentWeightForRecovery,
-                    staticDrainForRecovery,
-                    false,
-                    stanceInt,
-                    environmentFactor,
-                    currentSpeed);
-                
-                // ==================== 热应激对恢复的影响（模块化）====================
-                // 生理学依据：高温不仅让人动起来累，更让人休息不回来
-                // 热应激越大，恢复倍数越小（恢复速度越慢）
-                float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
-                float recoveryRateBeforeHeat = recoveryRate;
-                recoveryRate = recoveryRate * heatRecoveryPenalty;
-                
-                newTargetStamina = staminaPercent + recoveryRate;
-                
-                // 调试信息：体力恢复（每5秒输出一次）
-                static int recoveryDebugCounter = 0;
-                recoveryDebugCounter++;
-                if (recoveryDebugCounter >= 25)
-                {
-                    recoveryDebugCounter = 0;
-                    PrintFormat("[RealisticSystem] 体力恢复 / Stamina Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s) | 休息时间: %4分钟 | Rest Duration: %4 min",
-                        Math.Round(staminaPercent * 100.0).ToString(),
-                        Math.Round(newTargetStamina * 100.0).ToString(),
-                        Math.Round(recoveryRate * 1000000.0) / 1000000.0,
-                        Math.Round(restDurationMinutes * 10.0) / 10.0);
-                    
-                    if (heatStressMultiplier > 1.01)
-                    {
-                        PrintFormat("[RealisticSystem] 热应激恢复影响 / Heat Stress Recovery Effect: 恢复率 %1 → %2 (惩罚: %3x) | Recovery Rate %1 → %2 (Penalty: %3x)",
-                            Math.Round(recoveryRateBeforeHeat * 1000000.0) / 1000000.0,
-                            Math.Round(recoveryRate * 1000000.0) / 1000000.0,
-                            Math.Round(heatRecoveryPenalty * 100.0) / 100.0);
-                    }
-                }
-            }
+                stanceInt = 0;
+            
+            recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                staminaPercent,
+                restDurationMinutes,
+                exerciseDurationMinutes,
+                currentWeightForRecovery,
+                staticDrainForRecovery,
+                false,
+                stanceInt,
+                environmentFactor,
+                currentSpeed);
+            
+            // ==================== 热应激对恢复的影响（模块化）====================
+            // 生理学依据：高温不仅让人动起来累，更让人休息不回来
+            // 热应激越大，恢复倍数越小（恢复速度越慢）
+            float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
+            recoveryRate = recoveryRate * heatRecoveryPenalty;
+        }
+        
+        // 计算EPOC延迟期间的消耗
+        float epocDrainRate = 0.0;
+        if (isInEpocDelay)
+        {
+            epocDrainRate = StaminaRecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+        }
+        
+        // 计算总消耗率
+        float finalDrainRate = totalDrainRate + epocDrainRate;
+        
+        // 代谢净值算法：netChange = recoveryRate - totalDrainRate
+        float netChange = recoveryRate - finalDrainRate;
+        
+        // 更新目标体力值
+        newTargetStamina = staminaPercent + netChange;
+        
+        // ==================== 调试信息 ====================
+        static int metabolismDebugCounter = 0;
+        metabolismDebugCounter++;
+        if (metabolismDebugCounter >= 25)
+        {
+            metabolismDebugCounter = 0;
+            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值: %5/0.2s) | %1%% → %2%% (Recovery: %3/0.2s, Drain: %4/0.2s, Net: %5/0.2s)",
+                Math.Round(staminaPercent * 100.0).ToString(),
+                Math.Round(newTargetStamina * 100.0).ToString(),
+                Math.Round(recoveryRate * 1000000.0) / 1000000.0,
+                Math.Round(finalDrainRate * 1000000.0) / 1000000.0,
+                Math.Round(netChange * 1000000.0) / 1000000.0);
         }
         
         // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================

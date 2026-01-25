@@ -1,0 +1,8 @@
+GameProject {
+ ID "RealisticStaminaSystemDev"
+ GUID "686ECECB7566EA35"
+ TITLE "Realistic Stamina System Dev"
+ Dependencies {
+  "58D0FB3206B6F859"
+ }
+}

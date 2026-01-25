@@ -67,10 +67,10 @@ class EncumbranceCache
         float effectiveWeight = Math.Max(currentWeight - StaminaConstants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
-        // 计算速度惩罚（基于体重百分比）
+        // 计算速度惩罚（基于体重百分比，使用幂函数）
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * m_fCachedBodyMassPercent;
-        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.5);
+        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, 1.5);
+        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.4);
         
         // 计算体力消耗倍数
         float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();
