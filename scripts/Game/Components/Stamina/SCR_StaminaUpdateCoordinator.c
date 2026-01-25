@@ -28,13 +28,15 @@ class StaminaUpdateCoordinator
     // @param encumbranceSpeedPenalty 负重速度惩罚
     // @param collapseTransition "撞墙"阻尼过渡模块
     // @param currentSpeed 当前速度 (m/s)
+    // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 最终速度倍数
     static float UpdateSpeed(
         SCR_CharacterControllerComponent controller,
         float staminaPercent,
         float encumbranceSpeedPenalty,
         CollapseTransition collapseTransition,
-        float currentSpeed = 0.0)
+        float currentSpeed = 0.0,
+        EnvironmentFactor environmentFactor = null)
     {
         if (!controller)
             return 1.0;
@@ -59,7 +61,9 @@ class StaminaUpdateCoordinator
         
         // 计算速度倍数
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller);
+        
+        // 获取坡度角度，考虑室内检测
+        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor);
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
         

@@ -52,6 +52,12 @@ class StaminaConsumptionCalculator
             mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
             totalWetWeight = environmentFactor.GetTotalWetWeight();
             coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+            
+            // 检查是否在室内，如果是则忽略坡度影响
+            if (environmentFactor.IsIndoor())
+            {
+                gradePercent = 0.0; // 室内时坡度为0
+            }
         }
         
         // ==================== 手持重物额外消耗 ====================

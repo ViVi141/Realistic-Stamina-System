@@ -126,9 +126,16 @@ class SpeedCalculator
     
     // 获取坡度角度（修复了背对坡倒车不消耗体力的漏洞）
     // @param controller 角色控制器组件
+    // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 坡度角度（度）
-    static float GetSlopeAngle(SCR_CharacterControllerComponent controller)
+    static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null)
     {
+        // 检查是否在室内，如果是则返回0坡度
+        if (environmentFactor && environmentFactor.IsIndoor())
+        {
+            return 0.0;
+        }
+        
         float slopeAngleDegrees = 0.0;
         CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
         if (animComponent)
@@ -169,16 +176,24 @@ class SpeedCalculator
     // @param currentSpeed 当前速度（m/s）
     // @param jumpVaultDetector 跳跃检测器（可选）
     // @param slopeAngleDegrees 坡度角度（输入，通常为0.0）
+    // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 坡度计算结果（包含坡度百分比和角度）
     static GradeCalculationResult CalculateGradePercent(
         SCR_CharacterControllerComponent controller,
         float currentSpeed,
         JumpVaultDetector jumpVaultDetector,
-        float slopeAngleDegrees)
+        float slopeAngleDegrees,
+        EnvironmentFactor environmentFactor = null)
     {
         GradeCalculationResult result = new GradeCalculationResult();
         result.gradePercent = 0.0;
         result.slopeAngleDegrees = slopeAngleDegrees;
+        
+        // 检查是否在室内，如果是则返回0坡度
+        if (environmentFactor && environmentFactor.IsIndoor())
+        {
+            return result;
+        }
         
         // 检查是否在攀爬或跳跃状态
         bool isClimbingForSlope = controller.IsClimbing();
@@ -190,7 +205,7 @@ class SpeedCalculator
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
             // 获取坡度角度
-            result.slopeAngleDegrees = GetSlopeAngle(controller);
+            result.slopeAngleDegrees = GetSlopeAngle(controller, environmentFactor);
             
             // 将坡度角度（度）转换为坡度百分比
             // 坡度百分比 = tan(坡度角度) × 100

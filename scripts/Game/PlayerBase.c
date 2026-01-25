@@ -480,7 +480,8 @@ modded class SCR_CharacterControllerComponent
             staminaPercent,
             encumbranceSpeedPenalty,
             m_pCollapseTransition,
-            currentSpeed);
+            currentSpeed,
+            m_pEnvironmentFactor);
         
         // 获取基础速度倍数（用于调试显示）
         float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
@@ -735,7 +736,8 @@ modded class SCR_CharacterControllerComponent
             this,
             currentSpeed,
             m_pJumpVaultDetector,
-            slopeAngleDegrees);
+            slopeAngleDegrees,
+            m_pEnvironmentFactor);
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
         
