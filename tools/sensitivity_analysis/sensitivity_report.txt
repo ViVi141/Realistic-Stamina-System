@@ -16,11 +16,11 @@ load_recovery_penalty_coeff                       0.0000          0.0000        
 --------------------------------------------------------------------------------
 Parameter                                    Sensitivity     Correlation
 --------------------------------------------------------------------------------
-energy_to_stamina_coeff                           0.1019          0.0000     Medium       Weak
-base_recovery_rate                                0.1016          0.0000     Medium       Weak
-standing_recovery_multiplier                      0.0982          0.0000        Low       Weak
-prone_recovery_multiplier                         0.0966          0.0000        Low       Weak
-load_recovery_penalty_coeff                       0.1098          0.0000     Medium       Weak
+energy_to_stamina_coeff                           0.1011          0.0000     Medium       Weak
+base_recovery_rate                                0.1006          0.0000     Medium       Weak
+standing_recovery_multiplier                      0.0825          0.0000        Low       Weak
+prone_recovery_multiplier                         0.0942          0.0000        Low       Weak
+load_recovery_penalty_coeff                       0.0824          0.0000        Low       Weak
 
 3. Parameter Interaction Analysis
 --------------------------------------------------------------------------------

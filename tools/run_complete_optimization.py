@@ -43,20 +43,30 @@ def main():
     # 分析敏感度
     sensitivity = optimizer.analyze_sensitivity()
     
-    # 选择最优解
+    # 选择最优解（传入solution_type和已选索引确保选择不同的解）
+    selected_indices = []  # 跟踪已选择的解索引
+    
     balanced_solution = optimizer.select_solution(
         realism_weight=0.5,
-        playability_weight=0.5
+        playability_weight=0.5,
+        solution_type="balanced",
+        selected_indices=selected_indices
     )
+    selected_indices.append(balanced_solution.get('trial_index', 0))
     
     realism_solution = optimizer.select_solution(
         realism_weight=0.7,
-        playability_weight=0.3
+        playability_weight=0.3,
+        solution_type="realism",
+        selected_indices=selected_indices
     )
+    selected_indices.append(realism_solution.get('trial_index', 0))
     
     playability_solution = optimizer.select_solution(
         realism_weight=0.3,
-        playability_weight=0.7
+        playability_weight=0.7,
+        solution_type="playability",
+        selected_indices=selected_indices
     )
     
     # 导出配置
@@ -161,11 +171,11 @@ def main():
     base_params = balanced_solution['params']
     
     param_ranges = {
-        # 基础参数（13个）
-        'energy_to_stamina_coeff': (2e-5, 5e-5),
-        'base_recovery_rate': (1e-4, 5e-4),
-        'standing_recovery_multiplier': (1.0, 3.0),
-        'prone_recovery_multiplier': (1.5, 3.0),
+        # 基础参数（13个）- 优化：增加消耗，降低恢复
+        'energy_to_stamina_coeff': (3e-5, 7e-5),  # 从2e-5-5e-5调整为3e-5-7e-5
+        'base_recovery_rate': (1.5e-4, 4e-4),  # 从1e-4-5e-4调整为1.5e-4-4e-4
+        'standing_recovery_multiplier': (1.0, 2.5),  # 从1.0-3.0调整为1.0-2.5
+        'prone_recovery_multiplier': (1.2, 2.5),  # 从1.5-3.0调整为1.2-2.5
         'load_recovery_penalty_coeff': (1e-4, 1e-3),
         'load_recovery_penalty_exponent': (1.0, 3.0),
         'encumbrance_speed_penalty_coeff': (0.1, 0.3),
@@ -175,11 +185,11 @@ def main():
         'fatigue_max_factor': (1.5, 3.0),
         'aerobic_efficiency_factor': (0.8, 1.0),
         'anaerobic_efficiency_factor': (1.0, 1.5),
-        # 恢复系统高级参数（8个）
+        # 恢复系统高级参数（8个）- 优化：降低恢复倍数
         'recovery_nonlinear_coeff': (0.3, 0.7),
-        'fast_recovery_multiplier': (2.5, 4.5),
-        'medium_recovery_multiplier': (1.5, 2.5),
-        'slow_recovery_multiplier': (0.6, 1.0),
+        'fast_recovery_multiplier': (2.0, 3.5),  # 从2.5-4.5调整为2.0-3.5
+        'medium_recovery_multiplier': (1.2, 2.0),  # 从1.5-2.5调整为1.2-2.0
+        'slow_recovery_multiplier': (0.5, 0.8),  # 从0.6-1.0调整为0.5-0.8
         'marginal_decay_threshold': (0.7, 0.9),
         'marginal_decay_coeff': (1.05, 1.15),
         'min_recovery_stamina_threshold': (0.15, 0.25),

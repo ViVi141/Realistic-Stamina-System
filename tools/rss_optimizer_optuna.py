@@ -172,20 +172,20 @@ class RSSOptunaOptimizer:
         """
         # ==================== 1. 定义搜索空间 ====================
         
-        # 能量转换相关
+        # 能量转换相关（优化：增加消耗，提高上限）
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 2e-5, 5e-5, log=True
+            'energy_to_stamina_coeff', 3e-5, 7e-5, log=True  # 从2e-5-5e-5调整为3e-5-7e-5，增加消耗
         )
         
-        # 恢复系统相关
+        # 恢复系统相关（优化：降低恢复速度，缩小范围并降低上限）
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 2e-4, 6e-4, log=True  # 调整范围，包含新的4e-4设置
+            'base_recovery_rate', 1.5e-4, 4e-4, log=True  # 从2e-4-6e-4调整为1.5e-4-4e-4，降低恢复速度
         )
         standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.0, 3.0
+            'standing_recovery_multiplier', 1.0, 2.5  # 从1.0-3.0调整为1.0-2.5，降低恢复倍数
         )
         prone_recovery_multiplier = trial.suggest_float(
-            'prone_recovery_multiplier', 1.5, 3.0
+            'prone_recovery_multiplier', 1.2, 2.5  # 从1.5-3.0调整为1.2-2.5，降低恢复倍数
         )
         load_recovery_penalty_coeff = trial.suggest_float(
             'load_recovery_penalty_coeff', 1e-4, 1e-3, log=True
@@ -223,18 +223,18 @@ class RSSOptunaOptimizer:
             'anaerobic_efficiency_factor', 1.0, 1.5
         )
         
-        # 恢复系统高级参数
+        # 恢复系统高级参数（优化：降低恢复倍数）
         recovery_nonlinear_coeff = trial.suggest_float(
             'recovery_nonlinear_coeff', 0.3, 0.7
         )
         fast_recovery_multiplier = trial.suggest_float(
-            'fast_recovery_multiplier', 2.5, 4.5
+            'fast_recovery_multiplier', 2.0, 3.5  # 从2.5-4.5调整为2.0-3.5，降低快速恢复
         )
         medium_recovery_multiplier = trial.suggest_float(
-            'medium_recovery_multiplier', 1.5, 2.5
+            'medium_recovery_multiplier', 1.2, 2.0  # 从1.5-2.5调整为1.2-2.0，降低中速恢复
         )
         slow_recovery_multiplier = trial.suggest_float(
-            'slow_recovery_multiplier', 0.6, 1.0
+            'slow_recovery_multiplier', 0.5, 0.8  # 从0.6-1.0调整为0.5-0.8，降低慢速恢复
         )
         marginal_decay_threshold = trial.suggest_float(
             'marginal_decay_threshold', 0.7, 0.9
@@ -489,19 +489,33 @@ class RSSOptunaOptimizer:
         
         # ==================== 7. 计算最终目标函数 ====================
         
+        # 消耗/恢复平衡惩罚项（新增）：惩罚恢复过快、消耗过少的配置
+        # 计算消耗/恢复比率：energy_to_stamina_coeff / base_recovery_rate
+        # 理想比率应该在合理范围内（例如：0.1-0.3）
+        consumption_recovery_ratio = energy_to_stamina_coeff / (base_recovery_rate + 1e-10)
+        # 如果比率过低（消耗过少），增加惩罚
+        balance_penalty = 0.0
+        if consumption_recovery_ratio < 0.08:  # 消耗过少
+            balance_penalty = (0.08 - consumption_recovery_ratio) * 100.0
+        # 如果恢复倍数过高，增加惩罚
+        if fast_recovery_multiplier > 3.5 or medium_recovery_multiplier > 2.0:
+            balance_penalty += 50.0
+        
         # Realism Loss: 拟真度损失（越小越好）
-        # 包含：距离目标差异 + 负载影响分数
+        # 包含：距离目标差异 + 负载影响分数 + 消耗/恢复平衡惩罚
         realism_loss = (
             abs(phases_1_3_distance - target_distance) * 1.0 +
-            targeted_load_impact_score
+            targeted_load_impact_score +
+            balance_penalty * 0.3  # 平衡惩罚权重
         )
         
         # Playability Burden: 可玩性负担（越小越好）
-        # 包含：疲劳惩罚 + 恢复合理性 + 体力储备分数
+        # 包含：疲劳惩罚 + 恢复合理性 + 体力储备分数 + 消耗/恢复平衡惩罚
         playability_burden = (
             exhaustion_penalty +
             recovery_sanity +
-            stamina_reserve_score * 0.5
+            stamina_reserve_score * 0.5 +
+            balance_penalty * 0.2  # 平衡惩罚权重
         )
         
         # ==================== 8. 返回两个目标函数 ====================
@@ -675,7 +689,9 @@ class RSSOptunaOptimizer:
     def select_solution(
         self,
         realism_weight: float = 0.5,
-        playability_weight: float = 0.5
+        playability_weight: float = 0.5,
+        solution_type: str = "balanced",
+        selected_indices: List[int] = None
     ) -> Dict:
         """
         从帕累托前沿中选择一个解
@@ -683,28 +699,46 @@ class RSSOptunaOptimizer:
         Args:
             realism_weight: 拟真度权重（0.0-1.0）
             playability_weight: 可玩性权重（0.0-1.0）
+            solution_type: 解的类型（"balanced", "realism", "playability"），用于确保不同权重选择不同解
+            selected_indices: 已选择的解索引列表，用于避免重复选择
         
         Returns:
-            优化参数字典
+            优化参数字典（包含 trial_index 字段）
         """
         if not self.best_trials or len(self.best_trials) == 0:
             raise ValueError("请先运行优化！")
         
-        # 计算加权得分
+        if selected_indices is None:
+            selected_indices = []
+        
+        # 如果只有一个解，直接返回
+        if len(self.best_trials) == 1:
+            best_trial = self.best_trials[0]
+            print(f"\n警告：帕累托前沿只有1个解，所有配置将使用相同参数")
+            return {
+                'params': best_trial.params,
+                'realism_loss': best_trial.values[0],
+                'playability_burden': best_trial.values[1],
+                'score': 0.0,
+                'trial_index': 0
+            }
+        
+        # 提取目标值
+        realism_values = [t.values[0] for t in self.best_trials]
+        playability_values = [t.values[1] for t in self.best_trials]
+        
+        realism_min = min(realism_values)
+        realism_max = max(realism_values)
+        playability_min = min(playability_values)
+        playability_max = max(playability_values)
+        
+        # 计算所有解的得分（用于排序）
         scores = []
         for trial in self.best_trials:
             realism_loss = trial.values[0]
             playability_burden = trial.values[1]
             
             # 归一化
-            realism_values = [t.values[0] for t in self.best_trials]
-            playability_values = [t.values[1] for t in self.best_trials]
-            
-            realism_min = min(realism_values)
-            realism_max = max(realism_values)
-            playability_min = min(playability_values)
-            playability_max = max(playability_values)
-            
             f1_normalized = (realism_loss - realism_min) / (realism_max - realism_min + 1e-10)
             f2_normalized = (playability_burden - playability_min) / (playability_max - playability_min + 1e-10)
             
@@ -712,22 +746,55 @@ class RSSOptunaOptimizer:
             score = realism_weight * f1_normalized + playability_weight * f2_normalized
             scores.append(score)
         
-        # 选择得分最低的解
-        best_idx = np.argmin(scores)
+        # 根据 solution_type 选择策略
+        if solution_type == "realism":
+            # 拟真优先：按拟真度损失排序，选择最低的（排除已选）
+            sorted_indices = np.argsort(realism_values)
+            for idx in sorted_indices:
+                if idx not in selected_indices:
+                    best_idx = idx
+                    break
+            else:
+                # 如果所有解都被选过，选择拟真度最低的
+                best_idx = sorted_indices[0]
+        elif solution_type == "playability":
+            # 可玩性优先：按可玩性负担排序，选择最低的（排除已选）
+            sorted_indices = np.argsort(playability_values)
+            for idx in sorted_indices:
+                if idx not in selected_indices:
+                    best_idx = idx
+                    break
+            else:
+                # 如果所有解都被选过，选择可玩性负担最低的
+                best_idx = sorted_indices[0]
+        else:
+            # 平衡型：按加权得分排序，选择得分最低的（排除已选）
+            sorted_indices = np.argsort(scores)
+            for idx in sorted_indices:
+                if idx not in selected_indices:
+                    best_idx = idx
+                    break
+            else:
+                # 如果所有解都被选过，选择得分最低的
+                best_idx = sorted_indices[0]
+        
         best_trial = self.best_trials[best_idx]
         
-        print(f"\n选择最优解：")
+        print(f"\n选择最优解（{solution_type}）：")
         print(f"  拟真度权重：{realism_weight:.2f}")
         print(f"  可玩性权重：{playability_weight:.2f}")
         print(f"  拟真度损失：{best_trial.values[0]:.2f}")
         print(f"  可玩性负担：{best_trial.values[1]:.2f}")
-        print(f"  综合得分：{scores[best_idx]:.4f}")
+        if len(self.best_trials) > 1:
+            print(f"  综合得分：{scores[best_idx]:.4f}")
+            print(f"  解索引：{best_idx}/{len(self.best_trials)-1}")
         
         return {
             'params': best_trial.params,
             'realism_loss': best_trial.values[0],
             'playability_burden': best_trial.values[1],
-            'score': scores[best_idx]
+            'score': scores[best_idx] if len(self.best_trials) > 1 else 0.0,
+            'trial_index': best_idx
         }
     
     def export_to_json(
@@ -781,11 +848,17 @@ def main():
     # 分析敏感度
     sensitivity = optimizer.analyze_sensitivity()
     
+    # 选择最优解（传入solution_type和已选索引确保选择不同的解）
+    selected_indices = []  # 跟踪已选择的解索引
+    
     # 选择最优解（平衡型）
     balanced_solution = optimizer.select_solution(
         realism_weight=0.5,
-        playability_weight=0.5
+        playability_weight=0.5,
+        solution_type="balanced",
+        selected_indices=selected_indices
     )
+    selected_indices.append(balanced_solution.get('trial_index', 0))
     
     # 导出配置
     optimizer.export_to_json(
@@ -796,8 +869,11 @@ def main():
     # 选择最优解（拟真优先）
     realism_solution = optimizer.select_solution(
         realism_weight=0.7,
-        playability_weight=0.3
+        playability_weight=0.3,
+        solution_type="realism",
+        selected_indices=selected_indices
     )
+    selected_indices.append(realism_solution.get('trial_index', 0))
     
     # 导出配置
     optimizer.export_to_json(
@@ -808,7 +884,9 @@ def main():
     # 选择最优解（可玩性优先）
     playability_solution = optimizer.select_solution(
         realism_weight=0.3,
-        playability_weight=0.7
+        playability_weight=0.7,
+        solution_type="playability",
+        selected_indices=selected_indices
     )
     
     # 导出配置
