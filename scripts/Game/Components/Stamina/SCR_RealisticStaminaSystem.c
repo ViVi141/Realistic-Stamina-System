@@ -200,24 +200,7 @@ class RealisticStaminaSpeedSystem
         float currentWeight = characterInventory.GetTotalWeight();
         float maxWeight = characterInventory.GetMaxLoad();
         
-        // 调试输出（仅在第一次或值变化时输出，避免过多日志，仅在客户端）
-        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
-        {
-            static float lastCurrentWeight = -1.0;
-            static float lastMaxWeight = -1.0;
-            static int debugCallCount = 0;
-            debugCallCount++;
-            
-            if (debugCallCount % 25 == 0 || Math.AbsFloat(currentWeight - lastCurrentWeight) > 0.1 || Math.AbsFloat(maxWeight - lastMaxWeight) > 0.1)
-            {
-                PrintFormat("[RealisticSystem] 负重计算调试: currentWeight=%1 | maxWeight=%2 | inventory组件=%3", 
-                    currentWeight.ToString(), 
-                    maxWeight.ToString(),
-                    (characterInventory != null).ToString());
-                lastCurrentWeight = currentWeight;
-                lastMaxWeight = maxWeight;
-            }
-        }
+
         
         // 如果maxWeight和currentWeight都为0，说明可能方法不存在或返回默认值
         // 在这种情况下，暂时返回0（无负重），等待找到正确的API

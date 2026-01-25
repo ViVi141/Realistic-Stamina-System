@@ -172,8 +172,8 @@ modded class SCR_CharacterControllerComponent
                 // 获取库存管理器组件引用
                 InventoryStorageManagerComponent inventoryManagerComponent = InventoryStorageManagerComponent.Cast(character.FindComponent(InventoryStorageManagerComponent));
                 
-                // 初始化负重缓存，同时传入库存管理器组件
-                m_pEncumbranceCache.Initialize(inventoryComponent, inventoryManagerComponent);
+                // 初始化负重缓存
+                m_pEncumbranceCache.Initialize(inventoryComponent);
             }
         }
         
@@ -937,17 +937,14 @@ modded class SCR_CharacterControllerComponent
                 debugCounter = 0;
                 
                 // 获取负重信息用于调试
-                ChimeraCharacter characterForDebug = ChimeraCharacter.Cast(owner);
                 float combatEncumbrancePercent = 0.0;
                 float debugCurrentWeight = 0.0;
-                if (characterForDebug)
+                
+                // 使用EncumbranceCache中的准确总重量（已通过GetTotalWeightOfAllStorages()计算）
+                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
                 {
-                    SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(characterForDebug.FindComponent(SCR_CharacterInventoryStorageComponent));
-                    if (characterInventory)
-                    {
-                        debugCurrentWeight = characterInventory.GetTotalWeight();
-                        combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
-                    }
+                    debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
+                    combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
                 }
                 
                 // 获取移动类型字符串（模块化）
