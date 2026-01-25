@@ -379,33 +379,38 @@ class SCR_RSS_Settings
     // TacticalAction：战术动作模式（更流畅）
     // Custom：自定义模式（合理的默认备份值）
     
-    void InitPresets()
+    void InitPresets(bool forceRefreshSystemPresets = false)
     {
-        // 只有当预设对象不存在时才创建并初始化默认值
-        // 如果预设对象已存在（从 JSON 读取），则保留用户的配置值
-        bool initElite = !m_EliteStandard;
-        bool initStandard = !m_StandardMilsim;
-        bool initTactical = !m_TacticalAction;
+        // 1. 确保所有对象都已实例化
+        if (!m_EliteStandard) m_EliteStandard = new SCR_RSS_Params();
+        if (!m_StandardMilsim) m_StandardMilsim = new SCR_RSS_Params();
+        if (!m_TacticalAction) m_TacticalAction = new SCR_RSS_Params();
+        
+        // 2. 处理 Custom 预设：仅在不存在时初始化默认值
         bool initCustom = !m_Custom;
-        
-        if (initElite)
-            m_EliteStandard = new SCR_RSS_Params();
-        
-        if (initStandard)
-            m_StandardMilsim = new SCR_RSS_Params();
-        
-        if (initTactical)
-            m_TacticalAction = new SCR_RSS_Params();
-        
         if (initCustom)
+        {
             m_Custom = new SCR_RSS_Params();
-        
-        // 只有当预设是新创建的时才初始化默认值
-        // 如果预设已从 JSON 读取，则跳过（保留用户配置）
-        InitEliteStandardDefaults(initElite);
-        InitStandardMilsimDefaults(initStandard);
-        InitTacticalActionDefaults(initTactical);
-        InitCustomDefaults(initCustom);
+            InitCustomDefaults(true);
+        }
+
+        // 3. 处理系统预设 (Elite/Standard/Tactical)
+        // 如果外部要求强制刷新（通常是因为当前没选 Custom），则覆盖为代码里的最新值
+        if (forceRefreshSystemPresets)
+        {
+            InitEliteStandardDefaults(true);
+            InitStandardMilsimDefaults(true);
+            InitTacticalActionDefaults(true);
+            Print("[RSS_Settings] System presets refreshed to latest mod defaults.");
+        }
+        else
+        {
+            // 如果不强制刷新（处于 Custom 模式），则仅初始化缺失的对象
+            // 注意：这里传入 false 或根据对象是否为 null 来决定，保持向后兼容
+            InitEliteStandardDefaults(!m_EliteStandard);
+            InitStandardMilsimDefaults(!m_StandardMilsim);
+            InitTacticalActionDefaults(!m_TacticalAction);
+        }
     }
     
     // 初始化 EliteStandard 预设默认值

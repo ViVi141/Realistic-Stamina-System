@@ -59,8 +59,30 @@ class SCR_RSS_ConfigManager
                 presetStatus += "Custom=NULL";
             Print("[RSS_ConfigManager] " + presetStatus);
             
-            // 初始化预设默认值（只有当预设对象为空时才会初始化）
-            m_Settings.InitPresets();
+            // --- 核心修复逻辑开始 ---
+            
+            // 检查玩家当前选中的预设
+            string selected = m_Settings.m_sSelectedPreset;
+            bool isCustom = (selected == "Custom");
+
+            if (!isCustom)
+            {
+                // 如果玩家用的是系统预设，强制用代码里的最新Optuna值覆盖内存
+                // 这样即使 JSON 里是旧值，也会被更新
+                m_Settings.InitPresets(true);
+                
+                // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
+                Save();
+                Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+            }
+            else
+            {
+                // 如果是 Custom 模式，仅执行常规初始化（补全可能缺失的字段），不覆盖已有数值
+                m_Settings.InitPresets(false);
+                Print("[RSS_ConfigManager] Custom preset active. Preserving user-defined JSON values.");
+            }
+            
+            // --- 核心修复逻辑结束 ---
             
             // 检查版本号并执行迁移
             string configVersion = m_Settings.m_sConfigVersion;
