@@ -74,6 +74,7 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bHasLastPositionSample = false;
     protected vector m_vLastPositionSample = vector.Zero;
     protected vector m_vComputedVelocity = vector.Zero; // 上次更新周期计算得到的速度（m/s）
+    protected float m_fLastSpeedUpdateTime = 0.0; // 上次速度更新的时间戳（秒）
     
     // ==================== 游泳状态缓存（用于调试显示）====================
     protected CompartmentAccessComponent m_pCompartmentAccess;
@@ -127,6 +128,9 @@ modded class SCR_CharacterControllerComponent
         m_pExerciseTracker = new ExerciseTracker();
         if (m_pExerciseTracker)
             m_pExerciseTracker.Initialize(GetGame().GetWorld().GetWorldTime()); 
+        
+        // 初始化速度更新时间戳
+        m_fLastSpeedUpdateTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         
         // 初始化"撞墙"阻尼过渡模块
         m_pCollapseTransition = new CollapseTransition();
@@ -441,9 +445,15 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 获取当前实际速度（m/s）====================
         // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能为 0
-        // 解决：使用位置差分测速（每 0.2 秒一次），得到更可靠的速度向量
+        // 解决：使用位置差分测速，得到更可靠的速度向量
         // 模块化：使用 StaminaUpdateCoordinator 计算速度
-        float dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float dtSeconds = currentTime - m_fLastSpeedUpdateTime;
+        
+        // 避免极端情况：如果 dt 过大（如超过1秒），使用默认值
+        if (dtSeconds < 0.0 || dtSeconds > 1.0)
+            dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
+        
         SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
             owner,
             m_vLastPositionSample,
@@ -454,6 +464,9 @@ modded class SCR_CharacterControllerComponent
         m_vLastPositionSample = speedResult.lastPositionSample;
         m_bHasLastPositionSample = speedResult.hasLastPositionSample;
         m_vComputedVelocity = speedResult.computedVelocity;
+        
+        // 更新速度更新时间戳
+        m_fLastSpeedUpdateTime = currentTime;
         
         // ==================== 速度计算和更新（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 更新速度
@@ -509,7 +522,6 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
         
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）

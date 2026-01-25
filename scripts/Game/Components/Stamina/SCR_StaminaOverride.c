@@ -118,6 +118,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     {
         // 设置标志为 false，停止监控循环
         m_bIsMonitoring = false;
+        
+        // 移除所有可能存在的 CallLater 调用，确保不会再执行
+        GetGame().GetCallqueue().Remove(MonitorStamina);
     }
     
     // 监控体力值（定期调用，确保完全覆盖原生系统）
@@ -127,6 +130,14 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 如果允许原生系统工作，或监控已停止，不继续监控
         if (m_bAllowNativeStaminaSystem || !m_bIsMonitoring)
             return;
+        
+        // 获取当前体力值前，先检查组件是否仍然有效
+        if (!this || GetOwner() == null)
+        {
+            // 如果组件已失效，停止监控
+            StopStaminaMonitor();
+            return;
+        }
         
         // 获取当前体力值
         float currentStamina = GetStamina();
