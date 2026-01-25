@@ -168,7 +168,12 @@ modded class SCR_CharacterControllerComponent
             if (character)
             {
                 SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
-                m_pEncumbranceCache.Initialize(inventoryComponent);
+                
+                // 获取库存管理器组件引用
+                InventoryStorageManagerComponent inventoryManagerComponent = InventoryStorageManagerComponent.Cast(character.FindComponent(InventoryStorageManagerComponent));
+                
+                // 初始化负重缓存，同时传入库存管理器组件
+                m_pEncumbranceCache.Initialize(inventoryComponent, inventoryManagerComponent);
             }
         }
         
@@ -1057,4 +1062,23 @@ modded class SCR_CharacterControllerComponent
             this);
     }
     
+    // 当物品从库存中移除时调用
+    void OnItemRemovedFromInventory()
+    {
+        // 立即更新负重缓存
+        if (m_pEncumbranceCache)
+        {
+            m_pEncumbranceCache.UpdateCache();
+        }
+    }
+    
+    // 当物品添加到库存中时调用
+    void OnItemAddedToInventory()
+    {
+        // 立即更新负重缓存
+        if (m_pEncumbranceCache)
+        {
+            m_pEncumbranceCache.UpdateCache();
+        }
+    }
 }

@@ -11,12 +11,14 @@ class EncumbranceCache
     protected float m_fCachedEncumbranceStaminaDrainMultiplier = 1.0; // 缓存的体力消耗倍数
     protected bool m_bEncumbranceCacheValid = false; // 缓存是否有效
     protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存的库存组件引用
+    protected InventoryStorageManagerComponent m_pInventoryManagerComponent; // 库存管理器组件引用
     
     // ==================== 公共方法 ====================
     
     // 初始化缓存
     // @param inventoryComponent 库存组件引用（可为null）
-    void Initialize(SCR_CharacterInventoryStorageComponent inventoryComponent = null)
+    // @param inventoryManagerComponent 库存管理器组件引用（可为null）
+    void Initialize(SCR_CharacterInventoryStorageComponent inventoryComponent = null, InventoryStorageManagerComponent inventoryManagerComponent = null)
     {
         m_fCachedCurrentWeight = 0.0;
         m_fCachedEncumbranceSpeedPenalty = 0.0;
@@ -24,10 +26,18 @@ class EncumbranceCache
         m_fCachedEncumbranceStaminaDrainMultiplier = 1.0;
         m_bEncumbranceCacheValid = false;
         m_pCachedInventoryComponent = inventoryComponent;
+        m_pInventoryManagerComponent = inventoryManagerComponent;
         
         // 如果提供了库存组件，初始化时计算一次负重
         if (m_pCachedInventoryComponent)
             UpdateCache();
+    }
+    
+    // 设置库存管理器组件引用
+    // @param inventoryManagerComponent 库存管理器组件引用
+    void SetInventoryManagerComponent(InventoryStorageManagerComponent inventoryManagerComponent)
+    {
+        m_pInventoryManagerComponent = inventoryManagerComponent;
     }
     
     // 设置库存组件引用
