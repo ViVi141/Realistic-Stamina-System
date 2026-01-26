@@ -61,7 +61,7 @@ class StaminaConsumptionCalculator
         }
         
         // ==================== 手持重物额外消耗 ====================
-        float itemBonus = 1.0; // 默认无额外消耗
+        const float itemBonus = 1.0; // 默认无额外消耗
         
         if (owner)
         {

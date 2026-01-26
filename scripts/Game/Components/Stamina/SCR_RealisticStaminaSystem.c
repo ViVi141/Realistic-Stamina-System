@@ -1204,7 +1204,7 @@ class RealisticStaminaSpeedSystem
             loadFactor = Math.Clamp(loadFactor, 0.0, 1.0);
             
             // 使用平方律：让 25-30kg 之间依然相对温和，35kg之后才真正痛苦
-            float powerExponent = 2.0; // 平方律
+            const float powerExponent = 2.0; // 平方律
             staticMultiplier = 1.0 + (Math.Pow(loadFactor, powerExponent) * (StaminaConstants.SWIMMING_STATIC_DRAIN_MULTIPLIER - 1.0));
         }
         

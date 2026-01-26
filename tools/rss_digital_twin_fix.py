@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+RSS Digital Twin 修复版本
+修复与C代码算法不一致的问题
+"""
+
+import numpy as np
+from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional
+
+
+@dataclass
+class RSSConstants:
+    """RSS 常量定义"""
+    # 游戏常量
+    GAME_MAX_SPEED = 5.2  # m/s
+    CHARACTER_WEIGHT = 90.0  # kg
+    TARGET_RUN_SPEED = 3.7  # m/s
+    
+    # 医学模型参数
+    PANDOLF_VELOCITY_COEFF = 3.2
+    PANDOLF_VELOCITY_OFFSET = 0.7
+    PANDOLF_BASE_COEFF = 2.7
+    PANDOLF_GRADE_BASE_COEFF = 0.23
+    PANDOLF_GRADE_VELOCITY_COEFF = 1.34
+    
+    # 恢复模型参数
+    BASE_RECOVERY_RATE = 0.0004  # 每0.2秒恢复0.04%
+    RECOVERY_NONLINEAR_COEFF = 0.5
+    FAST_RECOVERY_DURATION_MINUTES = 1.5
+    FAST_RECOVERY_MULTIPLIER = 3.5
+    MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
+    MEDIUM_RECOVERY_MULTIPLIER = 1.5
+    SLOW_RECOVERY_MULTIPLIER = 0.8
+    
+    # 姿态恢复加成
+    STANDING_RECOVERY_MULTIPLIER = 2.0
+    CROUCHING_RECOVERY_MULTIPLIER = 1.5
+    PRONE_RECOVERY_MULTIPLIER = 2.2
+    
+    # 负重参数
+    BASE_WEIGHT = 1.36  # kg
+    MAX_ENCUMBRANCE_WEIGHT = 40.5  # kg
+    COMBAT_ENCUMBRANCE_WEIGHT = 30.0  # kg
+    
+    # 速度阈值
+    SPRINT_VELOCITY_THRESHOLD = 5.0  # m/s
+    RUN_VELOCITY_THRESHOLD = 3.2  # m/s
+    WALK_VELOCITY_THRESHOLD = 1.5  # m/s
+    
+    # 动态阈值
+    RECOVERY_THRESHOLD_NO_LOAD = 2.5  # m/s
+    DRAIN_THRESHOLD_COMBAT_LOAD = 1.5  # m/s
+    
+    # 消耗率
+    SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s
+    RUN_BASE_DRAIN_RATE = 0.075  # pts/s
+    WALK_BASE_DRAIN_RATE = 0.045  # pts/s
+    REST_RECOVERY_RATE = 0.250  # pts/s
+    
+    # 转换为每0.2秒的消耗率
+    SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100 * 0.2
+    RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100 * 0.2
+    WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100 * 0.2
+    REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100 * 0.2
+    
+    # 其他参数
+    EPOC_DELAY_SECONDS = 0.5
+    EPOC_DRAIN_RATE = 0.001  # 每0.2秒
+    FITNESS_LEVEL = 1.0
+    FITNESS_EFFICIENCY_COEFF = 0.35
+    FITNESS_RECOVERY_COEFF = 0.25
+    
+    # 环境因子
+    ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5
+    ENV_RAIN_WEIGHT_MAX = 8.0  # kg
+    ENV_HEAT_STRESS_PENALTY_MAX = 0.3  # 最大热应激惩罚
+    ENV_COLD_STRESS_PENALTY_MAX = 0.2  # 最大冷应激惩罚
+    ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15  # 最大地表湿度惩罚
+    
+    # 初始化时可覆盖的参数
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+
+class EnvironmentFactor:
+    """环境因子模块"""
+    
+    def __init__(self, constants):
+        """初始化环境因子模块"""
+        self.constants = constants
+        self.heat_stress = 0.0
+        self.cold_stress = 0.0
+        self.surface_wetness = 0.0
+    
+    def set_heat_stress(self, value):
+        """设置热应激水平"""
+        self.heat_stress = np.clip(value, 0.0, 1.0)
+    
+    def set_cold_stress(self, value):
+        """设置冷应激水平"""
+        self.cold_stress = np.clip(value, 0.0, 1.0)
+    
+    def set_surface_wetness(self, value):
+        """设置地表湿度水平"""
+        self.surface_wetness = np.clip(value, 0.0, 1.0)
+    
+    def get_heat_stress_penalty(self):
+        """获取热应激惩罚"""
+        return self.heat_stress * self.constants.ENV_HEAT_STRESS_PENALTY_MAX
+    
+    def get_cold_stress_penalty(self):
+        """获取冷应激惩罚"""
+        return self.cold_stress * self.constants.ENV_COLD_STRESS_PENALTY_MAX
+    
+    def get_surface_wetness_penalty(self):
+        """获取地表湿度惩罚"""
+        return self.surface_wetness * self.constants.ENV_SURFACE_WETNESS_PENALTY_MAX
+
+
+class MovementType:
+    """移动类型"""
+    IDLE = 0
+    WALK = 1
+    RUN = 2
+    SPRINT = 3
+
+
+class Stance:
+    """姿态"""
+    STAND = 0
+    CROUCH = 1
+    PRONE = 2
+
+
+class RSSDigitalTwin:
+    """RSS 数字孪生仿真器"""
+    
+    def __init__(self, constants):
+        """初始化仿真器"""
+        self.constants = constants
+        self.environment_factor = EnvironmentFactor(constants)
+        self.reset()
+    
+    def reset(self):
+        """重置仿真器状态"""
+        self.stamina = 1.0  # 初始体力100%
+        self.stamina_history = []
+        self.speed_history = []
+        self.time_history = []
+        self.current_time = 0.0
+        self.last_speed = 0.0
+        self.epoc_delay_start_time = -1.0
+        self.is_in_epoc_delay = False
+        self.speed_before_stop = 0.0
+        self.rest_duration_minutes = 0.0
+        self.exercise_duration_minutes = 0.0
+        self.last_movement_time = 0.0
+        # 重置环境因子
+        self.environment_factor.set_heat_stress(0.0)
+        self.environment_factor.set_cold_stress(0.0)
+        self.environment_factor.set_surface_wetness(0.0)
+        # 性能优化：预分配空间（Python列表动态扩容，这里使用空列表初始化）
+        # Python列表没有reserve方法，使用空列表初始化
+    
+    def _calculate_epoc_drain_rate(self, speed_before_stop):
+        """计算EPOC延迟期间的消耗"""
+        epoc_drain_rate = self.constants.EPOC_DRAIN_RATE
+        speed_ratio_for_epoc = np.clip(speed_before_stop / self.constants.GAME_MAX_SPEED, 0.0, 1.0)
+        epoc_drain_rate = epoc_drain_rate * (1.0 + speed_ratio_for_epoc * 0.5)  # 最多增加50%
+        return epoc_drain_rate
+    
+    def _update_epoc_delay(self, speed, current_time):
+        """更新EPOC延迟状态"""
+        was_moving = (self.last_speed > 0.05)
+        is_now_stopped = (speed <= 0.05)
+        
+        # 如果从运动状态变为静止状态，启动EPOC延迟
+        if was_moving and is_now_stopped and not self.is_in_epoc_delay:
+            self.epoc_delay_start_time = current_time
+            self.is_in_epoc_delay = True
+            self.speed_before_stop = self.last_speed
+        
+        # 检查EPOC延迟是否已结束
+        if self.is_in_epoc_delay:
+            epoc_delay_duration = current_time - self.epoc_delay_start_time
+            if epoc_delay_duration >= self.constants.EPOC_DELAY_SECONDS:
+                self.is_in_epoc_delay = False
+                self.epoc_delay_start_time = -1.0
+        
+        # 如果重新开始运动，取消EPOC延迟
+        if speed > 0.05:
+            self.is_in_epoc_delay = False
+            self.epoc_delay_start_time = -1.0
+        
+        # 更新上一帧的速度
+        self.last_speed = speed
+        
+        return self.is_in_epoc_delay
+    
+    def step(self, speed, current_weight, grade_percent, terrain_factor, 
+             stance, movement_type, current_time, enable_randomness=True):
+        """单步更新体力状态（性能优化版）"""
+        # 更新时间
+        time_delta = current_time - self.current_time if self.current_time > 0 else 0.2
+        self.current_time = current_time
+        
+        # 添加随机扰动（减少numpy调用）
+        if enable_randomness:
+            import random
+            # 速度扰动：±5%
+            speed_noise = speed * random.uniform(-0.05, 0.05)
+            speed += speed_noise
+            speed = max(speed, 0.0)
+            
+            # 负重扰动：±2%
+            weight_noise = current_weight * random.uniform(-0.02, 0.02)
+            current_weight += weight_noise
+            current_weight = max(current_weight, 0.0)
+            
+            # 坡度扰动：±1%
+            grade_noise = grade_percent * random.uniform(-0.01, 0.01)
+            grade_percent += grade_noise
+            
+            # 地形因子扰动：±5%
+            terrain_noise = terrain_factor * random.uniform(-0.05, 0.05)
+            terrain_factor += terrain_noise
+            terrain_factor = max(terrain_factor, 0.5)
+        
+        # 内联EPOC延迟更新，减少函数调用
+        was_moving = (self.last_speed > 0.05)
+        is_now_stopped = (speed <= 0.05)
+        is_in_epoc_delay = self.is_in_epoc_delay
+        
+        # 如果从运动状态变为静止状态，启动EPOC延迟
+        if was_moving and is_now_stopped and not is_in_epoc_delay:
+            self.epoc_delay_start_time = current_time
+            self.is_in_epoc_delay = True
+            self.speed_before_stop = self.last_speed
+            is_in_epoc_delay = True
+        
+        # 检查EPOC延迟是否已结束
+        if is_in_epoc_delay:
+            epoc_delay_duration = current_time - self.epoc_delay_start_time
+            if epoc_delay_duration >= self.constants.EPOC_DELAY_SECONDS:
+                self.is_in_epoc_delay = False
+                self.epoc_delay_start_time = -1.0
+                is_in_epoc_delay = False
+        
+        # 如果重新开始运动，取消EPOC延迟
+        if speed > 0.05:
+            self.is_in_epoc_delay = False
+            self.epoc_delay_start_time = -1.0
+            is_in_epoc_delay = False
+        
+        # 更新上一帧的速度
+        self.last_speed = speed
+        
+        # 记录速度（减少内存操作，只在需要时记录）
+        if len(self.speed_history) < 10000:  # 限制历史记录长度
+            self.speed_history.append(speed)
+        
+        # 更新运动/休息时间（避免重复计算）
+        if speed > 0.05:
+            self.exercise_duration_minutes += time_delta / 60.0
+            self.rest_duration_minutes = 0.0
+            self.last_movement_time = current_time
+        else:
+            self.rest_duration_minutes += time_delta / 60.0
+        
+        # 计算基础消耗率（内联计算，减少函数调用）
+        # 计算动态阈值
+        if current_weight <= 0.0:
+            dynamic_threshold = self.constants.RECOVERY_THRESHOLD_NO_LOAD
+        elif current_weight >= self.constants.COMBAT_ENCUMBRANCE_WEIGHT:
+            dynamic_threshold = self.constants.DRAIN_THRESHOLD_COMBAT_LOAD
+        else:
+            # 线性插值
+            t = current_weight / self.constants.COMBAT_ENCUMBRANCE_WEIGHT
+            dynamic_threshold = (self.constants.RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + 
+                               self.constants.DRAIN_THRESHOLD_COMBAT_LOAD * t)
+        
+        # 计算负重影响因子
+        weight_ratio = current_weight / self.constants.CHARACTER_WEIGHT
+        load_factor = 1.0
+        if current_weight > 0.0:
+            weight_ratio_power = weight_ratio ** 1.2
+            load_factor = 1.0 + (weight_ratio_power * 1.5)
+        
+        # 根据速度和动态阈值计算消耗率
+        if speed >= self.constants.SPRINT_VELOCITY_THRESHOLD:
+            base_drain_rate = self.constants.SPRINT_DRAIN_PER_TICK * load_factor
+        elif speed >= self.constants.RUN_VELOCITY_THRESHOLD:
+            base_drain_rate = 0.00008 * load_factor
+        elif speed >= dynamic_threshold:
+            base_drain_rate = 0.00002 * load_factor
+        else:
+            base_drain_rate = -0.00025
+        
+        # 计算EPOC延迟期间的消耗（内联计算）
+        if is_in_epoc_delay:
+            epoc_drain_rate = self.constants.EPOC_DRAIN_RATE
+            speed_ratio_for_epoc = min(max(self.speed_before_stop / self.constants.GAME_MAX_SPEED, 0.0), 1.0)
+            epoc_drain_rate = epoc_drain_rate * (1.0 + speed_ratio_for_epoc * 0.5)
+            base_drain_rate = max(base_drain_rate, epoc_drain_rate)
+        
+        # 计算恢复率
+        recovery_rate = self._calculate_recovery_rate(
+            self.stamina, 
+            self.rest_duration_minutes, 
+            self.exercise_duration_minutes, 
+            current_weight, 
+            base_drain_rate, 
+            False,  # disablePositiveRecovery
+            stance, 
+            self.environment_factor, 
+            speed
+        )
+        
+        # 添加恢复率扰动：±10%
+        if enable_randomness:
+            recovery_noise = recovery_rate * random.uniform(-0.1, 0.1)
+            recovery_rate += recovery_noise
+        
+        # 更新体力
+        self.stamina += recovery_rate
+        self.stamina = min(max(self.stamina, 0.0), 1.0)  # 使用内置函数，避免numpy调用
+        
+        # 记录体力（限制历史记录长度）
+        if len(self.stamina_history) < 10000:
+            self.stamina_history.append(self.stamina)
+            self.time_history.append(current_time)
+    
+    def simulate_scenario(self, speed_profile, current_weight, grade_percent, 
+                         terrain_factor, stance, movement_type, enable_randomness=True):
+        """模拟完整场景（线程安全）"""
+        # 每次模拟前重置状态，确保线程安全
+        self.reset()
+        
+        # 解析速度曲线
+        time_points = [t for t, _ in speed_profile]
+        speeds = [v for _, v in speed_profile]
+        
+        # 模拟场景
+        current_time = 0.0
+        total_distance = 0.0
+        
+        for i in range(len(time_points) - 1):
+            start_time = time_points[i]
+            end_time = time_points[i + 1]
+            speed = speeds[i]
+            
+            # 计算时间步长
+            duration = end_time - start_time
+            steps = int(duration / 0.2)
+            
+            for _ in range(steps):
+                self.step(
+                    speed=speed,
+                    current_weight=current_weight,
+                    grade_percent=grade_percent,
+                    terrain_factor=terrain_factor,
+                    stance=stance,
+                    movement_type=movement_type,
+                    current_time=current_time,
+                    enable_randomness=enable_randomness
+                )
+                current_time += 0.2
+                total_distance += speed * 0.2
+        
+        # 计算结果
+        min_stamina = min(self.stamina_history) if self.stamina_history else 1.0
+        
+        return {
+            'total_distance': total_distance,
+            'min_stamina': min_stamina,
+            'stamina_history': self.stamina_history.copy(),  # 返回副本，避免线程间共享
+            'speed_history': self.speed_history.copy(),      # 返回副本，避免线程间共享
+            'time_history': self.time_history.copy(),        # 返回副本，避免线程间共享
+            'total_time_with_penalty': current_time
+        }
+    
+    def _calculate_base_drain_rate(self, speed, current_weight):
+        """计算基础消耗率（与C代码一致）"""
+        # 计算动态阈值
+        if current_weight <= 0.0:
+            dynamic_threshold = self.constants.RECOVERY_THRESHOLD_NO_LOAD
+        elif current_weight >= self.constants.COMBAT_ENCUMBRANCE_WEIGHT:
+            dynamic_threshold = self.constants.DRAIN_THRESHOLD_COMBAT_LOAD
+        else:
+            # 线性插值
+            t = current_weight / self.constants.COMBAT_ENCUMBRANCE_WEIGHT
+            dynamic_threshold = (self.constants.RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + 
+                               self.constants.DRAIN_THRESHOLD_COMBAT_LOAD * t)
+        
+        # 计算负重影响因子
+        weight_ratio = current_weight / self.constants.CHARACTER_WEIGHT
+        load_factor = 1.0
+        if current_weight > 0.0:
+            # 与C代码一致：loadFactor = 1.0 + (weightRatio^1.2) * 1.5
+            weight_ratio_power = np.power(weight_ratio, 1.2)
+            load_factor = 1.0 + (weight_ratio_power * 1.5)
+        
+        # 根据速度和动态阈值计算消耗率
+        if speed >= self.constants.SPRINT_VELOCITY_THRESHOLD:
+            return self.constants.SPRINT_DRAIN_PER_TICK * load_factor
+        elif speed >= self.constants.RUN_VELOCITY_THRESHOLD:
+            # 与C代码一致：降低RUN的基础消耗
+            return 0.00008 * load_factor
+        elif speed >= dynamic_threshold:
+            return 0.00002 * load_factor
+        else:
+            # 速度低于动态阈值：恢复
+            return -0.00025
+    
+    def _calculate_recovery_weight(self, current_weight, stance):
+        """计算恢复用的重量（考虑姿态优化）"""
+        current_weight_for_recovery = current_weight
+        
+        # 趴下休息时的负重优化
+        if stance == Stance.PRONE:
+            # 如果角色趴下，将负重视为基准重量，去除额外负重的影响
+            current_weight_for_recovery = self.constants.CHARACTER_WEIGHT
+        
+        return current_weight_for_recovery
+    
+    def _calculate_recovery_rate(self, stamina_percent, rest_duration_minutes, 
+                                exercise_duration_minutes, current_weight, 
+                                base_drain_rate, disable_positive_recovery, 
+                                stance, environment_factor, current_speed):
+        """计算恢复率（与C代码一致，性能优化版）"""
+        # 内联恢复用重量计算，减少函数调用
+        current_weight_for_recovery = current_weight
+        if stance == Stance.PRONE:
+            current_weight_for_recovery = self.constants.CHARACTER_WEIGHT
+        
+        # 内联多维度恢复率计算，减少函数调用开销
+        # 限制输入参数
+        stamina_percent_clamped = min(max(stamina_percent, 0.0), 1.0)
+        rest_duration_minutes = max(rest_duration_minutes, 0.0)
+        exercise_duration_minutes = max(exercise_duration_minutes, 0.0)
+        
+        # 基础恢复率
+        base_recovery_rate = self.constants.BASE_RECOVERY_RATE
+        
+        # 非线性恢复系数（避免重复计算）
+        recovery_nonlinear_coeff = self.constants.RECOVERY_NONLINEAR_COEFF
+        stamina_recovery_multiplier = 1.0 + (recovery_nonlinear_coeff * (1.0 - stamina_percent_clamped))
+        recovery_rate = base_recovery_rate * stamina_recovery_multiplier
+        
+        # 健康状态影响
+        fitness_recovery_multiplier = 1.0 + (self.constants.FITNESS_RECOVERY_COEFF * self.constants.FITNESS_LEVEL)
+        fitness_recovery_multiplier = min(max(fitness_recovery_multiplier, 1.0), 1.5)
+        recovery_rate *= fitness_recovery_multiplier
+        
+        # 休息时间影响
+        if rest_duration_minutes <= self.constants.FAST_RECOVERY_DURATION_MINUTES:
+            recovery_rate *= self.constants.FAST_RECOVERY_MULTIPLIER
+        elif rest_duration_minutes <= self.constants.FAST_RECOVERY_DURATION_MINUTES + self.constants.MEDIUM_RECOVERY_DURATION_MINUTES:
+            recovery_rate *= self.constants.MEDIUM_RECOVERY_MULTIPLIER
+        elif rest_duration_minutes >= 10.0:
+            transition_duration = 10.0
+            transition_progress = min((rest_duration_minutes - 10.0) / transition_duration, 1.0)
+            slow_recovery_multiplier = 1.0 - (transition_progress * (1.0 - self.constants.SLOW_RECOVERY_MULTIPLIER))
+            recovery_rate *= slow_recovery_multiplier
+        
+        # 姿态影响
+        if stance == Stance.STAND:
+            recovery_rate *= self.constants.STANDING_RECOVERY_MULTIPLIER
+        elif stance == Stance.CROUCH:
+            recovery_rate *= self.constants.CROUCHING_RECOVERY_MULTIPLIER
+        elif stance == Stance.PRONE:
+            recovery_rate *= self.constants.PRONE_RECOVERY_MULTIPLIER
+        
+        # 负重影响
+        if current_weight_for_recovery > 0.0:
+            load_ratio = current_weight_for_recovery / 30.0  # 30kg为身体耐受基准
+            load_ratio = min(max(load_ratio, 0.0), 2.0)
+            load_recovery_penalty = (load_ratio ** 2.0) * 0.0004
+            recovery_rate -= load_recovery_penalty
+        
+        # 边际效应衰减
+        if stamina_percent_clamped > 0.8:
+            marginal_decay_multiplier = 1.1 - stamina_percent_clamped
+            marginal_decay_multiplier = min(max(marginal_decay_multiplier, 0.2), 1.0)
+            recovery_rate *= marginal_decay_multiplier
+        
+        # 确保恢复率不为负
+        recovery_rate = max(recovery_rate, 0.0)
+        
+        # ==================== 环境因子处理 ====================
+        if environment_factor:
+            # 内联环境因子计算，减少函数调用
+            heat_stress_penalty = environment_factor.heat_stress * self.constants.ENV_HEAT_STRESS_PENALTY_MAX
+            cold_stress_penalty = environment_factor.cold_stress * self.constants.ENV_COLD_STRESS_PENALTY_MAX
+            
+            # 应用热应激惩罚（降低恢复率）
+            recovery_rate *= (1.0 - heat_stress_penalty)
+            
+            # 应用冷应激惩罚（降低恢复率）
+            recovery_rate *= (1.0 - cold_stress_penalty)
+            
+            # 应用地表湿度惩罚（趴下时的恢复惩罚）
+            if stance == Stance.PRONE:
+                surface_wetness_penalty = environment_factor.surface_wetness * self.constants.ENV_SURFACE_WETNESS_PENALTY_MAX
+                recovery_rate *= (1.0 - surface_wetness_penalty)
+        
+        # ==================== 绝境呼吸保护机制 ====================
+        # 当体力极低 (<2%) 且非水下时，人体进入求生本能强制吸氧
+        if stamina_percent < 0.02:
+            recovery_rate = max(recovery_rate, 0.0001)
+        
+        # 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
+        if disable_positive_recovery:
+            return -max(base_drain_rate, 0.0)
+        
+        # 处理静态消耗或恢复
+        if base_drain_rate > 0.0:
+            # 正数表示消耗，从恢复率中减去
+            adjusted_recovery_rate = recovery_rate - base_drain_rate
+            
+            # 如果消耗大于恢复，屏蔽消耗，只按最低值恢复
+            if adjusted_recovery_rate < 0.0:
+                recovery_rate = 0.00005
+            else:
+                recovery_rate = adjusted_recovery_rate
+        elif base_drain_rate < 0.0:
+            # 负数表示恢复，加到恢复率中
+            recovery_rate += abs(base_drain_rate)
+        
+        # 静态保护逻辑
+        if current_speed < 0.1 and current_weight < 40.0 and recovery_rate < 0.00005:
+            recovery_rate = 0.0001
+        
+        return recovery_rate
+    
+    def _calculate_multi_dimensional_recovery_rate(self, stamina_percent, 
+                                                 rest_duration_minutes, 
+                                                 exercise_duration_minutes, 
+                                                 current_weight, 
+                                                 stance):
+        """计算多维度恢复率（与C代码一致）"""
+        # 限制输入参数
+        stamina_percent = np.clip(stamina_percent, 0.0, 1.0)
+        rest_duration_minutes = max(rest_duration_minutes, 0.0)
+        exercise_duration_minutes = max(exercise_duration_minutes, 0.0)
+        
+        # 基础恢复率
+        base_recovery_rate = self.constants.BASE_RECOVERY_RATE
+        
+        # 非线性恢复系数
+        recovery_nonlinear_coeff = self.constants.RECOVERY_NONLINEAR_COEFF
+        stamina_recovery_multiplier = 1.0 + (recovery_nonlinear_coeff * (1.0 - stamina_percent))
+        recovery_rate = base_recovery_rate * stamina_recovery_multiplier
+        
+        # 健康状态影响
+        fitness_recovery_multiplier = 1.0 + (self.constants.FITNESS_RECOVERY_COEFF * self.constants.FITNESS_LEVEL)
+        fitness_recovery_multiplier = np.clip(fitness_recovery_multiplier, 1.0, 1.5)
+        recovery_rate *= fitness_recovery_multiplier
+        
+        # 休息时间影响
+        if rest_duration_minutes <= self.constants.FAST_RECOVERY_DURATION_MINUTES:
+            # 快速恢复期
+            recovery_rate *= self.constants.FAST_RECOVERY_MULTIPLIER
+        elif rest_duration_minutes <= self.constants.FAST_RECOVERY_DURATION_MINUTES + self.constants.MEDIUM_RECOVERY_DURATION_MINUTES:
+            # 中等恢复期
+            recovery_rate *= self.constants.MEDIUM_RECOVERY_MULTIPLIER
+        elif rest_duration_minutes >= 10.0:
+            # 慢速恢复期
+            transition_duration = 10.0
+            transition_progress = min((rest_duration_minutes - 10.0) / transition_duration, 1.0)
+            slow_recovery_multiplier = 1.0 - (transition_progress * (1.0 - self.constants.SLOW_RECOVERY_MULTIPLIER))
+            recovery_rate *= slow_recovery_multiplier
+        
+        # 姿态影响
+        if stance == Stance.STAND:
+            recovery_rate *= self.constants.STANDING_RECOVERY_MULTIPLIER
+        elif stance == Stance.CROUCH:
+            recovery_rate *= self.constants.CROUCHING_RECOVERY_MULTIPLIER
+        elif stance == Stance.PRONE:
+            recovery_rate *= self.constants.PRONE_RECOVERY_MULTIPLIER
+        
+        # 负重影响
+        if current_weight > 0.0:
+            load_ratio = current_weight / 30.0  # 30kg为身体耐受基准
+            load_ratio = np.clip(load_ratio, 0.0, 2.0)
+            load_recovery_penalty = np.power(load_ratio, 2.0) * 0.0004
+            recovery_rate -= load_recovery_penalty
+        
+        # 边际效应衰减
+        if stamina_percent > 0.8:
+            marginal_decay_multiplier = 1.1 - stamina_percent
+            marginal_decay_multiplier = np.clip(marginal_decay_multiplier, 0.2, 1.0)
+            recovery_rate *= marginal_decay_multiplier
+        
+        # 确保恢复率不为负
+        recovery_rate = max(recovery_rate, 0.0)
+        
+        return recovery_rate
+
+
+# 测试代码
+if __name__ == "__main__":
+    # 创建常量实例
+    constants = RSSConstants()
+    
+    # 测试1: ACFT 2英里测试（空载，标准条件）
+    print("测试1: ACFT 2英里测试（空载，标准条件）...")
+    twin = RSSDigitalTwin(constants)
+    
+    # ACFT标准测试：0KG负载，15分27秒完成2英里
+    class ACFTScenario:
+        def __init__(self):
+            self.speed_profile = [(0, 3.7), (927, 3.7)]  # 2英里测试，目标速度3.7m/s
+            self.current_weight = 90.0 + 0.0  # 体重90kg + 0kg负载
+            self.grade_percent = 0.0  # 平地
+            self.terrain_factor = 1.0  # 普通地形
+            self.stance = Stance.STAND  # 站立
+            self.movement_type = MovementType.RUN  # 跑步
+    
+    scenario = ACFTScenario()
+    results = twin.simulate_scenario(
+        speed_profile=scenario.speed_profile,
+        current_weight=scenario.current_weight,
+        grade_percent=scenario.grade_percent,
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance,
+        movement_type=scenario.movement_type,
+        enable_randomness=True  # 启用随机扰动
+    )
+    
+    print(f"ACFT 2英里测试 - 负载: 0.0kg")
+    print(f"最低体力: {results['min_stamina']:.4f}")
+    print(f"完成时间: {results['total_time_with_penalty']:.2f}秒")
+    print(f"是否达到标准: {results['total_time_with_penalty'] <= 927.0}")
+    
+    # 测试2: 29kg负重下站立不动的情况（从50%体力开始）
+    print("\n测试2: 29kg负重下站立不动的情况（从50%体力开始）...")
+    twin = RSSDigitalTwin(constants)
+    twin.stamina = 0.5  # 从50%体力开始
+    
+    # 模拟站立不动10秒
+    for i in range(50):  # 50 * 0.2秒 = 10秒
+        twin.step(
+            speed=0.0,  # 站立不动
+            current_weight=29.0,  # 29kg负重
+            grade_percent=0.0,  # 平地
+            terrain_factor=1.0,  # 普通地形
+            stance=Stance.STAND,  # 站立
+            movement_type=MovementType.IDLE,  # 静止
+            current_time=i * 0.2,
+            enable_randomness=True  # 启用随机扰动
+        )
+    
+    # 打印结果
+    print(f"初始体力: {twin.stamina_history[0]:.4f}")
+    print(f"最终体力: {twin.stamina_history[-1]:.4f}")
+    print(f"体力变化: {twin.stamina_history[-1] - twin.stamina_history[0]:.4f}")
+    print(f"是否恢复体力: {twin.stamina_history[-1] > twin.stamina_history[0]}")
+    
+    # 测试3: 城市战斗场景（30kg负重）
+    print("\n测试3: 城市战斗场景（30kg负重）...")
+    twin = RSSDigitalTwin(constants)
+    
+    # 创建城市战斗场景
+    class UrbanScenario:
+        def __init__(self):
+            self.speed_profile = [(0, 2.5), (60, 3.7), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)]
+            self.current_weight = 90.0 + 30.0  # 体重90kg + 30kg负载
+            self.grade_percent = 0.0  # 平地
+            self.terrain_factor = 1.2  # 城市地形
+            self.stance = Stance.STAND  # 站立
+            self.movement_type = MovementType.RUN  # 跑步
+    
+    scenario = UrbanScenario()
+    results = twin.simulate_scenario(
+        speed_profile=scenario.speed_profile,
+        current_weight=scenario.current_weight,
+        grade_percent=scenario.grade_percent,
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance,
+        movement_type=scenario.movement_type,
+        enable_randomness=True  # 启用随机扰动
+    )
+    
+    print(f"最低体力: {results['min_stamina']:.4f}")
+    print(f"完成时间: {results['total_time_with_penalty']:.2f}秒")
+    print(f"是否完成场景: {results['total_time_with_penalty'] <= 300.0}")
+    
+    # 测试4: 山地战斗场景（25kg负重）
+    print("\n测试4: 山地战斗场景（25kg负重）...")
+    twin = RSSDigitalTwin(constants)
+    
+    # 创建山地战斗场景
+    class MountainScenario:
+        def __init__(self):
+            self.speed_profile = [(0, 1.8), (120, 2.5), (240, 1.8), (360, 1.8)]
+            self.current_weight = 90.0 + 25.0  # 体重90kg + 25kg负载
+            self.grade_percent = 15.0  # 15%坡度
+            self.terrain_factor = 1.5  # 山地地形
+            self.stance = Stance.STAND  # 站立
+            self.movement_type = MovementType.WALK  # 行走
+    
+    scenario = MountainScenario()
+    results = twin.simulate_scenario(
+        speed_profile=scenario.speed_profile,
+        current_weight=scenario.current_weight,
+        grade_percent=scenario.grade_percent,
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance,
+        movement_type=scenario.movement_type,
+        enable_randomness=True  # 启用随机扰动
+    )
+    
+    print(f"最低体力: {results['min_stamina']:.4f}")
+    print(f"完成时间: {results['total_time_with_penalty']:.2f}秒")
+    print(f"是否完成场景: {results['total_time_with_penalty'] <= 360.0}")
+    
+    # 测试5: 撤离场景（40kg重载）
+    print("\n测试5: 撤离场景（40kg重载）...")
+    twin = RSSDigitalTwin(constants)
+    
+    # 创建撤离场景
+    class EvacuationScenario:
+        def __init__(self):
+            self.speed_profile = [(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)]
+            self.current_weight = 90.0 + 40.0  # 体重90kg + 40kg负载
+            self.grade_percent = 5.0  # 5%坡度
+            self.terrain_factor = 1.3  # 复杂地形
+            self.stance = Stance.STAND  # 站立
+            self.movement_type = MovementType.RUN  # 跑步
+    
+    scenario = EvacuationScenario()
+    results = twin.simulate_scenario(
+        speed_profile=scenario.speed_profile,
+        current_weight=scenario.current_weight,
+        grade_percent=scenario.grade_percent,
+        terrain_factor=scenario.terrain_factor,
+        stance=scenario.stance,
+        movement_type=scenario.movement_type,
+        enable_randomness=True  # 启用随机扰动
+    )
+    
+    print(f"最低体力: {results['min_stamina']:.4f}")
+    print(f"完成时间: {results['total_time_with_penalty']:.2f}秒")
+    print(f"是否完成场景: {results['total_time_with_penalty'] <= 270.0}")

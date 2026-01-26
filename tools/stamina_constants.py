@@ -203,14 +203,14 @@ RECOVERY_STARTUP_DELAY_SECONDS = 3.0  # 恢复启动延迟（秒）- 从5秒缩�
 # ==================== EPOC（过量耗氧）延迟参数 ====================
 # 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
 # 参考：Brooks et al., 2000; LaForgia et al., 2006
-# 拟真平衡点：缩短到2秒，与恢复启动延迟保持一致
-EPOC_DELAY_SECONDS = 2.0  # EPOC延迟时间（秒）- 从4秒降到2秒
+# 拟真平衡点：与数字孪生模拟器保持一致
+EPOC_DELAY_SECONDS = 0.5  # EPOC延迟时间（秒）- 与数字孪生模拟器一致
 EPOC_DRAIN_RATE = 0.001  # EPOC期间的基础消耗率（每0.2秒）
 
 # ==================== 姿态交互修正参数 ====================
-POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数
-POSTURE_PRONE_MULTIPLIER = 3.0  # 匍匐爬行消耗倍数
-POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走消耗倍数（基准）
+POSTURE_CROUCH_MULTIPLIER = 0.8  # 蹲姿行走速度倍数（减速）
+POSTURE_PRONE_MULTIPLIER = 0.5  # 匍匐爬行速度倍数（减速）
+POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走速度倍数（基准）
 
 # ==================== 游泳体力消耗参数 ====================
 SWIMMING_DRAG_COEFFICIENT = 0.5  # 阻力系数（C_d）
@@ -267,6 +267,11 @@ ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT = 1.5  # 降雨强度指数（非线性
 ENV_RAIN_INTENSITY_THRESHOLD = 0.01  # 降雨强度阈值（低于此值不计算湿重）
 ENV_RAIN_INTENSITY_HEAVY_THRESHOLD = 0.8  # 暴雨阈值（呼吸阻力触发）
 ENV_RAIN_INTENSITY_BREATHING_PENALTY = 0.05  # 暴雨时的无氧代谢增加比例
+
+# 环境因子惩罚最大值（与EnvironmentFactor类一致）
+ENV_HEAT_STRESS_PENALTY_MAX = 0.3  # 最大热应激惩罚
+ENV_COLD_STRESS_PENALTY_MAX = 0.2  # 最大冷应激惩罚
+ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15  # 最大地表湿度惩罚
 
 # 风阻相关常量
 ENV_WIND_RESISTANCE_COEFF = 0.05  # 风阻系数（体力消耗权重）

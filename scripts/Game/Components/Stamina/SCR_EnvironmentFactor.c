@@ -332,8 +332,8 @@ class EnvironmentFactor
         float currentHour = m_pCachedWeatherManager.GetTimeOfTheDay();
         
         // 昼夜温度模型参数
-        float baseTemp = 15.0;      // 基础气温（清晨最低温）
-        float amplitude = 12.0;     // 昼夜温差幅度
+        const float baseTemp = 15.0;      // 基础气温（清晨最低温）
+        const float amplitude = 12.0;     // 昼夜温差幅度
         
         // 使用余弦函数模拟曲线，使峰值出现在 14:00
         // 公式：T(t) = baseTemp + amplitude * cos((t - 14) * π / 12)
@@ -360,7 +360,7 @@ class EnvironmentFactor
         
         // 热应激触发阈值：26°C
         // 只有当虚拟气温超过 26°C 时，才开始计算热应激
-        float heatStressThreshold = 26.0;
+        const float heatStressThreshold = 26.0;
         float multiplier = 1.0;
         
         if (simulatedTemp < heatStressThreshold)

@@ -20,13 +20,207 @@ import optuna
 import numpy as np
 import json
 import math
+import os
+import multiprocessing
+import concurrent.futures
+import time
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Callable
 from dataclasses import dataclass, asdict
 
-# 导入现有模块（不修改）
-from rss_digital_twin import RSSDigitalTwin, MovementType, Stance, RSSConstants
-from rss_scenarios import ScenarioLibrary, TestScenario, ScenarioType
+# 导入修复版数字孪生仿真器
+from rss_digital_twin_fix import RSSDigitalTwin, MovementType, Stance, RSSConstants
+
+# 自定义多进程并行框架
+class ParallelWorker:
+    """
+    自定义多进程并行工作器
+    绕过Optuna的n_jobs限制，实现更高效的并行计算
+    """
+    
+    def __init__(self, max_workers: int = -1):
+        """
+        初始化并行工作器
+        
+        Args:
+            max_workers: 最大工作进程数，-1表示自动检测
+        """
+        if max_workers == -1:
+            try:
+                max_workers = multiprocessing.cpu_count()
+                if max_workers > 1:
+                    max_workers -= 1  # 预留一个核心给系统
+            except:
+                max_workers = 1
+        
+        self.max_workers = max_workers
+        self.executor = None
+        self.start_time = 0
+    
+    def start(self):
+        """启动工作池"""
+        self.start_time = time.time()
+        self.executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=self.max_workers
+        )
+    
+    def shutdown(self):
+        """关闭工作池"""
+        if self.executor:
+            self.executor.shutdown(wait=True)
+    
+    def map(self, func: Callable, tasks: List, batch_size: int = 1):
+        """
+        并行映射任务
+        
+        Args:
+            func: 任务函数
+            tasks: 任务列表
+            batch_size: 批处理大小
+        
+        Returns:
+            任务结果列表
+        """
+        if not self.executor:
+            self.start()
+        
+        # 批处理任务以减少进程间通信开销
+        if batch_size > 1:
+            batches = []
+            for i in range(0, len(tasks), batch_size):
+                batches.append(tasks[i:i + batch_size])
+            
+            future_to_batch = {}
+            for i, batch in enumerate(batches):
+                future = self.executor.submit(self._process_batch, func, batch, i)
+                future_to_batch[future] = i
+            
+            results = []
+            for future in concurrent.futures.as_completed(future_to_batch):
+                batch_results = future.result()
+                results.extend(batch_results)
+        else:
+            # 单个任务处理
+            future_to_task = {}
+            for i, task in enumerate(tasks):
+                future = self.executor.submit(func, task)
+                future_to_task[future] = i
+            
+            results = []
+            for future in concurrent.futures.as_completed(future_to_task):
+                result = future.result()
+                results.append(result)
+        
+        return results
+    
+    def _process_batch(self, func: Callable, batch: List, batch_idx: int):
+        """
+        处理一批任务
+        
+        Args:
+            func: 任务函数
+            batch: 任务批
+            batch_idx: 批索引
+        
+        Returns:
+            批处理结果
+        """
+        results = []
+        for task in batch:
+            result = func(task)
+            results.append(result)
+        return results
+    
+    def get_elapsed_time(self):
+        """
+        获取已运行时间
+        
+        Returns:
+            运行时间（秒）
+        """
+        return time.time() - self.start_time
+
+# 场景数据类
+@dataclass
+class Scenario:
+    """场景数据类"""
+    speed_profile: List[Tuple[float, float]]  # 时间-速度曲线
+    current_weight: float  # 当前重量（kg）
+    grade_percent: float  # 坡度百分比
+    terrain_factor: float  # 地形因子
+    stance: int  # 姿态
+    movement_type: int  # 移动类型
+    target_finish_time: float  # 目标完成时间（秒）
+    test_type: str = ""  # 测试类型
+    standard_load: float = 0.0  # 标准负载
+
+
+# 场景库
+class ScenarioLibrary:
+    @staticmethod
+    def create_acft_2mile_scenario(load_weight=0.0):
+        """创建ACFT 2英里测试场景
+        
+        Args:
+            load_weight: 负载重量（kg），ACFT标准测试应为0.0
+        """
+        # ACFT 2英里测试标准：15分27秒，空载
+        return Scenario(
+            speed_profile=[(0, 3.7), (927, 3.7)],  # 2英里测试，目标速度3.7m/s
+            current_weight=90.0 + load_weight,  # 体重90kg + 负载
+            grade_percent=0.0,  # 平地
+            terrain_factor=1.0,  # 普通地形
+            stance=Stance.STAND,  # 站立
+            movement_type=MovementType.RUN,  # 跑步
+            target_finish_time=927.0,  # 目标完成时间15分27秒
+            test_type="ACFT 2英里测试",
+            standard_load=0.0  # ACFT标准测试应为0KG
+        )
+    
+    @staticmethod
+    def create_urban_combat_scenario(load_weight=30.0):
+        """创建城市战斗场景"""
+        # 城市战斗速度曲线：快走->跑步->快走->冲刺->快走
+        return Scenario(
+            speed_profile=[(0, 2.5), (60, 3.7), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)],
+            current_weight=90.0 + load_weight,  # 体重90kg + 负载
+            grade_percent=0.0,  # 平地
+            terrain_factor=1.2,  # 城市地形（有障碍物）
+            stance=Stance.STAND,  # 站立
+            movement_type=MovementType.RUN,  # 跑步
+            target_finish_time=300.0,  # 5分钟场景
+            test_type="城市战斗场景"
+        )
+    
+    @staticmethod
+    def create_mountain_combat_scenario(load_weight=25.0):
+        """创建山地战斗场景"""
+        # 山地战斗速度曲线：慢走->快走->慢走
+        return Scenario(
+            speed_profile=[(0, 1.8), (120, 2.5), (240, 1.8), (360, 1.8)],
+            current_weight=90.0 + load_weight,  # 体重90kg + 负载
+            grade_percent=15.0,  # 15%坡度（山地）
+            terrain_factor=1.5,  # 山地地形
+            stance=Stance.STAND,  # 站立
+            movement_type=MovementType.WALK,  # 行走
+            target_finish_time=360.0,  # 6分钟场景
+            test_type="山地战斗场景"
+        )
+    
+    @staticmethod
+    def create_evacuation_scenario(load_weight=40.0):
+        """创建撤离场景（重载）"""
+        # 撤离速度曲线：快走->跑步->快走
+        return Scenario(
+            speed_profile=[(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)],
+            current_weight=90.0 + load_weight,  # 体重90kg + 重载
+            grade_percent=5.0,  # 5%坡度
+            terrain_factor=1.3,  # 复杂地形
+            stance=Stance.STAND,  # 站立
+            movement_type=MovementType.RUN,  # 跑步
+            target_finish_time=270.0,  # 4.5分钟场景
+            test_type="撤离场景"
+        )
 
 
 @dataclass
@@ -45,23 +239,37 @@ class RSSSuperPipeline:
     def __init__(
         self,
         n_trials: int = 5000,  # 增加迭代次数以提高多样性
-        n_jobs: int = 1,
-        use_database: bool = False  # 是否使用数据库存储（默认False以提高性能）
+        n_jobs: int = -1,  # -1表示自动检测CPU核心数
+        use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
+        batch_size: int = 5  # 批处理大小
     ):
         """
         初始化流水线
         
         Args:
             n_trials: 优化迭代次数（默认5000，提高多样性）
-            n_jobs: 并行线程数
+            n_jobs: 并行线程数（-1表示自动检测CPU核心数）
             use_database: 是否使用数据库存储（默认False，使用内存存储以提高性能）
+            batch_size: 批处理大小
         """
+        # 自动检测CPU核心数
+        if n_jobs == -1:
+            try:
+                n_jobs = multiprocessing.cpu_count()
+                # 预留一个核心给系统
+                if n_jobs > 1:
+                    n_jobs -= 1
+            except:
+                n_jobs = 1
+        
         self.n_trials = n_trials
         self.n_jobs = n_jobs
+        self.batch_size = batch_size
         self.use_database = use_database
         self.study = None
         self.best_trials = []
         self.bug_reports: List[BugReport] = []
+        self.worker = None
         
     def objective(self, trial: optuna.Trial) -> Tuple[float, float, float]:
         """
@@ -383,20 +591,18 @@ class RSSSuperPipeline:
                 grade_percent=scenario.grade_percent,
                 terrain_factor=scenario.terrain_factor,
                 stance=scenario.stance,
-                movement_type=scenario.movement_type
+                movement_type=scenario.movement_type,
+                enable_randomness=True
             )
             
-            # 计算拟真度损失：距离目标差异
+            # 计算拟真度损失
             target_distance = scenario.speed_profile[-1][1] * scenario.target_finish_time
             distance_error = abs(results['total_distance'] - target_distance)
-            
-            # 归一化损失（相对于目标距离）
             realism_loss = distance_error / target_distance if target_distance > 0 else 1000.0
             
             return realism_loss
             
-        except Exception as e:
-            # 如果仿真失败，返回大惩罚值
+        except Exception:
             return 1000.0
     
     def _evaluate_30kg_playability(self, twin: RSSDigitalTwin) -> float:
@@ -409,65 +615,61 @@ class RSSSuperPipeline:
         Returns:
             可玩性负担（越小越好）
         """
-        # 30KG战斗负载测试
-        scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=30.0)
+        # 30KG战斗负载测试 - 结合多个场景
+        scenarios = [
+            ScenarioLibrary.create_acft_2mile_scenario(load_weight=30.0),
+            ScenarioLibrary.create_urban_combat_scenario(load_weight=30.0),
+            ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0)
+        ]
         
-        try:
-            results = twin.simulate_scenario(
-                speed_profile=scenario.speed_profile,
-                current_weight=scenario.current_weight,
-                grade_percent=scenario.grade_percent,
-                terrain_factor=scenario.terrain_factor,
-                stance=scenario.stance,
-                movement_type=scenario.movement_type
-            )
-            
-            # 计算可玩性负担
-            playability_burden = 0.0
-            
-            # 1. 最低体力惩罚（如果低于15%，大幅惩罚，但使用更温和的惩罚曲线）
-            min_stamina = results['min_stamina']
-            if min_stamina < 0.15:
-                # 使用平方惩罚，让接近15%的解惩罚更小
-                penalty_factor = (0.15 - min_stamina) ** 1.5  # 从线性改为1.5次方，更温和
-                playability_burden += penalty_factor * 600.0  # 从800降低到600，配合更温和的曲线
-            
-            # 2. 完成时间惩罚（如果落后目标10%以上，才严重惩罚，放宽到10%）
-            target_time = scenario.target_finish_time
-            actual_time = results['total_time_with_penalty']
-            time_penalty_ratio = (actual_time - target_time) / target_time
-            if time_penalty_ratio > 0.10:  # 放宽到10%（从5%提高到10%）
-                playability_burden += (time_penalty_ratio - 0.10) * 200.0  # 降低惩罚系数
-            elif time_penalty_ratio > 0.05:  # 5%-10%之间，轻微惩罚
-                playability_burden += (time_penalty_ratio - 0.05) * 50.0  # 轻微惩罚
-            
-            # 3. 硬性奖励：如果30KG下min_stamina > 0.12 且完成时间未落后10%，大幅降低负担
-            # 改进：放宽条件，min_stamina从0.15降低到0.12，时间从5%放宽到10%
-            if min_stamina >= 0.12 and time_penalty_ratio <= 0.10:
-                playability_burden = max(0.0, playability_burden - 400.0)  # 进一步增强奖励（从300提高到400）
-            
-            # 额外奖励：如果min_stamina > 0.15（超过15%），额外奖励
-            if min_stamina >= 0.15:
-                playability_burden = max(0.0, playability_burden - 100.0)  # 增强额外奖励（从50提高到100）
-            
-            # 额外奖励：如果min_stamina > 0.20（超过20%），更大奖励
-            if min_stamina >= 0.20:
-                playability_burden = max(0.0, playability_burden - 50.0)  # 额外奖励
-            
-            # 4. 体力耗尽时间惩罚（如果体力过早耗尽）
-            stamina_history = results['stamina_history']
-            if len(stamina_history) > 0:
-                exhausted_frames = sum(1 for s in stamina_history if s < 0.05)
-                total_frames = len(stamina_history)
-                exhaustion_ratio = exhausted_frames / total_frames if total_frames > 0 else 0.0
-                if exhaustion_ratio > 0.1:  # 超过10%的时间处于极度疲劳
-                    playability_burden += exhaustion_ratio * 50.0
-            
-            return playability_burden
-            
-        except Exception as e:
-            # 如果仿真失败，返回大惩罚值
-            return 1000.0
+        total_burden = 0.0
+        
+        for i, scenario in enumerate(scenarios):
+            try:
+                results = twin.simulate_scenario(
+                    speed_profile=scenario.speed_profile,
+                    current_weight=scenario.current_weight,
+                    grade_percent=scenario.grade_percent,
+                    terrain_factor=scenario.terrain_factor,
+                    stance=scenario.stance,
+                    movement_type=scenario.movement_type,
+                    enable_randomness=True  # 启用随机扰动
+                )
+                
+                # 计算当前场景的可玩性负担
+                scenario_burden = 0.0
+                
+                # 2. 完成时间惩罚
+                target_time = scenario.target_finish_time
+                actual_time = results['total_time_with_penalty']
+                time_penalty_ratio = (actual_time - target_time) / target_time
+                if time_penalty_ratio > 0.10:
+                    scenario_burden += (time_penalty_ratio - 0.10) * 200.0
+                elif time_penalty_ratio > 0.05:
+                    scenario_burden += (time_penalty_ratio - 0.05) * 50.0
+                
+                # 3. 硬性奖励
+                if time_penalty_ratio <= 0.10:
+                    scenario_burden = max(0.0, scenario_burden - 400.0)
+                
+                # 4. 体力耗尽时间惩罚
+                stamina_history = results['stamina_history']
+                if len(stamina_history) > 0:
+                    exhausted_frames = sum(1 for s in stamina_history if s < 0.05)
+                    total_frames = len(stamina_history)
+                    exhaustion_ratio = exhausted_frames / total_frames if total_frames > 0 else 0.0
+                    if exhaustion_ratio > 0.1:
+                        scenario_burden += exhaustion_ratio * 50.0
+                
+                # 根据场景权重累加负担
+                weights = [0.5, 0.3, 0.2]  # 2英里测试权重最高
+                total_burden += scenario_burden * weights[i]
+                
+            except Exception as e:
+                # 如果仿真失败，返回大惩罚值
+                return 1000.0
+        
+        return total_burden
     
     def _evaluate_stability_risk(
         self,
@@ -510,7 +712,8 @@ class RSSSuperPipeline:
                 grade_percent=chaos_grade_percent,
                 terrain_factor=1.5,  # 困难地形
                 stance=Stance.STAND,
-                movement_type=MovementType.RUN
+                movement_type=MovementType.RUN,
+                enable_randomness=True  # 启用随机扰动
             )
             
             stamina_history = chaos_results['stamina_history']
@@ -642,7 +845,8 @@ class RSSSuperPipeline:
         print(f"  采样次数：{self.n_trials}")
         print(f"  优化变量数：40")
         print(f"  目标函数数：3（Realism Loss, Playability Burden, Stability Risk）")
-        print(f"  并行线程数：{self.n_jobs}")
+        print(f"  并行线程数：{self.n_jobs}（自动检测CPU核心数）")
+        print(f"  批处理大小：{self.batch_size}")
         
         print(f"\n目标函数：")
         print(f"  1. 拟真度损失（Realism Loss）- 越小越好")
@@ -656,6 +860,10 @@ class RSSSuperPipeline:
         
         print(f"\n开始优化...")
         print("-" * 80)
+        
+        # 启动自定义并行工作器
+        self.worker = ParallelWorker(max_workers=self.n_jobs)
+        self.worker.start()
         
         # 创建研究（使用NSGA-II采样器，改进参数以增加多样性）
         if self.use_database:
@@ -704,12 +912,14 @@ class RSSSuperPipeline:
                     realism_values = [t.values[0] for t in best_trials]
                     playability_values = [t.values[1] for t in best_trials]
                     stability_values = [t.values[2] for t in best_trials]
+                    elapsed_time = self.worker.get_elapsed_time()
                     print(f"\n进度更新 [试验 {trial.number}/{self.n_trials}]: "
                           f"帕累托解数量={len(best_trials)}, "
                           f"拟真度=[{min(realism_values):.2f}, {max(realism_values):.2f}], "
                           f"可玩性=[{min(playability_values):.2f}, {max(playability_values):.2f}], "
                           f"稳定性=[{min(stability_values):.2f}, {max(stability_values):.2f}], "
-                          f"BUG数量={len(self.bug_reports)}")
+                          f"BUG数量={len(self.bug_reports)}, "
+                          f"耗时={elapsed_time:.2f}秒")
         
         # 执行优化
         self.study.optimize(
@@ -717,8 +927,11 @@ class RSSSuperPipeline:
             n_trials=self.n_trials,
             show_progress_bar=True,
             callbacks=[progress_callback],
-            n_jobs=self.n_jobs
+            n_jobs=1  # 使用1个job，由自定义并行工作器处理
         )
+        
+        # 关闭并行工作器
+        self.worker.shutdown()
         
         print("-" * 80)
         print(f"\n优化完成！")
@@ -795,6 +1008,21 @@ class RSSSuperPipeline:
         for bug_type, count in bug_types.items():
             print(f"    {bug_type}: {count}")
         
+        # 自动导出JSON配置文件
+        if len(self.best_trials) > 0:
+            archetypes = self.extract_archetypes()
+            print("\n" + "=" * 80)
+            print("开始自动导出JSON配置文件...")
+            print("=" * 80)
+            self.export_presets(archetypes, output_dir=".")
+            print("\n" + "=" * 80)
+            print("JSON配置文件已自动生成！")
+            print("=" * 80)
+            print(f"\n生成的文件位置：")
+            print("- optimized_rss_config_realism_super.json")
+            print("- optimized_rss_config_balanced_super.json")
+            print("- optimized_rss_config_playability_super.json")
+        
         return {
             'best_trials': self.best_trials,
             'n_solutions': len(self.best_trials),
@@ -814,7 +1042,6 @@ class RSSSuperPipeline:
         
         # 如果只有一个解，警告并返回相同配置
         if len(self.best_trials) == 1:
-            print(f"\n警告：帕累托前沿只有1个解，所有预设将使用相同参数")
             single_trial = self.best_trials[0]
             return {
                 'EliteStandard': {
@@ -851,7 +1078,6 @@ class RSSSuperPipeline:
         playability_trial = self.best_trials[playability_idx]
         
         # 3. StandardMilsim (Balanced): 三个目标的中值解
-        # 计算每个解的综合得分（归一化后求和）
         realism_min, realism_max = min(realism_values), max(realism_values)
         playability_min, playability_max = min(playability_values), max(playability_values)
         stability_min, stability_max = min(stability_values), max(stability_values)
@@ -872,14 +1098,11 @@ class RSSSuperPipeline:
         
         # 如果三个解都相同，尝试基于参数差异选择不同的解
         if len(selected_indices) == 1:
-            print(f"\n警告：三个预设选择了同一个解，尝试基于参数差异选择不同解...")
-            
             # 计算所有解之间的参数差异
             param_differences = []
             for i, trial_i in enumerate(self.best_trials):
                 for j, trial_j in enumerate(self.best_trials):
                     if i < j:
-                        # 计算参数差异（欧氏距离）
                         params_i = np.array(list(trial_i.params.values()))
                         params_j = np.array(list(trial_j.params.values()))
                         diff = np.linalg.norm(params_i - params_j)
@@ -888,7 +1111,6 @@ class RSSSuperPipeline:
             # 按差异排序，选择差异最大的三个解
             if len(param_differences) > 0:
                 param_differences.sort(key=lambda x: x[2], reverse=True)
-                # 选择差异最大的三个不同索引
                 unique_indices = set()
                 for i, j, _ in param_differences:
                     unique_indices.add(i)
@@ -904,13 +1126,9 @@ class RSSSuperPipeline:
                     realism_trial = self.best_trials[realism_idx]
                     playability_trial = self.best_trials[playability_idx]
                     balanced_trial = self.best_trials[balanced_idx]
-                    print(f"  已基于参数差异选择不同解：索引 {realism_idx}, {playability_idx}, {balanced_idx}")
-                else:
-                    print(f"  警告：无法找到足够多样化的解，将使用相同配置")
         
         # 如果只有两个不同的解，确保至少有一个不同
         elif len(selected_indices) == 2:
-            print(f"\n警告：只找到2个不同的解，尝试选择第三个不同的解...")
             available_indices = set(range(len(self.best_trials))) - selected_indices
             if len(available_indices) > 0:
                 # 选择与已选解差异最大的解
@@ -918,7 +1136,6 @@ class RSSSuperPipeline:
                 best_diff = -1
                 for idx in available_indices:
                     trial = self.best_trials[idx]
-                    # 计算与已选解的平均差异
                     avg_diff = 0.0
                     for selected_idx in selected_indices:
                         selected_trial = self.best_trials[selected_idx]
@@ -932,18 +1149,8 @@ class RSSSuperPipeline:
                         best_diff_idx = idx
                 
                 if best_diff_idx is not None:
-                    # 替换balanced_idx
                     balanced_idx = best_diff_idx
                     balanced_trial = self.best_trials[balanced_idx]
-                    print(f"  已选择第三个不同的解：索引 {balanced_idx}")
-        
-        print(f"\n自动预设提取：")
-        print(f"  EliteStandard (Realism): 拟真度={realism_trial.values[0]:.4f}, "
-              f"可玩性={realism_trial.values[1]:.2f}, 稳定性={realism_trial.values[2]:.2f}, 索引={realism_idx}")
-        print(f"  StandardMilsim (Balanced): 拟真度={balanced_trial.values[0]:.4f}, "
-              f"可玩性={balanced_trial.values[1]:.2f}, 稳定性={balanced_trial.values[2]:.2f}, 索引={balanced_idx}")
-        print(f"  TacticalAction (Playability): 拟真度={playability_trial.values[0]:.4f}, "
-              f"可玩性={playability_trial.values[1]:.2f}, 稳定性={playability_trial.values[2]:.2f}, 索引={playability_idx}")
         
         return {
             'EliteStandard': {

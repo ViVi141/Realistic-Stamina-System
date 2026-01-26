@@ -361,10 +361,10 @@ modded class SCR_CharacterControllerComponent
                 if (currentStamina < 1.0)
                 {
                     // 计算恢复率（使用标准恢复模型）
-                    float restDurationMinutes = 0.0; // 载具中视为静止，但恢复时间较短
-                    float exerciseDurationMinutes = 0.0; // 无运动累积疲劳
-                    float currentWeightForRecovery = 0.0; // 载具中负重不影响恢复
-                    float baseDrainRateByVelocity = 0.0; // 无消耗
+                    const float restDurationMinutes = 0.0; // 载具中视为静止，但恢复时间较短
+                    const float exerciseDurationMinutes = 0.0; // 无运动累积疲劳
+                    const float currentWeightForRecovery = 0.0; // 载具中负重不影响恢复
+                    const float baseDrainRateByVelocity = 0.0; // 无消耗
                     float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
                         currentStamina,
                         restDurationMinutes,

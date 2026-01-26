@@ -146,20 +146,39 @@ class StaminaRecoveryCalculator
             if (recoveryRate < 0.0001)
                 recoveryRate = 0.0001;
         }
-        // 正常陆地静止：从恢复率中减去静态消耗
-        else if (baseDrainRateByVelocity > 0.0)
+        // 正常陆地静止：处理静态消耗或恢复
+        // 注意：baseDrainRateByVelocity 为负数表示恢复，正数表示消耗
+        if (baseDrainRateByVelocity > 0.0)
         {
-            recoveryRate = Math.Max(recoveryRate - baseDrainRateByVelocity, -0.01);
+            // 正数表示消耗，从恢复率中减去
+            float adjustedRecoveryRate = recoveryRate - baseDrainRateByVelocity;
+            
+            // 如果消耗大于恢复，屏蔽消耗，只按最低值恢复
+            if (adjustedRecoveryRate < 0.0)
+            {
+                // 按照最低值恢复，直到计算的恢复大于消耗
+                recoveryRate = 0.00005; // 每0.2秒恢复0.005%
+            }
+            else
+            {
+                // 恢复大于消耗，正常处理
+                recoveryRate = adjustedRecoveryRate;
+            }
+        }
+        else if (baseDrainRateByVelocity < 0.0)
+        {
+            // 负数表示恢复，加到恢复率中
+            recoveryRate += Math.AbsFloat(baseDrainRateByVelocity);
         }
         
-        // ==================== 静态保护逻辑 ====================
+        // ==================== 静态保护逻辑 ====================  
         // 确保除非玩家严重超载(>40kg)，否则静止时总是缓慢恢复体力
         if (currentSpeed < 0.1 && // 静止不动
-            recoveryRate < 0 && // 计算出的恢复率为负
-            currentWeightForRecovery < 40.0) // 重量在合理范围内
+            currentWeightForRecovery < 40.0 && // 重量在合理范围内
+            recoveryRate < 0.00005) // 只有当恢复率过低时才触发
         {
-            // 强制设置为一个小的正值（每0.2秒恢复0.005%，每秒恢复0.025%）
-            recoveryRate = 0.00005;
+            // 强制设置为一个小的正值（每0.2秒恢复0.01%，每秒恢复0.05%）
+            recoveryRate = 0.0001;
         }
         
         return recoveryRate;
