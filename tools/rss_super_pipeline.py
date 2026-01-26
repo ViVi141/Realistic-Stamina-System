@@ -85,11 +85,12 @@ class RSSSuperPipeline:
         base_recovery_rate = trial.suggest_float(
             'base_recovery_rate', 1.5e-4, 5e-4, log=True  # 从4e-4提高到5e-4，允许更快恢复
         )
-        standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.0, 2.5
-        )
+        # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
-            'prone_recovery_multiplier', 1.2, 2.5
+            'prone_recovery_multiplier', 1.5, 3.0  # 从1.2~2.5改为1.5~3.0，确保能>standing
+        )
+        standing_recovery_multiplier = trial.suggest_float(
+            'standing_recovery_multiplier', 1.0, 2.0  # 从1.0~2.5改为1.0~2.0，与prone形成正确关系
         )
         load_recovery_penalty_coeff = trial.suggest_float(
             'load_recovery_penalty_coeff', 1e-4, 1e-3, log=True
@@ -127,18 +128,19 @@ class RSSSuperPipeline:
             'anaerobic_efficiency_factor', 1.0, 1.5
         )
         
-        # 恢复系统高级参数（优化：降低恢复倍数）
+        # 恢复系统高级参数（优化：确保逻辑递减 fast > medium > slow）
         recovery_nonlinear_coeff = trial.suggest_float(
             'recovery_nonlinear_coeff', 0.3, 0.7
         )
+        # 约束：fast > medium > slow 必须满足
         fast_recovery_multiplier = trial.suggest_float(
-            'fast_recovery_multiplier', 2.0, 3.5
+            'fast_recovery_multiplier', 2.8, 3.5  # 快速恢复最高
         )
         medium_recovery_multiplier = trial.suggest_float(
-            'medium_recovery_multiplier', 1.2, 2.0
+            'medium_recovery_multiplier', 1.5, 2.5  # 中速恢复中等（保证 > slow）
         )
         slow_recovery_multiplier = trial.suggest_float(
-            'slow_recovery_multiplier', 0.5, 0.8
+            'slow_recovery_multiplier', 0.5, 1.2  # 慢速恢复最低
         )
         marginal_decay_threshold = trial.suggest_float(
             'marginal_decay_threshold', 0.7, 0.9
@@ -159,11 +161,14 @@ class RSSSuperPipeline:
         )
         
         # 姿态系统参数
+        # 修正：这些应该是 < 1.0，表示速度减速，不是加速
+        # posture_crouch: 蹲下时速度 = 原速 * 0.5~1.0
+        # posture_prone: 趴下时速度 = 原速 * 0.2~0.8
         posture_crouch_multiplier = trial.suggest_float(
-            'posture_crouch_multiplier', 1.5, 2.2
+            'posture_crouch_multiplier', 0.5, 1.0  # 从1.5~2.2改为0.5~1.0（物理正确）
         )
         posture_prone_multiplier = trial.suggest_float(
-            'posture_prone_multiplier', 2.5, 3.5
+            'posture_prone_multiplier', 0.2, 0.8  # 从2.5~3.5改为0.2~0.8（物理正确）
         )
         
         # 动作消耗参数
@@ -297,7 +302,64 @@ class RSSSuperPipeline:
         # 记录BUG报告
         self.bug_reports.extend(bug_reports)
         
-        # ==================== 7. 返回三个目标函数 ====================
+        # ==================== 7. 添加物理约束条件（JSON合理性修复） ====================
+        # 这些约束确保生成的参数满足生物学和物理学逻辑
+        
+        constraint_penalty = 0.0
+        
+        # 约束1: prone_recovery > standing_recovery（生理逻辑）
+        # 说明：趴下应该比站立更容易恢复体力
+        if prone_recovery_multiplier <= standing_recovery_multiplier:
+            violation_factor = standing_recovery_multiplier - prone_recovery_multiplier + 0.1
+            constraint_penalty += violation_factor * 500.0  # 严重惩罚违反生理逻辑的参数
+            stability_risk += constraint_penalty  # 记录到稳定性风险中
+        
+        # 约束2: standing_recovery > slow_recovery（恢复倍数递减）
+        # 说明：站立恢复应该快于慢速恢复
+        if standing_recovery_multiplier <= slow_recovery_multiplier:
+            violation_factor = slow_recovery_multiplier - standing_recovery_multiplier + 0.1
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束3: fast_recovery > medium_recovery > slow_recovery（恢复速度递减）
+        # 说明：快速恢复 > 中速恢复 > 慢速恢复
+        if fast_recovery_multiplier <= medium_recovery_multiplier:
+            violation_factor = medium_recovery_multiplier - fast_recovery_multiplier + 0.1
+            constraint_penalty += violation_factor * 400.0
+            stability_risk += constraint_penalty
+        
+        if medium_recovery_multiplier <= slow_recovery_multiplier:
+            violation_factor = slow_recovery_multiplier - medium_recovery_multiplier + 0.1
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束4: posture_crouch_multiplier < 1.0（蹲下应该减速）
+        # 说明：蹲下时速度应该小于正常站立，multiplier应该<1.0
+        if posture_crouch_multiplier > 1.0:
+            violation_factor = posture_crouch_multiplier - 1.0
+            constraint_penalty += violation_factor * 600.0  # 严重惩罚物理上不可能的参数
+            stability_risk += constraint_penalty
+        
+        # 约束5: posture_prone_multiplier < 1.0（趴下应该减速）
+        # 说明：趴下时速度应该小于正常站立，multiplier应该<1.0
+        if posture_prone_multiplier > 1.0:
+            violation_factor = posture_prone_multiplier - 1.0
+            constraint_penalty += violation_factor * 600.0  # 严重惩罚物理上不可能的参数
+            stability_risk += constraint_penalty
+        
+        # 约束6: posture_prone_multiplier < posture_crouch_multiplier（趴下比蹲下更慢）
+        # 说明：趴下比蹲下应该移动得更慢
+        if posture_prone_multiplier > posture_crouch_multiplier:
+            violation_factor = posture_prone_multiplier - posture_crouch_multiplier
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束7: playability配置下，base_recovery_rate应该相对较高
+        # 说明：playability（可玩性）应该意味着更容易恢复，而不是更慢
+        # 注：这是一个软约束，仅在明显偏离时才惩罚
+        # （这个约束很难在不知道当前是哪个配置的情况下强制）
+        
+        # ==================== 8. 返回三个目标函数（包含约束惩罚） ====================
         
         return realism_loss, playability_burden, stability_risk
     
@@ -610,8 +672,8 @@ class RSSSuperPipeline:
                     storage=storage_url,
                     directions=['minimize', 'minimize', 'minimize'],
                     sampler=optuna.samplers.NSGAIISampler(
-                        population_size=100,  # 增加种群大小（从50提高到80）以提高多样性
-                        mutation_prob=0.2,  # 增加变异概率（从0.1提高到0.15）以探索更多解空间
+                        population_size=200,  # 增加种群大小（从100提高到200）以提高多样性和解的数量
+                        mutation_prob=0.4,  # 增加变异概率（从0.2提高到0.4）以探索更多解空间，避免过早收敛
                         crossover_prob=0.9,  # 交叉概率
                         swapping_prob=0.5    # 交换概率
                     ),
@@ -625,8 +687,8 @@ class RSSSuperPipeline:
                 study_name=study_name,
                 directions=['minimize', 'minimize', 'minimize'],
                 sampler=optuna.samplers.NSGAIISampler(
-                    population_size=100,  # 增加种群大小（从50提高到80）以提高多样性
-                    mutation_prob=0.2,  # 增加变异概率（从0.1提高到0.15）以探索更多解空间
+                    population_size=200,  # 增加种群大小（从100提高到200）以提高多样性和解的数量
+                    mutation_prob=0.4,  # 增加变异概率（从0.2提高到0.4）以探索更多解空间，避免过早收敛
                     crossover_prob=0.9,  # 交叉概率
                     swapping_prob=0.5    # 交换概率
                 ),
@@ -992,7 +1054,7 @@ def main():
     # 创建流水线（改进：增加迭代次数以提高多样性）
     # use_database=False 使用内存存储以提高性能（默认）
     # 如果需要后续诊断，可以设置 use_database=True（但会降低性能）
-    pipeline = RSSSuperPipeline(n_trials=5000, n_jobs=n_jobs, use_database=False)
+    pipeline = RSSSuperPipeline(n_trials=10000, n_jobs=n_jobs, use_database=False)
     
     # 执行优化
     results = pipeline.optimize(study_name="rss_super_optimization")
