@@ -23,6 +23,7 @@ ENV/
 *.swp
 *.swo
 *~
+.trae/
 
 # OS files
 .DS_Store

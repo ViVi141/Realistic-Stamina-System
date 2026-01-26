@@ -34,10 +34,27 @@ For the full, detailed (and frequently updated) explanation, see:
 
 ## v3.11.0 Updates
 
-- ✅ **Project cleanup** - Removed all generated PNG charts
-- ✅ **Tools directory optimization** - Kept only core NSGA-II pipeline
-- ✅ **Documentation enhancement** - Added comprehensive verification reports
-- ✅ **Version consolidation** - All changes from git commit d1ebb9c to present as v3.11.0
+### 🌟 Core Functionality Updates
+- ✅ **Stamina system optimization** - Improved stamina system response speed and start experience
+- ✅ **Stamina system fix** - Fixed high-frequency monitoring and speed calculation issues in the stamina system
+- ✅ **Encumbrance system enhancement** - Implemented real-time encumbrance cache updates on inventory changes
+- ✅ **Encumbrance calculation fix** - Fixed issue where weapon weight was not included in total encumbrance
+- ✅ **Environment awareness enhancement** - Added indoor environment slope ignore functionality
+- ✅ **Configuration management optimization** - Fixed preset configuration logic to ensure system presets stay up-to-date
+- ✅ **Parameter optimization** - Optimized RSS system parameters and adjusted configuration file paths
+
+### 📁 Project Cleanup and Optimization
+- ✅ **Project file cleanup** - Removed all generated PNG charts
+- ✅ **Tools directory optimization** - Kept only core NSGA-II optimization pipeline, removed outdated scripts
+- ✅ **Configuration file update** - Removed old optimization configuration files and updated related paths
+
+### 📚 Documentation Improvement
+- ✅ **Toolset documentation** - Added tools/README.md - complete toolset documentation
+- ✅ **Configuration verification report** - Added CONFIG_APPLICATION_VERIFICATION.md - configuration application verification report
+- ✅ **Switch verification report** - Added DEBUG_AND_HINT_SWITCH_VERIFICATION.md - switch verification report
+
+### 🎯 Version Consolidation
+- ✅ **Version unification** - All changes from git commit d1ebb9c to present as v3.11.0
 
 ## Project Structure (High-level)
 
@@ -61,16 +78,18 @@ Key paths (see `README_CN.md` for the full tree):
 
 ## Tools (Python)
 
-The `tools/` directory provides reproducible plots/analysis:
+The `tools/` directory contains the core optimization pipeline:
 
-- `tools/simulate_stamina_system.py` → `stamina_system_trends.png`
-- `tools/generate_comprehensive_trends.py` → 7 independent charts (comprehensive_*.png)
-- `tools/multi_dimensional_analysis.py` → 8 independent charts (multi_*.png)
+- `rss_super_pipeline.py` - Core NSGA-II optimization pipeline (10,000 trials)
+- `stamina_constants.py` - Constant definition library
+- `optimized_rss_config_*.json` - Optimized configuration files (3 presets)
+- `requirements.txt` - Python dependencies
+- `README.md` - Complete toolset documentation
 
 Notes:
-- Scripts are **headless-friendly** (no GUI popups by default).
-- Dependencies: Python + `numpy` + `matplotlib`.
-- Charts are split into independent files for better readability.
+- The tools directory has been optimized to keep only the core NSGA-II pipeline
+- All generated charts have been removed to reduce repository size
+- Dependencies: Python + `numpy` + `matplotlib` for the optimization pipeline
 
 ## Contributing
 

@@ -120,31 +120,35 @@ RealisticStaminaSystem/
 │           └── Stamina/
 │               ├── SCR_RealisticStaminaSystem.c  # 体力-速度系统核心（数学计算）
 │               ├── SCR_StaminaOverride.c          # 体力系统覆盖（拦截原生系统）
-│               ├── SCR_SwimmingState.c            # 游泳状态管理模块（121行，v2.11.0新增）
-│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块（333行，v2.11.0新增）
-│               ├── SCR_SpeedCalculation.c        # 速度计算模块（163行，v2.11.0扩展）
-│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块（187行）
-│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块（127行）
-│               ├── SCR_DebugDisplay.c            # 调试信息显示模块（352行，v2.11.0扩展）
+│               ├── SCR_SwimmingState.c            # 游泳状态管理模块
+│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块
+│               ├── SCR_SpeedCalculation.c        # 速度计算模块
+│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块
+│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块
+│               ├── SCR_DebugDisplay.c            # 调试信息显示模块
 │               ├── SCR_CollapseTransition.c      # "撞墙"阻尼过渡模块
 │               ├── SCR_ExerciseTracking.c        # 运动持续时间跟踪模块
 │               ├── SCR_JumpVaultDetection.c      # 跳跃和翻越检测模块
 │               ├── SCR_EncumbranceCache.c        # 负重缓存管理模块
 │               ├── SCR_FatigueSystem.c           # 疲劳积累系统模块
 │               ├── SCR_TerrainDetection.c        # 地形检测模块
-│               ├── SCR_EnvironmentFactor.c       # 环境因子模块（v2.10.0）
+│               ├── SCR_EnvironmentFactor.c       # 环境因子模块
 │               ├── SCR_EpocState.c               # EPOC状态管理模块
 │               ├── SCR_NetworkSync.c             # 网络同步模块
 │               ├── SCR_UISignalBridge.c          # UI信号桥接模块
 │               ├── SCR_StaminaConstants.c        # 常量定义模块
-│               └── SCR_StaminaHelpers.c          # 辅助函数模块
+│               ├── SCR_StaminaHelpers.c          # 辅助函数模块
+│               ├── SCR_StaminaHUDComponent.c     # 实时状态HUD组件
+│               ├── SCR_RSS_ConfigManager.c        # 配置管理器
+│               ├── SCR_RSS_Settings.c            # 配置类
+│               ├── SCR_InventoryStorageManagerComponent_Override.c # 库存存储管理器覆盖
+│               └── SCR_StanceTransitionManager.c # 姿态转换管理器
 ├── Prefabs/                              # 预制体文件
 │   └── Characters/
 │       └── Core/
 │           └── Character_Base.et         # 角色基础预制体
 └── tools/                                # 开发工具和脚本
     ├── rss_super_pipeline.py             # NSGA-II 主优化管道（推荐）
-    ├── rss_optimizer_optuna.py           # Optuna 优化器核心
     ├── stamina_constants.py              # 常数定义工具库
     ├── requirements.txt                  # Python 依赖
     ├── optimized_rss_config_*.json       # 优化后的配置文件（3个预设）
@@ -155,10 +159,27 @@ RealisticStaminaSystem/
 
 **2026-01-26**
 
-- ✅ **项目清理** - 删除所有生成的 PNG 图表文件
-- ✅ **Tools 目录优化** - 仅保留核心 NSGA-II 优化管道
-- ✅ **文档完善** - 新增完整的验证报告和工具文档
-- ✅ **版本整并** - 将从提交 d1ebb9c 到现在的所有变更作为 v3.11.0
+### 🌟 核心功能更新
+- ✅ **体力系统优化** - 优化体力系统响应速度和起步体验
+- ✅ **体力系统修复** - 修复体力系统的高频监听和速度计算问题
+- ✅ **负重系统增强** - 实现库存变更时实时更新负重缓存
+- ✅ **负重计算修复** - 修复武器重量未计入总负重的问题
+- ✅ **环境感知增强** - 添加室内环境忽略坡度影响功能
+- ✅ **配置管理优化** - 修复预设配置逻辑，确保系统预设值保持最新
+- ✅ **参数优化** - 优化RSS系统参数并调整配置文件路径
+
+### 📁 项目清理与优化
+- ✅ **项目文件清理** - 删除所有生成的 PNG 图表文件
+- ✅ **Tools 目录优化** - 仅保留核心 NSGA-II 优化管道，删除过时脚本
+- ✅ **配置文件更新** - 移除旧的优化配置文件和更新相关路径
+
+### 📚 文档完善
+- ✅ **工具集文档** - 新增 tools/README.md - 完整工具集文档
+- ✅ **配置验证报告** - 新增 CONFIG_APPLICATION_VERIFICATION.md - 配置应用验证报告
+- ✅ **开关验证报告** - 新增 DEBUG_AND_HINT_SWITCH_VERIFICATION.md - 开关验证报告
+
+### 🎯 版本整并
+- ✅ **版本统一** - 将从提交 d1ebb9c 到现在的所有变更作为 v3.11.0
 
 详细信息请参考 [CHANGELOG.md](CHANGELOG.md) / See [CHANGELOG.md](CHANGELOG.md) for details.
 
