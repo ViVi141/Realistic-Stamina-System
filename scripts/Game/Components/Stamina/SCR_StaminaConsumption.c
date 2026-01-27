@@ -52,7 +52,7 @@ class StaminaConsumptionCalculator
             mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
             totalWetWeight = environmentFactor.GetTotalWetWeight();
             coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
-            
+
             // 检查是否在室内，如果是则忽略坡度影响
             if (environmentFactor.IsIndoor())
             {

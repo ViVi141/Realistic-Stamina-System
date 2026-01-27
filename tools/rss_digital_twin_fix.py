@@ -18,12 +18,24 @@ class RSSConstants:
     CHARACTER_WEIGHT = 90.0  # kg
     TARGET_RUN_SPEED = 3.7  # m/s
     
-    # 医学模型参数
+    # 医学模型参数（与 C 端 SCR_RealisticStaminaSystem / SCR_StaminaConstants 对齐）
     PANDOLF_VELOCITY_COEFF = 3.2
     PANDOLF_VELOCITY_OFFSET = 0.7
     PANDOLF_BASE_COEFF = 2.7
     PANDOLF_GRADE_BASE_COEFF = 0.23
     PANDOLF_GRADE_VELOCITY_COEFF = 1.34
+    PANDOLF_STATIC_COEFF_1 = 1.2
+    PANDOLF_STATIC_COEFF_2 = 1.6
+    REFERENCE_WEIGHT = 90.0
+    GIVONI_CONSTANT = 0.3
+    GIVONI_VELOCITY_EXPONENT = 2.2
+    AEROBIC_THRESHOLD = 0.6
+    ANAEROBIC_THRESHOLD = 0.8
+    FATIGUE_START_TIME_MINUTES = 5.0
+    # 消耗用姿态倍数（与 C 端 Consumption 一致，仅移动时应用）
+    CONSUMPTION_POSTURE_STAND = 1.0
+    CONSUMPTION_POSTURE_CROUCH = 1.8
+    CONSUMPTION_POSTURE_PRONE = 3.0
     
     # 恢复模型参数
     BASE_RECOVERY_RATE = 0.0004  # 每0.2秒恢复0.04%
@@ -44,10 +56,10 @@ class RSSConstants:
     MAX_ENCUMBRANCE_WEIGHT = 40.5  # kg
     COMBAT_ENCUMBRANCE_WEIGHT = 30.0  # kg
     
-    # 速度阈值
-    SPRINT_VELOCITY_THRESHOLD = 5.0  # m/s
-    RUN_VELOCITY_THRESHOLD = 3.2  # m/s
-    WALK_VELOCITY_THRESHOLD = 1.5  # m/s
+    # 速度阈值（与 C 端一致）
+    SPRINT_VELOCITY_THRESHOLD = 5.2  # m/s
+    RUN_VELOCITY_THRESHOLD = 3.7    # m/s
+    WALK_VELOCITY_THRESHOLD = 3.2   # m/s
     
     # 动态阈值
     RECOVERY_THRESHOLD_NO_LOAD = 2.5  # m/s
@@ -157,6 +169,10 @@ class RSSConstants:
 
     # Encumbrance stamina drain coefficient
     ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0
+
+    # Encumbrance speed penalty coefficient (align with C: SCR_StaminaConstants)
+    # speed_penalty = coeff * (effective_weight / body_weight), clamped to [0.0, 0.5]
+    ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
 
     # Sprint stamina drain multiplier
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0
@@ -294,7 +310,182 @@ class RSSDigitalTwin:
         speed_ratio_for_epoc = np.clip(speed_before_stop / self.constants.GAME_MAX_SPEED, 0.0, 1.0)
         epoc_drain_rate = epoc_drain_rate * (1.0 + speed_ratio_for_epoc * 0.5)  # 最多增加50%
         return epoc_drain_rate
-    
+
+    # ---------- C 端 Consumption 对齐：Pandolf / Givoni / 静态 + 全局 ×0.2 + 修正 ----------
+
+    def _static_standing_cost(self, body_weight, load_weight):
+        """静态站立消耗 %/s（与 C CalculateStaticStandingCost 一致）"""
+        c1 = getattr(self.constants, 'PANDOLF_STATIC_COEFF_1', 1.2)
+        c2 = getattr(self.constants, 'PANDOLF_STATIC_COEFF_2', 1.6)
+        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
+        base = c1 * body_weight
+        load_term = 0.0
+        if body_weight > 0 and load_weight > 0:
+            r = load_weight / body_weight
+            load_term = c2 * (body_weight + load_weight) * (r * r)
+        rate = (base + load_term) * coeff
+        return float(np.clip(rate, 0.0, 0.05))
+
+    def _santee_downhill_correction(self, grade_percent):
+        """Santee 下坡修正系数（与 C 一致）"""
+        if grade_percent >= 0:
+            return 1.0
+        ab = abs(grade_percent)
+        if ab <= 15.0:
+            return 1.0
+        term = ab * (1.0 - ab / 15.0) / 2.0
+        return float(np.clip(1.0 - term, 0.5, 1.0))
+
+    def _pandolf_expenditure(self, velocity, current_weight, grade_percent, terrain_factor):
+        """Pandolf 能耗 %/s（与 C CalculatePandolfEnergyExpenditure 一致）"""
+        velocity = max(0.0, velocity)
+        current_weight = max(0.0, current_weight)
+        if velocity < 0.1:
+            return 0.0  # 静态走 Static 分支，这里不返回负
+        v0 = getattr(self.constants, 'PANDOLF_VELOCITY_OFFSET', 0.7)
+        vb = getattr(self.constants, 'PANDOLF_BASE_COEFF', 2.7)
+        vc = getattr(self.constants, 'PANDOLF_VELOCITY_COEFF', 3.2)
+        gb = getattr(self.constants, 'PANDOLF_GRADE_BASE_COEFF', 0.23)
+        gv = getattr(self.constants, 'PANDOLF_GRADE_VELOCITY_COEFF', 1.34)
+        ref = getattr(self.constants, 'REFERENCE_WEIGHT', 90.0)
+        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
+        fit = getattr(self.constants, 'FITNESS_LEVEL', 1.0)
+        vt = velocity - v0
+        base_term = (vb * (1.0 - 0.2 * fit)) + (vc * (vt * vt))
+        g_dec = grade_percent * 0.01
+        vsq = velocity * velocity
+        grade_term = g_dec * (gb + gv * vsq)
+        if grade_percent < 0:
+            santee = self._santee_downhill_correction(grade_percent)
+            if 0 < santee < 1.0:
+                grade_term = grade_term / santee
+        terrain_factor = np.clip(terrain_factor, 0.5, 3.0)
+        w_mult = np.clip(current_weight / ref, 0.5, 2.0)
+        energy = w_mult * (base_term + grade_term) * terrain_factor
+        rate = energy * coeff
+        return float(np.clip(rate, 0.0, 0.05))
+
+    def _givoni_running(self, velocity, current_weight):
+        """Givoni-Goldman 跑步 %/s（与 C CalculateGivoniGoldmanRunning 一致）"""
+        if velocity <= 2.2:
+            return 0.0
+        ref = getattr(self.constants, 'REFERENCE_WEIGHT', 90.0)
+        gc = getattr(self.constants, 'GIVONI_CONSTANT', 0.3)
+        ge = getattr(self.constants, 'GIVONI_VELOCITY_EXPONENT', 2.2)
+        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
+        w_mult = np.clip(current_weight / ref, 0.5, 2.0)
+        vp = np.power(velocity, ge)
+        energy = w_mult * gc * vp
+        rate = energy * coeff
+        return float(np.clip(rate, 0.0, 0.05))
+
+    def _metabolic_efficiency_factor(self, speed_ratio):
+        """代谢适应效率因子（与 C CalculateMetabolicEfficiencyFactor 一致）"""
+        aero = getattr(self.constants, 'AEROBIC_THRESHOLD', 0.6)
+        anao = getattr(self.constants, 'ANAEROBIC_THRESHOLD', 0.8)
+        fa = getattr(self.constants, 'AEROBIC_EFFICIENCY_FACTOR', 0.9)
+        fn = getattr(self.constants, 'ANAEROBIC_EFFICIENCY_FACTOR', 1.2)
+        if speed_ratio < aero:
+            return fa
+        if speed_ratio < anao:
+            t = (speed_ratio - aero) / (anao - aero)
+            return fa + t * (fn - fa)
+        return fn
+
+    def _fitness_efficiency_factor(self):
+        """健康状态效率因子（与 C CalculateFitnessEfficiencyFactor 一致）"""
+        c = getattr(self.constants, 'FITNESS_EFFICIENCY_COEFF', 0.35)
+        lvl = getattr(self.constants, 'FITNESS_LEVEL', 1.0)
+        f = 1.0 - c * lvl
+        return float(np.clip(f, 0.7, 1.0))
+
+    def _encumbrance_stamina_drain_multiplier(self, current_weight):
+        """负重体力消耗倍数（与 C 一致，effective = current - BASE_WEIGHT）"""
+        base = getattr(self.constants, 'BASE_WEIGHT', 1.36)
+        eff = max(0.0, current_weight - base)
+        bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+        coeff = getattr(self.constants, 'ENCUMBRANCE_STAMINA_DRAIN_COEFF', 1.5)
+        mult = 1.0 + coeff * (eff / bw)
+        return float(np.clip(mult, 1.0, 3.0))
+
+    def _consumption_posture_multiplier(self, speed, stance):
+        """
+        消耗用姿态倍数（仅移动时应用，与 C 一致）。
+        注意：C端消耗倍数与速度倍数是不同的参数。
+        C端：POSTURE_CROUCH_MULTIPLIER=1.8（消耗），POSTURE_PRONE_MULTIPLIER=3.0（消耗）。
+        优化器搜索的是速度倍数（0.5-1.0和0.2-0.8），但这里需要消耗倍数。
+        为简化，我们假设消耗倍数 = 1.0 / 速度倍数（蹲下/趴下时速度慢但消耗高）。
+        """
+        if speed <= 0.05:
+            return 1.0
+        # 从速度倍数推导消耗倍数：速度越慢，消耗越高（因为效率低）
+        speed_crouch = getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 0.7)
+        speed_prone = getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 0.3)
+        if stance == Stance.CROUCH:
+            # 消耗倍数 = 1.0 / 速度倍数，但限制在合理范围 [1.0, 2.5]
+            return min(max(1.0 / max(speed_crouch, 0.4), 1.0), 2.5)
+        if stance == Stance.PRONE:
+            return min(max(1.0 / max(speed_prone, 0.2), 1.0), 5.0)
+        return 1.0
+
+    def _fatigue_factor(self):
+        """累积疲劳因子（与 C ExerciseTracker 一致）"""
+        start = getattr(self.constants, 'FATIGUE_START_TIME_MINUTES', 5.0)
+        coeff = getattr(self.constants, 'FATIGUE_ACCUMULATION_COEFF', 0.015)
+        mx = getattr(self.constants, 'FATIGUE_MAX_FACTOR', 2.0)
+        eff = max(0.0, self.exercise_duration_minutes - start)
+        f = 1.0 + coeff * eff
+        return float(np.clip(f, 1.0, mx))
+
+    def _calculate_drain_rate_c_aligned(self, speed, current_weight, grade_percent, terrain_factor,
+                                        stance, movement_type, wind_drag=0.0, environment_factor=None):
+        """
+        与 C 端 SCR_StaminaConsumption 对齐的消耗率（每 0.2s）。
+        返回 (base_for_recovery, total_drain)：
+        - base_for_recovery：原始基础消耗（全局 ×0.2 后、姿态等修正前），供恢复计算用。
+        - total_drain：总消耗（含姿态、效率、疲劳、速度项、负重、Sprint），用于 stamina -= total_drain。
+        """
+        body_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
+        enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
+        posture = self._consumption_posture_multiplier(speed, stance)
+        speed_ratio = np.clip(speed / game_max, 0.0, 1.0)
+        total_eff = self._fitness_efficiency_factor() * self._metabolic_efficiency_factor(speed_ratio)
+        fatigue = self._fatigue_factor()
+        is_sprint = (speed >= getattr(self.constants, 'SPRINT_VELOCITY_THRESHOLD', 5.2) or
+                     movement_type == MovementType.SPRINT)
+        sprint_mult = getattr(self.constants, 'SPRINT_STAMINA_DRAIN_MULTIPLIER', 3.0) if is_sprint else 1.0
+
+        # 静态 / 跑步 / 步行
+        if speed < 0.1:
+            load_weight = max(0.0, current_weight - body_weight)
+            static_per_s = self._static_standing_cost(body_weight, load_weight)
+            raw = static_per_s * 0.2
+        elif speed > 2.2:
+            run_per_s = self._givoni_running(speed, current_weight) * terrain_factor * (1.0 + wind_drag)
+            raw = run_per_s * 0.2
+        else:
+            pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor) * (1.0 + wind_drag)
+            raw = pandolf_per_s * 0.2
+
+        raw = raw * 0.2   # 全局 ×0.2（与 C 一致）
+        base_for_recovery = max(0.0, raw)
+
+        if raw <= 0.0:
+            base = 0.0
+        else:
+            base = raw * posture * total_eff * fatigue
+
+        speed_linear = 0.00005 * speed_ratio * total_eff * fatigue
+        speed_sq = 0.00005 * speed_ratio * speed_ratio * total_eff * fatigue
+        enc_base = 0.001 * (enc_mult - 1.0)
+        enc_speed = 0.0002 * (enc_mult - 1.0) * speed_ratio * speed_ratio
+        components = base + speed_linear + speed_sq + enc_base + enc_speed
+        total_drain = components * sprint_mult
+        total_drain = min(total_drain, 0.02)
+        total_drain = max(0.0, total_drain)
+        return (base_for_recovery, total_drain)
+
     def _update_epoc_delay(self, speed, current_time):
         """更新EPOC延迟状态"""
         was_moving = (self.last_speed > 0.05)
@@ -393,63 +584,33 @@ class RSSDigitalTwin:
         else:
             self.rest_duration_minutes += time_delta / 60.0
         
-        # 计算基础消耗率（内联计算，减少函数调用）
-        # 计算动态阈值
-        if current_weight <= 0.0:
-            dynamic_threshold = self.constants.RECOVERY_THRESHOLD_NO_LOAD
-        elif current_weight >= self.constants.COMBAT_ENCUMBRANCE_WEIGHT:
-            dynamic_threshold = self.constants.DRAIN_THRESHOLD_COMBAT_LOAD
-        else:
-            # 线性插值
-            t = current_weight / self.constants.COMBAT_ENCUMBRANCE_WEIGHT
-            dynamic_threshold = (self.constants.RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + 
-                               self.constants.DRAIN_THRESHOLD_COMBAT_LOAD * t)
-        
-        # 计算负重影响因子
-        weight_ratio = current_weight / self.constants.CHARACTER_WEIGHT
-        load_factor = 1.0
-        if current_weight > 0.0:
-            weight_ratio_power = weight_ratio ** 1.2
-            load_factor = 1.0 + (weight_ratio_power * 1.5)
-        
-        # 根据速度和动态阈值计算消耗率
-        if speed >= self.constants.SPRINT_VELOCITY_THRESHOLD:
-            base_drain_rate = self.constants.SPRINT_DRAIN_PER_TICK * load_factor
-        elif speed >= self.constants.RUN_VELOCITY_THRESHOLD:
-            base_drain_rate = 0.00008 * load_factor
-        elif speed >= dynamic_threshold:
-            base_drain_rate = 0.00002 * load_factor
-        else:
-            base_drain_rate = -0.00025
-        
-        # 计算EPOC延迟期间的消耗（内联计算）
+        # 与 C 端对齐：base 供恢复用，total 单独扣除；代谢净值 = recovery - total_drain
+        base_for_recovery, total_drain = self._calculate_drain_rate_c_aligned(
+            speed, current_weight, grade_percent, terrain_factor,
+            stance, movement_type, wind_drag=0.0, environment_factor=self.environment_factor
+        )
         if is_in_epoc_delay:
-            epoc_drain_rate = self.constants.EPOC_DRAIN_RATE
-            speed_ratio_for_epoc = min(max(self.speed_before_stop / self.constants.GAME_MAX_SPEED, 0.0), 1.0)
-            epoc_drain_rate = epoc_drain_rate * (1.0 + speed_ratio_for_epoc * 0.5)
-            base_drain_rate = max(base_drain_rate, epoc_drain_rate)
-        
-        # 计算恢复率
+            epoc_drain_rate = self._calculate_epoc_drain_rate(self.speed_before_stop)
+            total_drain = max(total_drain, epoc_drain_rate)
+
         recovery_rate = self._calculate_recovery_rate(
-            self.stamina, 
-            self.rest_duration_minutes, 
-            self.exercise_duration_minutes, 
-            current_weight, 
-            base_drain_rate, 
-            False,  # disablePositiveRecovery
-            stance, 
-            self.environment_factor, 
+            self.stamina,
+            self.rest_duration_minutes,
+            self.exercise_duration_minutes,
+            current_weight,
+            base_for_recovery,
+            False,
+            stance,
+            self.environment_factor,
             speed
         )
-        
-        # 添加恢复率扰动：±10%
         if enable_randomness:
             recovery_noise = recovery_rate * random.uniform(-0.1, 0.1)
             recovery_rate += recovery_noise
-        
-        # 更新体力
-        self.stamina += recovery_rate
-        self.stamina = min(max(self.stamina, 0.0), 1.0)  # 使用内置函数，避免numpy调用
+
+        net_change = recovery_rate - total_drain
+        self.stamina += net_change
+        self.stamina = min(max(self.stamina, 0.0), 1.0)
         
         # 记录体力（限制历史记录长度）
         if len(self.stamina_history) < 10000:
@@ -469,6 +630,7 @@ class RSSDigitalTwin:
         # 模拟场景
         current_time = 0.0
         total_distance = 0.0
+        nominal_distance = 0.0
         
         for i in range(len(time_points) - 1):
             start_time = time_points[i]
@@ -491,10 +653,39 @@ class RSSDigitalTwin:
                     enable_randomness=enable_randomness
                 )
                 current_time += 0.2
-                total_distance += speed * 0.2
+                # Nominal distance: scenario-defined speed profile.
+                nominal_distance += speed * 0.2
+
+                # Effective speed: posture speed multiplier + encumbrance speed penalty (align with C).
+                posture_speed_mult = 1.0
+                if stance == Stance.CROUCH:
+                    posture_speed_mult = getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 0.7)
+                elif stance == Stance.PRONE:
+                    posture_speed_mult = getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 0.3)
+
+                base_weight = getattr(self.constants, 'BASE_WEIGHT', 1.36)
+                body_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+                effective_weight = max(current_weight - base_weight, 0.0)
+                body_mass_percent = (effective_weight / body_weight) if body_weight > 0.0 else 0.0
+                coeff = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
+                speed_penalty = coeff * body_mass_percent
+                speed_penalty = float(np.clip(speed_penalty, 0.0, 0.5))
+
+                effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
+                total_distance += effective_speed * 0.2
         
         # 计算结果
         min_stamina = min(self.stamina_history) if self.stamina_history else 1.0
+
+        # Derive a "time with penalty": if effective distance < nominal, scale time up.
+        # This makes optimizer objectives sensitive to speed-related parameters.
+        eps = 1e-6
+        if nominal_distance > 0.0:
+            ratio = nominal_distance / max(total_distance, eps)
+        else:
+            ratio = 1.0
+        ratio = float(np.clip(ratio, 1.0, 5.0))
+        total_time_with_penalty = current_time * ratio
         
         return {
             'total_distance': total_distance,
@@ -502,41 +693,20 @@ class RSSDigitalTwin:
             'stamina_history': self.stamina_history.copy(),  # 返回副本，避免线程间共享
             'speed_history': self.speed_history.copy(),      # 返回副本，避免线程间共享
             'time_history': self.time_history.copy(),        # 返回副本，避免线程间共享
-            'total_time_with_penalty': current_time
+            'total_time_with_penalty': total_time_with_penalty
         }
     
     def _calculate_base_drain_rate(self, speed, current_weight):
-        """计算基础消耗率（与C代码一致）"""
-        # 计算动态阈值
-        if current_weight <= 0.0:
-            dynamic_threshold = self.constants.RECOVERY_THRESHOLD_NO_LOAD
-        elif current_weight >= self.constants.COMBAT_ENCUMBRANCE_WEIGHT:
-            dynamic_threshold = self.constants.DRAIN_THRESHOLD_COMBAT_LOAD
-        else:
-            # 线性插值
-            t = current_weight / self.constants.COMBAT_ENCUMBRANCE_WEIGHT
-            dynamic_threshold = (self.constants.RECOVERY_THRESHOLD_NO_LOAD * (1.0 - t) + 
-                               self.constants.DRAIN_THRESHOLD_COMBAT_LOAD * t)
-        
-        # 计算负重影响因子
-        weight_ratio = current_weight / self.constants.CHARACTER_WEIGHT
-        load_factor = 1.0
-        if current_weight > 0.0:
-            # 与C代码一致：loadFactor = 1.0 + (weightRatio^1.2) * 1.5
-            weight_ratio_power = np.power(weight_ratio, 1.2)
-            load_factor = 1.0 + (weight_ratio_power * 1.5)
-        
-        # 根据速度和动态阈值计算消耗率
-        if speed >= self.constants.SPRINT_VELOCITY_THRESHOLD:
-            return self.constants.SPRINT_DRAIN_PER_TICK * load_factor
-        elif speed >= self.constants.RUN_VELOCITY_THRESHOLD:
-            # 与C代码一致：降低RUN的基础消耗
-            return self.constants.RUN_DRAIN_PER_TICK * load_factor
-        elif speed >= dynamic_threshold:
-            return 0.00002 * load_factor
-        else:
-            # 速度低于动态阈值：恢复
-            return -self.constants.REST_RECOVERY_PER_TICK
+        """计算基础消耗率。委托给 C 端对齐的 _calculate_drain_rate_c_aligned（默认平地、站姿、按速度推断移动类型）。返回 total_drain。"""
+        mt = MovementType.RUN
+        if speed >= getattr(self.constants, 'SPRINT_VELOCITY_THRESHOLD', 5.2):
+            mt = MovementType.SPRINT
+        elif speed < getattr(self.constants, 'RUN_VELOCITY_THRESHOLD', 3.7):
+            mt = MovementType.WALK if speed > 0.05 else MovementType.IDLE
+        _, total = self._calculate_drain_rate_c_aligned(
+            speed, current_weight, 0.0, 1.0, Stance.STAND, mt, wind_drag=0.0
+        )
+        return total
     
     def _calculate_recovery_weight(self, current_weight, stance):
         """计算恢复用的重量（考虑姿态优化）"""
@@ -604,30 +774,45 @@ class RSSDigitalTwin:
             load_recovery_penalty = (load_ratio ** self.constants.LOAD_RECOVERY_PENALTY_EXPONENT) * self.constants.LOAD_RECOVERY_PENALTY_COEFF
             recovery_rate -= load_recovery_penalty
         
-        # 边际效应衰减
-        if stamina_percent_clamped > 0.8:
-            marginal_decay_multiplier = 1.1 - stamina_percent_clamped
-            marginal_decay_multiplier = min(max(marginal_decay_multiplier, 0.2), 1.0)
-            recovery_rate *= marginal_decay_multiplier
+        # 边际效应衰减（使用优化参数）
+        threshold = getattr(self.constants, 'MARGINAL_DECAY_THRESHOLD', 0.8)
+        coeff = getattr(self.constants, 'MARGINAL_DECAY_COEFF', 1.1)
+        if stamina_percent_clamped > threshold:
+            # 公式：multiplier = 1.0 - (stamina - threshold) * (coeff - 1.0) / (1.0 - threshold)
+            excess = stamina_percent_clamped - threshold
+            max_excess = 1.0 - threshold
+            if max_excess > 0:
+                decay_factor = (excess / max_excess) * (coeff - 1.0)
+                marginal_decay_multiplier = max(1.0 - decay_factor, 0.2)
+                recovery_rate *= marginal_decay_multiplier
+        
+        # 最小恢复阈值检查（使用优化参数）
+        min_threshold = getattr(self.constants, 'MIN_RECOVERY_STAMINA_THRESHOLD', 0.2)
+        min_rest_time = getattr(self.constants, 'MIN_RECOVERY_REST_TIME_SECONDS', 3.0) / 60.0
+        if stamina_percent_clamped < min_threshold and rest_duration_minutes >= min_rest_time:
+            # 体力低于阈值且休息时间足够时，确保最小恢复率
+            min_recovery = getattr(self.constants, 'BASE_RECOVERY_RATE', 4e-4) * 0.5
+            recovery_rate = max(recovery_rate, min_recovery)
         
         # 确保恢复率不为负
         recovery_rate = max(recovery_rate, 0.0)
         
-        # ==================== 环境因子处理 ====================
+        # ==================== 环境因子处理（使用优化参数）====================
         if environment_factor:
-            # 内联环境因子计算，减少函数调用
-            heat_stress_penalty = environment_factor.heat_stress * self.constants.ENV_HEAT_STRESS_PENALTY_MAX
-            cold_stress_penalty = environment_factor.cold_stress * self.constants.ENV_COLD_STRESS_PENALTY_MAX
+            # 热应激惩罚（使用优化参数）
+            heat_coeff = getattr(self.constants, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
+            heat_stress_penalty = environment_factor.heat_stress * heat_coeff
+            recovery_rate *= (1.0 - min(heat_stress_penalty, 0.5))
             
-            # 应用热应激惩罚（降低恢复率）
-            recovery_rate *= (1.0 - heat_stress_penalty)
+            # 冷应激惩罚（使用优化参数）
+            cold_coeff = getattr(self.constants, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05)
+            cold_stress_penalty = environment_factor.cold_stress * cold_coeff
+            recovery_rate *= (1.0 - min(cold_stress_penalty, 0.5))
             
-            # 应用冷应激惩罚（降低恢复率）
-            recovery_rate *= (1.0 - cold_stress_penalty)
-            
-            # 应用地表湿度惩罚（趴下时的恢复惩罚）
+            # 地表湿度惩罚（趴下时的恢复惩罚）
             if stance == Stance.PRONE:
-                surface_wetness_penalty = environment_factor.surface_wetness * self.constants.ENV_SURFACE_WETNESS_PENALTY_MAX
+                wetness_max = getattr(self.constants, 'ENV_SURFACE_WETNESS_PENALTY_MAX', 0.15)
+                surface_wetness_penalty = environment_factor.surface_wetness * wetness_max
                 recovery_rate *= (1.0 - surface_wetness_penalty)
         
         # ==================== 绝境呼吸保护机制 ====================

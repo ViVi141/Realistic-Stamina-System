@@ -31,6 +31,13 @@ from dataclasses import dataclass, asdict
 # 导入修复版数字孪生仿真器
 from rss_digital_twin_fix import RSSDigitalTwin, MovementType, Stance, RSSConstants
 
+# -----------------------------------------------------------------------------
+# Performance / determinism switches
+# -----------------------------------------------------------------------------
+# Optimization phase should be deterministic for speed + convergence quality.
+# If you want robustness testing against noise, set this to True.
+ENABLE_RANDOMNESS_IN_SIMULATION = False
+
 # 自定义多进程并行框架
 class ParallelWorker:
     """
@@ -592,7 +599,7 @@ class RSSSuperPipeline:
                 terrain_factor=scenario.terrain_factor,
                 stance=scenario.stance,
                 movement_type=scenario.movement_type,
-                enable_randomness=True
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
             )
             
             # 计算拟真度损失
@@ -633,7 +640,7 @@ class RSSSuperPipeline:
                     terrain_factor=scenario.terrain_factor,
                     stance=scenario.stance,
                     movement_type=scenario.movement_type,
-                    enable_randomness=True  # 启用随机扰动
+                    enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
                 )
                 
                 # 计算当前场景的可玩性负担
@@ -713,7 +720,7 @@ class RSSSuperPipeline:
                 terrain_factor=1.5,  # 困难地形
                 stance=Stance.STAND,
                 movement_type=MovementType.RUN,
-                enable_randomness=True  # 启用随机扰动
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
             )
             
             stamina_history = chaos_results['stamina_history']
