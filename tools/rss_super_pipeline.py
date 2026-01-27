@@ -245,7 +245,7 @@ class RSSSuperPipeline:
     
     def __init__(
         self,
-        n_trials: int = 5000,  # 增加迭代次数以提高多样性
+        n_trials: int = 500,  # 默认500次迭代，平衡性能和多样性
         n_jobs: int = -1,  # -1表示自动检测CPU核心数
         use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
         batch_size: int = 5  # 批处理大小
@@ -276,7 +276,8 @@ class RSSSuperPipeline:
         self.study = None
         self.best_trials = []
         self.bug_reports: List[BugReport] = []
-        self.worker = None
+        # 初始化自定义并行工作器
+        self.parallel_worker = ParallelWorker(max_workers=n_jobs)
         
     def objective(self, trial: optuna.Trial) -> Tuple[float, float, float]:
         """
@@ -497,17 +498,16 @@ class RSSSuperPipeline:
         
         twin = RSSDigitalTwin(constants)
         
-        # ==================== 4. 目标1：评估拟真度（Realism Loss）====================
+        # ==================== 4. 基础体能检查（ACFT 2英里测试，空载）====================
+        # 这是最低标准，不是优化目标
+        basic_fitness_passed = self._check_basic_fitness(twin)
         
-        # 使用标准测试工况评估拟真度
-        realism_loss = self._evaluate_realism(twin)
-        
-        # ==================== 5. 目标2：评估30KG可玩性（Playability Burden）====================
+        # ==================== 5. 目标1：评估30KG可玩性（Playability Burden）====================
         
         # 专门针对30KG负载进行测试
         playability_burden = self._evaluate_30kg_playability(twin)
         
-        # ==================== 6. 目标3：评估稳定性风险（Stability Risk / BUG检测）====================
+        # ==================== 6. 目标2：评估稳定性风险（Stability Risk / BUG检测）====================
         
         # 地狱级压力测试
         stability_risk, bug_reports = self._evaluate_stability_risk(
@@ -521,6 +521,10 @@ class RSSSuperPipeline:
         # 这些约束确保生成的参数满足生物学和物理学逻辑
         
         constraint_penalty = 0.0
+        
+        # 基础体能检查约束：未通过基础体能测试的参数组合将被严重惩罚
+        if not basic_fitness_passed:
+            constraint_penalty += 1000.0  # 严重惩罚未通过基础体能测试的参数
         
         # 约束1: prone_recovery > standing_recovery（生理逻辑）
         # 说明：趴下应该比站立更容易恢复体力
@@ -574,19 +578,19 @@ class RSSSuperPipeline:
         # 注：这是一个软约束，仅在明显偏离时才惩罚
         # （这个约束很难在不知道当前是哪个配置的情况下强制）
         
-        # ==================== 8. 返回三个目标函数（包含约束惩罚） ====================
+        # ==================== 8. 返回两个目标函数（包含约束惩罚） ====================
         
-        return realism_loss, playability_burden, stability_risk
+        return playability_burden, stability_risk
     
-    def _evaluate_realism(self, twin: RSSDigitalTwin) -> float:
+    def _check_basic_fitness(self, twin: RSSDigitalTwin) -> bool:
         """
-        评估拟真度损失
+        检查基础体能标准（ACFT 2英里测试，空载）
         
         Args:
             twin: 数字孪生仿真器
         
         Returns:
-            拟真度损失（越小越好）
+            是否通过基础体能测试
         """
         # 使用标准ACFT 2英里测试（空载）
         scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0)
@@ -602,15 +606,20 @@ class RSSSuperPipeline:
                 enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
             )
             
-            # 计算拟真度损失
-            target_distance = scenario.speed_profile[-1][1] * scenario.target_finish_time
-            distance_error = abs(results['total_distance'] - target_distance)
-            realism_loss = distance_error / target_distance if target_distance > 0 else 1000.0
+            # 检查是否通过基础体能测试
+            # 标准：完成时间不超过目标时间的120%
+            target_time = scenario.target_finish_time
+            actual_time = results['total_time_with_penalty']
+            time_ratio = actual_time / target_time
             
-            return realism_loss
+            # 检查最低体力是否合理（不低于20%）
+            min_stamina = results['min_stamina']
+            
+            # 通过条件：时间不超过120%且体力不低于20%
+            return time_ratio <= 1.2 and min_stamina >= 0.2
             
         except Exception:
-            return 1000.0
+            return False
     
     def _evaluate_30kg_playability(self, twin: RSSDigitalTwin) -> float:
         """
@@ -629,11 +638,13 @@ class RSSSuperPipeline:
             ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0)
         ]
         
-        total_burden = 0.0
-        
-        for i, scenario in enumerate(scenarios):
+        # 使用并行处理提高性能
+        def evaluate_scenario(scenario):
+            """评估单个场景"""
             try:
-                results = twin.simulate_scenario(
+                # 创建独立的twin实例以避免线程安全问题
+                scenario_twin = RSSDigitalTwin(twin.constants)
+                results = scenario_twin.simulate_scenario(
                     speed_profile=scenario.speed_profile,
                     current_weight=scenario.current_weight,
                     grade_percent=scenario.grade_percent,
@@ -668,13 +679,26 @@ class RSSSuperPipeline:
                     if exhaustion_ratio > 0.1:
                         scenario_burden += exhaustion_ratio * 50.0
                 
-                # 根据场景权重累加负担
-                weights = [0.5, 0.3, 0.2]  # 2英里测试权重最高
-                total_burden += scenario_burden * weights[i]
-                
-            except Exception as e:
+                return scenario_burden, scenario
+            except Exception:
                 # 如果仿真失败，返回大惩罚值
+                return 1000.0, None
+        
+        # 使用自定义并行工作器并行评估场景
+        try:
+            results_list = self.parallel_worker.map(evaluate_scenario, scenarios, batch_size=1)
+        except Exception:
+            # 如果并行处理失败，回退到串行处理
+            results_list = [evaluate_scenario(scenario) for scenario in scenarios]
+        
+        total_burden = 0.0
+        weights = [0.5, 0.3, 0.2]  # 2英里测试权重最高
+        
+        for i, (scenario_burden, scenario) in enumerate(results_list):
+            if scenario_burden >= 1000.0:
+                # 如果场景评估失败，返回大惩罚值
                 return 1000.0
+            total_burden += scenario_burden * weights[i]
         
         return total_burden
     
@@ -851,14 +875,16 @@ class RSSSuperPipeline:
         print(f"优化配置：")
         print(f"  采样次数：{self.n_trials}")
         print(f"  优化变量数：40")
-        print(f"  目标函数数：3（Realism Loss, Playability Burden, Stability Risk）")
+        print(f"  目标函数数：2（Playability Burden, Stability Risk）")
         print(f"  并行线程数：{self.n_jobs}（自动检测CPU核心数）")
         print(f"  批处理大小：{self.batch_size}")
         
         print(f"\n目标函数：")
-        print(f"  1. 拟真度损失（Realism Loss）- 越小越好")
-        print(f"  2. 可玩性负担（Playability Burden）- 越小越好（30KG专项测试）")
-        print(f"  3. 稳定性风险（Stability Risk）- 越小越好（BUG检测）")
+        print(f"  1. 可玩性负担（Playability Burden）- 越小越好（30KG专项测试）")
+        print(f"  2. 稳定性风险（Stability Risk）- 越小越好（BUG检测）")
+        print(f"\n基础体能标准：")
+        print(f"  - ACFT 2英里测试（空载）作为最低标准，不是优化目标")
+        print(f"  - 必须通过基础体能测试才能被视为有效解")
         
         print(f"\n特殊测试：")
         print(f"  - 30KG负载专项平衡测试（解决'30KG太累'问题）")
@@ -868,9 +894,8 @@ class RSSSuperPipeline:
         print(f"\n开始优化...")
         print("-" * 80)
         
-        # 启动自定义并行工作器
-        self.worker = ParallelWorker(max_workers=self.n_jobs)
-        self.worker.start()
+        # 启动时间记录
+        start_time = time.time()
         
         # 创建研究（使用NSGA-II采样器，改进参数以增加多样性）
         if self.use_database:
@@ -885,12 +910,13 @@ class RSSSuperPipeline:
                 self.study = optuna.create_study(
                     study_name=study_name,
                     storage=storage_url,
-                    directions=['minimize', 'minimize', 'minimize'],
+                    directions=['minimize', 'minimize'],
                     sampler=optuna.samplers.NSGAIISampler(
-                        population_size=200,  # 增加种群大小（从100提高到200）以提高多样性和解的数量
-                        mutation_prob=0.4,  # 增加变异概率（从0.2提高到0.4）以探索更多解空间，避免过早收敛
-                        crossover_prob=0.9,  # 交叉概率
-                        swapping_prob=0.5    # 交换概率
+                        population_size=150,  # 优化种群大小，平衡多样性和计算效率
+                        mutation_prob=0.3,  # 优化变异概率，平衡探索和利用
+                        crossover_prob=0.85,  # 优化交叉概率
+                        swapping_prob=0.4,    # 优化交换概率
+                        seed=42  # 固定随机种子，提高可重复性
                     ),
                     pruner=optuna.pruners.MedianPruner(),
                     load_if_exists=True
@@ -900,12 +926,13 @@ class RSSSuperPipeline:
             # 使用内存存储（默认，性能更快）
             self.study = optuna.create_study(
                 study_name=study_name,
-                directions=['minimize', 'minimize', 'minimize'],
+                directions=['minimize', 'minimize'],
                 sampler=optuna.samplers.NSGAIISampler(
-                    population_size=200,  # 增加种群大小（从100提高到200）以提高多样性和解的数量
-                    mutation_prob=0.4,  # 增加变异概率（从0.2提高到0.4）以探索更多解空间，避免过早收敛
-                    crossover_prob=0.9,  # 交叉概率
-                    swapping_prob=0.5    # 交换概率
+                    population_size=150,  # 优化种群大小，平衡多样性和计算效率
+                    mutation_prob=0.3,  # 优化变异概率，平衡探索和利用
+                    crossover_prob=0.85,  # 优化交叉概率
+                    swapping_prob=0.4,    # 优化交换概率
+                    seed=42  # 固定随机种子，提高可重复性
                 ),
                 pruner=optuna.pruners.MedianPruner()
             )
@@ -916,29 +943,25 @@ class RSSSuperPipeline:
             if trial.number % 100 == 0 and trial.number > 0:
                 best_trials = study.best_trials
                 if len(best_trials) > 0:
-                    realism_values = [t.values[0] for t in best_trials]
-                    playability_values = [t.values[1] for t in best_trials]
-                    stability_values = [t.values[2] for t in best_trials]
-                    elapsed_time = self.worker.get_elapsed_time()
+                    playability_values = [t.values[0] for t in best_trials]
+                    stability_values = [t.values[1] for t in best_trials]
+                    elapsed_time = time.time() - start_time
                     print(f"\n进度更新 [试验 {trial.number}/{self.n_trials}]: "
                           f"帕累托解数量={len(best_trials)}, "
-                          f"拟真度=[{min(realism_values):.2f}, {max(realism_values):.2f}], "
                           f"可玩性=[{min(playability_values):.2f}, {max(playability_values):.2f}], "
                           f"稳定性=[{min(stability_values):.2f}, {max(stability_values):.2f}], "
                           f"BUG数量={len(self.bug_reports)}, "
                           f"耗时={elapsed_time:.2f}秒")
         
-        # 执行优化
+        # 执行优化 - 使用Optuna内置并行处理（因为objective内部已使用ParallelWorker）
+        # 注意：objective内部的ParallelWorker负责场景级并行，Optuna的n_jobs负责trial级并行
         self.study.optimize(
             self.objective,
             n_trials=self.n_trials,
             show_progress_bar=True,
             callbacks=[progress_callback],
-            n_jobs=1  # 使用1个job，由自定义并行工作器处理
+            n_jobs=1  # 设置为1，因为objective内部已使用ParallelWorker进行并行
         )
-        
-        # 关闭并行工作器
-        self.worker.shutdown()
         
         print("-" * 80)
         print(f"\n优化完成！")
@@ -950,29 +973,25 @@ class RSSSuperPipeline:
         print(f"  非支配解数量：{len(self.best_trials)}")
         
         if len(self.best_trials) > 0:
-            realism_values = [trial.values[0] for trial in self.best_trials]
-            playability_values = [trial.values[1] for trial in self.best_trials]
-            stability_values = [trial.values[2] for trial in self.best_trials]
+            playability_values = [trial.values[0] for trial in self.best_trials]
+            stability_values = [trial.values[1] for trial in self.best_trials]
             
-            print(f"  拟真度损失范围：[{min(realism_values):.4f}, {max(realism_values):.4f}]")
             print(f"  可玩性负担范围：[{min(playability_values):.2f}, {max(playability_values):.2f}]")
             print(f"  稳定性风险范围：[{min(stability_values):.2f}, {max(stability_values):.2f}]")
             
             # 诊断：检查目标值的唯一性
-            realism_unique = len(set(realism_values))
             playability_unique = len(set(playability_values))
             stability_unique = len(set(stability_values))
             
             print(f"\n  目标值唯一性诊断：")
-            print(f"    拟真度损失唯一值：{realism_unique}/{len(self.best_trials)}")
             print(f"    可玩性负担唯一值：{playability_unique}/{len(self.best_trials)}")
             print(f"    稳定性风险唯一值：{stability_unique}/{len(self.best_trials)}")
             
-            if realism_unique == 1 and playability_unique == 1 and stability_unique == 1:
+            if playability_unique == 1 and stability_unique == 1:
                 print(f"\n  ⚠️ 警告：所有帕累托解的目标值完全相同！")
                 print(f"     这可能表示：")
                 print(f"     1. 优化器收敛到了单一最优解")
-                print(f"     2. 三个目标函数过于一致，导致所有解相同")
+                print(f"     2. 两个目标函数过于一致，导致所有解相同")
                 print(f"     3. 需要增加优化迭代次数或调整NSGA-II参数")
             
             # 诊断：检查参数多样性
@@ -1037,6 +1056,11 @@ class RSSSuperPipeline:
             'bug_reports': self.bug_reports
         }
     
+    def shutdown(self):
+        """关闭并行工作器"""
+        if self.parallel_worker:
+            self.parallel_worker.shutdown()
+    
     def extract_archetypes(self) -> Dict[str, Dict]:
         """
         从帕累托前沿自动提取三个预设（改进：确保选择不同的解）
@@ -1053,55 +1077,50 @@ class RSSSuperPipeline:
             return {
                 'EliteStandard': {
                     'params': single_trial.params,
-                    'realism_loss': single_trial.values[0],
-                    'playability_burden': single_trial.values[1],
-                    'stability_risk': single_trial.values[2]
+                    'playability_burden': single_trial.values[0],
+                    'stability_risk': single_trial.values[1]
                 },
                 'StandardMilsim': {
                     'params': single_trial.params,
-                    'realism_loss': single_trial.values[0],
-                    'playability_burden': single_trial.values[1],
-                    'stability_risk': single_trial.values[2]
+                    'playability_burden': single_trial.values[0],
+                    'stability_risk': single_trial.values[1]
                 },
                 'TacticalAction': {
                     'params': single_trial.params,
-                    'realism_loss': single_trial.values[0],
-                    'playability_burden': single_trial.values[1],
-                    'stability_risk': single_trial.values[2]
+                    'playability_burden': single_trial.values[0],
+                    'stability_risk': single_trial.values[1]
                 }
             }
         
         # 提取目标值
-        realism_values = [t.values[0] for t in self.best_trials]
-        playability_values = [t.values[1] for t in self.best_trials]
-        stability_values = [t.values[2] for t in self.best_trials]
+        playability_values = [t.values[0] for t in self.best_trials]
+        stability_values = [t.values[1] for t in self.best_trials]
         
-        # 1. EliteStandard (Realism): 拟真损失最低的解
-        realism_idx = np.argmin(realism_values)
-        realism_trial = self.best_trials[realism_idx]
+        # 1. Realism-oriented (EliteStandard): 基于稳定性和可玩性的平衡
+        # 由于移除了拟真度目标，我们选择稳定性最好的解
+        stability_idx = np.argmin(stability_values)
+        realism_trial = self.best_trials[stability_idx]
         
-        # 2. TacticalAction (Playability): 可玩性负担最低的解（30KG最轻松）
+        # 2. Playability-oriented (TacticalAction): 可玩性负担最低的解（30KG最轻松）
         playability_idx = np.argmin(playability_values)
         playability_trial = self.best_trials[playability_idx]
         
-        # 3. StandardMilsim (Balanced): 三个目标的中值解
-        realism_min, realism_max = min(realism_values), max(realism_values)
+        # 3. Balanced (StandardMilsim): 两个目标的平衡解
         playability_min, playability_max = min(playability_values), max(playability_values)
         stability_min, stability_max = min(stability_values), max(stability_values)
         
         balanced_scores = []
         for trial in self.best_trials:
-            r_norm = (trial.values[0] - realism_min) / (realism_max - realism_min + 1e-10)
-            p_norm = (trial.values[1] - playability_min) / (playability_max - playability_min + 1e-10)
-            s_norm = (trial.values[2] - stability_min) / (stability_max - stability_min + 1e-10)
-            balanced_score = (r_norm + p_norm + s_norm) / 3.0
+            p_norm = (trial.values[0] - playability_min) / (playability_max - playability_min + 1e-10)
+            s_norm = (trial.values[1] - stability_min) / (stability_max - stability_min + 1e-10)
+            balanced_score = (p_norm + s_norm) / 2.0
             balanced_scores.append(balanced_score)
         
         balanced_idx = np.argmin(balanced_scores)
         balanced_trial = self.best_trials[balanced_idx]
         
         # 改进：如果选择了相同的解，尝试从不同区域选择
-        selected_indices = set([realism_idx, playability_idx, balanced_idx])
+        selected_indices = set([stability_idx, playability_idx, balanced_idx])
         
         # 如果三个解都相同，尝试基于参数差异选择不同的解
         if len(selected_indices) == 1:
@@ -1127,10 +1146,10 @@ class RSSSuperPipeline:
                 
                 if len(unique_indices) >= 3:
                     unique_indices_list = list(unique_indices)[:3]
-                    realism_idx = unique_indices_list[0]
+                    stability_idx = unique_indices_list[0]
                     playability_idx = unique_indices_list[1]
                     balanced_idx = unique_indices_list[2]
-                    realism_trial = self.best_trials[realism_idx]
+                    realism_trial = self.best_trials[stability_idx]
                     playability_trial = self.best_trials[playability_idx]
                     balanced_trial = self.best_trials[balanced_idx]
         
@@ -1162,21 +1181,18 @@ class RSSSuperPipeline:
         return {
             'EliteStandard': {
                 'params': realism_trial.params,
-                'realism_loss': realism_trial.values[0],
-                'playability_burden': realism_trial.values[1],
-                'stability_risk': realism_trial.values[2]
+                'playability_burden': realism_trial.values[0],
+                'stability_risk': realism_trial.values[1]
             },
             'StandardMilsim': {
                 'params': balanced_trial.params,
-                'realism_loss': balanced_trial.values[0],
-                'playability_burden': balanced_trial.values[1],
-                'stability_risk': balanced_trial.values[2]
+                'playability_burden': balanced_trial.values[0],
+                'stability_risk': balanced_trial.values[1]
             },
             'TacticalAction': {
                 'params': playability_trial.params,
-                'realism_loss': playability_trial.values[0],
-                'playability_burden': playability_trial.values[1],
-                'stability_risk': playability_trial.values[2]
+                'playability_burden': playability_trial.values[0],
+                'stability_risk': playability_trial.values[1]
             }
         }
     
@@ -1205,7 +1221,6 @@ class RSSSuperPipeline:
                 "description": f"RSS 增强型优化配置（NSGA-II）- {preset_name}",
                 "optimization_method": "NSGA-II (Super Pipeline)",
                 "objectives": {
-                    "realism_loss": config['realism_loss'],
                     "playability_burden": config['playability_burden'],
                     "stability_risk": config['stability_risk']
                 },

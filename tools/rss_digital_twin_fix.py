@@ -277,6 +277,10 @@ class Stance:
 class RSSDigitalTwin:
     """RSS 数字孪生仿真器"""
     
+    # 类级缓存，避免重复计算
+    _scenario_cache = {}
+    _cache_size = 10000  # 缓存大小限制
+    
     def __init__(self, constants):
         """初始化仿真器"""
         self.constants = constants
@@ -301,8 +305,8 @@ class RSSDigitalTwin:
         self.environment_factor.set_heat_stress(0.0)
         self.environment_factor.set_cold_stress(0.0)
         self.environment_factor.set_surface_wetness(0.0)
-        # 性能优化：预分配空间（Python列表动态扩容，这里使用空列表初始化）
-        # Python列表没有reserve方法，使用空列表初始化
+        # 内存优化：限制历史记录长度
+        self.max_history_length = 5000  # 最多存储5000个数据点（约16.7分钟）
     
     def _calculate_epoc_drain_rate(self, speed_before_stop):
         """计算EPOC延迟期间的消耗"""
@@ -573,7 +577,7 @@ class RSSDigitalTwin:
         self.last_speed = speed
         
         # 记录速度（减少内存操作，只在需要时记录）
-        if len(self.speed_history) < 10000:  # 限制历史记录长度
+        if len(self.speed_history) < self.max_history_length:  # 限制历史记录长度
             self.speed_history.append(speed)
         
         # 更新运动/休息时间（避免重复计算）
@@ -613,13 +617,21 @@ class RSSDigitalTwin:
         self.stamina = min(max(self.stamina, 0.0), 1.0)
         
         # 记录体力（限制历史记录长度）
-        if len(self.stamina_history) < 10000:
+        if len(self.stamina_history) < self.max_history_length:
             self.stamina_history.append(self.stamina)
             self.time_history.append(current_time)
     
     def simulate_scenario(self, speed_profile, current_weight, grade_percent, 
                          terrain_factor, stance, movement_type, enable_randomness=True):
         """模拟完整场景（线程安全）"""
+        # 创建场景的唯一缓存键
+        cache_key = self._create_cache_key(speed_profile, current_weight, grade_percent, 
+                                         terrain_factor, stance, movement_type, enable_randomness)
+        
+        # 检查缓存中是否存在
+        if cache_key in self._scenario_cache:
+            return self._scenario_cache[cache_key]
+        
         # 每次模拟前重置状态，确保线程安全
         self.reset()
         
@@ -687,14 +699,96 @@ class RSSDigitalTwin:
         ratio = float(np.clip(ratio, 1.0, 5.0))
         total_time_with_penalty = current_time * ratio
         
-        return {
+        # 构建结果（内存优化：只返回必要的数据，不返回完整历史记录）
+        result = {
             'total_distance': total_distance,
             'min_stamina': min_stamina,
-            'stamina_history': self.stamina_history.copy(),  # 返回副本，避免线程间共享
-            'speed_history': self.speed_history.copy(),      # 返回副本，避免线程间共享
-            'time_history': self.time_history.copy(),        # 返回副本，避免线程间共享
-            'total_time_with_penalty': total_time_with_penalty
+            'total_time_with_penalty': total_time_with_penalty,
+            'stamina_history': self.stamina_history[-1000:] if len(self.stamina_history) > 1000 else self.stamina_history.copy(),  # 只返回最近1000个数据点
+            'speed_history': self.speed_history[-500:] if len(self.speed_history) > 500 else self.speed_history.copy(),        # 只返回最近500个数据点
+            'time_history': self.time_history[-1000:] if len(self.time_history) > 1000 else self.time_history.copy()          # 只返回最近1000个数据点
         }
+        
+        # 将结果存入缓存
+        self._scenario_cache[cache_key] = result
+        
+        # 清理缓存，避免内存占用过大
+        if len(self._scenario_cache) > self._cache_size:
+            self._clean_cache()
+        
+        return result
+    
+    def _create_cache_key(self, speed_profile, current_weight, grade_percent, 
+                         terrain_factor, stance, movement_type, enable_randomness):
+        """创建场景的唯一缓存键"""
+        # 为速度曲线创建一个可哈希的表示
+        speed_profile_hash = tuple((round(t, 2), round(v, 2)) for t, v in speed_profile)
+        
+        # 创建缓存键，包含所有关键常量参数
+        cache_key = (
+            speed_profile_hash,
+            round(current_weight, 2),
+            round(grade_percent, 2),
+            round(terrain_factor, 2),
+            stance,
+            movement_type,
+            enable_randomness,
+            # 包含所有影响仿真结果的关键常量参数
+            round(getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5), 7),
+            round(getattr(self.constants, 'BASE_RECOVERY_RATE', 4e-4), 6),
+            round(getattr(self.constants, 'PRONE_RECOVERY_MULTIPLIER', 2.5), 2),
+            round(getattr(self.constants, 'STANDING_RECOVERY_MULTIPLIER', 1.2), 2),
+            round(getattr(self.constants, 'LOAD_RECOVERY_PENALTY_COEFF', 0.0005), 6),
+            round(getattr(self.constants, 'LOAD_RECOVERY_PENALTY_EXPONENT', 2.0), 2),
+            round(getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.2), 2),
+            round(getattr(self.constants, 'ENCUMBRANCE_STAMINA_DRAIN_COEFF', 1.5), 2),
+            round(getattr(self.constants, 'SPRINT_STAMINA_DRAIN_MULTIPLIER', 3.0), 2),
+            round(getattr(self.constants, 'FATIGUE_ACCUMULATION_COEFF', 0.01), 3),
+            round(getattr(self.constants, 'FATIGUE_MAX_FACTOR', 2.0), 2),
+            round(getattr(self.constants, 'AEROBIC_EFFICIENCY_FACTOR', 0.9), 2),
+            round(getattr(self.constants, 'ANAEROBIC_EFFICIENCY_FACTOR', 1.2), 2),
+            round(getattr(self.constants, 'RECOVERY_NONLINEAR_COEFF', 0.5), 2),
+            round(getattr(self.constants, 'FAST_RECOVERY_MULTIPLIER', 3.0), 2),
+            round(getattr(self.constants, 'MEDIUM_RECOVERY_MULTIPLIER', 2.0), 2),
+            round(getattr(self.constants, 'SLOW_RECOVERY_MULTIPLIER', 0.5), 2),
+            round(getattr(self.constants, 'MARGINAL_DECAY_THRESHOLD', 0.8), 2),
+            round(getattr(self.constants, 'MARGINAL_DECAY_COEFF', 1.1), 2),
+            round(getattr(self.constants, 'MIN_RECOVERY_STAMINA_THRESHOLD', 0.2), 2),
+            round(getattr(self.constants, 'MIN_RECOVERY_REST_TIME_SECONDS', 3.0), 2),
+            round(getattr(self.constants, 'SPRINT_SPEED_BOOST', 0.3), 2),
+            round(getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 0.7), 2),
+            round(getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 0.6), 2),
+            round(getattr(self.constants, 'JUMP_STAMINA_BASE_COST', 0.03), 3),
+            round(getattr(self.constants, 'VAULT_STAMINA_START_COST', 0.02), 3),
+            round(getattr(self.constants, 'CLIMB_STAMINA_TICK_COST', 0.01), 3),
+            round(getattr(self.constants, 'JUMP_CONSECUTIVE_PENALTY', 0.5), 2),
+            round(getattr(self.constants, 'SLOPE_UPHILL_COEFF', 0.09), 2),
+            round(getattr(self.constants, 'SLOPE_DOWNHILL_COEFF', 0.03), 2),
+            round(getattr(self.constants, 'SWIMMING_BASE_POWER', 20.0), 1),
+            round(getattr(self.constants, 'SWIMMING_ENCUMBRANCE_THRESHOLD', 25.0), 1),
+            round(getattr(self.constants, 'SWIMMING_STATIC_DRAIN_MULTIPLIER', 3.0), 1),
+            round(getattr(self.constants, 'SWIMMING_DYNAMIC_POWER_EFFICIENCY', 2.0), 1),
+            round(getattr(self.constants, 'SWIMMING_ENERGY_TO_STAMINA_COEFF', 5e-5), 6),
+            round(getattr(self.constants, 'ENV_HEAT_STRESS_MAX_MULTIPLIER', 1.4), 1),
+            round(getattr(self.constants, 'ENV_RAIN_WEIGHT_MAX', 8.0), 1),
+            round(getattr(self.constants, 'ENV_WIND_RESISTANCE_COEFF', 0.05), 2),
+            round(getattr(self.constants, 'ENV_MUD_PENALTY_MAX', 0.4), 2),
+            round(getattr(self.constants, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02), 3),
+            round(getattr(self.constants, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05), 3)
+        )
+        
+        return cache_key
+    
+    def _clean_cache(self):
+        """清理缓存，保留最近使用的条目"""
+        # 简单实现：删除一半的缓存条目
+        # 注意：在实际应用中，可能需要更复杂的缓存替换策略
+        if len(self._scenario_cache) > self._cache_size:
+            # 按插入顺序保留最近的条目
+            keys_to_remove = list(self._scenario_cache.keys())[:len(self._scenario_cache) // 2]
+            for key in keys_to_remove:
+                if key in self._scenario_cache:
+                    del self._scenario_cache[key]
     
     def _calculate_base_drain_rate(self, speed, current_weight):
         """计算基础消耗率。委托给 C 端对齐的 _calculate_drain_rate_c_aligned（默认平地、站姿、按速度推断移动类型）。返回 total_drain。"""
@@ -774,9 +868,17 @@ class RSSDigitalTwin:
             load_recovery_penalty = (load_ratio ** self.constants.LOAD_RECOVERY_PENALTY_EXPONENT) * self.constants.LOAD_RECOVERY_PENALTY_COEFF
             recovery_rate -= load_recovery_penalty
         
-        # 边际效应衰减（使用优化参数）
-        threshold = getattr(self.constants, 'MARGINAL_DECAY_THRESHOLD', 0.8)
-        coeff = getattr(self.constants, 'MARGINAL_DECAY_COEFF', 1.1)
+        # 性能优化：缓存常量值，减少getattr调用
+        threshold = self.constants.MARGINAL_DECAY_THRESHOLD
+        coeff = self.constants.MARGINAL_DECAY_COEFF
+        min_threshold = self.constants.MIN_RECOVERY_STAMINA_THRESHOLD
+        min_rest_time = self.constants.MIN_RECOVERY_REST_TIME_SECONDS / 60.0
+        base_recovery = self.constants.BASE_RECOVERY_RATE
+        heat_coeff = self.constants.ENV_TEMPERATURE_HEAT_PENALTY_COEFF
+        cold_coeff = self.constants.ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF
+        wetness_max = self.constants.ENV_SURFACE_WETNESS_PENALTY_MAX
+        
+        # 边际效应衰减
         if stamina_percent_clamped > threshold:
             # 公式：multiplier = 1.0 - (stamina - threshold) * (coeff - 1.0) / (1.0 - threshold)
             excess = stamina_percent_clamped - threshold
@@ -786,32 +888,27 @@ class RSSDigitalTwin:
                 marginal_decay_multiplier = max(1.0 - decay_factor, 0.2)
                 recovery_rate *= marginal_decay_multiplier
         
-        # 最小恢复阈值检查（使用优化参数）
-        min_threshold = getattr(self.constants, 'MIN_RECOVERY_STAMINA_THRESHOLD', 0.2)
-        min_rest_time = getattr(self.constants, 'MIN_RECOVERY_REST_TIME_SECONDS', 3.0) / 60.0
+        # 最小恢复阈值检查
         if stamina_percent_clamped < min_threshold and rest_duration_minutes >= min_rest_time:
             # 体力低于阈值且休息时间足够时，确保最小恢复率
-            min_recovery = getattr(self.constants, 'BASE_RECOVERY_RATE', 4e-4) * 0.5
+            min_recovery = base_recovery * 0.5
             recovery_rate = max(recovery_rate, min_recovery)
         
         # 确保恢复率不为负
         recovery_rate = max(recovery_rate, 0.0)
         
-        # ==================== 环境因子处理（使用优化参数）====================
+        # ==================== 环境因子处理 ====================
         if environment_factor:
-            # 热应激惩罚（使用优化参数）
-            heat_coeff = getattr(self.constants, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
+            # 热应激惩罚
             heat_stress_penalty = environment_factor.heat_stress * heat_coeff
             recovery_rate *= (1.0 - min(heat_stress_penalty, 0.5))
             
-            # 冷应激惩罚（使用优化参数）
-            cold_coeff = getattr(self.constants, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05)
+            # 冷应激惩罚
             cold_stress_penalty = environment_factor.cold_stress * cold_coeff
             recovery_rate *= (1.0 - min(cold_stress_penalty, 0.5))
             
             # 地表湿度惩罚（趴下时的恢复惩罚）
             if stance == Stance.PRONE:
-                wetness_max = getattr(self.constants, 'ENV_SURFACE_WETNESS_PENALTY_MAX', 0.15)
                 surface_wetness_penalty = environment_factor.surface_wetness * wetness_max
                 recovery_rate *= (1.0 - surface_wetness_penalty)
         
