@@ -93,7 +93,8 @@ class StaminaConstants
     
     // 负重对体力消耗的影响系数（γ）- 基于体重的真实模型
     // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5; // 基于体重的体力消耗系数
+    // [修复] 与Python数字孪生保持一致，从1.5改为2.0
+    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0; // 基于体重的体力消耗系数
     
     // 最小速度倍数（防止体力完全耗尽时完全无法移动）
     static const float MIN_SPEED_MULTIPLIER = 0.15; // 15%最低速度（约0.78 m/s，勉强行走）
@@ -151,7 +152,8 @@ class StaminaConstants
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
     static const float MEDIUM_RECOVERY_START_MINUTES = 1.5; // 中等恢复期开始时间（分钟）
-    static const float MEDIUM_RECOVERY_DURATION_MINUTES = 8.5; // 中等恢复期持续时间（分钟）
+    // [修复] 与Python数字孪生保持一致，从8.5改为5.0
+    static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
     static const float MEDIUM_RECOVERY_MULTIPLIER = 1.4; // 中等恢复期恢复速度倍数（从1.8降低到1.4，降低22.2%）
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
@@ -596,6 +598,34 @@ class StaminaConstants
         return 2.0; // 默认值
     }
     
+    // 获取蹲姿消耗倍数（从配置管理器）
+    // 修复：添加此桥接方法，使配置参数生效
+    static float GetPostureCrouchMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.posture_crouch_multiplier;
+        }
+        return 2.0; // 默认值（蹲姿消耗是站姿的2倍）
+    }
+
+    // 获取趴姿消耗倍数（从配置管理器）
+    // 修复：添加此桥接方法，使配置参数生效
+    static float GetPostureProneMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.posture_prone_multiplier;
+        }
+        return 2.5; // 默认值（趴姿消耗是站姿的2.5倍）
+    }
+
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {

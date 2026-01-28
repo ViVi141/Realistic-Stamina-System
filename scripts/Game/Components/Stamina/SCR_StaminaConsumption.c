@@ -105,54 +105,17 @@ class StaminaConsumptionCalculator
         
         // 应用降雨湿重（修正当前重量）
         currentWeight = currentWeight + totalWetWeight;
-        
-        // ==================== 原有计算逻辑 ====================
-        
-        // 如果速度为0，计算静态站立消耗
-        if (currentSpeed < 0.1)
-        {
-            float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
-            float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0); // 负重（去除身体重量）
-            
-            float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
-            
-            // 应用冷应激静态惩罚（v2.14.0）
-            staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
-            
-            baseDrainRateByVelocity = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
-        }
-        // 如果速度 > 2.2 m/s，使用 Givoni-Goldman 跑步模型
-        else if (currentSpeed > 2.2)
-        {
-            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeight, true);
-            runningDrainRate = runningDrainRate * terrainFactor; // 应用地形系数
-            
-            // 应用风阻（v2.14.0）：逆风时增加消耗
-            runningDrainRate = runningDrainRate * (1.0 + windDrag);
-            
-            baseDrainRateByVelocity = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
-        }
-        // 否则使用 Pandolf 步行模型
-        else
-        {
-            baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                currentSpeed,
-                currentWeight,
-                gradePercent,
-                terrainFactor,
-                true // 使用 Santee 下坡修正
-            );
-            
-            // 应用风阻（v2.14.0）：逆风时增加消耗
-            baseDrainRateByVelocity = baseDrainRateByVelocity * (1.0 + windDrag);
 
-            // [修复] 将乘法移到这里，只对 Pandolf 模型生效
-            // 防止上面的 Givoni 模型被乘两次
-            baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2;
-        }
+        // ==================== 修复：调用公共静态方法计算基础消耗率 ====================
+        // 避免与 SCR_StaminaUpdateCoordinator.c 中的代码重复
+        baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateLandBaseDrainRate(
+            currentSpeed,
+            currentWeight,
+            gradePercent,
+            terrainFactor,
+            windDrag,
+            coldStaticPenalty);
 
-        // [修复] 删除了这里原本的 baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2;
-        
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
         
@@ -225,19 +188,22 @@ class StaminaConsumptionCalculator
     // @param currentSpeed 当前速度 (m/s)
     // @param controller 角色控制器组件（用于获取姿态）
     // @return 姿态修正倍数
+    // 修复：使用配置参数而非硬编码常量，使管理员可以调整姿态消耗倍数
     static float CalculatePostureMultiplier(float currentSpeed, SCR_CharacterControllerComponent controller)
     {
-        float postureMultiplier = StaminaConstants.POSTURE_STAND_MULTIPLIER; // 默认站立姿态
+        float postureMultiplier = StaminaConstants.POSTURE_STAND_MULTIPLIER; // 默认站立姿态（1.0）
         if (currentSpeed > 0.05) // 只在移动时应用姿态修正
         {
             ECharacterStance currentStance = controller.GetStance();
             if (currentStance == ECharacterStance.CROUCH)
             {
-                postureMultiplier = StaminaConstants.POSTURE_CROUCH_MULTIPLIER;
+                // 修复：使用配置参数而非硬编码常量
+                postureMultiplier = StaminaConstants.GetPostureCrouchMultiplier();
             }
             else if (currentStance == ECharacterStance.PRONE)
             {
-                postureMultiplier = StaminaConstants.POSTURE_PRONE_MULTIPLIER;
+                // 修复：使用配置参数而非硬编码常量
+                postureMultiplier = StaminaConstants.GetPostureProneMultiplier();
             }
         }
         return postureMultiplier;

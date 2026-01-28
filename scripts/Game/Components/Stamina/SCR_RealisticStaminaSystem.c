@@ -458,7 +458,8 @@ class RealisticStaminaSpeedSystem
         }
         else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
         {
-            // 中等恢复期（3-10分钟）：恢复速度增加50%（1.5倍）
+            // 中等恢复期（1.5-6.5分钟）：恢复速度增加40%（1.4倍）
+            // [修复注释] 从"3-10分钟"改为"1.5-6.5分钟"（与Python数字孪生一致）
             restTimeMultiplier = MEDIUM_RECOVERY_MULTIPLIER;
         }
         else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)

@@ -1,0 +1,299 @@
+====================================================================================================
+C文件与优化器配置详细对比报告
+====================================================================================================
+
+【优化参数对比】（这些参数由优化器生成，C文件通过配置管理器动态获取）
+----------------------------------------------------------------------------------------------------
+参数名称                                     JSON配置值                                                      Python默认       
+----------------------------------------------------------------------------------------------------
+aerobic_efficiency_factor                balanced_super=9.015563e-01, playability_super=9.000880e-01, realism_super=9.088798e-01 N/A            
+anaerobic_efficiency_factor              balanced_super=1.464096e+00, playability_super=1.507995e+00, realism_super=1.191097e+00 N/A            
+base_recovery_rate                       balanced_super=3.039397e-04, playability_super=2.045960e-04, realism_super=3.181286e-04 N/A            
+climb_stamina_tick_cost                  balanced_super=9.576762e-03, playability_super=1.195114e-02, realism_super=8.788424e-03 N/A            
+encumbrance_speed_penalty_coeff          balanced_super=1.467381e-01, playability_super=1.104145e-01, realism_super=2.088923e-01 N/A            
+encumbrance_stamina_drain_coeff          balanced_super=8.473514e-01, playability_super=8.153860e-01, realism_super=1.002129e+00 N/A            
+energy_to_stamina_coeff                  balanced_super=3.346219e-05, playability_super=3.181593e-05, realism_super=3.173790e-05 N/A            
+env_heat_stress_max_multiplier           balanced_super=1.396930e+00, playability_super=1.241644e+00, realism_super=1.478462e+00 N/A            
+env_mud_penalty_max                      balanced_super=3.393377e-01, playability_super=3.548321e-01, realism_super=4.544304e-01 N/A            
+env_rain_weight_max                      balanced_super=6.545484e+00, playability_super=8.897355e+00, realism_super=7.531195e+00 N/A            
+env_temperature_cold_recovery_penalty_coeff balanced_super=4.110665e-02, playability_super=4.171316e-02, realism_super=4.907693e-02 N/A            
+env_temperature_heat_penalty_coeff       balanced_super=1.986483e-02, playability_super=1.982225e-02, realism_super=2.296241e-02 N/A            
+env_wind_resistance_coeff                balanced_super=3.953349e-02, playability_super=5.839140e-02, realism_super=4.483895e-02 N/A            
+fast_recovery_multiplier                 balanced_super=2.626709e+00, playability_super=2.901978e+00, realism_super=2.968597e+00 N/A            
+fatigue_accumulation_coeff               balanced_super=1.795997e-02, playability_super=2.151541e-02, realism_super=5.055708e-03 N/A            
+fatigue_max_factor                       balanced_super=2.810517e+00, playability_super=1.922782e+00, realism_super=2.613380e+00 N/A            
+jump_consecutive_penalty                 balanced_super=5.696406e-01, playability_super=4.471132e-01, realism_super=4.627654e-01 N/A            
+jump_stamina_base_cost                   balanced_super=4.400558e-02, playability_super=3.688953e-02, realism_super=3.932794e-02 N/A            
+load_recovery_penalty_coeff              balanced_super=2.270217e-04, playability_super=4.819553e-04, realism_super=1.102048e-04 N/A            
+load_recovery_penalty_exponent           balanced_super=1.606439e+00, playability_super=1.549612e+00, realism_super=1.992590e+00 N/A            
+marginal_decay_coeff                     balanced_super=1.079575e+00, playability_super=1.052364e+00, realism_super=1.094994e+00 N/A            
+marginal_decay_threshold                 balanced_super=8.581020e-01, playability_super=7.564069e-01, realism_super=8.194311e-01 N/A            
+medium_recovery_multiplier               balanced_super=1.456525e+00, playability_super=1.717678e+00, realism_super=1.744937e+00 N/A            
+min_recovery_rest_time_seconds           balanced_super=3.024559e+00, playability_super=3.428376e+00, realism_super=3.315227e+00 N/A            
+min_recovery_stamina_threshold           balanced_super=2.294211e-01, playability_super=1.977146e-01, realism_super=2.192909e-01 N/A            
+posture_crouch_multiplier                balanced_super=7.105595e-01, playability_super=6.159735e-01, realism_super=9.924646e-01 N/A            
+posture_prone_multiplier                 balanced_super=5.081107e-01, playability_super=4.232109e-01, realism_super=5.229321e-01 N/A            
+prone_recovery_multiplier                balanced_super=1.601166e+00, playability_super=2.273995e+00, realism_super=2.083714e+00 N/A            
+recovery_nonlinear_coeff                 balanced_super=6.161040e-01, playability_super=3.672057e-01, realism_super=6.041858e-01 N/A            
+slope_downhill_coeff                     balanced_super=2.750660e-02, playability_super=3.501742e-02, realism_super=2.429825e-02 N/A            
+slope_uphill_coeff                       balanced_super=7.971931e-02, playability_super=9.730016e-02, realism_super=9.413269e-02 N/A            
+slow_recovery_multiplier                 balanced_super=5.391957e-01, playability_super=7.410443e-01, realism_super=7.276146e-01 N/A            
+sprint_speed_boost                       balanced_super=2.995654e-01, playability_super=2.630881e-01, realism_super=3.132391e-01 N/A            
+sprint_stamina_drain_multiplier          balanced_super=3.318502e+00, playability_super=2.851198e+00, realism_super=4.276546e+00 N/A            
+standing_recovery_multiplier             balanced_super=1.455502e+00, playability_super=1.075554e+00, realism_super=1.625568e+00 N/A            
+swimming_base_power                      balanced_super=1.731349e+01, playability_super=2.254543e+01, realism_super=1.924851e+01 N/A            
+swimming_dynamic_power_efficiency        balanced_super=1.903520e+00, playability_super=2.005252e+00, realism_super=1.687920e+00 N/A            
+swimming_encumbrance_threshold           balanced_super=2.846785e+01, playability_super=2.103124e+01, realism_super=2.875363e+01 N/A            
+swimming_energy_to_stamina_coeff         balanced_super=5.022551e-05, playability_super=4.256789e-05, realism_super=5.030334e-05 N/A            
+swimming_static_drain_multiplier         balanced_super=3.331942e+00, playability_super=3.359503e+00, realism_super=3.204494e+00 N/A            
+vault_stamina_start_cost                 balanced_super=1.910523e-02, playability_super=1.996767e-02, realism_super=2.445775e-02 N/A            
+
+【硬编码常量对比】（这些参数在C文件中硬编码，不会被优化器修改）
+----------------------------------------------------------------------------------------------------
+参数名称                                     C文件硬编码               Python默认             差异                  
+----------------------------------------------------------------------------------------------------
+AEROBIC_EFFICIENCY_FACTOR                0.9                  0.9                  匹配                  
+AEROBIC_THRESHOLD                        0.6                  0.6                  匹配                  
+AGE_RECOVERY_COEFF                       0.2                  N/A                  匹配                  
+AGE_REFERENCE                            30.0                 N/A                  匹配                  
+ANAEROBIC_EFFICIENCY_FACTOR              1.2                  1.2                  匹配                  
+ANAEROBIC_THRESHOLD                      0.8                  0.8                  匹配                  
+BASE_RECOVERY_RATE                       0.00035              0.00035              匹配                  
+BASE_WEIGHT                              1.36                 1.36                 匹配                  
+BODY_TOLERANCE_BASE                      30.0                 N/A                  匹配                  
+CHARACTER_AGE                            22.0                 N/A                  匹配                  
+CHARACTER_WEIGHT                         90.0                 90.0                 匹配                  
+CLIMB_STAMINA_TICK_COST                  0.01                 0.01                 匹配                  
+COMBAT_ENCUMBRANCE_WEIGHT                30.0                 N/A                  匹配                  
+COMBAT_LOAD_WEIGHT                       30.0                 N/A                  匹配                  
+CROUCH                                   N/A                  1.0                  匹配                  
+CROUCHING_RECOVERY_MULTIPLIER            1.5                  1.5                  匹配                  
+DRAIN_THRESHOLD_COMBAT_LOAD              1.5                  N/A                  匹配                  
+ENCUMBRANCE_SLOPE_INTERACTION_COEFF      0.15                 N/A                  匹配                  
+ENCUMBRANCE_SPEED_EXPONENT               1.0                  N/A                  匹配                  
+ENCUMBRANCE_SPEED_PENALTY_COEFF          0.2                  0.2                  匹配                  
+ENCUMBRANCE_STAMINA_DRAIN_COEFF          2.0                  2.0                  匹配                  
+ENERGY_TO_STAMINA_COEFF                  3.5e-05              3.5e-05              匹配                  
+ENV_CHECK_INTERVAL                       5.0                  N/A                  匹配                  
+ENV_HEAT_STRESS_BASE_MULTIPLIER          1.0                  N/A                  匹配                  
+ENV_HEAT_STRESS_END_HOUR                 18.0                 N/A                  匹配                  
+ENV_HEAT_STRESS_INDOOR_REDUCTION         0.5                  N/A                  匹配                  
+ENV_HEAT_STRESS_MAX_MULTIPLIER           1.5                  1.5                  匹配                  
+ENV_HEAT_STRESS_PEAK_HOUR                14.0                 N/A                  匹配                  
+ENV_HEAT_STRESS_START_HOUR               10.0                 N/A                  匹配                  
+ENV_INDOOR_CHECK_HEIGHT                  10.0                 N/A                  匹配                  
+ENV_MAX_TOTAL_WET_WEIGHT                 10.0                 N/A                  匹配                  
+ENV_MUD_PENALTY_MAX                      0.4                  N/A                  匹配                  
+ENV_MUD_SLIPPERY_THRESHOLD               0.3                  N/A                  匹配                  
+ENV_MUD_SLIP_RISK_BASE                   0.001                N/A                  匹配                  
+ENV_MUD_SPRINT_PENALTY                   0.1                  N/A                  匹配                  
+ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE 0.5                  N/A                  匹配                  
+ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT 1.5                  N/A                  匹配                  
+ENV_RAIN_INTENSITY_BREATHING_PENALTY     0.05                 N/A                  匹配                  
+ENV_RAIN_INTENSITY_HEAVY_THRESHOLD       0.8                  N/A                  匹配                  
+ENV_RAIN_INTENSITY_THRESHOLD             0.01                 N/A                  匹配                  
+ENV_RAIN_WEIGHT_DECAY_RATE               0.0167               N/A                  匹配                  
+ENV_RAIN_WEIGHT_DURATION                 60.0                 N/A                  匹配                  
+ENV_RAIN_WEIGHT_MAX                      8.0                  N/A                  匹配                  
+ENV_RAIN_WEIGHT_MIN                      2.0                  N/A                  匹配                  
+ENV_SURFACE_WETNESS_MARGINAL_DECAY_ADVANCE 0.1                  N/A                  匹配                  
+ENV_SURFACE_WETNESS_PENALTY_MAX          N/A                  0.15                 匹配                  
+ENV_SURFACE_WETNESS_PRONE_PENALTY        0.15                 N/A                  匹配                  
+ENV_SURFACE_WETNESS_SOAK_RATE            1.0                  N/A                  匹配                  
+ENV_SURFACE_WETNESS_THRESHOLD            0.1                  N/A                  匹配                  
+ENV_TEMPERATURE_COLD_RECOVERY_PENALTY    0.05                 N/A                  匹配                  
+ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF N/A                  0.05                 匹配                  
+ENV_TEMPERATURE_COLD_STATIC_PENALTY      0.03                 N/A                  匹配                  
+ENV_TEMPERATURE_COLD_THRESHOLD           0.0                  N/A                  匹配                  
+ENV_TEMPERATURE_HEAT_PENALTY_COEFF       0.02                 0.02                 匹配                  
+ENV_TEMPERATURE_HEAT_THRESHOLD           30.0                 N/A                  匹配                  
+ENV_WIND_RESISTANCE_COEFF                0.05                 N/A                  匹配                  
+ENV_WIND_SPEED_THRESHOLD                 1.0                  N/A                  匹配                  
+ENV_WIND_TAILWIND_BONUS                  0.02                 N/A                  匹配                  
+ENV_WIND_TAILWIND_SPEED_BONUS            0.01                 N/A                  匹配                  
+EPOC_DELAY_SECONDS                       0.5                  0.5                  匹配                  
+EPOC_DRAIN_RATE                          0.001                0.001                匹配                  
+EXHAUSTION_LIMP_SPEED                    1.0                  N/A                  匹配                  
+EXHAUSTION_THRESHOLD                     0.0                  N/A                  匹配                  
+FAST_RECOVERY_DURATION_MINUTES           1.5                  1.5                  匹配                  
+FAST_RECOVERY_MULTIPLIER                 2.5                  2.5                  匹配                  
+FATIGUE_ACCUMULATION_COEFF               0.015                0.015                匹配                  
+FATIGUE_MAX_FACTOR                       2.0                  2.0                  匹配                  
+FATIGUE_RECOVERY_DURATION_MINUTES        20.0                 N/A                  匹配                  
+FATIGUE_RECOVERY_PENALTY                 0.05                 N/A                  匹配                  
+FATIGUE_START_TIME_MINUTES               5.0                  5.0                  匹配                  
+FITNESS_EFFICIENCY_COEFF                 0.35                 0.35                 匹配                  
+FITNESS_LEVEL                            1.0                  1.0                  匹配                  
+FITNESS_RECOVERY_COEFF                   0.25                 0.25                 匹配                  
+GAME_MAX_SPEED                           5.2                  5.2                  匹配                  
+GIVONI_CONSTANT                          0.3                  0.3                  匹配                  
+GIVONI_VELOCITY_EXPONENT                 2.2                  2.2                  匹配                  
+GRADE_DOWNHILL_COEFF                     0.05                 N/A                  匹配                  
+GRADE_UPHILL_COEFF                       0.12                 N/A                  匹配                  
+HIGH_GRADE_MULTIPLIER                    1.2                  N/A                  匹配                  
+HIGH_GRADE_THRESHOLD                     15.0                 N/A                  匹配                  
+IDLE                                     N/A                  0.0                  匹配                  
+INITIAL_STAMINA_AFTER_ACFT               1.0                  N/A                  匹配                  
+JUMP_CONSECUTIVE_PENALTY                 0.5                  0.5                  匹配                  
+JUMP_CONSECUTIVE_WINDOW                  2.0                  N/A                  匹配                  
+JUMP_MIN_STAMINA_THRESHOLD               0.1                  N/A                  匹配                  
+JUMP_STAMINA_BASE_COST                   0.035                0.035                匹配                  
+JUMP_VERTICAL_VELOCITY_THRESHOLD         2.0                  N/A                  匹配                  
+LOAD_RECOVERY_PENALTY_COEFF              0.0004               0.0004               匹配                  
+LOAD_RECOVERY_PENALTY_EXPONENT           2.0                  2.0                  匹配                  
+MARGINAL_DECAY_COEFF                     1.1                  1.1                  匹配                  
+MARGINAL_DECAY_THRESHOLD                 0.8                  0.8                  匹配                  
+MAX_ENCUMBRANCE_WEIGHT                   40.5                 N/A                  匹配                  
+MAX_SPEED_MULTIPLIER                     1.0                  N/A                  匹配                  
+MEDIUM_RECOVERY_DURATION_MINUTES         5.0                  5.0                  匹配                  
+MEDIUM_RECOVERY_MULTIPLIER               1.4                  1.4                  匹配                  
+MEDIUM_RECOVERY_START_MINUTES            1.5                  N/A                  匹配                  
+MIN_RECOVERY_REST_TIME_SECONDS           3.0                  3.0                  匹配                  
+MIN_RECOVERY_STAMINA_THRESHOLD           0.2                  0.2                  匹配                  
+MIN_SPEED_MULTIPLIER                     0.15                 N/A                  匹配                  
+MIXED_EFFICIENCY_FACTOR                  1.0                  N/A                  匹配                  
+PANDOLF_BASE_COEFF                       2.7                  2.7                  匹配                  
+PANDOLF_GRADE_BASE_COEFF                 0.23                 0.23                 匹配                  
+PANDOLF_GRADE_VELOCITY_COEFF             1.34                 1.34                 匹配                  
+PANDOLF_STATIC_COEFF_1                   1.2                  1.2                  匹配                  
+PANDOLF_STATIC_COEFF_2                   1.6                  1.6                  匹配                  
+PANDOLF_VELOCITY_COEFF                   3.2                  3.2                  匹配                  
+PANDOLF_VELOCITY_OFFSET                  0.7                  0.7                  匹配                  
+POSTURE_CROUCH_MULTIPLIER                1.8                  0.7                  1.100000e+00        
+POSTURE_PRONE_MULTIPLIER                 3.0                  0.3                  2.700000e+00        
+POSTURE_STAND_MULTIPLIER                 1.0                  N/A                  匹配                  
+PRONE                                    N/A                  2.0                  匹配                  
+PRONE_RECOVERY_MULTIPLIER                1.8                  1.8                  匹配                  
+RECOVERY_NONLINEAR_COEFF                 0.5                  0.5                  匹配                  
+RECOVERY_STARTUP_DELAY_SECONDS           3.0                  N/A                  匹配                  
+RECOVERY_THRESHOLD_NO_LOAD               2.5                  N/A                  匹配                  
+REFERENCE_WEIGHT                         90.0                 90.0                 匹配                  
+REST_RECOVERY_RATE                       0.25                 N/A                  匹配                  
+RUN                                      N/A                  2.0                  匹配                  
+RUN_BASE_DRAIN_RATE                      0.075                N/A                  匹配                  
+RUN_VELOCITY_THRESHOLD                   3.7                  3.7                  匹配                  
+SLOPE_DOWNHILL_COEFF                     0.03                 N/A                  匹配                  
+SLOPE_MAX_MULTIPLIER                     2.0                  N/A                  匹配                  
+SLOPE_MIN_MULTIPLIER                     0.7                  N/A                  匹配                  
+SLOPE_UPHILL_COEFF                       0.08                 N/A                  匹配                  
+SLOW_RECOVERY_MULTIPLIER                 0.6                  0.6                  匹配                  
+SLOW_RECOVERY_START_MINUTES              10.0                 N/A                  匹配                  
+SMOOTH_TRANSITION_END                    0.05                 N/A                  匹配                  
+SMOOTH_TRANSITION_START                  0.25                 N/A                  匹配                  
+SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF 0.1                  N/A                  匹配                  
+SPRINT                                   N/A                  3.0                  匹配                  
+SPRINT_BASE_DRAIN_RATE                   0.48                 N/A                  匹配                  
+SPRINT_ENABLE_THRESHOLD                  0.2                  N/A                  匹配                  
+SPRINT_MAX_SPEED_MULTIPLIER              1.0                  N/A                  匹配                  
+SPRINT_SPEED_BOOST                       0.3                  0.3                  匹配                  
+SPRINT_STAMINA_DRAIN_MULTIPLIER          3.0                  3.0                  匹配                  
+SPRINT_VELOCITY_THRESHOLD                5.2                  5.2                  匹配                  
+STAMINA_EXPONENT                         0.6                  N/A                  匹配                  
+STANCE_COST_CROUCH_TO_STAND              0.005                N/A                  匹配                  
+STANCE_COST_OTHER                        0.003                N/A                  匹配                  
+STANCE_COST_PRONE_TO_CROUCH              0.01                 N/A                  匹配                  
+STANCE_COST_PRONE_TO_STAND               0.015                N/A                  匹配                  
+STANCE_COST_STAND_TO_PRONE               0.003                N/A                  匹配                  
+STANCE_FATIGUE_ACCUMULATION              1.0                  N/A                  匹配                  
+STANCE_FATIGUE_DECAY                     0.3                  N/A                  匹配                  
+STANCE_FATIGUE_MAX                       10.0                 N/A                  匹配                  
+STANCE_TRANSITION_MIN_STAMINA_THRESHOLD  0.1                  N/A                  匹配                  
+STANCE_WEIGHT_BASE                       90.0                 N/A                  匹配                  
+STAND                                    N/A                  0.0                  匹配                  
+STANDING_RECOVERY_MULTIPLIER             1.5                  1.5                  匹配                  
+SWIMMING_BASE_POWER                      20.0                 N/A                  匹配                  
+SWIMMING_BUOYANCY_FORCE_COEFF            0.1                  N/A                  匹配                  
+SWIMMING_DRAG_COEFFICIENT                0.5                  N/A                  匹配                  
+SWIMMING_DYNAMIC_POWER_EFFICIENCY        2.0                  N/A                  匹配                  
+SWIMMING_EFFECTIVE_GRAVITY_COEFF         0.15                 N/A                  匹配                  
+SWIMMING_ENCUMBRANCE_THRESHOLD           25.0                 N/A                  匹配                  
+SWIMMING_ENERGY_TO_STAMINA_COEFF         5e-05                N/A                  匹配                  
+SWIMMING_FRONTAL_AREA                    0.5                  N/A                  匹配                  
+SWIMMING_FULL_PENALTY_WEIGHT             40.0                 N/A                  匹配                  
+SWIMMING_LOW_INTENSITY_DISCOUNT          0.7                  N/A                  匹配                  
+SWIMMING_LOW_INTENSITY_VELOCITY          0.2                  N/A                  匹配                  
+SWIMMING_MAX_DRAIN_RATE                  0.15                 N/A                  匹配                  
+SWIMMING_MAX_TOTAL_POWER                 2000.0               N/A                  匹配                  
+SWIMMING_MIN_SPEED                       0.1                  N/A                  匹配                  
+SWIMMING_STATIC_DRAIN_MULTIPLIER         3.0                  N/A                  匹配                  
+SWIMMING_SURVIVAL_STRESS_POWER           15.0                 N/A                  匹配                  
+SWIMMING_VERTICAL_DOWN_LOAD_RELIEF_COEFF 0.5                  N/A                  匹配                  
+SWIMMING_VERTICAL_DOWN_MULTIPLIER        1.5                  N/A                  匹配                  
+SWIMMING_VERTICAL_DRAG_COEFFICIENT       1.2                  N/A                  匹配                  
+SWIMMING_VERTICAL_FRONTAL_AREA           0.8                  N/A                  匹配                  
+SWIMMING_VERTICAL_SPEED_THRESHOLD        0.05                 N/A                  匹配                  
+SWIMMING_VERTICAL_UP_BASE_BODY_FORCE_COEFF 0.02                 N/A                  匹配                  
+SWIMMING_VERTICAL_UP_MULTIPLIER          2.5                  N/A                  匹配                  
+SWIMMING_VERTICAL_VELOCITY_THRESHOLD     -0.5                 N/A                  匹配                  
+SWIMMING_WATER_DENSITY                   1000.0               N/A                  匹配                  
+TARGET_AVERAGE_SPEED                     3.47                 N/A                  匹配                  
+TARGET_RUN_SPEED                         3.7                  N/A                  匹配                  
+TERRAIN_FACTOR_BRUSH                     1.5                  N/A                  匹配                  
+TERRAIN_FACTOR_DIRT                      1.1                  N/A                  匹配                  
+TERRAIN_FACTOR_GRASS                     1.2                  N/A                  匹配                  
+TERRAIN_FACTOR_PAVED                     1.0                  N/A                  匹配                  
+TERRAIN_FACTOR_SAND                      1.8                  N/A                  匹配                  
+VAULT_STAMINA_START_COST                 0.02                 0.02                 匹配                  
+VAULT_VERTICAL_VELOCITY_THRESHOLD        1.5                  N/A                  匹配                  
+WALK                                     N/A                  1.0                  匹配                  
+WALK_BASE_DRAIN_RATE                     0.045                N/A                  匹配                  
+WALK_VELOCITY_THRESHOLD                  3.2                  N/A                  匹配                  
+WET_WEIGHT_DURATION                      30.0                 N/A                  匹配                  
+WET_WEIGHT_MAX                           10.0                 N/A                  匹配                  
+WET_WEIGHT_MIN                           5.0                  N/A                  匹配                  
+WILLPOWER_THRESHOLD                      0.25                 N/A                  匹配                  
+
+【严重】硬编码常量数值不匹配
+----------------------------------------------------------------------------------------------------
+  POSTURE_CROUCH_MULTIPLIER:
+    C文件:  1.8
+    Python:  0.7
+    差异:    1.1
+  POSTURE_PRONE_MULTIPLIER:
+    C文件:  3.0
+    Python:  0.3
+    差异:    2.7
+
+【关键常量】静态站立消耗相关
+----------------------------------------------------------------------------------------------------
+  PANDOLF_STATIC_COEFF_1:
+    C文件硬编码: 1.2
+    Python默认:  1.2
+
+  PANDOLF_STATIC_COEFF_2:
+    C文件硬编码: 1.6
+    Python默认:  1.6
+
+  CHARACTER_WEIGHT:
+    C文件硬编码: 90.0
+    Python默认:  90.0
+
+  ENERGY_TO_STAMINA_COEFF:
+    C文件硬编码: 3.5e-05
+    Python默认:  3.5e-05
+
+  BASE_RECOVERY_RATE:
+    C文件硬编码: 0.00035
+    Python默认:  0.00035
+
+  STANDING_RECOVERY_MULTIPLIER:
+    C文件硬编码: 1.5
+    Python默认:  1.5
+
+  LOAD_RECOVERY_PENALTY_COEFF:
+    C文件硬编码: 0.0004
+    Python默认:  0.0004
+
+  LOAD_RECOVERY_PENALTY_EXPONENT:
+    C文件硬编码: 2.0
+    Python默认:  2.0
+
+====================================================================================================
+汇总统计
+====================================================================================================
+  优化参数数量:  41
+  硬编码常量数量: 190
+  总计参数数量:  231
+  优化参数不匹配: 0
+  硬编码常量不匹配: 2
+====================================================================================================

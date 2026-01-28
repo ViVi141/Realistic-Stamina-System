@@ -724,6 +724,7 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
+        // 修复：传递环境因子参数，使基础消耗率计算支持环境因子
         vector currentVelocity = GetVelocity();
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
@@ -734,7 +735,8 @@ modded class SCR_CharacterControllerComponent
             terrainFactor,
             currentVelocity,
             m_bSwimmingVelocityDebugPrinted,
-            owner);
+            owner,
+            m_pEnvironmentFactor); // v2.14.0修复：传递环境因子
         float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         

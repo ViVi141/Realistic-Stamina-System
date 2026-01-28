@@ -20,6 +20,77 @@ class BaseDrainRateResult
 
 class StaminaUpdateCoordinator
 {
+    // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
+    // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
+    // @param currentSpeed 当前速度（m/s）
+    // @param currentWeightWithWet 包含湿重的总重量（kg）
+    // @param gradePercent 坡度百分比
+    // @param terrainFactor 地形系数（已包含泥泞修正）
+    // @param windDrag 风阻系数
+    // @param coldStaticPenalty 冷应激静态惩罚
+    // @return 基础消耗率（每0.2秒）
+    static float CalculateLandBaseDrainRate(
+        float currentSpeed,
+        float currentWeightWithWet,
+        float gradePercent,
+        float terrainFactor,
+        float windDrag,
+        float coldStaticPenalty)
+    {
+        float baseDrainRate = 0.0;
+
+        // 陆地移动模式判断（Givoni-Goldman / Pandolf）
+        // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
+        // 否则使用标准 Pandolf 步行模型
+        bool isRunning = (currentSpeed > 2.2);
+
+        if (currentSpeed < 0.1)
+        {
+            // ==================== 静态负重站立消耗（Pandolf 静态项）====================
+            float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
+            float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0); // 负重（去除身体重量，使用湿重）
+
+            float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
+
+            // 应用冷应激静态惩罚
+            staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
+
+            baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
+        }
+        else if (isRunning)
+        {
+            // ==================== Givoni-Goldman 跑步模型 ====================
+            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+
+            // 应用地形系数（跑步时同样受地形影响）
+            runningDrainRate = runningDrainRate * terrainFactor;
+
+            // 应用风阻：逆风时增加消耗
+            runningDrainRate = runningDrainRate * (1.0 + windDrag);
+
+            baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+        }
+        else
+        {
+            // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
+            baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                currentSpeed,
+                currentWeightWithWet,
+                gradePercent,
+                terrainFactor,  // 地形系数（已包含泥泞修正）
+                true            // 使用 Santee 下坡修正
+            );
+
+            // 应用风阻：逆风时增加消耗
+            baseDrainRate = baseDrainRate * (1.0 + windDrag);
+
+            // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
+            baseDrainRate = baseDrainRate * 0.2;
+        }
+
+        return baseDrainRate;
+    }
+
     // ==================== 速度计算和更新 ====================
     
     // 更新速度（基于体力和负重）
@@ -160,6 +231,7 @@ class StaminaUpdateCoordinator
     // @param computedVelocity 计算得到的速度向量（用于游泳）
     // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（输入）
     // @param owner 角色实体（用于调试）
+    // @param environmentFactor 环境因子模块引用（v2.14.0修复：添加此参数以支持环境因子）
     // @return 基础消耗率结果（包含消耗率和调试标志）
     static BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
@@ -170,7 +242,8 @@ class StaminaUpdateCoordinator
         float terrainFactor,
         vector computedVelocity,
         bool swimmingVelocityDebugPrinted,
-        IEntity owner)
+        IEntity owner,
+        EnvironmentFactor environmentFactor = null)
     {
         float baseDrainRate = 0.0;
         
@@ -193,44 +266,41 @@ class StaminaUpdateCoordinator
         }
         else
         {
-            // ==================== 陆地移动模式判断（Givoni-Goldman / Pandolf）====================
-            // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
-            // 否则使用标准 Pandolf 步行模型
-            bool isRunning = (currentSpeed > 2.2);
-            
-            if (currentSpeed < 0.1)
+            // ==================== v2.14.0修复：环境因子处理 ====================
+            // 获取环境因子（如果环境因子模块存在）
+            float windDrag = 0.0;
+            float mudTerrainFactor = 0.0;
+            float totalWetWeight = 0.0;
+            float coldStaticPenalty = 0.0;
+
+            if (environmentFactor)
             {
-                // ==================== 静态负重站立消耗（Pandolf 静态项）====================
-                float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
-                float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0); // 负重（去除身体重量）
-                
-                float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
-                baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
+                windDrag = environmentFactor.GetWindDrag();
+                mudTerrainFactor = environmentFactor.GetMudTerrainFactor();
+                totalWetWeight = environmentFactor.GetTotalWetWeight();
+                coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+
+                // 检查是否在室内，如果是则忽略坡度影响
+                if (environmentFactor.IsIndoor())
+                {
+                    gradePercent = 0.0; // 室内时坡度为0
+                }
             }
-            else if (isRunning)
-            {
-                // ==================== Givoni-Goldman 跑步模型 ====================
-                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-                
-                // 应用地形系数（跑步时同样受地形影响）
-                runningDrainRate = runningDrainRate * terrainFactor;
-                
-                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
-            }
-            else
-            {
-                // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
-                baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                    currentSpeed, 
-                    currentWeightWithWet, 
-                    gradePercent,
-                    terrainFactor,  // 地形系数
-                    true            // 使用 Santee 下坡修正
-                );
-                
-                // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
-                baseDrainRate = baseDrainRate * 0.2;
-            }
+
+            // 应用泥泞地形系数（修正地形因子）
+            terrainFactor = terrainFactor + mudTerrainFactor;
+
+            // 应用降雨湿重（修正当前重量）
+            currentWeightWithWet = currentWeightWithWet + totalWetWeight;
+
+                // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
+            baseDrainRate = CalculateLandBaseDrainRate(
+                currentSpeed,
+                currentWeightWithWet,
+                gradePercent,
+                terrainFactor,
+                windDrag,
+                coldStaticPenalty);
         }
         
         BaseDrainRateResult result = new BaseDrainRateResult();
