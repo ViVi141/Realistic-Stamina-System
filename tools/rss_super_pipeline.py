@@ -162,7 +162,7 @@ class Scenario:
     standard_load: float = 0.0  # 标准负载
 
 
-# 场景库
+# 场景库（增强版 - 基于生理学和游戏平衡性）
 class ScenarioLibrary:
     @staticmethod
     def create_acft_2mile_scenario(load_weight=0.0):
@@ -170,63 +170,299 @@ class ScenarioLibrary:
         
         Args:
             load_weight: 负载重量（kg），ACFT标准测试应为0.0
+        
+        生理学依据：ACFT标准测试，15分27秒完成2英里（3.7m/s）
         """
-        # ACFT 2英里测试标准：15分27秒，空载
         return Scenario(
-            speed_profile=[(0, 3.7), (927, 3.7)],  # 2英里测试，目标速度3.7m/s
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=0.0,  # 平地
-            terrain_factor=1.0,  # 普通地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=927.0,  # 目标完成时间15分27秒
+            speed_profile=[(0, 3.7), (927, 3.7)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=927.0,
             test_type="ACFT 2英里测试",
-            standard_load=0.0  # ACFT标准测试应为0KG
+            standard_load=0.0
         )
     
     @staticmethod
     def create_urban_combat_scenario(load_weight=30.0):
-        """创建城市战斗场景"""
-        # 城市战斗速度曲线：快走->跑步->快走->冲刺->快走
+        """创建城市战斗场景
+        
+        生理学依据：模拟城市CQB战斗，包含快走、跑步、冲刺
+        """
         return Scenario(
             speed_profile=[(0, 2.5), (60, 3.7), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=0.0,  # 平地
-            terrain_factor=1.2,  # 城市地形（有障碍物）
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=300.0,  # 5分钟场景
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.2,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=300.0,
             test_type="城市战斗场景"
         )
     
     @staticmethod
     def create_mountain_combat_scenario(load_weight=25.0):
-        """创建山地战斗场景"""
-        # 山地战斗速度曲线：慢走->快走->慢走
+        """创建山地战斗场景
+        
+        生理学依据：15%坡度模拟山地地形，能量消耗增加约50%
+        """
         return Scenario(
             speed_profile=[(0, 1.8), (120, 2.5), (240, 1.8), (360, 1.8)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=15.0,  # 15%坡度（山地）
-            terrain_factor=1.5,  # 山地地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.WALK,  # 行走
-            target_finish_time=360.0,  # 6分钟场景
+            current_weight=90.0 + load_weight,
+            grade_percent=15.0,
+            terrain_factor=1.5,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=360.0,
             test_type="山地战斗场景"
         )
     
     @staticmethod
     def create_evacuation_scenario(load_weight=40.0):
-        """创建撤离场景（重载）"""
-        # 撤离速度曲线：快走->跑步->快走
+        """创建撤离场景（重载）
+        
+        生理学依据：40kg负重接近人体极限，模拟紧急撤离
+        """
         return Scenario(
             speed_profile=[(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 重载
-            grade_percent=5.0,  # 5%坡度
-            terrain_factor=1.3,  # 复杂地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=270.0,  # 4.5分钟场景
+            current_weight=90.0 + load_weight,
+            grade_percent=5.0,
+            terrain_factor=1.3,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=270.0,
             test_type="撤离场景"
+        )
+    
+    @staticmethod
+    def create_long_march_scenario(load_weight=30.0, duration_minutes=60.0):
+        """创建长距离行军场景
+        
+        生理学依据：模拟1小时持续行军，测试耐力
+        """
+        duration_seconds = duration_minutes * 60.0
+        return Scenario(
+            speed_profile=[(0, 2.5), (duration_seconds, 2.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.1,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=duration_seconds,
+            test_type=f"长距离行军（{duration_minutes}分钟）"
+        )
+    
+    @staticmethod
+    def create_hiit_scenario(load_weight=20.0):
+        """创建高强度间歇训练场景（HIIT）
+        
+        生理学依据：模拟间歇训练，30秒冲刺+30秒休息，重复10次
+        """
+        speed_profile = []
+        for i in range(10):
+            speed_profile.append((i * 60.0, 5.0))  # 30秒冲刺
+            speed_profile.append((i * 60.0 + 30.0, 0.0))  # 30秒休息
+        speed_profile.append((600.0, 0.0))
+        
+        return Scenario(
+            speed_profile=speed_profile,
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.SPRINT,
+            target_finish_time=600.0,
+            test_type="HIIT间歇训练"
+        )
+    
+    @staticmethod
+    def create_swimming_scenario(load_weight=20.0, duration_minutes=10.0):
+        """创建游泳场景
+        
+        生理学依据：游泳时能量消耗约为陆地的4倍
+        """
+        duration_seconds = duration_minutes * 60.0
+        return Scenario(
+            speed_profile=[(0, 1.0), (duration_seconds, 1.0)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=duration_seconds,
+            test_type=f"游泳场景（{duration_minutes}分钟）"
+        )
+    
+    @staticmethod
+    def create_posture_recovery_test(load_weight=30.0):
+        """创建姿态恢复测试
+        
+        生理学依据：测试不同姿态下的恢复速度
+        """
+        return Scenario(
+            speed_profile=[(0, 0.0), (120.0, 0.0)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.IDLE,
+            target_finish_time=120.0,
+            test_type="姿态恢复测试"
+        )
+    
+    @staticmethod
+    def create_heat_stress_scenario(load_weight=25.0):
+        """创建热应激场景
+        
+        生理学依据：高温环境下恢复速度降低30-50%
+        """
+        return Scenario(
+            speed_profile=[(0, 2.5), (300, 2.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.2,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type="热应激场景"
+        )
+    
+    @staticmethod
+    def create_cold_stress_scenario(load_weight=25.0):
+        """创建冷应激场景
+        
+        生理学依据：低温环境下静态消耗增加，恢复速度降低
+        """
+        return Scenario(
+            speed_profile=[(0, 2.5), (300, 2.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.3,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type="冷应激场景"
+        )
+    
+    @staticmethod
+    def create_progressive_load_scenario(max_load=40.0):
+        """创建渐进负重测试
+        
+        生理学依据：测试不同负重下的能量消耗曲线
+        """
+        return Scenario(
+            speed_profile=[(0, 2.5), (300, 2.5)],
+            current_weight=90.0 + max_load,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type=f"渐进负重测试（{max_load}kg）"
+        )
+    
+    @staticmethod
+    def create_steep_climb_scenario(load_weight=20.0):
+        """创建陡坡攀爬场景
+        
+        生理学依据：30%坡度模拟陡峭山地，能量消耗增加约100%
+        """
+        return Scenario(
+            speed_profile=[(0, 1.5), (180, 1.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=30.0,
+            terrain_factor=1.8,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=180.0,
+            test_type="陡坡攀爬场景"
+        )
+    
+    @staticmethod
+    def create_downhill_scenario(load_weight=25.0):
+        """创建下坡场景
+        
+        生理学依据：下坡时能量消耗减少，但关节压力大
+        """
+        return Scenario(
+            speed_profile=[(0, 3.0), (240, 3.0)],
+            current_weight=90.0 + load_weight,
+            grade_percent=-10.0,
+            terrain_factor=1.2,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=240.0,
+            test_type="下坡场景"
+        )
+    
+    @staticmethod
+    def create_rainy_scenario(load_weight=25.0):
+        """创建雨天场景
+        
+        生理学依据：湿重增加5-8kg，影响移动和恢复
+        """
+        return Scenario(
+            speed_profile=[(0, 2.5), (300, 2.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.4,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type="雨天场景"
+        )
+    
+    @staticmethod
+    def create_windy_scenario(load_weight=25.0):
+        """创建大风场景
+        
+        生理学依据：强风增加空气阻力，影响移动效率
+        """
+        return Scenario(
+            speed_profile=[(0, 2.5), (300, 2.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.1,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type="大风场景"
+        )
+    
+    @staticmethod
+    def create_muddy_scenario(load_weight=25.0):
+        """创建泥泞场景
+        
+        生理学依据：泥泞地形增加40%移动阻力
+        """
+        return Scenario(
+            speed_profile=[(0, 1.8), (240, 1.8)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.8,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=240.0,
+            test_type="泥泞场景"
+        )
+    
+    @staticmethod
+    def create_sandy_scenario(load_weight=20.0):
+        """创建沙地场景
+        
+        生理学依据：沙地地形增加80%移动阻力
+        """
+        return Scenario(
+            speed_profile=[(0, 1.5), (180, 1.5)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.8,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=180.0,
+            test_type="沙地场景"
         )
 
 
@@ -511,6 +747,11 @@ class RSSSuperPipeline:
         # 专门针对30KG负载进行测试
         playability_burden = self._evaluate_30kg_playability(twin)
         
+        # ==================== 5.5. 新增目标：评估生理学合理性（Physiological Realism）====================
+        
+        # 基于生理学指标的评估
+        physiological_realism = self._evaluate_physiological_realism(twin)
+        
         # ==================== 6. 目标2：评估稳定性风险（Stability Risk / BUG检测）====================
         
         # 地狱级压力测试
@@ -591,9 +832,105 @@ class RSSSuperPipeline:
             constraint_penalty += movement_balance_penalty
             stability_risk += movement_balance_penalty
         
-        # ==================== 8. 返回两个目标函数（包含约束惩罚） ====================
+        # ==================== 9. 新增约束条件（基于物理学和生理学） ====================
         
-        return playability_burden, stability_risk
+        # 约束9: 有氧阈值 < 无氧阈值（生理逻辑）
+        # 说明：有氧阈值应该低于无氧阈值
+        if aerobic_efficiency_factor >= anaerobic_efficiency_factor:
+            violation_factor = (aerobic_efficiency_factor - anaerobic_efficiency_factor) + 0.1
+            constraint_penalty += violation_factor * 400.0
+            stability_risk += constraint_penalty
+        
+        # 约束10: 疲劳累积系数合理性（生理逻辑）
+        # 说明：疲劳累积系数应该在合理范围内（0.005-0.03）
+        if fatigue_accumulation_coeff < 0.005 or fatigue_accumulation_coeff > 0.03:
+            if fatigue_accumulation_coeff < 0.005:
+                violation_factor = 0.005 - fatigue_accumulation_coeff
+            else:
+                violation_factor = fatigue_accumulation_coeff - 0.03
+            constraint_penalty += violation_factor * 500.0
+            stability_risk += constraint_penalty
+        
+        # 约束11: 负重惩罚系数合理性（物理逻辑）
+        # 说明：负重惩罚系数应该在合理范围内（0.8-2.0）
+        if encumbrance_stamina_drain_coeff < 0.8 or encumbrance_stamina_drain_coeff > 2.0:
+            if encumbrance_stamina_drain_coeff < 0.8:
+                violation_factor = 0.8 - encumbrance_stamina_drain_coeff
+            else:
+                violation_factor = encumbrance_stamina_drain_coeff - 2.0
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束12: 基础恢复率合理性（生理逻辑）
+        # 说明：基础恢复率应该在合理范围内（1.5e-4到4.0e-4）
+        if base_recovery_rate < 1.5e-4 or base_recovery_rate > 4.0e-4:
+            if base_recovery_rate < 1.5e-4:
+                violation_factor = (1.5e-4 - base_recovery_rate) * 10000
+            else:
+                violation_factor = (base_recovery_rate - 4.0e-4) * 10000
+            constraint_penalty += violation_factor * 400.0
+            stability_risk += constraint_penalty
+        
+        # 约束13: 能量转换系数合理性（物理逻辑）
+        # 说明：能量转换系数应该在合理范围内（3.0e-5到7.0e-5）
+        if energy_to_stamina_coeff < 3.0e-5 or energy_to_stamina_coeff > 7.0e-5:
+            if energy_to_stamina_coeff < 3.0e-5:
+                violation_factor = (3.0e-5 - energy_to_stamina_coeff) * 100000
+            else:
+                violation_factor = (energy_to_stamina_coeff - 7.0e-5) * 100000
+            constraint_penalty += violation_factor * 500.0
+            stability_risk += constraint_penalty
+        
+        # 约束14: Sprint消耗倍数合理性（游戏平衡性）
+        # 说明：Sprint消耗应该是Run的2.8-5.0倍
+        if sprint_stamina_drain_multiplier < 2.8 or sprint_stamina_drain_multiplier > 5.0:
+            if sprint_stamina_drain_multiplier < 2.8:
+                violation_factor = 2.8 - sprint_stamina_drain_multiplier
+            else:
+                violation_factor = sprint_stamina_drain_multiplier - 5.0
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束15: 坡度系数合理性（物理逻辑）
+        # 说明：上坡系数应该大于下坡系数
+        if slope_uphill_coeff <= slope_downhill_coeff:
+            violation_factor = (slope_downhill_coeff - slope_uphill_coeff) + 0.01
+            constraint_penalty += violation_factor * 400.0
+            stability_risk += constraint_penalty
+        
+        # 约束16: 游泳消耗合理性（物理逻辑）
+        # 说明：游泳静态消耗倍数应该在2.5-3.5之间
+        if swimming_static_drain_multiplier < 2.5 or swimming_static_drain_multiplier > 3.5:
+            if swimming_static_drain_multiplier < 2.5:
+                violation_factor = 2.5 - swimming_static_drain_multiplier
+            else:
+                violation_factor = swimming_static_drain_multiplier - 3.5
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束17: 环境热应激倍数合理性（生理逻辑）
+        # 说明：热应激倍数应该在1.2-1.6之间
+        if env_heat_stress_max_multiplier < 1.2 or env_heat_stress_max_multiplier > 1.6:
+            if env_heat_stress_max_multiplier < 1.2:
+                violation_factor = 1.2 - env_heat_stress_max_multiplier
+            else:
+                violation_factor = env_heat_stress_max_multiplier - 1.6
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # 约束18: 负重恢复惩罚指数合理性（生理逻辑）
+        # 说明：负重恢复惩罚指数应该在1.0-3.0之间
+        if load_recovery_penalty_exponent < 1.0 or load_recovery_penalty_exponent > 3.0:
+            if load_recovery_penalty_exponent < 1.0:
+                violation_factor = 1.0 - load_recovery_penalty_exponent
+            else:
+                violation_factor = load_recovery_penalty_exponent - 3.0
+            constraint_penalty += violation_factor * 300.0
+            stability_risk += constraint_penalty
+        
+        # ==================== 10. 返回三个目标函数（包含约束惩罚） ====================
+        
+        return playability_burden, stability_risk, physiological_realism
 
     def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> float:
         """基于短时段“移动净值”行为的软硬约束惩罚。
@@ -807,6 +1144,321 @@ class RSSSuperPipeline:
         
         return float(total_burden)
     
+    def _evaluate_physiological_realism(self, twin: RSSDigitalTwin) -> float:
+        """
+        评估生理学合理性（基于科学指标）
+        
+        生理学依据：
+        1. VO2max测试：最大摄氧量应该在合理范围内
+        2. 恢复曲线：恢复速度应该符合生理学规律
+        3. 负重影响：负重对消耗的影响应该符合物理学
+        4. 坡度影响：坡度对消耗的影响应该符合能量学
+        5. 环境影响：温度、湿度等环境因子的影响应该符合生理学
+        
+        Args:
+            twin: 数字孪生仿真器
+        
+        Returns:
+            生理学合理性评分（越小越好）
+        """
+        realism_score = 0.0
+        
+        # ==================== 1. VO2max测试（最大摄氧量） ====================
+        # 生理学依据：健康成年男性的VO2max约为35-50 ml/kg/min
+        # 测试：空载跑步3.7m/s，计算能量消耗
+        
+        vo2max_twin = RSSDigitalTwin(twin.constants)
+        vo2max_twin.reset()
+        
+        # 模拟1分钟跑步
+        for i in range(300):  # 60秒 / 0.2秒 = 300步
+            vo2max_twin.step(
+                speed=3.7,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.RUN,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        # 计算平均消耗率
+        if len(vo2max_twin.stamina_history) >= 2:
+            stamina_drop = vo2max_twin.stamina_history[0] - vo2max_twin.stamina_history[-1]
+            # 期望消耗：1分钟跑步应该消耗约3-5%体力
+            expected_min_drop = 0.03
+            expected_max_drop = 0.05
+            if stamina_drop < expected_min_drop:
+                realism_score += (expected_min_drop - stamina_drop) * 5000.0
+            elif stamina_drop > expected_max_drop:
+                realism_score += (stamina_drop - expected_max_drop) * 3000.0
+        
+        # ==================== 2. 恢复曲线测试 ====================
+        # 生理学依据：停止运动后，恢复速度应该先快后慢
+        # 测试：跑步30秒后停止，观察恢复曲线
+        
+        recovery_twin = RSSDigitalTwin(twin.constants)
+        recovery_twin.reset()
+        
+        # 先跑步30秒
+        for i in range(150):  # 30秒 / 0.2秒 = 150步
+            recovery_twin.step(
+                speed=3.7,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.RUN,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        # 然后静止60秒
+        stamina_after_run = recovery_twin.stamina
+        for i in range(300):  # 60秒 / 0.2秒 = 300步
+            recovery_twin.step(
+                speed=0.0,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.IDLE,
+                current_time=30.0 + i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_after_rest = recovery_twin.stamina
+        recovery_gain = stamina_after_rest - stamina_after_run
+        
+        # 期望恢复：60秒静止应该恢复约2-4%体力
+        expected_min_gain = 0.02
+        expected_max_gain = 0.04
+        if recovery_gain < expected_min_gain:
+            realism_score += (expected_min_gain - recovery_gain) * 4000.0
+        elif recovery_gain > expected_max_gain:
+            realism_score += (recovery_gain - expected_max_gain) * 2000.0
+        
+        # ==================== 3. 负重影响测试 ====================
+        # 生理学依据：每增加10%负重，能量消耗增加约10-15%
+        # 测试：比较空载和30KG负载的消耗差异
+        
+        load_twin1 = RSSDigitalTwin(twin.constants)
+        load_twin1.reset()
+        
+        # 空载跑步30秒
+        for i in range(150):
+            load_twin1.step(
+                speed=3.7,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.RUN,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_no_load = load_twin1.stamina_history[0] - load_twin1.stamina_history[-1]
+        
+        load_twin2 = RSSDigitalTwin(twin.constants)
+        load_twin2.reset()
+        
+        # 30KG负载跑步30秒
+        for i in range(150):
+            load_twin2.step(
+                speed=3.7,
+                current_weight=120.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.RUN,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_with_load = load_twin2.stamina_history[0] - load_twin2.stamina_history[-1]
+        
+        # 计算消耗增加比例
+        if stamina_drop_no_load > 0:
+            load_increase_ratio = (stamina_drop_with_load - stamina_drop_no_load) / stamina_drop_no_load
+            # 期望：30KG负载（33%体重增加）应该增加约30-50%消耗
+            expected_min_increase = 0.30
+            expected_max_increase = 0.50
+            if load_increase_ratio < expected_min_increase:
+                realism_score += (expected_min_increase - load_increase_ratio) * 3000.0
+            elif load_increase_ratio > expected_max_increase:
+                realism_score += (load_increase_ratio - expected_max_increase) * 2000.0
+        
+        # ==================== 4. 坡度影响测试 ====================
+        # 生理学依据：每增加1%坡度，能量消耗增加约5-8%
+        # 测试：比较平地和10%坡度的消耗差异
+        
+        slope_twin1 = RSSDigitalTwin(twin.constants)
+        slope_twin1.reset()
+        
+        # 平地行走30秒
+        for i in range(150):
+            slope_twin1.step(
+                speed=2.5,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.WALK,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_flat = slope_twin1.stamina_history[0] - slope_twin1.stamina_history[-1]
+        
+        slope_twin2 = RSSDigitalTwin(twin.constants)
+        slope_twin2.reset()
+        
+        # 10%坡度行走30秒
+        for i in range(150):
+            slope_twin2.step(
+                speed=2.5,
+                current_weight=90.0,
+                grade_percent=10.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.WALK,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_slope = slope_twin2.stamina_history[0] - slope_twin2.stamina_history[-1]
+        
+        # 计算消耗增加比例
+        if stamina_drop_flat > 0:
+            slope_increase_ratio = (stamina_drop_slope - stamina_drop_flat) / stamina_drop_flat
+            # 期望：10%坡度应该增加约50-80%消耗
+            expected_min_increase = 0.50
+            expected_max_increase = 0.80
+            if slope_increase_ratio < expected_min_increase:
+                realism_score += (expected_min_increase - slope_increase_ratio) * 2500.0
+            elif slope_increase_ratio > expected_max_increase:
+                realism_score += (slope_increase_ratio - expected_max_increase) * 1500.0
+        
+        # ==================== 5. 姿态恢复测试 ====================
+        # 生理学依据：趴下恢复 > 蹲下恢复 > 站立恢复
+        # 测试：比较不同姿态下的恢复速度
+        
+        posture_scenarios = [
+            (Stance.STAND, "站立"),
+            (Stance.CROUCH, "蹲下"),
+            (Stance.PRONE, "趴下")
+        ]
+        
+        recovery_rates = []
+        for stance, stance_name in posture_scenarios:
+            posture_twin = RSSDigitalTwin(twin.constants)
+            posture_twin.reset()
+            posture_twin.stamina = 0.5  # 从50%体力开始
+            
+            # 静止60秒
+            for i in range(300):
+                posture_twin.step(
+                    speed=0.0,
+                    current_weight=90.0,
+                    grade_percent=0.0,
+                    terrain_factor=1.0,
+                    stance=stance,
+                    movement_type=MovementType.IDLE,
+                    current_time=i * 0.2,
+                    enable_randomness=False
+                )
+            
+            recovery_gain = posture_twin.stamina - 0.5
+            recovery_rates.append((stance, recovery_gain))
+        
+        # 检查恢复顺序：趴下 > 蹲下 > 站立
+        if recovery_rates[2][1] <= recovery_rates[1][1]:  # 趴下 <= 蹲下
+            realism_score += (recovery_rates[1][1] - recovery_rates[2][1] + 0.001) * 3000.0
+        if recovery_rates[1][1] <= recovery_rates[0][1]:  # 蹲下 <= 站立
+            realism_score += (recovery_rates[0][1] - recovery_rates[1][1] + 0.001) * 2000.0
+        
+        # ==================== 6. Sprint vs Run 测试 ====================
+        # 生理学依据：Sprint消耗应该是Run的2.5-4倍
+        # 测试：比较Sprint和Run的消耗差异
+        
+        sprint_twin = RSSDigitalTwin(twin.constants)
+        sprint_twin.reset()
+        
+        # Sprint 30秒
+        for i in range(150):
+            sprint_twin.step(
+                speed=5.0,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.SPRINT,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_sprint = sprint_twin.stamina_history[0] - sprint_twin.stamina_history[-1]
+        
+        run_twin = RSSDigitalTwin(twin.constants)
+        run_twin.reset()
+        
+        # Run 30秒
+        for i in range(150):
+            run_twin.step(
+                speed=3.7,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.RUN,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        stamina_drop_run = run_twin.stamina_history[0] - run_twin.stamina_history[-1]
+        
+        # 计算Sprint vs Run比例
+        if stamina_drop_run > 0:
+            sprint_run_ratio = stamina_drop_sprint / stamina_drop_run
+            # 期望：Sprint消耗应该是Run的2.5-4倍
+            expected_min_ratio = 2.5
+            expected_max_ratio = 4.0
+            if sprint_run_ratio < expected_min_ratio:
+                realism_score += (expected_min_ratio - sprint_run_ratio) * 2000.0
+            elif sprint_run_ratio > expected_max_ratio:
+                realism_score += (sprint_run_ratio - expected_max_ratio) * 1500.0
+        
+        # ==================== 7. 长时间耐力测试 ====================
+        # 生理学依据：长时间运动后，疲劳累积应该导致消耗增加
+        # 测试：模拟1小时持续行走
+        
+        endurance_twin = RSSDigitalTwin(twin.constants)
+        endurance_twin.reset()
+        
+        # 模拟1小时行走（1800步）
+        for i in range(1800):
+            endurance_twin.step(
+                speed=2.5,
+                current_weight=90.0,
+                grade_percent=0.0,
+                terrain_factor=1.0,
+                stance=Stance.STAND,
+                movement_type=MovementType.WALK,
+                current_time=i * 0.2,
+                enable_randomness=False
+            )
+        
+        # 检查体力是否合理（不应该完全耗尽，也不应该几乎不消耗）
+        min_stamina = min(endurance_twin.stamina_history)
+        if min_stamina < 0.1:  # 低于10%
+            realism_score += (0.1 - min_stamina) * 3000.0
+        elif min_stamina > 0.6:  # 高于60%
+            realism_score += (min_stamina - 0.6) * 2000.0
+        
+        return float(realism_score)
+    
     def _evaluate_stability_risk(
         self,
         twin: RSSDigitalTwin,
@@ -998,13 +1650,14 @@ class RSSSuperPipeline:
         print(f"优化配置：")
         print(f"  采样次数：{self.n_trials}")
         print(f"  优化变量数：40")
-        print(f"  目标函数数：2（Playability Burden, Stability Risk）")
+        print(f"  目标函数数：3（Playability Burden, Stability Risk, Physiological Realism）")
         print(f"  并行线程数：{self.n_jobs}（自动检测CPU核心数）")
         print(f"  批处理大小：{self.batch_size}")
         
         print(f"\n目标函数：")
         print(f"  1. 可玩性负担（Playability Burden）- 越小越好（30KG专项测试）")
         print(f"  2. 稳定性风险（Stability Risk）- 越小越好（BUG检测）")
+        print(f"  3. 生理学合理性（Physiological Realism）- 越小越好（科学指标）")
         print(f"\n基础体能标准：")
         print(f"  - ACFT 2英里测试（空载）作为最低标准，不是优化目标")
         print(f"  - 必须通过基础体能测试才能被视为有效解")
@@ -1013,6 +1666,7 @@ class RSSSuperPipeline:
         print(f"  - 30KG负载专项平衡测试（解决'30KG太累'问题）")
         print(f"  - 地狱级压力测试（45KG、20度坡、热应激）")
         print(f"  - BUG检测（负数体力、NaN、溢出、恢复逻辑漏洞）")
+        print(f"  - 生理学合理性测试（VO2max、恢复曲线、负重影响、坡度影响等）")
         
         print(f"\n开始优化...")
         print("-" * 80)
@@ -1033,7 +1687,7 @@ class RSSSuperPipeline:
                 self.study = optuna.create_study(
                     study_name=study_name,
                     storage=storage_url,
-                    directions=['minimize', 'minimize'],
+                    directions=['minimize', 'minimize', 'minimize'],
                     sampler=optuna.samplers.NSGAIISampler(
                         population_size=150,  # 优化种群大小，平衡多样性和计算效率
                         mutation_prob=0.3,  # 优化变异概率，平衡探索和利用
@@ -1049,7 +1703,7 @@ class RSSSuperPipeline:
             # 使用内存存储（默认，性能更快）
             self.study = optuna.create_study(
                 study_name=study_name,
-                directions=['minimize', 'minimize'],
+                directions=['minimize', 'minimize', 'minimize'],
                 sampler=optuna.samplers.NSGAIISampler(
                     population_size=150,  # 优化种群大小，平衡多样性和计算效率
                     mutation_prob=0.3,  # 优化变异概率，平衡探索和利用
@@ -1068,11 +1722,13 @@ class RSSSuperPipeline:
                 if len(best_trials) > 0:
                     playability_values = [t.values[0] for t in best_trials]
                     stability_values = [t.values[1] for t in best_trials]
+                    realism_values = [t.values[2] for t in best_trials]
                     elapsed_time = time.time() - start_time
                     print(f"\n进度更新 [试验 {trial.number}/{self.n_trials}]: "
                           f"帕累托解数量={len(best_trials)}, "
                           f"可玩性=[{min(playability_values):.2f}, {max(playability_values):.2f}], "
                           f"稳定性=[{min(stability_values):.2f}, {max(stability_values):.2f}], "
+                          f"拟真度=[{min(realism_values):.2f}, {max(realism_values):.2f}], "
                           f"BUG数量={len(self.bug_reports)}, "
                           f"耗时={elapsed_time:.2f}秒")
         
@@ -1098,23 +1754,27 @@ class RSSSuperPipeline:
         if len(self.best_trials) > 0:
             playability_values = [trial.values[0] for trial in self.best_trials]
             stability_values = [trial.values[1] for trial in self.best_trials]
+            realism_values = [trial.values[2] for trial in self.best_trials]
             
             print(f"  可玩性负担范围：[{min(playability_values):.2f}, {max(playability_values):.2f}]")
             print(f"  稳定性风险范围：[{min(stability_values):.2f}, {max(stability_values):.2f}]")
+            print(f"  生理学合理性范围：[{min(realism_values):.2f}, {max(realism_values):.2f}]")
             
             # 诊断：检查目标值的唯一性
             playability_unique = len(set(playability_values))
             stability_unique = len(set(stability_values))
+            realism_unique = len(set(realism_values))
             
             print(f"\n  目标值唯一性诊断：")
             print(f"    可玩性负担唯一值：{playability_unique}/{len(self.best_trials)}")
             print(f"    稳定性风险唯一值：{stability_unique}/{len(self.best_trials)}")
+            print(f"    生理学合理性唯一值：{realism_unique}/{len(self.best_trials)}")
             
-            if playability_unique == 1 and stability_unique == 1:
+            if playability_unique == 1 and stability_unique == 1 and realism_unique == 1:
                 print(f"\n  ⚠️ 警告：所有帕累托解的目标值完全相同！")
                 print(f"     这可能表示：")
                 print(f"     1. 优化器收敛到了单一最优解")
-                print(f"     2. 两个目标函数过于一致，导致所有解相同")
+                print(f"     2. 三个目标函数过于一致，导致所有解相同")
                 print(f"     3. 需要增加优化迭代次数或调整NSGA-II参数")
             
             # 诊断：检查参数多样性
@@ -1201,49 +1861,54 @@ class RSSSuperPipeline:
                 'EliteStandard': {
                     'params': single_trial.params,
                     'playability_burden': single_trial.values[0],
-                    'stability_risk': single_trial.values[1]
+                    'stability_risk': single_trial.values[1],
+                    'physiological_realism': single_trial.values[2]
                 },
                 'StandardMilsim': {
                     'params': single_trial.params,
                     'playability_burden': single_trial.values[0],
-                    'stability_risk': single_trial.values[1]
+                    'stability_risk': single_trial.values[1],
+                    'physiological_realism': single_trial.values[2]
                 },
                 'TacticalAction': {
                     'params': single_trial.params,
                     'playability_burden': single_trial.values[0],
-                    'stability_risk': single_trial.values[1]
+                    'stability_risk': single_trial.values[1],
+                    'physiological_realism': single_trial.values[2]
                 }
             }
         
         # 提取目标值
         playability_values = [t.values[0] for t in self.best_trials]
         stability_values = [t.values[1] for t in self.best_trials]
+        realism_values = [t.values[2] for t in self.best_trials]
         
-        # 1. Realism-oriented (EliteStandard): 基于稳定性和可玩性的平衡
-        # 由于移除了拟真度目标，我们选择稳定性最好的解
-        stability_idx = np.argmin(stability_values)
-        realism_trial = self.best_trials[stability_idx]
+        # 1. Realism-oriented (EliteStandard): 生理学合理性最好的解
+        realism_idx = np.argmin(realism_values)
+        realism_trial = self.best_trials[realism_idx]
         
         # 2. Playability-oriented (TacticalAction): 可玩性负担最低的解（30KG最轻松）
         playability_idx = np.argmin(playability_values)
         playability_trial = self.best_trials[playability_idx]
         
-        # 3. Balanced (StandardMilsim): 两个目标的平衡解
+        # 3. Balanced (StandardMilsim): 三个目标的平衡解
         playability_min, playability_max = min(playability_values), max(playability_values)
         stability_min, stability_max = min(stability_values), max(stability_values)
+        realism_min, realism_max = min(realism_values), max(realism_values)
         
         balanced_scores = []
         for trial in self.best_trials:
             p_norm = (trial.values[0] - playability_min) / (playability_max - playability_min + 1e-10)
             s_norm = (trial.values[1] - stability_min) / (stability_max - stability_min + 1e-10)
-            balanced_score = (p_norm + s_norm) / 2.0
+            r_norm = (trial.values[2] - realism_min) / (realism_max - realism_min + 1e-10)
+            balanced_score = (p_norm + s_norm + r_norm) / 3.0
             balanced_scores.append(balanced_score)
         
         balanced_idx = np.argmin(balanced_scores)
         balanced_trial = self.best_trials[balanced_idx]
         
         # 改进：如果选择了相同的解，尝试从不同区域选择
-        selected_indices = set([stability_idx, playability_idx, balanced_idx])
+        selected_indices = set([realism_idx, playability_idx, balanced_idx])
         
         # 如果三个解都相同，尝试基于参数差异选择不同的解
         if len(selected_indices) == 1:
@@ -1269,10 +1934,10 @@ class RSSSuperPipeline:
                 
                 if len(unique_indices) >= 3:
                     unique_indices_list = list(unique_indices)[:3]
-                    stability_idx = unique_indices_list[0]
+                    realism_idx = unique_indices_list[0]
                     playability_idx = unique_indices_list[1]
                     balanced_idx = unique_indices_list[2]
-                    realism_trial = self.best_trials[stability_idx]
+                    realism_trial = self.best_trials[realism_idx]
                     playability_trial = self.best_trials[playability_idx]
                     balanced_trial = self.best_trials[balanced_idx]
         
@@ -1305,17 +1970,20 @@ class RSSSuperPipeline:
             'EliteStandard': {
                 'params': realism_trial.params,
                 'playability_burden': realism_trial.values[0],
-                'stability_risk': realism_trial.values[1]
+                'stability_risk': realism_trial.values[1],
+                'physiological_realism': realism_trial.values[2]
             },
             'StandardMilsim': {
                 'params': balanced_trial.params,
                 'playability_burden': balanced_trial.values[0],
-                'stability_risk': balanced_trial.values[1]
+                'stability_risk': balanced_trial.values[1],
+                'physiological_realism': balanced_trial.values[2]
             },
             'TacticalAction': {
                 'params': playability_trial.params,
                 'playability_burden': playability_trial.values[0],
-                'stability_risk': playability_trial.values[1]
+                'stability_risk': playability_trial.values[1],
+                'physiological_realism': playability_trial.values[2]
             }
         }
     
@@ -1345,7 +2013,8 @@ class RSSSuperPipeline:
                 "optimization_method": "NSGA-II (Super Pipeline)",
                 "objectives": {
                     "playability_burden": config['playability_burden'],
-                    "stability_risk": config['stability_risk']
+                    "stability_risk": config['stability_risk'],
+                    "physiological_realism": config['physiological_realism']
                 },
                 "parameters": config['params']
             }
