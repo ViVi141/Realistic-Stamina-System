@@ -626,6 +626,198 @@ class StaminaConstants
         return 2.5; // 默认值（趴姿消耗是站姿的2.5倍）
     }
 
+    // ==================== 恢复模型参数配置方法 ====================
+
+    // 获取恢复非线性系数（从配置管理器）
+    static float GetRecoveryNonlinearCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.recovery_nonlinear_coeff;
+        }
+        return 0.5; // 默认值
+    }
+
+    // 获取快速恢复倍数（从配置管理器）
+    static float GetFastRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.fast_recovery_multiplier;
+        }
+        return 2.5; // 默认值
+    }
+
+    // 获取中等恢复倍数（从配置管理器）
+    static float GetMediumRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.medium_recovery_multiplier;
+        }
+        return 1.4; // 默认值
+    }
+
+    // 获取慢速恢复倍数（从配置管理器）
+    static float GetSlowRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.slow_recovery_multiplier;
+        }
+        return 0.6; // 默认值
+    }
+
+    // ==================== Sprint参数配置方法 ====================
+
+    // 获取Sprint速度阈值（从配置管理器）
+    static float GetSprintVelocityThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.sprint_velocity_threshold;
+        }
+        return 5.2; // 默认值（m/s）
+    }
+
+    // 获取Sprint速度加成（从配置管理器）
+    static float GetSprintSpeedBoost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.sprint_speed_boost;
+        }
+        return 0.30; // 默认值（30%）
+    }
+
+    // ==================== 边际效应参数配置方法 ====================
+
+    // 获取边际效应衰减阈值（从配置管理器）
+    static float GetMarginalDecayThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.marginal_decay_threshold;
+        }
+        return 0.8; // 默认值（80%体力）
+    }
+
+    // 获取边际效应衰减系数（从配置管理器）
+    static float GetMarginalDecayCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.marginal_decay_coeff;
+        }
+        return 1.1; // 默认值
+    }
+
+    // ==================== 动作消耗参数配置方法 ====================
+
+    // 获取跳跃基础消耗（从配置管理器）
+    static float GetJumpStaminaBaseCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.jump_stamina_base_cost;
+        }
+        return 0.035; // 默认值（3.5%体力）
+    }
+
+    // 获取翻越起始消耗（从配置管理器）
+    static float GetVaultStaminaStartCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.vault_stamina_start_cost;
+        }
+        return 0.02; // 默认值（2%体力）
+    }
+
+    // 获取攀爬消耗（从配置管理器）
+    static float GetClimbStaminaTickCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.climb_stamina_tick_cost;
+        }
+        return 0.01; // 默认值（1%体力/秒）
+    }
+
+    // ==================== 环境因子参数配置方法 ====================
+
+    // 获取热应激惩罚系数（从配置管理器）
+    static float GetEnvTemperatureHeatPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_temperature_heat_penalty_coeff;
+        }
+        return 0.02; // 默认值（每高1度恢复率降低2%）
+    }
+
+    // 获取冷应激恢复惩罚系数（从配置管理器）
+    static float GetEnvTemperatureColdRecoveryPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_temperature_cold_recovery_penalty_coeff;
+        }
+        return 0.05; // 默认值（每低1度恢复率降低5%）
+    }
+
+    // 获取地表湿度惩罚最大值（从配置管理器）
+    static float GetEnvSurfaceWetnessPenaltyMax()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_surface_wetness_prone_penalty;
+        }
+        return 0.15; // 默认值（最大15%恢复惩罚）
+    }
+
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {

@@ -91,7 +91,8 @@ class SpeedCalculator
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
             // Sprint速度 = Run基础倍率 × (1 + 30%)
-            float sprintMultiplier = 1.0 + RealisticStaminaSpeedSystem.SPRINT_SPEED_BOOST; // 1.30
+            float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
+            float sprintMultiplier = 1.0 + sprintSpeedBoost; // 1.30
             finalSpeedMultiplier = (scaledRunSpeed * sprintMultiplier) - (encumbranceSpeedPenalty * 0.15);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
         }

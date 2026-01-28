@@ -48,14 +48,14 @@ class RealisticStaminaSpeedSystem
     static const float FITNESS_EFFICIENCY_COEFF = StaminaConstants.FITNESS_EFFICIENCY_COEFF;
     static const float FITNESS_RECOVERY_COEFF = StaminaConstants.FITNESS_RECOVERY_COEFF;
     // 注意：BASE_RECOVERY_RATE 现在从配置管理器获取
-    static const float RECOVERY_NONLINEAR_COEFF = StaminaConstants.RECOVERY_NONLINEAR_COEFF;
+    // 注意：RECOVERY_NONLINEAR_COEFF 现在从配置管理器获取
+    // 注意：FAST_RECOVERY_MULTIPLIER 现在从配置管理器获取
+    // 注意：MEDIUM_RECOVERY_MULTIPLIER 现在从配置管理器获取
+    // 注意：SLOW_RECOVERY_MULTIPLIER 现在从配置管理器获取
     static const float FAST_RECOVERY_DURATION_MINUTES = StaminaConstants.FAST_RECOVERY_DURATION_MINUTES;
-    static const float FAST_RECOVERY_MULTIPLIER = StaminaConstants.FAST_RECOVERY_MULTIPLIER;
     static const float MEDIUM_RECOVERY_START_MINUTES = StaminaConstants.MEDIUM_RECOVERY_START_MINUTES;
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = StaminaConstants.MEDIUM_RECOVERY_DURATION_MINUTES;
-    static const float MEDIUM_RECOVERY_MULTIPLIER = StaminaConstants.MEDIUM_RECOVERY_MULTIPLIER;
     static const float SLOW_RECOVERY_START_MINUTES = StaminaConstants.SLOW_RECOVERY_START_MINUTES;
-    static const float SLOW_RECOVERY_MULTIPLIER = StaminaConstants.SLOW_RECOVERY_MULTIPLIER;
     static const float AGE_RECOVERY_COEFF = StaminaConstants.AGE_RECOVERY_COEFF;
     static const float AGE_REFERENCE = StaminaConstants.AGE_REFERENCE;
     static const float FATIGUE_RECOVERY_PENALTY = StaminaConstants.FATIGUE_RECOVERY_PENALTY;
@@ -63,8 +63,7 @@ class RealisticStaminaSpeedSystem
     // 注意：STANDING_RECOVERY_MULTIPLIER, PRONE_RECOVERY_MULTIPLIER 现在从配置管理器获取
     // 注意：LOAD_RECOVERY_PENALTY_COEFF, LOAD_RECOVERY_PENALTY_EXPONENT 现在从配置管理器获取
     static const float BODY_TOLERANCE_BASE = StaminaConstants.BODY_TOLERANCE_BASE;
-    static const float MARGINAL_DECAY_THRESHOLD = StaminaConstants.MARGINAL_DECAY_THRESHOLD;
-    static const float MARGINAL_DECAY_COEFF = StaminaConstants.MARGINAL_DECAY_COEFF;
+    // 注意：MARGINAL_DECAY_THRESHOLD, MARGINAL_DECAY_COEFF 现在从配置管理器获取
     static const float MIN_RECOVERY_STAMINA_THRESHOLD = StaminaConstants.MIN_RECOVERY_STAMINA_THRESHOLD;
     static const float MIN_RECOVERY_REST_TIME_SECONDS = StaminaConstants.MIN_RECOVERY_REST_TIME_SECONDS;
     // 注意：FATIGUE_ACCUMULATION_COEFF, FATIGUE_MAX_FACTOR 现在从配置管理器获取
@@ -73,9 +72,7 @@ class RealisticStaminaSpeedSystem
     static const float AEROBIC_EFFICIENCY_FACTOR = StaminaConstants.AEROBIC_EFFICIENCY_FACTOR;
     static const float ANAEROBIC_EFFICIENCY_FACTOR = StaminaConstants.ANAEROBIC_EFFICIENCY_FACTOR;
     // 注意：ENCUMBRANCE_SPEED_PENALTY_COEFF, ENCUMBRANCE_STAMINA_DRAIN_COEFF 现在从配置管理器获取
-    static const float JUMP_STAMINA_BASE_COST = StaminaConstants.JUMP_STAMINA_BASE_COST;
-    static const float VAULT_STAMINA_START_COST = StaminaConstants.VAULT_STAMINA_START_COST;
-    static const float CLIMB_STAMINA_TICK_COST = StaminaConstants.CLIMB_STAMINA_TICK_COST;
+    // 注意：JUMP_STAMINA_BASE_COST, VAULT_STAMINA_START_COST, CLIMB_STAMINA_TICK_COST 现在从配置管理器获取
     static const float JUMP_MIN_STAMINA_THRESHOLD = StaminaConstants.JUMP_MIN_STAMINA_THRESHOLD;
     static const float JUMP_CONSECUTIVE_WINDOW = StaminaConstants.JUMP_CONSECUTIVE_WINDOW;
     static const float JUMP_CONSECUTIVE_PENALTY = StaminaConstants.JUMP_CONSECUTIVE_PENALTY;
@@ -441,7 +438,8 @@ class RealisticStaminaSpeedSystem
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
         // 体力越低，恢复越快；体力越高，恢复越慢
         // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
-        float staminaRecoveryMultiplier = 1.0 + (RECOVERY_NONLINEAR_COEFF * (1.0 - staminaPercent));
+        float recoveryNonlinearCoeff = StaminaConstants.GetRecoveryNonlinearCoeff();
+        float staminaRecoveryMultiplier = 1.0 + (recoveryNonlinearCoeff * (1.0 - staminaPercent));
         float baseRecoveryRate = StaminaConstants.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
         
         // ==================== 2. 健康状态/训练水平影响 ====================
@@ -451,16 +449,20 @@ class RealisticStaminaSpeedSystem
         
         // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
+        float fastRecoveryMultiplier = StaminaConstants.GetFastRecoveryMultiplier();
+        float mediumRecoveryMultiplier = StaminaConstants.GetMediumRecoveryMultiplier();
+        float slowRecoveryMultiplier = StaminaConstants.GetSlowRecoveryMultiplier();
+        
         if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
         {
             // 快速恢复期（0-3分钟）：恢复速度增加200%（3倍）
-            restTimeMultiplier = FAST_RECOVERY_MULTIPLIER;
+            restTimeMultiplier = fastRecoveryMultiplier;
         }
         else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
         {
             // 中等恢复期（1.5-6.5分钟）：恢复速度增加40%（1.4倍）
             // [修复注释] 从"3-10分钟"改为"1.5-6.5分钟"（与Python数字孪生一致）
-            restTimeMultiplier = MEDIUM_RECOVERY_MULTIPLIER;
+            restTimeMultiplier = mediumRecoveryMultiplier;
         }
         else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
         {
@@ -468,7 +470,7 @@ class RealisticStaminaSpeedSystem
             // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.8倍
             const float transitionDuration = 10.0; // 过渡时间（分钟）
             float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
-            restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - SLOW_RECOVERY_MULTIPLIER));
+            restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
         }
         // 否则：标准恢复期（10分钟内），restTimeMultiplier = 1.0
         
@@ -528,12 +530,15 @@ class RealisticStaminaSpeedSystem
         // 结果：最后10%的体力恢复速度会比前50%慢3-4倍
         // 战术意图：玩家经常会处于80%-90%的"亚健康"状态，只有长时间修整才能真正满血
         float marginalDecayMultiplier = 1.0;
-        if (staminaPercent > MARGINAL_DECAY_THRESHOLD)
+        float marginalDecayThreshold = StaminaConstants.GetMarginalDecayThreshold();
+        float marginalDecayCoeff = StaminaConstants.GetMarginalDecayCoeff();
+        
+        if (staminaPercent > marginalDecayThreshold)
         {
             // 当体力>80%时，应用边际效应衰减
             // 恢复率 = (1.1 - 当前体力百分比)
             // 例如：体力90%时，恢复率 = 1.1 - 0.9 = 0.2（即20%的原始恢复速度）
-            marginalDecayMultiplier = MARGINAL_DECAY_COEFF - staminaPercent;
+            marginalDecayMultiplier = marginalDecayCoeff - staminaPercent;
             marginalDecayMultiplier = Math.Clamp(marginalDecayMultiplier, 0.2, 1.0); // 限制在20%-100%之间
         }
         

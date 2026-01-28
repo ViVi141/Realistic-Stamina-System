@@ -98,7 +98,8 @@ class StaminaConsumptionCalculator
         terrainFactor = terrainFactor + mudTerrainFactor;
         
         // 应用泥泞Sprint惩罚（修正Sprint倍数，只在Sprint时应用）
-        if (currentSpeed >= StaminaConstants.SPRINT_VELOCITY_THRESHOLD)
+        float sprintVelocityThreshold = StaminaConstants.GetSprintVelocityThreshold();
+        if (currentSpeed >= sprintVelocityThreshold)
         {
             sprintMultiplier = sprintMultiplier + mudSprintPenalty;
         }

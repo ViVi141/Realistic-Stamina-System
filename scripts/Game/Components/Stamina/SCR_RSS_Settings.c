@@ -189,6 +189,13 @@ class SCR_RSS_Params
     [Attribute(defvalue: "0.3", desc: "Sprint speed boost.\nSpeed boost ratio of sprint relative to run.\nOptimized range: 0.2 - 0.4.\nHigher value = more significant sprint speed boost.\n冲刺速度提升。\nSprint 相对于 Run 的速度提升比例。\nOptuna 优化范围：0.2 - 0.4。\n值越大，Sprint 速度提升越明显。")]
     float sprint_speed_boost;
 
+    // Sprint速度阈值
+    // 触发 Sprint 的最低速度（m/s）
+    // Optuna 优化范围：4.8 - 5.6
+    // 说明：值越大，需要更快速度才能触发 Sprint
+    [Attribute(defvalue: "5.2", desc: "Sprint velocity threshold.\nMinimum speed (m/s) to trigger sprint mode.\nOptimized range: 4.8 - 5.6.\nHigher value = faster speed required to trigger sprint.\nSprint速度阈值。\n触发 Sprint 的最低速度（m/s）。\nOptuna 优化范围：4.8 - 5.6。\n值越大，需要更快速度才能触发 Sprint。")]
+    float sprint_velocity_threshold;
+
     // 蹲姿消耗倍数
     // 蹲下时的体力消耗倍数（相对于站姿）
     // Optuna 优化范围：1.8 - 2.3
@@ -321,6 +328,13 @@ class SCR_RSS_Params
     // 说明：值越大，低温对体力恢复影响越大
     [Attribute(defvalue: "0.05", desc: "Environment temperature cold recovery penalty coeff.\nCold penalty coefficient on stamina recovery.\nOptimized range: 0.03 - 0.08.\nHigher value = greater cold impact on stamina recovery.\n环境温度冷恢复惩罚系数。\n低温对体力恢复的惩罚系数。\nOptuna 优化范围：0.03 - 0.08。\n值越大，低温对体力恢复影响越大。")]
     float env_temperature_cold_recovery_penalty_coeff;
+
+    // 环境地表湿度趴下惩罚
+    // 湿地趴下时的恢复惩罚
+    // Optuna 优化范围：0.1 - 0.2
+    // 说明：值越大，湿地趴下时恢复越慢
+    [Attribute(defvalue: "0.15", desc: "Environment surface wetness prone penalty.\nRecovery penalty when prone on wet surface.\nOptimized range: 0.1 - 0.2.\nHigher value = slower recovery when prone on wet surface.\n环境地表湿度趴下惩罚。\n湿地趴下时的恢复惩罚。\nOptuna 优化范围：0.1 - 0.2。\n值越大，湿地趴下时恢复越慢。")]
+    float env_surface_wetness_prone_penalty;
 }
 
 // ==================== 主配置类 ====================

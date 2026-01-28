@@ -1008,8 +1008,9 @@ class EnvironmentFactor
         }
         
         // 计算热应激惩罚（每高1度，恢复率降低2%）
+        float heatPenaltyCoeff = StaminaConstants.GetEnvTemperatureHeatPenaltyCoeff();
         m_fHeatStressPenalty = (m_fCachedTemperature - StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * 
-                               StaminaConstants.ENV_TEMPERATURE_HEAT_PENALTY_COEFF;
+                               heatPenaltyCoeff;
     }
     
     // 计算冷应激惩罚
@@ -1024,8 +1025,9 @@ class EnvironmentFactor
         }
         
         // 计算冷应激惩罚（每低1度，恢复率降低5%）
+        float coldRecoveryPenaltyCoeff = StaminaConstants.GetEnvTemperatureColdRecoveryPenaltyCoeff();
         m_fColdStressPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
-                               StaminaConstants.ENV_TEMPERATURE_COLD_RECOVERY_PENALTY;
+                               coldRecoveryPenaltyCoeff;
         
         // 计算冷应激静态惩罚（每低1度，静态消耗增加3%）
         m_fColdStaticPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
@@ -1055,6 +1057,7 @@ class EnvironmentFactor
         }
         
         // 计算地表湿度惩罚（趴下时的恢复惩罚）
-        m_fSurfaceWetnessPenalty = StaminaConstants.ENV_SURFACE_WETNESS_PRONE_PENALTY * m_fCachedSurfaceWetness;
+        float surfaceWetnessPenaltyMax = StaminaConstants.GetEnvSurfaceWetnessPenaltyMax();
+        m_fSurfaceWetnessPenalty = surfaceWetnessPenaltyMax * m_fCachedSurfaceWetness;
     }
 }
