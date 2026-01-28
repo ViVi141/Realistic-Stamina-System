@@ -715,7 +715,8 @@ class RSSTunerGUI:
         self.realism_label.config(text=f"生理学合理性: {realism:.4f}")
         
         # 更新进度条
-        progress = (iteration / 1000.0) * 100
+        total_iterations = 10000  # 与super pipeline中的n_trials一致
+        progress = (iteration / total_iterations) * 100
         self.progress_var.set(progress)
         
         # 刷新图表

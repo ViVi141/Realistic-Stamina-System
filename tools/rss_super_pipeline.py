@@ -602,6 +602,9 @@ class RSSSuperPipeline:
             constraint_penalty += movement_balance_penalty
             stability_risk += movement_balance_penalty
         
+        # 计算生理学合理性
+        physiological_realism = self._evaluate_physiological_realism(constants)
+        
         # ==================== 8. 返回两个目标函数（包含约束惩罚） ====================
         
         # 更新GUI（如果存在）
@@ -610,11 +613,11 @@ class RSSSuperPipeline:
                 iteration=trial.number,
                 playability=playability_burden,
                 stability=stability_risk,
-                realism=0.0,
+                realism=physiological_realism,
                 params=trial.params
             )
         
-        return playability_burden, stability_risk
+        return playability_burden, stability_risk, physiological_realism
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
