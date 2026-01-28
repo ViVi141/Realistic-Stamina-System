@@ -136,8 +136,8 @@ class StaminaConsumptionCalculator
         else
         {
             baseDrainRateByVelocity = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                currentSpeed, 
-                currentWeight, 
+                currentSpeed,
+                currentWeight,
                 gradePercent,
                 terrainFactor,
                 true // 使用 Santee 下坡修正
@@ -145,10 +145,13 @@ class StaminaConsumptionCalculator
             
             // 应用风阻（v2.14.0）：逆风时增加消耗
             baseDrainRateByVelocity = baseDrainRateByVelocity * (1.0 + windDrag);
+
+            // [修复] 将乘法移到这里，只对 Pandolf 模型生效
+            // 防止上面的 Givoni 模型被乘两次
+            baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2;
         }
-        
-        // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
-        baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2;
+
+        // [修复] 删除了这里原本的 baseDrainRateByVelocity = baseDrainRateByVelocity * 0.2;
         
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;

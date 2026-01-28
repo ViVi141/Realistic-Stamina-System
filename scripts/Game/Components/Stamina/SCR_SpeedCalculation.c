@@ -209,7 +209,11 @@ class SpeedCalculator
             
             // 将坡度角度（度）转换为坡度百分比
             // 坡度百分比 = tan(坡度角度) × 100
-            result.gradePercent = Math.Tan(result.slopeAngleDegrees * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
+            // [修复 fix2.md #5] 在计算 Tan 之前钳制角度，防止数值爆炸
+            // 如果 slopeAngleDegrees 接近 90 度，tan(90°) 趋向于无穷大
+            // 这将导致 gradePercent 变成 Infinity 或 NaN，污染 Pandolf 模型的计算
+            float clampedAngle = Math.Clamp(result.slopeAngleDegrees, -85.0, 85.0); // 限制在85度以内
+            result.gradePercent = Math.Tan(clampedAngle * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
         }
         
         return result;

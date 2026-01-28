@@ -148,28 +148,15 @@ class StaminaRecoveryCalculator
         }
         // 正常陆地静止：处理静态消耗或恢复
         // 注意：baseDrainRateByVelocity 为负数表示恢复，正数表示消耗
-        if (baseDrainRateByVelocity > 0.0)
-        {
-            // 正数表示消耗，从恢复率中减去
-            float adjustedRecoveryRate = recoveryRate - baseDrainRateByVelocity;
-            
-            // 如果消耗大于恢复，屏蔽消耗，只按最低值恢复
-            if (adjustedRecoveryRate < 0.0)
-            {
-                // 按照最低值恢复，直到计算的恢复大于消耗
-                recoveryRate = 0.00005; // 每0.2秒恢复0.005%
-            }
-            else
-            {
-                // 恢复大于消耗，正常处理
-                recoveryRate = adjustedRecoveryRate;
-            }
-        }
-        else if (baseDrainRateByVelocity < 0.0)
+        // [修复 fix2.md #1] 移除了减去消耗的逻辑，只返回总恢复率（Gross Recovery）
+        // 让协调器（SCR_StaminaUpdateCoordinator）去计算净值：netChange = recoveryRate - finalDrainRate
+        // 避免了消耗被双重扣除的问题
+        if (baseDrainRateByVelocity < 0.0)
         {
             // 负数表示恢复，加到恢复率中
             recoveryRate += Math.AbsFloat(baseDrainRateByVelocity);
         }
+        // [修复] 不再在这里减去 baseDrainRateByVelocity，因为协调器会处理净值计算
         
         // ==================== 静态保护逻辑 ====================  
         // 确保除非玩家严重超载(>40kg)，否则静止时总是缓慢恢复体力

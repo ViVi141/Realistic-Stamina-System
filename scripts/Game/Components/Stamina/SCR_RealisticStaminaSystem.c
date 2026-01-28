@@ -895,7 +895,10 @@ class RealisticStaminaSpeedSystem
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
+        // [修复 fix2.md #4] 只保留下限，移除上限 2.0
+        // 热力学原理：做功与质量成正比，不存在这种"平台期"
+        // 这会让超重负载的作弊玩家获得优势
+        weightMultiplier = Math.Max(weightMultiplier, 0.5); // 只保留下限，移除上限
         
         float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor;
         
@@ -1142,15 +1145,18 @@ class RealisticStaminaSpeedSystem
             return 0.0; // 使用标准 Pandolf 模型
         
         // Givoni-Goldman 模型常量（使用类常量，避免变量名冲突）
-        
-        // 计算速度的幂：V^α
-        // 使用 StaminaHelpers.Pow 函数计算 V^2.2
-        float velocityPower = StaminaHelpers.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
+
+        // [修复] 直接使用 Math.Pow 计算 V^2.2，确保数值准确
+        // 不要使用 StaminaHelpers.Pow，它主要针对 < 1.0 的指数优化
+        float velocityPower = Math.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
         
         // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
         // 使用相对于基准体重的倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
+        // [修复 fix2.md #4] 只保留下限，移除上限 2.0
+        // 热力学原理：做功与质量成正比，不存在这种"平台期"
+        // 这会让超重负载的作弊玩家获得优势
+        weightMultiplier = Math.Max(weightMultiplier, 0.5); // 只保留下限，移除上限
         
         float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
         
@@ -1293,11 +1299,18 @@ class RealisticStaminaSpeedSystem
         float staticPower = baseMaintenancePower * staticMultiplier;
         
         // ==================== B. 水平阻力功率（v^3）====================
+        // [修复 fix2.md #2] 使用合速度计算阻力，避免分量立方的和 ≠ 合矢量模长的立方
         float horizontalPower = 0.0;
         if (vH > StaminaConstants.SWIMMING_MIN_SPEED)
         {
-            float vHCubed = vH * vH * vH;
-            horizontalPower = 0.5 * StaminaConstants.SWIMMING_WATER_DENSITY * vHCubed *
+            // [修复] 计算合速度（包括垂直分量），然后应用阻力公式
+            // 物理原理：P_total ∝ |v_total|^3 = (sqrt(v_x^2 + v_y^2))^3
+            // 而不是：|v_x|^3 + |v_y|^3
+            float vTotal = Math.Sqrt(vH * vH + vY * vY);
+            float vTotalCubed = vTotal * vTotal * vTotal; // 合速度的立方
+
+            // 使用合速度计算阻力功率
+            horizontalPower = 0.5 * StaminaConstants.SWIMMING_WATER_DENSITY * vTotalCubed *
                               StaminaConstants.SWIMMING_DRAG_COEFFICIENT * StaminaConstants.SWIMMING_FRONTAL_AREA;
             
             // 人体效率/游戏平衡折中
