@@ -651,8 +651,9 @@ class RSSSuperPipeline:
         medium_recovery = constants.MEDIUM_RECOVERY_MULTIPLIER
         slow_recovery = constants.SLOW_RECOVERY_MULTIPLIER
         
-        # 恢复倍数应该递减：prone > standing > fast > medium > slow
-        if not (prone_recovery > standing_recovery > fast_recovery > medium_recovery > slow_recovery):
+        # 恢复倍数应该递减：prone > fast > standing > medium > slow
+        # 说明：prone（趴下）恢复最快，然后是 fast（快速恢复阶段），然后是 standing（站立），然后是 medium（中等恢复），最后是 slow（慢速恢复）
+        if not (prone_recovery > fast_recovery > standing_recovery > medium_recovery > slow_recovery):
             realism_score += 5.0  # 恢复倍数顺序不合理
         
         # 3. 代谢阈值合理性
