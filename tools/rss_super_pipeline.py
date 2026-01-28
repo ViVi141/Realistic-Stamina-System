@@ -1160,11 +1160,39 @@ class RSSSuperPipeline:
                           f"BUG数量={len(self.bug_reports)}, "
                           f"耗时={elapsed_time:.2f}秒")
         
-        # 执行优化 - 使用Optuna内置并行处理（因为objective内部已使用ParallelWorker）
-        # 注意：objective内部的ParallelWorker负责场景级并行，Optuna的n_jobs负责trial级并行
+        # ==================== 多阶段优化 ====================
+        # 阶段1：优先优化稳定性（50%迭代）
+        print("\n【阶段1】：优先优化稳定性")
+        print("目标：降低稳定性风险，确保系统不崩溃")
+        print("策略：增加稳定性风险的惩罚权重")
+        
+        # 保存原始权重
+        original_weight = getattr(self, '_stability_weight', 1.0)
+        self._stability_weight = 5.0  # 增加稳定性权重
+        
+        # 执行阶段1优化（50%迭代）
+        stage1_trials = int(self.n_trials * 0.5)
         self.study.optimize(
             self.objective,
-            n_trials=self.n_trials,
+            n_trials=stage1_trials,
+            show_progress_bar=True,
+            callbacks=[progress_callback],
+            n_jobs=1  # 设置为1，因为objective内部已使用ParallelWorker进行并行
+        )
+        
+        # 阶段2：平衡优化（剩余50%迭代）
+        print("\n【阶段2】：平衡优化稳定性和生理学合理性")
+        print("目标：在稳定基础上，优化生理学合理性")
+        print("策略：恢复正常权重，平衡各项指标")
+        
+        # 恢复正常权重
+        self._stability_weight = 1.0
+        
+        # 执行阶段2优化（剩余50%迭代）
+        stage2_trials = self.n_trials - stage1_trials
+        self.study.optimize(
+            self.objective,
+            n_trials=stage2_trials,
             show_progress_bar=True,
             callbacks=[progress_callback],
             n_jobs=1  # 设置为1，因为objective内部已使用ParallelWorker进行并行

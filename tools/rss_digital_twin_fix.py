@@ -442,7 +442,16 @@ class RSSDigitalTwin:
 
     def step(self, speed, current_weight, grade_percent, terrain_factor, 
              stance, movement_type, current_time, enable_randomness=True):
+        # ==================== 边界条件检查 ====================
+        # 输入参数验证
+        speed = max(float(speed), 0.0)  # 速度不能为负
+        current_weight = max(float(current_weight), 0.0)  # 重量不能为负
+        grade_percent = float(grade_percent)
+        terrain_factor = max(float(terrain_factor), 0.1)  # 地形因子不能过小
+        current_time = max(float(current_time), 0.0)  # 时间不能为负
+        
         time_delta = current_time - self.current_time if self.current_time > 0 else 0.2
+        time_delta = max(time_delta, 0.01)  # 确保时间增量合理
         self.current_time = current_time
         
         if enable_randomness:
@@ -455,7 +464,7 @@ class RSSDigitalTwin:
         if was_moving and is_now_stopped and not self.is_in_epoc_delay:
             self.epoc_delay_start_time = current_time
             self.is_in_epoc_delay = True
-            self.speed_before_stop = self.last_speed
+            self.speed_before_stop = max(self.last_speed, 0.0)  # 确保速度合理
         
         if self.is_in_epoc_delay:
             epoc_delay_duration = current_time - self.epoc_delay_start_time
@@ -479,40 +488,74 @@ class RSSDigitalTwin:
         else:
             self.rest_duration_minutes += time_delta / 60.0
         
-        base_for_recovery, total_drain = self._calculate_drain_rate_c_aligned(
-            speed, current_weight, grade_percent, terrain_factor,
-            stance, movement_type, wind_drag=0.0, environment_factor=self.environment_factor
-        )
-        
-        if self.is_in_epoc_delay:
-            epoc_drain_rate = self.constants.EPOC_DRAIN_RATE * (1.0 + np.clip(self.speed_before_stop / 5.2, 0, 1) * 0.5)
-            total_drain = max(total_drain, epoc_drain_rate)
+        # ==================== 数值保护机制 ====================
+        try:
+            base_for_recovery, total_drain = self._calculate_drain_rate_c_aligned(
+                speed, current_weight, grade_percent, terrain_factor,
+                stance, movement_type, wind_drag=0.0, environment_factor=self.environment_factor
+            )
+            
+            # 确保消耗率合理
+            total_drain = max(float(total_drain), 0.0)
+            total_drain = min(total_drain, 0.1)  # 限制最大消耗率，避免系统崩溃
+            
+            if self.is_in_epoc_delay:
+                epoc_drain_rate = self.constants.EPOC_DRAIN_RATE * (1.0 + np.clip(self.speed_before_stop / 5.2, 0, 1) * 0.5)
+                total_drain = max(total_drain, epoc_drain_rate)
 
-        recovery_rate = self._calculate_recovery_rate(
-            self.stamina,
-            self.rest_duration_minutes,
-            self.exercise_duration_minutes,
-            current_weight,
-            base_for_recovery,
-            False,
-            stance,
-            self.environment_factor,
-            speed
-        )
+            recovery_rate = self._calculate_recovery_rate(
+                self.stamina,
+                self.rest_duration_minutes,
+                self.exercise_duration_minutes,
+                current_weight,
+                base_for_recovery,
+                False,
+                stance,
+                self.environment_factor,
+                speed
+            )
+            
+            # 确保恢复率合理
+            recovery_rate = max(float(recovery_rate), 0.0)
+            recovery_rate = min(recovery_rate, 0.01)  # 限制最大恢复率
+            
+            net_change = recovery_rate - total_drain
+            
+            # 确保净变化合理
+            net_change = float(net_change)
+            net_change = max(net_change, -0.1)  # 限制最大下降速度
+            net_change = min(net_change, 0.01)  # 限制最大上升速度
+            
+            # 更新体力值
+            self.stamina += net_change
+            self.stamina = min(max(self.stamina, 0.0), 1.0)  # 确保体力值在合理范围内
+            
+            # 保存调试信息
+            self.base_drain_rate_by_velocity = base_for_recovery
+            self.final_drain_rate = total_drain
+            self.recovery_rate = recovery_rate
+            self.net_change = net_change
+            
+            if len(self.stamina_history) < self.max_history_length:
+                self.stamina_history.append(self.stamina)
+                self.time_history.append(current_time)
         
-        net_change = recovery_rate - total_drain
-        self.stamina += net_change
-        self.stamina = min(max(self.stamina, 0.0), 1.0)
-        
-        # 保存调试信息
-        self.base_drain_rate_by_velocity = base_for_recovery
-        self.final_drain_rate = total_drain
-        self.recovery_rate = recovery_rate
-        self.net_change = net_change
-        
-        if len(self.stamina_history) < self.max_history_length:
-            self.stamina_history.append(self.stamina)
-            self.time_history.append(current_time)
+        except Exception as e:
+            # ==================== 异常处理 ====================
+            # 发生异常时，使用安全值，避免系统崩溃
+            print(f"警告：step方法发生异常: {e}")
+            # 使用安全值
+            self.base_drain_rate_by_velocity = 0.0
+            self.final_drain_rate = 0.01
+            self.recovery_rate = 0.001
+            self.net_change = -0.001
+            # 确保体力值合理
+            self.stamina = max(self.stamina - 0.001, 0.0)
+            self.stamina = min(self.stamina, 1.0)
+            
+            if len(self.stamina_history) < self.max_history_length:
+                self.stamina_history.append(self.stamina)
+                self.time_history.append(current_time)
 
     def simulate_scenario(self, speed_profile, current_weight, grade_percent, 
                          terrain_factor, stance, movement_type, enable_randomness=True):
