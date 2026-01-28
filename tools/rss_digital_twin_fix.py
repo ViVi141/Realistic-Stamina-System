@@ -230,7 +230,7 @@ class RSSDigitalTwin:
             return 0.0
         
         ref = getattr(self.constants, 'REFERENCE_WEIGHT', 90.0)
-        gc = getattr(self.constants, 'GIVONI_CONSTANT', 0.3)
+        gc = getattr(self.constants, 'GIVONI_CONSTANT', 0.6)
         ge = getattr(self.constants, 'GIVONI_VELOCITY_EXPONENT', 2.2)
         coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
         
