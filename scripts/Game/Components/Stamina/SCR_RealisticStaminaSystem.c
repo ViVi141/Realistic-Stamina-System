@@ -875,6 +875,11 @@ class RealisticStaminaSpeedSystem
         float velocitySquared = velocity * velocity;
         float gradeTerm = gradeDecimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocitySquared));
         
+        // 坡度保护：限制坡度项的最大贡献，防止极端坡度导致消耗爆炸
+        // 坡度项不应超过基础项的3倍（即最多增加300%消耗）
+        float maxGradeTerm = baseTerm * 3.0;
+        gradeTerm = Math.Min(gradeTerm, maxGradeTerm);
+        
         // 应用 Santee 下坡修正（如果启用）
         // 当下坡超过 -15% 时，需要用力"刹车"，消耗增加
         if (useSanteeCorrection && gradePercent < 0.0)

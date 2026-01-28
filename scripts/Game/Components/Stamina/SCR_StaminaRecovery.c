@@ -174,10 +174,11 @@ class StaminaRecoveryCalculator
             // 负数表示恢复，加到恢复率中
             recoveryRate += Math.AbsFloat(baseDrainRateByVelocity);
         }
-        else if (baseDrainRateByVelocity > 0.0)
+        else if (baseDrainRateByVelocity > 0.0 && currentSpeed < 0.1)
         {
-            // ==================== 与优化器完全一致的保护逻辑 ====================
-            // 正数表示静态消耗，从恢复率中减去
+            // ==================== 静态消耗处理 ====================
+            // 只有在静态站立时（currentSpeed < 0.1），才从恢复率中减去静态消耗
+            // 移动时（currentSpeed >= 0.1），不减去消耗，因为消耗已经在finalDrainRate中计算了
             // 参考：rss_digital_twin_fix.py 第421-428行
             float adjustedRecoveryRate = recoveryRate - baseDrainRateByVelocity;
             if (adjustedRecoveryRate < 0.00005)

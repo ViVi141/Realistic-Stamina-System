@@ -141,7 +141,7 @@ class StaminaConsumptionCalculator
         // 速度相关项（用于平滑过渡）
         float speedRatio = Math.Clamp(currentSpeed / 5.2, 0.0, 1.0);
         float speedLinearDrainRate = 0.00005 * speedRatio * totalEfficiencyFactor * fatigueFactor;
-        float speedSquaredDrainRate = 0.00005 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor;
+        float speedSquaredDrainRate = 0.0002 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor; // 从0.00005提高到0.0002，增加4倍
         
         // 负重相关消耗
         float encumbranceBaseDrainRate = 0.001 * (encumbranceStaminaDrainMultiplier - 1.0);
@@ -164,18 +164,14 @@ class StaminaConsumptionCalculator
             // 应用手持重物额外消耗
             totalDrainRate = totalDrainRate * itemBonus;
             
-            // 生理上限：防止负重+坡度爆炸
-            const float MAX_DRAIN_RATE_PER_TICK = 0.02; // 每0.2秒最大消耗
-            
-            // 计算超出生理上限的消耗（用于疲劳积累）
-            float excessDrainRate = totalDrainRate - MAX_DRAIN_RATE_PER_TICK;
-            if (fatigueSystem && excessDrainRate > 0.0)
+            // 坡度保护：防止极端坡度导致消耗爆炸
+            // 限制坡度项的最大贡献，避免陡坡时消耗无限增长
+            const float MAX_SLOPE_DRAIN_CONTRIBUTION = 0.03; // 每0.2秒最大坡度贡献
+            float slopeContribution = totalDrainRate - (baseDrainComponents * sprintMultiplier * itemBonus);
+            if (slopeContribution > MAX_SLOPE_DRAIN_CONTRIBUTION)
             {
-                fatigueSystem.ProcessFatigueAccumulation(excessDrainRate);
+                totalDrainRate = (baseDrainComponents * sprintMultiplier * itemBonus) + MAX_SLOPE_DRAIN_CONTRIBUTION;
             }
-            
-            // 限制实际消耗不超过生理上限
-            totalDrainRate = Math.Min(totalDrainRate, MAX_DRAIN_RATE_PER_TICK);
         }
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）

@@ -537,17 +537,17 @@ class RSSSuperPipeline:
         # 恢复系统相关
         # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1.5e-4, 4.0e-4, log=True  # 从4.5e-4降低到4.0e-4，与默认值3.5e-4保持一致
+            'base_recovery_rate', 3.0e-4, 8.0e-4, log=True  # 扩大到3.0e-4到8.0e-4，确保能抵消静态消耗
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
-            'prone_recovery_multiplier', 1.5, 2.5  # 从1.5~3.0改为1.5~2.5，与默认值1.8保持一致
+            'prone_recovery_multiplier', 1.5, 3.0  # 扩大到1.5~3.0，确保趴下恢复更快
         )
         standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.0, 1.8  # 从1.0~2.0改为1.0~1.8，与默认值1.5保持一致
+            'standing_recovery_multiplier', 1.0, 2.5  # 扩大到1.0~2.5，确保站立恢复足够强
         )
         load_recovery_penalty_coeff = trial.suggest_float(
-            'load_recovery_penalty_coeff', 1e-4, 1e-3, log=True
+            'load_recovery_penalty_coeff', 5e-5, 1e-3, log=True  # 降低下界到5e-5，减少负重惩罚
         )
         load_recovery_penalty_exponent = trial.suggest_float(
             'load_recovery_penalty_exponent', 1.0, 3.0
@@ -1017,6 +1017,21 @@ class RSSSuperPipeline:
             penalty += (min_walk_gain - walk_delta) * 15000.0
         elif walk_delta > max_walk_gain:
             penalty += (walk_delta - max_walk_gain) * 8000.0
+
+        # 4) 静态站立：60秒静止 30KG负载，期望体力不下降（净恢复或至少不消耗）
+        # 核心要求：站立静止不动不可能掉体力
+        static_delta = simulate_fixed_speed(
+            speed=0.0,
+            duration_seconds=60.0,
+            current_weight=120.0,  # 90kg体重 + 30kg负重
+            movement_type=MovementType.IDLE,
+            initial_stamina=1.0,
+        )
+        # static_delta < 0 表示消耗，必须惩罚
+        # 要求：静止60秒至少不消耗体力（delta >= 0）
+        if static_delta < 0.0:
+            # 惩罚系数极大，确保优化器必须满足此约束
+            penalty += (-static_delta) * 50000.0
 
         return float(penalty)
     

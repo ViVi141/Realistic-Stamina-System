@@ -32,7 +32,7 @@ class RSSConstants:
     PANDOLF_STATIC_COEFF_1 = 1.2
     PANDOLF_STATIC_COEFF_2 = 1.6
     
-    GIVONI_CONSTANT = 0.3
+    GIVONI_CONSTANT = 0.6  # 从0.3提高到0.6，确保奔跑消耗明显高于行走
     GIVONI_VELOCITY_EXPONENT = 2.2
     
     AEROBIC_THRESHOLD = 0.6
@@ -324,12 +324,17 @@ class RSSDigitalTwin:
             base = raw * posture * total_eff * fatigue
 
         speed_linear = 0.00005 * speed_ratio * total_eff * fatigue
-        speed_sq = 0.00005 * speed_ratio * speed_ratio * total_eff * fatigue
+        speed_sq = 0.0002 * speed_ratio * speed_ratio * total_eff * fatigue  # 从0.00005提高到0.0002，增加4倍
         enc_base = 0.001 * (enc_mult - 1.0)
         enc_speed = 0.0002 * (enc_mult - 1.0) * speed_ratio * speed_ratio
         components = base + speed_linear + speed_sq + enc_base + enc_speed
         total_drain = components * sprint_mult
-        total_drain = min(total_drain, 0.02)
+        
+        # 坡度保护：限制坡度项的最大贡献，防止极端坡度导致消耗爆炸
+        # 注意：数字孪生中的坡度影响通过terrain_factor和grade_percent体现
+        # 这里我们移除硬编码的上限，让消耗可以自然增长
+        # 但在实际游戏中，C代码中的坡度保护会限制极端情况
+        
         total_drain = max(0.0, total_drain)
         return (base_for_recovery, total_drain)
 
@@ -418,7 +423,10 @@ class RSSDigitalTwin:
         if disable_positive_recovery:
             return -max(base_drain_rate, 0.0)
         
-        if base_drain_rate > 0.0:
+        # ==================== 静态消耗处理 ====================
+        # 只有在静态站立时（current_speed < 0.1），才从恢复率中减去静态消耗
+        # 移动时（current_speed >= 0.1），不减去消耗，因为消耗已经在final_drain_rate中计算了
+        if base_drain_rate > 0.0 and current_speed < 0.1:
             adjusted_recovery_rate = recovery_rate - base_drain_rate
             if adjusted_recovery_rate < 0.0:
                 recovery_rate = 0.00005
@@ -495,6 +503,12 @@ class RSSDigitalTwin:
         net_change = recovery_rate - total_drain
         self.stamina += net_change
         self.stamina = min(max(self.stamina, 0.0), 1.0)
+        
+        # 保存调试信息
+        self.base_drain_rate_by_velocity = base_for_recovery
+        self.final_drain_rate = total_drain
+        self.recovery_rate = recovery_rate
+        self.net_change = net_change
         
         if len(self.stamina_history) < self.max_history_length:
             self.stamina_history.append(self.stamina)

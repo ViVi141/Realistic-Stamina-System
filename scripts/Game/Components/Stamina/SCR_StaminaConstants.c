@@ -307,7 +307,7 @@ class StaminaConstants
     static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
     
     // ==================== Givoni-Goldman 跑步模型常量 ====================
-    static const float GIVONI_CONSTANT = 0.3; // 跑步常数（W/kg·m²/s²），需要根据实际测试校准
+    static const float GIVONI_CONSTANT = 0.6; // 跑步常数（W/kg·m²/s²），从0.3提高到0.6，确保奔跑消耗明显高于行走
     static const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
     
     // ==================== 地形系数常量 ====================
