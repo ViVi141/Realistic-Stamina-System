@@ -617,14 +617,14 @@ class RSSSuperPipeline:
         )
         
         # 姿态系统参数
-        # 修正：这些应该是 < 1.0，表示速度减速，不是加速
-        # posture_crouch: 蹲下时速度 = 原速 * 0.5~1.0
-        # posture_prone: 趴下时速度 = 原速 * 0.2~0.8
+        # 姿态消耗倍数（体力消耗，不是速度！）
+        # posture_crouch: 蹲姿移动的体力消耗 = 站姿消耗 * 1.8~2.3倍
+        # posture_prone: 趴姿移动的体力消耗 = 站姿消耗 * 2.2~2.8倍
         posture_crouch_multiplier = trial.suggest_float(
-            'posture_crouch_multiplier', 0.5, 1.0  # 从1.5~2.2改为0.5~1.0（物理正确）
+            'posture_crouch_multiplier', 1.8, 2.3  # 蹲姿消耗是站姿的1.8-2.3倍
         )
         posture_prone_multiplier = trial.suggest_float(
-            'posture_prone_multiplier', 0.2, 0.8  # 从2.5~3.5改为0.2~0.8（物理正确）
+            'posture_prone_multiplier', 2.2, 2.8  # 趴姿消耗是站姿的2.2-2.8倍
         )
         
         # 动作消耗参数
