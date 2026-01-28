@@ -762,171 +762,45 @@ class RSSSuperPipeline:
         # 记录BUG报告
         self.bug_reports.extend(bug_reports)
         
-        # ==================== 7. 添加物理约束条件（JSON合理性修复） ====================
-        # 这些约束确保生成的参数满足生物学和物理学逻辑
+        # ==================== 7. 硬约束检查（违反物理/生理逻辑直接拒绝） ====================
+        # 这些约束违反了基本的物理或生理逻辑，应该直接拒绝
         
-        constraint_penalty = 0.0
-        
-        # 基础体能检查约束：未通过基础体能测试的参数组合将被严重惩罚
+        # 硬约束1: 基础体能检查
         if not basic_fitness_passed:
-            constraint_penalty += 1000.0  # 严重惩罚未通过基础体能测试的参数
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
-        # 约束1: prone_recovery > standing_recovery（生理逻辑）
-        # 说明：趴下应该比站立更容易恢复体力
+        # 硬约束2: prone_recovery > standing_recovery（生理逻辑）
         if prone_recovery_multiplier <= standing_recovery_multiplier:
-            violation_factor = standing_recovery_multiplier - prone_recovery_multiplier + 0.1
-            constraint_penalty += violation_factor * 500.0  # 严重惩罚违反生理逻辑的参数
-            stability_risk += constraint_penalty  # 记录到稳定性风险中
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
-        # 约束2: standing_recovery > slow_recovery（恢复倍数递减）
-        # 说明：站立恢复应该快于慢速恢复
-        if standing_recovery_multiplier <= slow_recovery_multiplier:
-            violation_factor = slow_recovery_multiplier - standing_recovery_multiplier + 0.1
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
-        
-        # 约束3: fast_recovery > medium_recovery > slow_recovery（恢复速度递减）
-        # 说明：快速恢复 > 中速恢复 > 慢速恢复
+        # 硬约束3: fast_recovery > medium_recovery > slow_recovery（恢复速度递减）
         if fast_recovery_multiplier <= medium_recovery_multiplier:
-            violation_factor = medium_recovery_multiplier - fast_recovery_multiplier + 0.1
-            constraint_penalty += violation_factor * 400.0
-            stability_risk += constraint_penalty
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
         if medium_recovery_multiplier <= slow_recovery_multiplier:
-            violation_factor = slow_recovery_multiplier - medium_recovery_multiplier + 0.1
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
-        # 约束4: posture_crouch_multiplier < 1.0（蹲下应该减速）
-        # 说明：蹲下时速度应该小于正常站立，multiplier应该<1.0
-        if posture_crouch_multiplier > 1.0:
-            violation_factor = posture_crouch_multiplier - 1.0
-            constraint_penalty += violation_factor * 600.0  # 严重惩罚物理上不可能的参数
-            stability_risk += constraint_penalty
-        
-        # 约束5: posture_prone_multiplier < 1.0（趴下应该减速）
-        # 说明：趴下时速度应该小于正常站立，multiplier应该<1.0
-        if posture_prone_multiplier > 1.0:
-            violation_factor = posture_prone_multiplier - 1.0
-            constraint_penalty += violation_factor * 600.0  # 严重惩罚物理上不可能的参数
-            stability_risk += constraint_penalty
-        
-        # 约束6: posture_prone_multiplier < posture_crouch_multiplier（趴下比蹲下更慢）
-        # 说明：趴下比蹲下应该移动得更慢
-        if posture_prone_multiplier > posture_crouch_multiplier:
-            violation_factor = posture_prone_multiplier - posture_crouch_multiplier
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
-        
-        # 约束7: playability配置下，base_recovery_rate应该相对较高
-        # 说明：playability（可玩性）应该意味着更容易恢复，而不是更慢
-        # 注：这是一个软约束，仅在明显偏离时才惩罚
-        # （这个约束很难在不知道当前是哪个配置的情况下强制）
-        
-        # 约束8: 移动能量学约束（根据用户反馈校准）
-        # 目标：
-        # - Sprint / Run 必须“净消耗”且消耗不应过低
-        # - Walk 必须“缓慢净恢复”（不应快到像静止趴下回血）
-        movement_balance_penalty = self._evaluate_movement_balance_penalty(constants)
-        if movement_balance_penalty > 0.0:
-            constraint_penalty += movement_balance_penalty
-            stability_risk += movement_balance_penalty
-        
-        # ==================== 9. 新增约束条件（基于物理学和生理学） ====================
-        
-        # 约束9: 有氧阈值 < 无氧阈值（生理逻辑）
-        # 说明：有氧阈值应该低于无氧阈值
+        # 硬约束4: aerobic_efficiency < anaerobic_efficiency（生理逻辑）
         if aerobic_efficiency_factor >= anaerobic_efficiency_factor:
-            violation_factor = (aerobic_efficiency_factor - anaerobic_efficiency_factor) + 0.1
-            constraint_penalty += violation_factor * 400.0
-            stability_risk += constraint_penalty
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
-        # 约束10: 疲劳累积系数合理性（生理逻辑）
-        # 说明：疲劳累积系数应该在合理范围内（0.005-0.03）
-        if fatigue_accumulation_coeff < 0.005 or fatigue_accumulation_coeff > 0.03:
-            if fatigue_accumulation_coeff < 0.005:
-                violation_factor = 0.005 - fatigue_accumulation_coeff
-            else:
-                violation_factor = fatigue_accumulation_coeff - 0.03
-            constraint_penalty += violation_factor * 500.0
-            stability_risk += constraint_penalty
-        
-        # 约束11: 负重惩罚系数合理性（物理逻辑）
-        # 说明：负重惩罚系数应该在合理范围内（0.8-2.0）
-        if encumbrance_stamina_drain_coeff < 0.8 or encumbrance_stamina_drain_coeff > 2.0:
-            if encumbrance_stamina_drain_coeff < 0.8:
-                violation_factor = 0.8 - encumbrance_stamina_drain_coeff
-            else:
-                violation_factor = encumbrance_stamina_drain_coeff - 2.0
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
-        
-        # 约束12: 基础恢复率合理性（生理逻辑）
-        # 说明：基础恢复率应该在合理范围内（1.5e-4到4.0e-4）
-        if base_recovery_rate < 1.5e-4 or base_recovery_rate > 4.0e-4:
-            if base_recovery_rate < 1.5e-4:
-                violation_factor = (1.5e-4 - base_recovery_rate) * 10000
-            else:
-                violation_factor = (base_recovery_rate - 4.0e-4) * 10000
-            constraint_penalty += violation_factor * 400.0
-            stability_risk += constraint_penalty
-        
-        # 约束13: 能量转换系数合理性（物理逻辑）
-        # 说明：能量转换系数应该在合理范围内（3.0e-5到7.0e-5）
-        if energy_to_stamina_coeff < 3.0e-5 or energy_to_stamina_coeff > 7.0e-5:
-            if energy_to_stamina_coeff < 3.0e-5:
-                violation_factor = (3.0e-5 - energy_to_stamina_coeff) * 100000
-            else:
-                violation_factor = (energy_to_stamina_coeff - 7.0e-5) * 100000
-            constraint_penalty += violation_factor * 500.0
-            stability_risk += constraint_penalty
-        
-        # 约束14: Sprint消耗倍数合理性（游戏平衡性）
-        # 说明：Sprint消耗应该是Run的2.8-5.0倍
-        if sprint_stamina_drain_multiplier < 2.8 or sprint_stamina_drain_multiplier > 5.0:
-            if sprint_stamina_drain_multiplier < 2.8:
-                violation_factor = 2.8 - sprint_stamina_drain_multiplier
-            else:
-                violation_factor = sprint_stamina_drain_multiplier - 5.0
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
-        
-        # 约束15: 坡度系数合理性（物理逻辑）
-        # 说明：上坡系数应该大于下坡系数
+        # 硬约束5: slope_uphill > slope_downhill（物理逻辑）
         if slope_uphill_coeff <= slope_downhill_coeff:
-            violation_factor = (slope_downhill_coeff - slope_uphill_coeff) + 0.01
-            constraint_penalty += violation_factor * 400.0
-            stability_risk += constraint_penalty
+            return 1_000_000.0, 1_000_000.0, 1_000_000.0  # 直接拒绝
         
-        # 约束16: 游泳消耗合理性（物理逻辑）
-        # 说明：游泳静态消耗倍数应该在2.5-3.5之间
-        if swimming_static_drain_multiplier < 2.5 or swimming_static_drain_multiplier > 3.5:
-            if swimming_static_drain_multiplier < 2.5:
-                violation_factor = 2.5 - swimming_static_drain_multiplier
-            else:
-                violation_factor = swimming_static_drain_multiplier - 3.5
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
+        # ==================== 8. 软约束检查（参数合理性惩罚） ====================
+        # 这些约束违反了参数合理性，但不违反基本逻辑，加入惩罚值
         
-        # 约束17: 环境热应激倍数合理性（生理逻辑）
-        # 说明：热应激倍数应该在1.2-1.6之间
-        if env_heat_stress_max_multiplier < 1.2 or env_heat_stress_max_multiplier > 1.6:
-            if env_heat_stress_max_multiplier < 1.2:
-                violation_factor = 1.2 - env_heat_stress_max_multiplier
-            else:
-                violation_factor = env_heat_stress_max_multiplier - 1.6
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
+        soft_constraint_penalty = 0.0
         
-        # 约束18: 负重恢复惩罚指数合理性（生理逻辑）
-        # 说明：负重恢复惩罚指数应该在1.0-3.0之间
-        if load_recovery_penalty_exponent < 1.0 or load_recovery_penalty_exponent > 3.0:
-            if load_recovery_penalty_exponent < 1.0:
-                violation_factor = 1.0 - load_recovery_penalty_exponent
-            else:
-                violation_factor = load_recovery_penalty_exponent - 3.0
-            constraint_penalty += violation_factor * 300.0
-            stability_risk += constraint_penalty
+        # 软约束1: 移动能量学平衡（基于用户反馈校准）
+        movement_balance_penalty = self._evaluate_movement_balance_penalty(constants)
+        soft_constraint_penalty += movement_balance_penalty
+        
+        # ==================== 9. 更新稳定性风险（包含软约束惩罚） ====================
+        stability_risk += soft_constraint_penalty
+        
+        # ==================== 10. 返回三个目标函数（包含约束惩罚） ====================
         
         # ==================== 10. 返回三个目标函数（包含约束惩罚） ====================
         
