@@ -71,10 +71,6 @@ modded class SCR_CharacterControllerComponent
     // ==================== 速度差分缓存（用于游泳/命令位移测速）====================
     // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能不更新
     // 因此通过“位置差分/时间步长”计算速度向量，作为消耗模型的速度输入
-    protected bool m_bHasLastPositionSample = false;
-    protected vector m_vLastPositionSample = vector.Zero;
-    protected vector m_vComputedVelocity = vector.Zero; // 上次更新周期计算得到的速度（m/s）
-    protected float m_fLastSpeedUpdateTime = 0.0; // 上次速度更新的时间戳（秒）
     
     // ==================== 游泳状态缓存（用于调试显示）====================
     protected CompartmentAccessComponent m_pCompartmentAccess;
@@ -128,9 +124,6 @@ modded class SCR_CharacterControllerComponent
         m_pExerciseTracker = new ExerciseTracker();
         if (m_pExerciseTracker)
             m_pExerciseTracker.Initialize(GetGame().GetWorld().GetWorldTime()); 
-        
-        // 初始化速度更新时间戳
-        m_fLastSpeedUpdateTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         
         // 初始化"撞墙"阻尼过渡模块
         m_pCollapseTransition = new CollapseTransition();
@@ -449,29 +442,14 @@ modded class SCR_CharacterControllerComponent
             encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
         
         // ==================== 获取当前实际速度（m/s）====================
-        // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能为 0
-        // 解决：使用位置差分测速，得到更可靠的速度向量
-        // 模块化：使用 StaminaUpdateCoordinator 计算速度
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        float dtSeconds = currentTime - m_fLastSpeedUpdateTime;
+        // 使用游戏引擎原生的 GetVelocity() 方法获取速度
+        vector velocity = GetVelocity();
+        vector horizontalVelocity = velocity;
+        horizontalVelocity[1] = 0.0; // 忽略垂直速度
+        float currentSpeed = horizontalVelocity.Length();
         
-        // 避免极端情况：如果 dt 过大（如超过1秒），使用默认值
-        if (dtSeconds < 0.0 || dtSeconds > 1.0)
-            dtSeconds = SPEED_UPDATE_INTERVAL_MS * 0.001;
-        
-        SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
-            owner,
-            m_vLastPositionSample,
-            m_bHasLastPositionSample,
-            m_vComputedVelocity,
-            dtSeconds);
-        float currentSpeed = speedResult.currentSpeed;
-        m_vLastPositionSample = speedResult.lastPositionSample;
-        m_bHasLastPositionSample = speedResult.hasLastPositionSample;
-        m_vComputedVelocity = speedResult.computedVelocity;
-        
-        // 更新速度更新时间戳
-        m_fLastSpeedUpdateTime = currentTime;
+        // 确保currentSpeed不超过物理上限
+        currentSpeed = Math.Min(currentSpeed, 7.0);
         
         // ==================== 速度计算和更新（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 更新速度
@@ -532,6 +510,8 @@ modded class SCR_CharacterControllerComponent
         
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）
         float currentTimeForExercise = GetGame().GetWorld().GetWorldTime(); 
+        // 与旧逻辑保持一致：使用秒单位的 currentTime（供湿重/环境因子等模块使用）
+        float currentTime = currentTimeForExercise / 1000.0;
         
         // 如果游泳状态变化，重置调试标志
         if (isSwimming != m_bWasSwimming)
@@ -565,7 +545,8 @@ modded class SCR_CharacterControllerComponent
         // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算，传入游泳湿重用于总湿重计算
         if (m_pEnvironmentFactor)
         {
-            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, m_vComputedVelocity, terrainFactor, m_fCurrentWetWeight);
+            vector currentVelocity = GetVelocity();
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, currentVelocity, terrainFactor, m_fCurrentWetWeight);
         }
         
         // 获取热应激倍数（影响体力消耗和恢复）
@@ -743,6 +724,7 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
+        vector currentVelocity = GetVelocity();
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
@@ -750,7 +732,7 @@ modded class SCR_CharacterControllerComponent
             currentWeightWithWet,
             gradePercent,
             terrainFactor,
-            m_vComputedVelocity,
+            currentVelocity,
             m_bSwimmingVelocityDebugPrinted,
             owner);
         float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
@@ -1004,22 +986,12 @@ modded class SCR_CharacterControllerComponent
         if (!world)
             return;
         
-        // 获取当前速度（使用位置差分测速缓存）
-        bool isSwimming = IsSwimmingByCommand();
-        vector velForDisplay = m_vComputedVelocity;
-        float speedHorizontal = 0.0;
-
-        if (isSwimming)
-        {
-            speedHorizontal = velForDisplay.Length();
-        }
-        else
-        {
-            vector velocityXZ = vector.Zero;
-            velocityXZ[0] = velForDisplay[0];
-            velocityXZ[2] = velForDisplay[2];
-            speedHorizontal = velocityXZ.Length(); // 水平速度（米/秒）
-        }
+        // 获取当前速度（使用游戏引擎原生的 GetVelocity() 方法）
+        vector velocity = GetVelocity();
+        vector velocityXZ = vector.Zero;
+        velocityXZ[0] = velocity[0];
+        velocityXZ[2] = velocity[2];
+        float speedHorizontal = velocityXZ.Length(); // 水平速度（米/秒）
         
         // 如果已有上一秒的数据，则显示上一秒的速度和状态
         if (m_bHasPreviousSpeed)

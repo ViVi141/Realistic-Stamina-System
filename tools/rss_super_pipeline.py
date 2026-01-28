@@ -279,27 +279,29 @@ class RSSSuperPipeline:
         # 初始化自定义并行工作器
         self.parallel_worker = ParallelWorker(max_workers=n_jobs)
         
-    def objective(self, trial: optuna.Trial) -> Tuple[float, float, float]:
+    def objective(self, trial: optuna.Trial) -> Tuple[float, float]:
         """
-        Optuna 三目标函数
+        Optuna 双目标函数
         
         Args:
             trial: Optuna 试验对象
         
         Returns:
-            (realism_loss, playability_burden, stability_risk)
+            (playability_burden, stability_risk)
         """
         # ==================== 1. 定义搜索空间 ====================
         # 使用与 rss_optimizer_optuna.py 相同的参数范围（但已优化）
         
-        # 能量转换相关（改进：扩大搜索范围，允许更低消耗以通过30KG测试）
+        # 能量转换相关
+        # 调整：提高下界，避免 Run/Sprint 消耗被压得过低（用户反馈：冲刺/奔跑耗体力太低）。
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 2.5e-5, 7e-5, log=True  # 从3e-5降低到2.5e-5，允许更低消耗
+            'energy_to_stamina_coeff', 3.0e-5, 7e-5, log=True
         )
         
-        # 恢复系统相关（改进：允许更快恢复以通过30KG测试）
+        # 恢复系统相关
+        # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1.5e-4, 5e-4, log=True  # 从4e-4提高到5e-4，允许更快恢复
+            'base_recovery_rate', 1.5e-4, 4.5e-4, log=True
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
@@ -324,8 +326,9 @@ class RSSSuperPipeline:
         )
         
         # Sprint 相关
+        # 调整：提高下界，确保 Sprint 明显更耗体力。
         sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', 2.0, 4.0
+            'sprint_stamina_drain_multiplier', 2.8, 5.0
         )
         
         # 疲劳系统相关
@@ -337,11 +340,12 @@ class RSSSuperPipeline:
         )
         
         # 代谢适应相关
+        # 调整：提高效率因子下界（效率因子越高，消耗越大），避免 Run/Sprint 被优化得过“省体力”。
         aerobic_efficiency_factor = trial.suggest_float(
-            'aerobic_efficiency_factor', 0.8, 1.0
+            'aerobic_efficiency_factor', 0.88, 1.05
         )
         anaerobic_efficiency_factor = trial.suggest_float(
-            'anaerobic_efficiency_factor', 1.0, 1.5
+            'anaerobic_efficiency_factor', 1.15, 1.6
         )
         
         # 恢复系统高级参数（优化：确保逻辑递减 fast > medium > slow）
@@ -578,9 +582,106 @@ class RSSSuperPipeline:
         # 注：这是一个软约束，仅在明显偏离时才惩罚
         # （这个约束很难在不知道当前是哪个配置的情况下强制）
         
+        # 约束8: 移动能量学约束（根据用户反馈校准）
+        # 目标：
+        # - Sprint / Run 必须“净消耗”且消耗不应过低
+        # - Walk 必须“缓慢净恢复”（不应快到像静止趴下回血）
+        movement_balance_penalty = self._evaluate_movement_balance_penalty(constants)
+        if movement_balance_penalty > 0.0:
+            constraint_penalty += movement_balance_penalty
+            stability_risk += movement_balance_penalty
+        
         # ==================== 8. 返回两个目标函数（包含约束惩罚） ====================
         
         return playability_burden, stability_risk
+
+    def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> float:
+        """基于短时段“移动净值”行为的软硬约束惩罚。
+        
+        设计目标（用户意图）：
+        - Run / Sprint：体力应稳定下降（净消耗）
+        - Walk：体力应缓慢上升（净恢复）
+        
+        说明：
+        - 使用短时段固定速度测试，计算起止体力变化。
+        - 惩罚系数取较大值，使其在 NSGA-II 中具有足够约束力。
+        """
+        # 使用独立 twin，避免污染主仿真器状态
+        twin = RSSDigitalTwin(constants)
+
+        def simulate_fixed_speed(
+            speed: float,
+            duration_seconds: float,
+            current_weight: float,
+            movement_type: int,
+            initial_stamina: float,
+        ) -> float:
+            """返回 (end_stamina - start_stamina)。"""
+            twin.reset()
+            twin.stamina = float(np.clip(initial_stamina, 0.0, 1.0))
+            current_time = 0.0
+            steps = int(duration_seconds / 0.2)
+            for _ in range(steps):
+                twin.step(
+                    speed=speed,
+                    current_weight=current_weight,
+                    grade_percent=0.0,
+                    terrain_factor=1.0,
+                    stance=Stance.STAND,
+                    movement_type=movement_type,
+                    current_time=current_time,
+                    enable_randomness=False,
+                )
+                current_time += 0.2
+            return twin.stamina - initial_stamina
+
+        penalty = 0.0
+
+        # 1) Run：60秒 3.7m/s 空载，期望体力下降至少 3%
+        run_delta = simulate_fixed_speed(
+            speed=3.7,
+            duration_seconds=60.0,
+            current_weight=90.0,
+            movement_type=MovementType.RUN,
+            initial_stamina=1.0,
+        )
+        # run_delta < 0 表示消耗；越接近 0 表示越不耗体力
+        required_run_drop = 0.03
+        actual_run_drop = max(0.0, -run_delta)
+        if actual_run_drop < required_run_drop:
+            penalty += (required_run_drop - actual_run_drop) * 20000.0
+
+        # 2) Sprint：30秒 5.0m/s 空载，期望体力下降至少 4%
+        sprint_delta = simulate_fixed_speed(
+            speed=5.0,
+            duration_seconds=30.0,
+            current_weight=90.0,
+            movement_type=MovementType.SPRINT,
+            initial_stamina=1.0,
+        )
+        required_sprint_drop = 0.04
+        actual_sprint_drop = max(0.0, -sprint_delta)
+        if actual_sprint_drop < required_sprint_drop:
+            penalty += (required_sprint_drop - actual_sprint_drop) * 25000.0
+
+        # 3) Walk：120秒 1.8m/s 标准战斗负载，期望“缓慢恢复”
+        # 这里用 30KG 负载（总重 120KG）更符合玩家场景。
+        walk_delta = simulate_fixed_speed(
+            speed=1.8,
+            duration_seconds=120.0,
+            current_weight=120.0,
+            movement_type=MovementType.WALK,
+            initial_stamina=0.50,
+        )
+        # 期望 2分钟至少 +1%（太慢则不恢复），最多 +6%（太快则像原地回血）
+        min_walk_gain = 0.01
+        max_walk_gain = 0.06
+        if walk_delta < min_walk_gain:
+            penalty += (min_walk_gain - walk_delta) * 15000.0
+        elif walk_delta > max_walk_gain:
+            penalty += (walk_delta - max_walk_gain) * 8000.0
+
+        return float(penalty)
     
     def _check_basic_fitness(self, twin: RSSDigitalTwin) -> bool:
         """
@@ -654,32 +755,36 @@ class RSSSuperPipeline:
                     enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
                 )
                 
-                # 计算当前场景的可玩性负担
+                # 计算当前场景的可玩性负担（连续型，避免大量解被压成同一常数）
                 scenario_burden = 0.0
-                
-                # 2. 完成时间惩罚
-                target_time = scenario.target_finish_time
-                actual_time = results['total_time_with_penalty']
-                time_penalty_ratio = (actual_time - target_time) / target_time
-                if time_penalty_ratio > 0.10:
-                    scenario_burden += (time_penalty_ratio - 0.10) * 200.0
-                elif time_penalty_ratio > 0.05:
-                    scenario_burden += (time_penalty_ratio - 0.05) * 50.0
-                
-                # 3. 硬性奖励
-                if time_penalty_ratio <= 0.10:
-                    scenario_burden = max(0.0, scenario_burden - 400.0)
-                
-                # 4. 体力耗尽时间惩罚
-                stamina_history = results['stamina_history']
-                if len(stamina_history) > 0:
+
+                target_time = float(scenario.target_finish_time)
+                actual_time = float(results['total_time_with_penalty'])
+                time_ratio = actual_time / max(target_time, 1e-6)
+
+                # 1) 完成时间惩罚：允许轻微超时，但超时越多惩罚越大（连续而非阶梯）
+                # 目标：30KG 下不要“过分慢”，但也不强迫极限跑。
+                scenario_burden += max(0.0, time_ratio - 1.05) * 200.0
+                scenario_burden += max(0.0, time_ratio - 1.10) * 1200.0
+
+                # 2) 体力压力惩罚：min/mean 体力越低，可玩性越差（连续）
+                stamina_history = results.get('stamina_history', [])
+                if stamina_history:
+                    min_stamina = float(min(stamina_history))
+                    mean_stamina = float(sum(stamina_history) / len(stamina_history))
+
+                    # 偏好：最低体力至少 20%（低于则快速加罚）
+                    scenario_burden += max(0.0, 0.20 - min_stamina) * 2500.0
+
+                    # 偏好：平均体力不要太低（避免全程“红条”）
+                    scenario_burden += max(0.0, 0.45 - mean_stamina) * 600.0
+
+                    # 3) “耗尽占比”惩罚：低体力时长占比越高，惩罚越大（平方增强区分度）
                     exhausted_frames = sum(1 for s in stamina_history if s < 0.05)
-                    total_frames = len(stamina_history)
-                    exhaustion_ratio = exhausted_frames / total_frames if total_frames > 0 else 0.0
-                    if exhaustion_ratio > 0.1:
-                        scenario_burden += exhaustion_ratio * 50.0
-                
-                return scenario_burden, scenario
+                    exhaustion_ratio = exhausted_frames / len(stamina_history)
+                    scenario_burden += (exhaustion_ratio * exhaustion_ratio) * 800.0
+
+                return float(scenario_burden), scenario
             except Exception:
                 # 如果仿真失败，返回大惩罚值
                 return 1000.0, None
@@ -695,12 +800,12 @@ class RSSSuperPipeline:
         weights = [0.5, 0.3, 0.2]  # 2英里测试权重最高
         
         for i, (scenario_burden, scenario) in enumerate(results_list):
-            if scenario_burden >= 1000.0:
-                # 如果场景评估失败，返回大惩罚值
-                return 1000.0
-            total_burden += scenario_burden * weights[i]
+            # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
+            if scenario is None:
+                return 1_000_000.0
+            total_burden += float(scenario_burden) * weights[i]
         
-        return total_burden
+        return float(total_burden)
     
     def _evaluate_stability_risk(
         self,
@@ -840,6 +945,24 @@ class RSSSuperPipeline:
                             'final_stamina': static_twin.stamina_history[-1]
                         }
                     ))
+
+            # ==================== 连续型“风险评分”（让稳定性目标有梯度）====================
+            # 仅靠“是否触发BUG”会导致稳定性目标大面积为 0，从而退化为单目标优化。
+            # 这里加入“接近崩溃”的软风险：在极端场景下体力越接近耗尽，风险越高。
+            if stamina_history:
+                min_stamina = float(min(stamina_history))
+                final_stamina = float(stamina_history[-1])
+
+                # 极端场景下希望仍保留一定体力余量（例如 >=10%）。
+                stability_risk += max(0.0, 0.10 - min_stamina) * 4000.0
+
+                # 如果最终体力也很低，说明长期稳定性差（附加软惩罚）。
+                stability_risk += max(0.0, 0.05 - final_stamina) * 2000.0
+
+                # 耗尽占比：越多 tick 处于接近耗尽，风险越大。
+                near_zero_frames = sum(1 for s in stamina_history if s <= 0.01)
+                near_zero_ratio = near_zero_frames / len(stamina_history)
+                stability_risk += (near_zero_ratio * near_zero_ratio) * 1500.0
             
         except Exception as e:
             # 如果仿真崩溃，记录为严重BUG
