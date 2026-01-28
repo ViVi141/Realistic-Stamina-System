@@ -136,7 +136,7 @@ class StaminaConstants
     // 调整：将基础全满时间（静止空载）从约11分钟缩短至约8.3分钟
     // 计算逻辑：1.0(体力) / 500秒(8.3分钟) / 5(每秒tick数) = 0.0004
     // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
-    static const float BASE_RECOVERY_RATE = 0.0004; // 每0.2秒恢复0.04%
+    static const float BASE_RECOVERY_RATE = 0.00035; // 每0.2秒恢复0.035%（从0.0004降低到0.00035，降低12.5%）
     
     // 恢复率非线性系数（基于当前体力百分比）
     static const float RECOVERY_NONLINEAR_COEFF = 0.5; // 非线性恢复系数（0.0-1.0）
@@ -146,19 +146,19 @@ class StaminaConstants
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
     static const float FAST_RECOVERY_DURATION_MINUTES = 1.5; // 快速恢复期持续时间（分钟）
-    static const float FAST_RECOVERY_MULTIPLIER = 3.5; // 快速恢复期恢复速度倍数（从8降到3.5）
+    static const float FAST_RECOVERY_MULTIPLIER = 2.5; // 快速恢复期恢复速度倍数（从3.5降低到2.5，降低28.6%）
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
     static const float MEDIUM_RECOVERY_START_MINUTES = 1.5; // 中等恢复期开始时间（分钟）
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = 8.5; // 中等恢复期持续时间（分钟）
-    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.8; // 中等恢复期恢复速度倍数（从3.0降到1.8）
+    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.4; // 中等恢复期恢复速度倍数（从1.8降低到1.4，降低22.2%）
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
     // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
     // 优化：提升到0.8倍（从0.7倍）
     static const float SLOW_RECOVERY_START_MINUTES = 10.0; // 慢速恢复期开始时间（分钟）
-    static const float SLOW_RECOVERY_MULTIPLIER = 0.8; // 慢速恢复期恢复速度倍数（0.8倍）
+    static const float SLOW_RECOVERY_MULTIPLIER = 0.6; // 慢速恢复期恢复速度倍数（从0.8降低到0.6，降低25%）
     
     // 年龄对恢复速度的影响系数
     static const float AGE_RECOVERY_COEFF = 0.2; // 年龄恢复系数
@@ -177,9 +177,9 @@ class StaminaConstants
     // 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
     // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
-    static const float STANDING_RECOVERY_MULTIPLIER = 2.0; // 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
+    static const float STANDING_RECOVERY_MULTIPLIER = 1.5; // 站姿恢复倍数（从2.0降低到1.5，降低25%）
     static const float CROUCHING_RECOVERY_MULTIPLIER = 1.5; // 蹲姿恢复倍数（+50%，从1.3提升到1.5）
-    static const float PRONE_RECOVERY_MULTIPLIER = 2.2; // 趴姿恢复倍数（+120%，从1.7提升到2.2）
+    static const float PRONE_RECOVERY_MULTIPLIER = 1.8; // 趴姿恢复倍数（+80%，从2.2降低到1.8，降低18%）
     
     // ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
     // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -476,7 +476,7 @@ class StaminaConstants
             if (params)
                 return params.base_recovery_rate;
         }
-        return 0.0004; // 默认值（更新为0.0004）
+        return 0.00035; // 默认值（更新为0.00035，从0.0004降低）
     }
     
     // 获取站姿恢复倍数（从配置管理器）
@@ -489,7 +489,7 @@ class StaminaConstants
             if (params)
                 return params.standing_recovery_multiplier;
         }
-        return 2.0; // 默认值
+        return 1.5; // 默认值（从2.0降低到1.5）
     }
     
     // 获取趴姿恢复倍数（从配置管理器）
@@ -502,7 +502,7 @@ class StaminaConstants
             if (params)
                 return params.prone_recovery_multiplier;
         }
-        return 2.2; // 默认值
+        return 1.8; // 默认值（从2.2降低到1.8）
     }
     
     // 获取负重恢复惩罚系数（从配置管理器）

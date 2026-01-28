@@ -301,14 +301,14 @@ class RSSSuperPipeline:
         # 恢复系统相关
         # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1.5e-4, 4.5e-4, log=True
+            'base_recovery_rate', 1.5e-4, 4.0e-4, log=True  # 从4.5e-4降低到4.0e-4，与默认值3.5e-4保持一致
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
-            'prone_recovery_multiplier', 1.5, 3.0  # 从1.2~2.5改为1.5~3.0，确保能>standing
+            'prone_recovery_multiplier', 1.5, 2.5  # 从1.5~3.0改为1.5~2.5，与默认值1.8保持一致
         )
         standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.0, 2.0  # 从1.0~2.5改为1.0~2.0，与prone形成正确关系
+            'standing_recovery_multiplier', 1.0, 1.8  # 从1.0~2.0改为1.0~1.8，与默认值1.5保持一致
         )
         load_recovery_penalty_coeff = trial.suggest_float(
             'load_recovery_penalty_coeff', 1e-4, 1e-3, log=True
@@ -354,13 +354,13 @@ class RSSSuperPipeline:
         )
         # 约束：fast > medium > slow 必须满足
         fast_recovery_multiplier = trial.suggest_float(
-            'fast_recovery_multiplier', 2.8, 3.5  # 快速恢复最高
+            'fast_recovery_multiplier', 2.2, 3.0  # 从2.8~3.5改为2.2~3.0，与默认值2.5保持一致
         )
         medium_recovery_multiplier = trial.suggest_float(
-            'medium_recovery_multiplier', 1.5, 2.5  # 中速恢复中等（保证 > slow）
+            'medium_recovery_multiplier', 1.2, 1.8  # 从1.5~2.5改为1.2~1.8，与默认值1.4保持一致
         )
         slow_recovery_multiplier = trial.suggest_float(
-            'slow_recovery_multiplier', 0.5, 1.2  # 慢速恢复最低
+            'slow_recovery_multiplier', 0.5, 0.8  # 从0.5~1.2改为0.5~0.8，与默认值0.6保持一致
         )
         marginal_decay_threshold = trial.suggest_float(
             'marginal_decay_threshold', 0.7, 0.9

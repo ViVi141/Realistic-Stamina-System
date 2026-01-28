@@ -114,19 +114,19 @@ TERRAIN_FACTOR_SAND = 1.8  # 软沙地
 # 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
 # 自动校准：使用二分搜索确定最优值
 # 场景：Idle 60秒，起始体力0.10，目标结束体力0.40
-BASE_RECOVERY_RATE = 4.00e-04  # 基础恢复率（每0.2秒），调整为更合理的恢复速度
+BASE_RECOVERY_RATE = 3.50e-04  # 基础恢复率（每0.2秒），从4.00e-04降低到3.50e-04，降低12.5%
 RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数
 # 拟真平衡点：模拟"喘匀第一口氧气"
 # 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
 # 模拟停止运动后前90秒的高效恢复
 FAST_RECOVERY_DURATION_MINUTES = 1.5  # 快速恢复期持续时间（分钟）
-FAST_RECOVERY_MULTIPLIER = 3.5  # 快速恢复期恢复速度倍数
+FAST_RECOVERY_MULTIPLIER = 2.5  # 快速恢复期恢复速度倍数，从3.5降低到2.5，降低28.6%
 # 拟真平衡点：平衡快速恢复期和慢速恢复期
 MEDIUM_RECOVERY_START_MINUTES = 1.5  # 中等恢复期开始时间（分钟）
 MEDIUM_RECOVERY_DURATION_MINUTES = 8.5  # 中等恢复期持续时间（分钟）
-MEDIUM_RECOVERY_MULTIPLIER = 1.8  # 中等恢复期恢复速度倍数
+MEDIUM_RECOVERY_MULTIPLIER = 1.4  # 中等恢复期恢复速度倍数，从1.8降低到1.4，降低22.2%
 SLOW_RECOVERY_START_MINUTES = 10.0  # 慢速恢复期开始时间（分钟）
-SLOW_RECOVERY_MULTIPLIER = 0.8  # 慢速恢复期恢复速度倍数
+SLOW_RECOVERY_MULTIPLIER = 0.6  # 慢速恢复期恢复速度倍数，从0.8降低到0.6，降低25%
 AGE_RECOVERY_COEFF = 0.2  # 年龄恢复系数
 AGE_REFERENCE = 30.0  # 年龄参考值（30岁为标准）
 FATIGUE_RECOVERY_PENALTY = 0.05  # 疲劳恢复惩罚系数（最大5%恢复速度减少）
@@ -139,9 +139,9 @@ FATIGUE_RECOVERY_DURATION_MINUTES = 20.0  # 疲劳完全恢复所需时间（分
 # 蹲姿：减少下肢肌肉紧张，+50%恢复速度
 # 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
 # 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
-STANDING_RECOVERY_MULTIPLIER = 2.0  # 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
+STANDING_RECOVERY_MULTIPLIER = 1.5  # 站姿恢复倍数，从2.0降低到1.5，降低25%
 CROUCHING_RECOVERY_MULTIPLIER = 1.5  # 蹲姿恢复倍数（+50%，从1.3提升到1.5）
-PRONE_RECOVERY_MULTIPLIER = 2.2  # 趴姿恢复倍数（+120%，从1.7提升到2.2）
+PRONE_RECOVERY_MULTIPLIER = 1.8  # 趴姿恢复倍数，从2.2降低到1.8，降低18.2%
 
 # ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
 # 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
