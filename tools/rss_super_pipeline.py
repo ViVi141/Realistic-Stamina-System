@@ -333,9 +333,9 @@ class RSSSuperPipeline:
         )
         
         # Sprint 相关
-        # 调整：提高下界，确保 Sprint 明显更耗体力。
+        # 新设计标准：冲刺消耗为 Run 的 2.5x
         sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', 2.8, 5.0
+            'sprint_stamina_drain_multiplier', 2.3, 2.7  # 调整范围以更接近 2.5x
         )
         
         # 疲劳系统相关
@@ -808,13 +808,15 @@ class RSSSuperPipeline:
         walk_delta = simulate_fixed_speed(
             speed=1.8,
             duration_seconds=120.0,
-            current_weight=120.0,
+            current_weight=90.0,  # 空载
             movement_type=MovementType.WALK,
             initial_stamina=0.50,
         )
         # 期望 2分钟至少 +0.8%（从1%降低到0.8%），最多 +8%（从6%提高到8%）
-        min_walk_gain = 0.008  # 从1%降低到0.8%
-        max_walk_gain = 0.08  # 从6%提高到8%
+        # 新设计标准：每 5 秒恢复 1% 体力
+        # 120 秒应该恢复：120 / 5 × 1% = 24%
+        min_walk_gain = 0.20  # 最小恢复 20%
+        max_walk_gain = 0.28  # 最大恢复 28%
         if walk_delta < min_walk_gain:
             penalty += (min_walk_gain - walk_delta) * 3000.0  # 从5000降到3000
         elif walk_delta > max_walk_gain:
@@ -826,6 +828,11 @@ class RSSSuperPipeline:
         """
         检查基础体能标准（ACFT 2英里测试，空载）
         
+        新设计标准：
+        - 0kg 负重，3.2km 用时 15分27秒（927秒）
+        - 体力最低不能跌破 10%
+        - 体力不能长期处于 10%（平均体力应该 > 15%）
+
         Args:
             twin: 数字孪生仿真器
         
@@ -851,13 +858,20 @@ class RSSSuperPipeline:
             target_time = scenario.target_finish_time
             actual_time = results['total_time_with_penalty']
             time_ratio = actual_time / target_time
-            
-            # 检查最低体力是否合理（不低于20%）
+
+            # 检查最低体力是否合理（不低于10%）
             min_stamina = results['min_stamina']
             
-            # 通过条件：时间不超过120%且体力不低于20%
-            return time_ratio <= 1.2 and min_stamina >= 0.2
-            
+            # 检查平均体力是否合理（不能长期处于10%，应该 > 15%）
+            stamina_history = results.get('stamina_history', [])
+            if stamina_history:
+                avg_stamina = sum(stamina_history) / len(stamina_history)
+            else:
+                avg_stamina = 1.0  # 如果没有历史数据，假设为100%
+
+            # 通过条件：时间不超过120%且体力不低于10%且平均体力 > 15%
+            return time_ratio <= 1.2 and min_stamina >= 0.10 and avg_stamina > 0.15
+
         except Exception:
             return False
     

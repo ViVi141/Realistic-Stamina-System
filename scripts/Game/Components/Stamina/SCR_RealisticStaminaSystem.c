@@ -904,22 +904,25 @@ class RealisticStaminaSpeedSystem
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        // [修复 fix2.md #4] 只保留下限，移除上限 2.0
-        // 热力学原理：做功与质量成正比，不存在这种"平台期"
-        // 这会让超重负载的作弊玩家获得优势
-        weightMultiplier = Math.Max(weightMultiplier, 0.5); // 只保留下限，移除上限
-        
-        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor;
+        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
+        // 只防止负数，不限制上限（完全尊重玩家选择）
+        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
+
+        // [修复] 根据原始 Pandolf 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
+        // 原始公式：E = M · (基础项 + 坡度项) · η
+        // 其中 E 的单位是 Watts，M 是总重量（kg）
+        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor * REFERENCE_WEIGHT;
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
-        // 从0.0001降低到0.000035，减少约65%的体力消耗速度
+        // 从0.0001降低到0.000015，减少约85%的体力消耗速度
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内（避免数值爆炸）
-        staminaDrainRate = Math.Clamp(staminaDrainRate, 0.0, 0.05); // 最多每秒消耗5%
-        
+        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
+        // 只防止负数，不限制上限
+        staminaDrainRate = Math.Max(staminaDrainRate, 0.0);
+
         return staminaDrainRate;
     }
     
@@ -1105,9 +1108,10 @@ class RealisticStaminaSpeedSystem
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内
-        staticDrainRate = Math.Clamp(staticDrainRate, 0.0, 0.01); // 最多每秒消耗1%
-        
+        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
+        // 只防止负数，不限制上限
+        staticDrainRate = Math.Max(staticDrainRate, 0.0);
+
         return staticDrainRate;
     }
     
@@ -1172,20 +1176,23 @@ class RealisticStaminaSpeedSystem
         // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
         // 使用相对于基准体重的倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        // [修复 fix2.md #4] 只保留下限，移除上限 2.0
-        // 热力学原理：做功与质量成正比，不存在这种"平台期"
-        // 这会让超重负载的作弊玩家获得优势
-        weightMultiplier = Math.Max(weightMultiplier, 0.5); // 只保留下限，移除上限
-        
-        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
+        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
+        // 只防止负数，不限制上限（完全尊重玩家选择）
+        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
+
+        // [修复] 根据原始 Givoni-Goldman 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
+        // 原始公式：E_run = (W_body + L) · Constant · V^α
+        // 其中 E_run 的单位是 Watts，(W_body + L) 是总重量（kg）
+        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower * REFERENCE_WEIGHT;
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（从配置管理器获取）
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float runningDrainRate = runningEnergyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内
-        runningDrainRate = Math.Clamp(runningDrainRate, 0.0, 0.05); // 最多每秒消耗5%
-        
+        // [修复] 完全移除 clip 上限，让 Givoni 模型自然输出
+        // 只防止负数，不限制上限
+        runningDrainRate = Math.Max(runningDrainRate, 0.0);
+
         return runningDrainRate;
     }
     

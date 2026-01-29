@@ -39,28 +39,29 @@ class RSSConstants:
     ANAEROBIC_THRESHOLD = 0.8
     FATIGUE_START_TIME_MINUTES = 5.0
     
-    # 能量转换
-    ENERGY_TO_STAMINA_COEFF = 3.50e-05
+    # 能量转换（修复版：降低到 1.5e-5，让正常跑步耗尽时间达到 7-10 分钟）
+    ENERGY_TO_STAMINA_COEFF = 1.50e-05
     
-    # 恢复系统
-    BASE_RECOVERY_RATE = 0.00035  # 保持原始值
+    # 恢复系统（修复版：降低恢复速度）
+    BASE_RECOVERY_RATE = 0.00015  # 从0.00035降低约57%，解决恢复太快的问题
     RECOVERY_NONLINEAR_COEFF = 0.5
-    FAST_RECOVERY_DURATION_MINUTES = 1.5  # 从1.0延长到1.5，恢复到原始值
-    FAST_RECOVERY_MULTIPLIER = 2.5  # 从1.5提高到2.5，恢复到原始值
+    FAST_RECOVERY_DURATION_MINUTES = 1.5
+    FAST_RECOVERY_MULTIPLIER = 1.6  # 从2.5降低约36%，解决恢复太快的问题
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
-    MEDIUM_RECOVERY_MULTIPLIER = 1.4  # 从1.2提高到1.4，恢复到原始值
-    SLOW_RECOVERY_MULTIPLIER = 0.6  # 从0.5提高到0.6，恢复到原始值
+    MEDIUM_RECOVERY_MULTIPLIER = 1.3  # 从1.4降低约7%，解决恢复太快的问题
+    SLOW_RECOVERY_START_MINUTES = 10.0  # [添加] 慢速恢复期开始时间（分钟）
+    SLOW_RECOVERY_MULTIPLIER = 0.6
     
-    # 姿态恢复倍数
-    STANDING_RECOVERY_MULTIPLIER = 1.5  # 从1.0提高到1.5，恢复到原始值
-    CROUCHING_RECOVERY_MULTIPLIER = 1.5  # 从1.1提高到1.5，恢复到原始值
-    PRONE_RECOVERY_MULTIPLIER = 1.8  # 从1.2提高到1.8，恢复到原始值
+    # 姿态恢复倍数（修复版：降低倍数）
+    STANDING_RECOVERY_MULTIPLIER = 1.3  # 从1.5降低约13%，解决恢复太快的问题
+    CROUCHING_RECOVERY_MULTIPLIER = 1.4
+    PRONE_RECOVERY_MULTIPLIER = 1.6  # 从1.8降低约11%，解决恢复太快的问题
     
     # 负重惩罚参数
     BASE_WEIGHT = 1.36
     ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
     ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0
-    LOAD_RECOVERY_PENALTY_COEFF = 0.0004
+    LOAD_RECOVERY_PENALTY_COEFF = 0.0001  # 修复：从 0.0004 降低到 0.0001，解决负重导致恢复率为 0 的问题
     LOAD_RECOVERY_PENALTY_EXPONENT = 2.0
     
     # 阈值
@@ -171,7 +172,8 @@ class RSSDigitalTwin:
         # 修正1：此处虽然名为W/kg系数，但公式结构直接计算总瓦特数，因为乘以了weight
         # c1 * body_weight = W/kg * kg = Watts. 这里的公式是对的。
         rate = (base + load_term) * coeff
-        return float(np.clip(rate, 0.0, 0.05))
+        # 修复：完全移除clip上限，让Pandolf模型自然输出（完全尊重生理模型）
+        return float(max(0.0, rate))
 
     def _santee_downhill_correction(self, grade_percent):
         if grade_percent >= 0:
@@ -211,11 +213,13 @@ class RSSDigitalTwin:
             if 0 < santee < 1.0:
                 grade_term = grade_term / santee
         
+        # 修复：加强地形因子保护（环境因子保护，防止极端地形）
         terrain_factor = np.clip(terrain_factor, 0.5, 3.0)
         
         # 注意： Pandolf公式给出的是 W/kg。
         # w_mult 是 负重/参考体重 的比率。
-        w_mult = np.clip(current_weight / ref, 0.5, 2.0)
+        # 修复：移除负重保护，让玩家承担负重后果（完全尊重玩家选择）
+        w_mult = max(0.1, current_weight / ref)  # 只防止负数，不限制上限
         
         # 修正1：将 W/kg 转换为 Total Watts (乘以参考体重)
         # 这里的逻辑是：(基础W/kg + 坡度W/kg) * 负重系数 * 地形 * 参考体重 = 总瓦特
@@ -223,7 +227,8 @@ class RSSDigitalTwin:
         total_watts = energy_per_kg * ref * w_mult
         
         rate = total_watts * coeff
-        return float(np.clip(rate, 0.0, 0.05))
+        # 修复：完全移除clip上限，让Pandolf模型自然输出（完全尊重生理模型）
+        return float(max(0.0, rate))
 
     def _givoni_running(self, velocity, current_weight):
         if velocity <= 2.2:
@@ -233,8 +238,9 @@ class RSSDigitalTwin:
         gc = getattr(self.constants, 'GIVONI_CONSTANT', 0.6)
         ge = getattr(self.constants, 'GIVONI_VELOCITY_EXPONENT', 2.2)
         coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
-        
-        w_mult = np.clip(current_weight / ref, 0.5, 2.0)
+
+        # 修复：移除负重保护，让玩家承担负重后果（完全尊重玩家选择）
+        w_mult = max(0.1, current_weight / ref)  # 只防止负数，不限制上限
         vp = np.power(velocity, ge)
         
         # 修正1：Givoni公式计算 W/kg。需要乘以体重转换为 Watts。
@@ -243,7 +249,8 @@ class RSSDigitalTwin:
         total_watts = w_mult * gc * vp * ref
         
         rate = total_watts * coeff
-        return float(np.clip(rate, 0.0, 0.05))
+        # 修复：完全移除clip上限，让Givoni模型自然输出（完全尊重生理模型）
+        return float(max(0.0, rate))
 
     def _metabolic_efficiency_factor(self, speed_ratio):
         aero = getattr(self.constants, 'AEROBIC_THRESHOLD', 0.6)
@@ -323,12 +330,15 @@ class RSSDigitalTwin:
         else:
             base = raw * posture * total_eff * fatigue
 
-        speed_linear = 0.00005 * speed_ratio * total_eff * fatigue
-        speed_sq = 0.0002 * speed_ratio * speed_ratio * total_eff * fatigue  # 从0.00005提高到0.0002，增加4倍
-        enc_base = 0.001 * (enc_mult - 1.0)
-        enc_speed = 0.0002 * (enc_mult - 1.0) * speed_ratio * speed_ratio
-        components = base + speed_linear + speed_sq + enc_base + enc_speed
-        total_drain = components * sprint_mult
+        # 修复：移除掩盖Pandolf模型的小项，让Pandolf模型成为主要消耗来源
+        # 这些小项的量级（1e-05到1e-03）远小于Pandolf模型的应有输出（1e-02）
+        # 移除：speed_linear、speed_sq、enc_base、enc_speed
+        
+        # 保留姿态修正，移除其他小项
+        total_drain = base * sprint_mult
+        
+        # 应用负重修正（通过enc_mult）
+        total_drain = total_drain * enc_mult
         
         # 坡度保护：限制坡度项的最大贡献，防止极端坡度导致消耗爆炸
         # 注意：数字孪生中的坡度影响通过terrain_factor和grade_percent体现
@@ -377,7 +387,10 @@ class RSSDigitalTwin:
             current_weight_for_recovery = self.constants.CHARACTER_WEIGHT
             
         if current_weight_for_recovery > 0.0:
-            load_ratio = current_weight_for_recovery / 30.0
+            # 修复：将负重除数从 30.0 增加到 90.0（参考体重），解决恢复率为 0 的问题
+            # 原始：load_ratio = current_weight / 30.0，导致 load_ratio 过大（90kg -> 3.0）
+            # 修复后：load_ratio = current_weight / 90.0，更合理（90kg -> 1.0）
+            load_ratio = current_weight_for_recovery / self.constants.REFERENCE_WEIGHT
             load_ratio = min(max(load_ratio, 0.0), 2.0)
             load_recovery_penalty = (load_ratio ** self.constants.LOAD_RECOVERY_PENALTY_EXPONENT) * self.constants.LOAD_RECOVERY_PENALTY_COEFF
             recovery_rate -= load_recovery_penalty
@@ -465,8 +478,11 @@ class RSSDigitalTwin:
         # 输入参数验证
         speed = max(float(speed), 0.0)  # 速度不能为负
         current_weight = max(float(current_weight), 0.0)  # 重量不能为负
-        grade_percent = float(grade_percent)
-        terrain_factor = max(float(terrain_factor), 0.1)  # 地形因子不能过小
+        # 修复：加强坡度保护（环境因子保护，防止极端坡度）
+        # 限制在 -85 到 85% 之间，防止 tan() 爆炸（超过 85 度的坡度不太现实）
+        grade_percent = max(-85.0, min(85.0, float(grade_percent)))
+        # 修复：加强地形因子保护（环境因子保护，与Pandolf模型保持一致）
+        terrain_factor = max(0.5, min(3.0, float(terrain_factor)))
         current_time = max(float(current_time), 0.0)  # 时间不能为负
         
         time_delta = current_time - self.current_time if self.current_time > 0 else 0.2

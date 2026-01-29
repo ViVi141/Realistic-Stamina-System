@@ -134,10 +134,10 @@ class StaminaConstants
     // 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
     
     // 基础恢复率（每0.2秒，在50%体力时的恢复率）
-    // 调整：将基础全满时间（静止空载）从约11分钟缩短至约8.3分钟
-    // 计算逻辑：1.0(体力) / 500秒(8.3分钟) / 5(每秒tick数) = 0.0004
+    // [修复] 与Python数字孪生保持一致，从0.00035降低到0.00015（降低57%）
+    // 计算逻辑：1.0(体力) / 1333秒(22.2分钟) / 5(每秒tick数) = 0.00015
     // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
-    static const float BASE_RECOVERY_RATE = 0.00035; // 每0.2秒恢复0.035%（从0.0004降低到0.00035，降低12.5%）
+    static const float BASE_RECOVERY_RATE = 0.00015; // 每0.2秒恢复0.015%（与Python一致）
     
     // 恢复率非线性系数（基于当前体力百分比）
     static const float RECOVERY_NONLINEAR_COEFF = 0.5; // 非线性恢复系数（0.0-1.0）
@@ -147,14 +147,14 @@ class StaminaConstants
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
     static const float FAST_RECOVERY_DURATION_MINUTES = 1.5; // 快速恢复期持续时间（分钟）
-    static const float FAST_RECOVERY_MULTIPLIER = 2.5; // 快速恢复期恢复速度倍数（从3.5降低到2.5，降低28.6%）
+    static const float FAST_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从2.5降低到1.6（降低36%）
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
     static const float MEDIUM_RECOVERY_START_MINUTES = 1.5; // 中等恢复期开始时间（分钟）
     // [修复] 与Python数字孪生保持一致，从8.5改为5.0
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
-    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.4; // 中等恢复期恢复速度倍数（从1.8降低到1.4，降低22.2%）
+    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.4降低到1.3（降低7%）
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
     // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
@@ -174,14 +174,14 @@ class StaminaConstants
     // ==================== 姿态恢复加成参数（深度生理压制版本）====================
     // 深度生理压制：趴下不只是为了隐蔽，更是为了让心脏负荷最小化
     // 姿态加成设定的更有体感，但不过分
-    // 站姿：提升至2.0倍，确保能够覆盖静态站立消耗（0.0027%每0.2秒）
-    // 蹲姿：减少下肢肌肉紧张，+50%恢复速度
-    // 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
+    // 站姿：确保能够覆盖静态站立消耗
+    // 蹲姿：减少下肢肌肉紧张，+40%恢复速度
+    // 趴姿：全身放松，最大化血液循环，+60%恢复速度
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
     // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
-    static const float STANDING_RECOVERY_MULTIPLIER = 1.5; // 站姿恢复倍数（从2.0降低到1.5，降低25%）
-    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.5; // 蹲姿恢复倍数（+50%，从1.3提升到1.5）
-    static const float PRONE_RECOVERY_MULTIPLIER = 1.8; // 趴姿恢复倍数（+80%，从2.2降低到1.8，降低18%）
+    static const float STANDING_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.5降低到1.3（降低13%）
+    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.4; // [修复] 与Python一致，从1.5降低到1.4（降低7%）
+    static const float PRONE_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从1.8降低到1.6（降低11%）
     
     // ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
     // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -191,9 +191,9 @@ class StaminaConstants
     // 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除70%
     // 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
     // 注意：这些值现在从配置管理器获取（GetLoadRecoveryPenaltyCoeff(), GetLoadRecoveryPenaltyExponent()）
-    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0004; // 负重恢复惩罚系数
+    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0001; // [修复] 负重恢复惩罚系数，从 0.0004 降低到 0.0001
     static const float LOAD_RECOVERY_PENALTY_EXPONENT = 2.0; // 负重恢复惩罚指数（2.0 = 平方）
-    static const float BODY_TOLERANCE_BASE = 30.0; // 身体耐受基准（kg）
+    static const float BODY_TOLERANCE_BASE = 90.0; // [修复] 身体耐受基准（kg），从 30.0 增加到 90.0（参考体重）
     
     // ==================== 边际效应衰减机制（深度生理压制版本）====================
     // 医学解释：身体从"半死不活"恢复到"喘匀气"很快（前80%），但要从"喘匀气"恢复到"肌肉巅峰竞技状态"非常慢（最后20%）
@@ -301,7 +301,8 @@ class StaminaConstants
     
     // 能量到体力的转换系数
     // 注意：此值现在从配置管理器获取（GetEnergyToStaminaCoeff()）
-    static const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
+    // [修复] 与Python数字孪生保持一致，从0.000035降低到0.000015
+    static const float ENERGY_TO_STAMINA_COEFF = 0.000015; // 能量到体力的转换系数（与Python一致）
     
     // 参考体重（用于 Pandolf 模型）
     static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
@@ -331,7 +332,7 @@ class StaminaConstants
     // 拟真平衡点：缩短到0.5秒，减少按键无响应感
     static const float EPOC_DELAY_SECONDS = 0.5; // EPOC延迟时间（秒）- 从2秒降到0.5秒
     static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
-    
+
     // ==================== 姿态交互修正参数 ====================
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
