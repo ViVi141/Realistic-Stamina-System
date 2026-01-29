@@ -32,7 +32,7 @@ class RSSConstants:
     PANDOLF_STATIC_COEFF_1 = 1.2
     PANDOLF_STATIC_COEFF_2 = 1.6
     
-    GIVONI_CONSTANT = 0.6  # 从0.3提高到0.6，确保奔跑消耗明显高于行走
+    GIVONI_CONSTANT = 0.8  # 从1.0降低到0.8，减缓奔跑时的消耗速度，与C文件保持一致
     GIVONI_VELOCITY_EXPONENT = 2.2
     
     AEROBIC_THRESHOLD = 0.6
@@ -43,18 +43,18 @@ class RSSConstants:
     ENERGY_TO_STAMINA_COEFF = 3.50e-05
     
     # 恢复系统
-    BASE_RECOVERY_RATE = 0.00035  # 从0.0004降低到0.00035
+    BASE_RECOVERY_RATE = 0.00035  # 保持原始值
     RECOVERY_NONLINEAR_COEFF = 0.5
-    FAST_RECOVERY_DURATION_MINUTES = 1.5
-    FAST_RECOVERY_MULTIPLIER = 2.5  # 从3.5降低到2.5
+    FAST_RECOVERY_DURATION_MINUTES = 1.5  # 从1.0延长到1.5，恢复到原始值
+    FAST_RECOVERY_MULTIPLIER = 2.5  # 从1.5提高到2.5，恢复到原始值
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
-    MEDIUM_RECOVERY_MULTIPLIER = 1.4  # 从1.5降低到1.4
-    SLOW_RECOVERY_MULTIPLIER = 0.6  # 从0.8降低到0.6
+    MEDIUM_RECOVERY_MULTIPLIER = 1.4  # 从1.2提高到1.4，恢复到原始值
+    SLOW_RECOVERY_MULTIPLIER = 0.6  # 从0.5提高到0.6，恢复到原始值
     
     # 姿态恢复倍数
-    STANDING_RECOVERY_MULTIPLIER = 1.5  # 从2.0降低到1.5
-    CROUCHING_RECOVERY_MULTIPLIER = 1.5
-    PRONE_RECOVERY_MULTIPLIER = 1.8  # 从2.2降低到1.8
+    STANDING_RECOVERY_MULTIPLIER = 1.5  # 从1.0提高到1.5，恢复到原始值
+    CROUCHING_RECOVERY_MULTIPLIER = 1.5  # 从1.1提高到1.5，恢复到原始值
+    PRONE_RECOVERY_MULTIPLIER = 1.8  # 从1.2提高到1.8，恢复到原始值
     
     # 负重惩罚参数
     BASE_WEIGHT = 1.36
@@ -68,7 +68,7 @@ class RSSConstants:
     RUN_VELOCITY_THRESHOLD = 3.7
     
     # Sprint 参数
-    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0
+    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍，与C文件保持一致
     SPRINT_SPEED_BOOST = 0.30
     
     # 疲劳参数
@@ -79,9 +79,9 @@ class RSSConstants:
     AEROBIC_EFFICIENCY_FACTOR = 0.9
     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
     
-    # 姿态移动速度倍数
-    POSTURE_CROUCH_MULTIPLIER = 0.7
-    POSTURE_PRONE_MULTIPLIER = 0.3
+    # 姿态消耗倍数
+    POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数（1.6-2.0倍，取1.8），与C文件保持一致
+    POSTURE_PRONE_MULTIPLIER = 3.0  # 匍匐爬行消耗倍数（与中速跑步相当），与C文件保持一致
     
     # 动作消耗
     JUMP_STAMINA_BASE_COST = 0.035
@@ -274,12 +274,12 @@ class RSSDigitalTwin:
     def _consumption_posture_multiplier(self, speed, stance):
         if speed <= 0.05:
             return 1.0
-        speed_crouch = getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 0.7)
-        speed_prone = getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 0.3)
+        crouch_multiplier = getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 1.8)
+        prone_multiplier = getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 3.0)
         if stance == Stance.CROUCH:
-            return min(max(1.0 / max(speed_crouch, 0.4), 1.0), 2.5)
+            return min(max(crouch_multiplier, 1.0), 2.5)
         if stance == Stance.PRONE:
-            return min(max(1.0 / max(speed_prone, 0.2), 1.0), 5.0)
+            return min(max(prone_multiplier, 1.0), 5.0)
         return 1.0
 
     def _fatigue_factor(self):
@@ -409,11 +409,11 @@ class RSSDigitalTwin:
         # - Sprint状态：几乎不恢复
         speed_based_recovery_multiplier = 1.0
         if current_speed >= 5.0: # Sprint
-            speed_based_recovery_multiplier = 0.1 # 几乎不恢复
+            speed_based_recovery_multiplier = 0.05 # 几乎不恢复
         elif current_speed >= 3.2: # Run
-            speed_based_recovery_multiplier = 0.3 # 大幅降低恢复率
+            speed_based_recovery_multiplier = 0.2 # 大幅降低恢复率
         elif current_speed >= 0.1: # Walk
-            speed_based_recovery_multiplier = 0.8 # 适当降低恢复率，允许净恢复
+            speed_based_recovery_multiplier = 0.6 # 适当降低恢复率，允许净恢复
         # 静止时：speed_based_recovery_multiplier = 1.0（正常恢复）
         
         # 应用速度基于的恢复率调整

@@ -563,24 +563,24 @@ class RSSSuperPipeline:
             constraint_penalty += violation_factor * 300.0
             stability_risk += constraint_penalty
         
-        # 约束4: posture_crouch_multiplier < 1.0（蹲下应该减速）
-        # 说明：蹲下时速度应该小于正常站立，multiplier应该<1.0
-        if posture_crouch_multiplier > 1.0:
-            violation_factor = posture_crouch_multiplier - 1.0
-            constraint_penalty += violation_factor * 200.0  # 从600降到200
+        # 约束4: posture_crouch_multiplier > 1.0（蹲下应该增加消耗）
+        # 说明：蹲下时体力消耗应该大于正常站立，multiplier应该>1.0
+        if posture_crouch_multiplier <= 1.0:
+            violation_factor = 1.0 - posture_crouch_multiplier + 0.1
+            constraint_penalty += violation_factor * 200.0
             stability_risk += constraint_penalty
         
-        # 约束5: posture_prone_multiplier < 1.0（趴下应该减速）
-        # 说明：趴下时速度应该小于正常站立，multiplier应该<1.0
-        if posture_prone_multiplier > 1.0:
-            violation_factor = posture_prone_multiplier - 1.0
-            constraint_penalty += violation_factor * 600.0  # 严重惩罚物理上不可能的参数
+        # 约束5: posture_prone_multiplier > 1.0（趴下应该增加消耗）
+        # 说明：趴下时体力消耗应该大于正常站立，multiplier应该>1.0
+        if posture_prone_multiplier <= 1.0:
+            violation_factor = 1.0 - posture_prone_multiplier + 0.1
+            constraint_penalty += violation_factor * 600.0
             stability_risk += constraint_penalty
         
-        # 约束6: posture_prone_multiplier < posture_crouch_multiplier（趴下比蹲下更慢）
-        # 说明：趴下比蹲下应该移动得更慢
-        if posture_prone_multiplier > posture_crouch_multiplier:
-            violation_factor = posture_prone_multiplier - posture_crouch_multiplier
+        # 约束6: posture_prone_multiplier > posture_crouch_multiplier（趴下比蹲下消耗更大）
+        # 说明：趴下时体力消耗应该大于蹲下
+        if posture_prone_multiplier <= posture_crouch_multiplier:
+            violation_factor = posture_crouch_multiplier - posture_prone_multiplier + 0.1
             constraint_penalty += violation_factor * 300.0
             stability_risk += constraint_penalty
         
@@ -615,13 +615,22 @@ class RSSSuperPipeline:
         
         # 更新GUI（如果存在）
         if self.gui_update_callback:
-            self.gui_update_callback(
-                iteration=trial.number,
-                playability=playability_burden,
-                stability=stability_risk,
-                realism=physiological_realism,
-                params=trial.params
-            )
+            try:
+                # 确保在主线程中更新GUI
+                import threading
+                if threading.current_thread().name == 'MainThread':
+                    self.gui_update_callback(
+                        iteration=trial.number,
+                        playability=playability_burden,
+                        stability=stability_risk,
+                        realism=physiological_realism,
+                        params=trial.params
+                    )
+                else:
+                    # 在后台线程中，不更新GUI，避免主线程错误
+                    pass
+            except Exception as e:
+                print(f"GUI更新失败: {e}")
         
         # 对目标函数进行缩放，使其更容易收敛
         scaled_playability = playability_burden * 0.1  # 缩小10倍（从100倍调整为10倍，避免精度丢失）
@@ -638,7 +647,7 @@ class RSSSuperPipeline:
             constants: 常量对象
         
         Returns:
-            生理学合理性值（越小越好）
+            生理学合理性值（越大越好，0-100范围）
         """
         # 基于科学文献的生理学合理性评估
         # 参考：
@@ -646,13 +655,16 @@ class RSSSuperPipeline:
         # - Givoni & Goldman (1971): 跑步模型
         # - ACSM (2018): 生理学阈值
         
-        realism_score = 0.0
+        realism_score = 100.0
         
         # 1. 恢复模型合理性
         # 检查恢复率是否在生理学合理范围内
         base_recovery = constants.BASE_RECOVERY_RATE
         if base_recovery < 1.0e-4 or base_recovery > 5.0e-4:
-            realism_score += 10.0  # 基础恢复率偏离生理学范围
+            realism_score -= 10.0  # 基础恢复率偏离生理学范围
+        # 增加恢复率的精细评估
+        elif 1.8e-4 <= base_recovery <= 2.2e-4:
+            realism_score -= 5.0  # 惩罚过于接近默认值的参数
         
         # 2. 恢复倍数合理性
         # 检查恢复倍数是否合理
@@ -665,33 +677,60 @@ class RSSSuperPipeline:
         # 恢复倍数合理性检查（分离姿态和恢复阶段）
         # 姿态约束：趴下应该比站立恢复快
         if not (prone_recovery > standing_recovery):
-            realism_score += 3.0  # 趴下应该比站立恢复快
+            realism_score -= 15.0  # 趴下应该比站立恢复快
+        elif abs(prone_recovery - standing_recovery) < 0.5:
+            realism_score -= 8.0  # 惩罚差异过小的参数
 
         # 恢复阶段约束：快速 > 中等 > 慢速
         if not (fast_recovery > medium_recovery > slow_recovery):
-            realism_score += 3.0  # 恢复阶段应该递减
+            realism_score -= 15.0  # 恢复阶段应该递减
+        elif abs(fast_recovery - slow_recovery) < 1.0:
+            realism_score -= 8.0  # 惩罚差异过小的参数
         
         # 3. 代谢阈值合理性
         # 检查代谢阈值是否在合理范围内
         aerobic_threshold = constants.AEROBIC_THRESHOLD
         anaerobic_threshold = constants.ANAEROBIC_THRESHOLD
         if aerobic_threshold >= anaerobic_threshold:
-            realism_score += 10.0  # 有氧阈值应该低于无氧阈值
+            realism_score -= 20.0  # 有氧阈值应该低于无氧阈值
         
         # 4. 能量转换合理性
         # 检查能量转换系数是否合理
         energy_coeff = constants.ENERGY_TO_STAMINA_COEFF
         if energy_coeff < 2.0e-5 or energy_coeff > 1.0e-4:
-            realism_score += 5.0  # 能量转换系数偏离生理学范围
+            realism_score -= 10.0  # 能量转换系数偏离生理学范围
         
         # 5. 负重影响合理性
         # 检查负重影响是否合理
         encumbrance_coeff = constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF
         if encumbrance_coeff < 0.8 or encumbrance_coeff > 2.0:
-            realism_score += 5.0  # 负重系数偏离生理学范围
+            realism_score -= 10.0  # 负重系数偏离生理学范围
         
-        # 归一化到0-100范围
-        realism_score = min(realism_score, 100.0) / 100.0
+        # 6. 运动消耗合理性
+        # 检查奔跑消耗是否明显高于行走
+        sprint_multiplier = constants.SPRINT_STAMINA_DRAIN_MULTIPLIER
+        if sprint_multiplier < 2.0:
+            realism_score -= 10.0  # 冲刺应该比跑步更耗体力
+        elif 2.8 <= sprint_multiplier <= 3.2:
+            realism_score -= 5.0  # 惩罚过于接近默认值的参数
+        
+        # 7. 疲劳系统合理性
+        # 检查疲劳积累系数是否合理
+        fatigue_accumulation = constants.FATIGUE_ACCUMULATION_COEFF
+        if fatigue_accumulation < 0.005 or fatigue_accumulation > 0.03:
+            realism_score -= 8.0  # 疲劳积累系数偏离合理范围
+        
+        # 8. 姿态系统合理性
+        # 检查姿态消耗倍数是否合理
+        crouch_multiplier = constants.POSTURE_CROUCH_MULTIPLIER
+        prone_multiplier = constants.POSTURE_PRONE_MULTIPLIER
+        if crouch_multiplier <= 1.0 or prone_multiplier <= 1.0:
+            realism_score -= 10.0  # 姿态倍数应该大于1.0
+        if prone_multiplier <= crouch_multiplier:
+            realism_score -= 8.0  # 趴下应该比蹲下消耗更大
+        
+        # 确保分数在0-100范围内
+        realism_score = max(0.0, min(realism_score, 100.0))
         
         return realism_score
     
@@ -845,6 +884,8 @@ class RSSSuperPipeline:
             try:
                 # 创建独立的twin实例以避免线程安全问题
                 scenario_twin = RSSDigitalTwin(twin.constants)
+                # 重置twin状态
+                scenario_twin.reset()
                 results = scenario_twin.simulate_scenario(
                     speed_profile=scenario.speed_profile,
                     current_weight=scenario.current_weight,
@@ -864,8 +905,8 @@ class RSSSuperPipeline:
 
                 # 1) 完成时间惩罚：允许轻微超时，但超时越多惩罚越大（连续而非阶梯）
                 # 目标：30KG 下不要“过分慢”，但也不强迫极限跑。
-                scenario_burden += max(0.0, time_ratio - 1.15) * 200.0  # 从110%/300放宽到115%/200
-                scenario_burden += max(0.0, time_ratio - 1.30) * 500.0  # 从120%/800放宽到130%/500
+                scenario_burden += max(0.0, time_ratio - 1.15) * 250.0  # 增加惩罚系数
+                scenario_burden += max(0.0, time_ratio - 1.30) * 600.0  # 增加惩罚系数
 
                 # 2) 体力压力惩罚：min/mean 体力越低，可玩性越差（连续）
                 stamina_history = results.get('stamina_history', [])
@@ -874,26 +915,31 @@ class RSSSuperPipeline:
                     mean_stamina = float(sum(stamina_history) / len(stamina_history))
 
                     # 偏好：最低体力至少 15%（从20%放宽到15%）
-                    scenario_burden += max(0.0, 0.10 - min_stamina) * 1000.0  # 从15%/1500放宽到10%/1000
+                    scenario_burden += max(0.0, 0.15 - min_stamina) * 1200.0  # 增加惩罚系数和阈值
 
                     # 偏好：平均体力不要太低（避免全程“红条”）
-                    scenario_burden += max(0.0, 0.25 - mean_stamina) * 300.0  # 从35%/400放宽到25%/300
+                    scenario_burden += max(0.0, 0.30 - mean_stamina) * 400.0  # 增加惩罚系数和阈值
 
                     # 3) “耗尽占比”惩罚：低体力时长占比越高，惩罚越大（平方增强区分度）
-                    exhausted_frames = sum(1 for s in stamina_history if s < 0.05)
+                    exhausted_frames = sum(1 for s in stamina_history if s < 0.10)  # 增加耗尽阈值
                     exhaustion_ratio = exhausted_frames / len(stamina_history)
-                    scenario_burden += (exhaustion_ratio * exhaustion_ratio) * 800.0
+                    scenario_burden += (exhaustion_ratio * exhaustion_ratio) * 1000.0  # 增加惩罚系数
 
                 return float(scenario_burden), scenario
-            except Exception:
+            except Exception as e:
                 # 如果仿真失败，返回大惩罚值
-                return 1000.0, None
+                print(f"场景评估失败: {e}")
+                return 2000.0, None
         
         # 使用自定义并行工作器并行评估场景
         try:
+            # 确保并行工作器已启动
+            if not hasattr(self.parallel_worker, 'executor') or self.parallel_worker.executor is None:
+                self.parallel_worker.start()
             results_list = self.parallel_worker.map(evaluate_scenario, scenarios, batch_size=1)
-        except Exception:
+        except Exception as e:
             # 如果并行处理失败，回退到串行处理
+            print(f"并行处理失败，回退到串行: {e}")
             results_list = [evaluate_scenario(scenario) for scenario in scenarios]
         
         total_burden = 0.0
@@ -902,8 +948,36 @@ class RSSSuperPipeline:
         for i, (scenario_burden, scenario) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
             if scenario is None:
-                return 1_000_000.0
+                return 2_000_000.0
             total_burden += float(scenario_burden) * weights[i]
+        
+        # 添加参数多样性惩罚，确保不同参数组合产生不同结果
+        param_variation_score = 0.0
+        # 检查关键参数的变化范围
+        key_params = [
+            ('sprint_stamina_drain_multiplier', 2.8, 3.2, 80.0),
+            ('base_recovery_rate', 1.8e-4, 2.2e-4, 60.0),
+            ('encumbrance_stamina_drain_coeff', 1.4, 1.6, 50.0),
+            ('fatigue_accumulation_coeff', 0.012, 0.018, 40.0),
+            ('fast_recovery_multiplier', 2.2, 2.4, 40.0)
+        ]
+        for param_name, min_val, max_val, penalty in key_params:
+            if hasattr(twin.constants, param_name):
+                value = getattr(twin.constants, param_name)
+                # 根据参数类型添加适当的多样性惩罚
+                if min_val <= value <= max_val:
+                    param_variation_score += penalty  # 惩罚过于接近默认值的参数
+        
+        total_burden += param_variation_score
+        
+        # 添加场景结果多样性惩罚
+        # 如果所有场景的负担都非常接近，说明参数变化影响不大
+        if len(results_list) >= 2:
+            burdens = [scenario_burden for scenario_burden, _ in results_list]
+            if len(burdens) >= 2:
+                burden_diff = max(burdens) - min(burdens)
+                if burden_diff < 100.0:
+                    total_burden += 100.0  # 惩罚结果过于一致的参数组合
         
         return float(total_burden)
     
