@@ -126,7 +126,30 @@ class StaminaRecoveryCalculator
             recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
         }
         
-        // ==================== 原有恢复逻辑 ====================
+        // ==================== 运动状态恢复率调整 ====================
+        
+        // 根据当前速度调整恢复率
+        // - 静止时：正常恢复率
+        // - Walk状态：适当恢复率，允许净恢复
+        // - Run状态：大幅降低恢复率，确保消耗率大于恢复率
+        // - Sprint状态：几乎不恢复
+        float speedBasedRecoveryMultiplier = 1.0;
+        if (currentSpeed >= 5.0) // Sprint
+        {
+            speedBasedRecoveryMultiplier = 0.1; // 几乎不恢复
+        }
+        else if (currentSpeed >= 3.2) // Run
+        {
+            speedBasedRecoveryMultiplier = 0.3; // 大幅降低恢复率
+        }
+        else if (currentSpeed >= 0.1) // Walk
+        {
+            speedBasedRecoveryMultiplier = 0.8; // 适当降低恢复率，允许净恢复
+        }
+        // 静止时：speedBasedRecoveryMultiplier = 1.0（正常恢复）
+        
+        // 应用速度基于的恢复率调整
+        recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
         // 禁止任何正向恢复，避免"静止踩水回血"等不合理情况。

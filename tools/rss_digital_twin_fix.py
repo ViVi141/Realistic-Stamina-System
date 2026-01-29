@@ -400,6 +400,25 @@ class RSSDigitalTwin:
             min_recovery = base_recovery * 0.5
             recovery_rate = max(recovery_rate, min_recovery)
         
+        # ==================== 运动状态恢复率调整 ====================
+        
+        # 根据当前速度调整恢复率
+        # - 静止时：正常恢复率
+        # - Walk状态：适当恢复率，允许净恢复
+        # - Run状态：大幅降低恢复率，确保消耗率大于恢复率
+        # - Sprint状态：几乎不恢复
+        speed_based_recovery_multiplier = 1.0
+        if current_speed >= 5.0: # Sprint
+            speed_based_recovery_multiplier = 0.1 # 几乎不恢复
+        elif current_speed >= 3.2: # Run
+            speed_based_recovery_multiplier = 0.3 # 大幅降低恢复率
+        elif current_speed >= 0.1: # Walk
+            speed_based_recovery_multiplier = 0.8 # 适当降低恢复率，允许净恢复
+        # 静止时：speed_based_recovery_multiplier = 1.0（正常恢复）
+        
+        # 应用速度基于的恢复率调整
+        recovery_rate = recovery_rate * speed_based_recovery_multiplier
+        
         recovery_rate = max(recovery_rate, 0.0)
         
         if environment_factor:

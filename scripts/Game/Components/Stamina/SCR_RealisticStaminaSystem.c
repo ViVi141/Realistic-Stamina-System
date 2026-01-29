@@ -750,20 +750,18 @@ class RealisticStaminaSpeedSystem
         }
         else if (velocity >= RUN_VELOCITY_THRESHOLD || velocity >= 3.2)
         {
-            // Run消耗（核心修正：大幅调低RUN的基础消耗，以补偿负重）
-            // 基础消耗从0.105 pts/s降低到约0.08 pts/s（每0.2秒 = 0.00016）
-            // 这是为了确保30kg负载下仍能坚持约16分钟
-            return 0.00008 * loadFactor; // 每0.2秒，调整后的Run消耗
+            // Run消耗 × 负重影响因子
+            return 0.015 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
         }
         else if (velocity >= dynamicThreshold)
         {
-            // Walk消耗（缓慢消耗）
-            return 0.00002 * loadFactor; // 每0.2秒，调整后的Walk消耗
+            // Walk消耗 × 负重影响因子
+            return 0.009 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
         }
         else
         {
-            // 速度 < 动态阈值：恢复（保持较高的恢复率）
-            return -0.00025; // Rest恢复（负数），每0.2秒
+            // 速度 < 动态阈值：恢复
+            return -0.05; // Rest恢复（负数），每0.2秒，基于 stamina_constants.py 的正确值
         }
     }
     
@@ -1075,6 +1073,18 @@ class RealisticStaminaSpeedSystem
     {
         // Pandolf 静态项常量（使用类常量，避免变量名冲突）
         
+        // 确保重量有效
+        bodyWeight = Math.Max(bodyWeight, 0.0);
+        loadWeight = Math.Max(loadWeight, 0.0);
+        
+        // 空载时返回恢复率（负数）
+        if (loadWeight < 5.0)
+            return -0.0025; // 恢复率（负数）
+        
+        // 轻负重时返回小的恢复率
+        if (loadWeight < 15.0)
+            return -0.001; // 轻微恢复
+        
         // 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
         float baseStaticTerm = PANDOLF_STATIC_COEFF_1 * bodyWeight;
         
@@ -1092,13 +1102,11 @@ class RealisticStaminaSpeedSystem
         float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
         
         // 将能量消耗率（W）转换为体力消耗率（%/s）
-        // 参考：CalculatePandolfEnergyExpenditure 的转换系数（使用类常量）
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
         
         // 限制消耗率在合理范围内
-        // 空载时约0.0135%/s，40kg负重时约0.04%/s
-        staticDrainRate = Math.Clamp(staticDrainRate, 0.0, 0.05); // 最多每秒消耗5%
+        staticDrainRate = Math.Clamp(staticDrainRate, 0.0, 0.01); // 最多每秒消耗1%
         
         return staticDrainRate;
     }

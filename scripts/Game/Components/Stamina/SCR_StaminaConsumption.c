@@ -139,18 +139,7 @@ class StaminaConsumptionCalculator
             baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
         }
         
-        // 速度相关项（用于平滑过渡）
-        float speedRatio = Math.Clamp(currentSpeed / 5.2, 0.0, 1.0);
-        float speedLinearDrainRate = 0.00005 * speedRatio * totalEfficiencyFactor * fatigueFactor;
-        float speedSquaredDrainRate = 0.0002 * speedRatio * speedRatio * totalEfficiencyFactor * fatigueFactor; // 从0.00005提高到0.0002，增加4倍
-        
-        // 负重相关消耗
-        float encumbranceBaseDrainRate = 0.001 * (encumbranceStaminaDrainMultiplier - 1.0);
-        float encumbranceSpeedDrainRate = 0.0002 * (encumbranceStaminaDrainMultiplier - 1.0) * speedRatio * speedRatio;
-        
         // 综合体力消耗率
-        float baseDrainComponents = baseDrainRate + speedLinearDrainRate + speedSquaredDrainRate + encumbranceBaseDrainRate + encumbranceSpeedDrainRate;
-        
         float totalDrainRate = 0.0;
         if (baseDrainRate < 0.0)
         {
@@ -160,19 +149,10 @@ class StaminaConsumptionCalculator
         else
         {
             // 消耗时，应用 Sprint 倍数
-            totalDrainRate = baseDrainComponents * sprintMultiplier;
+            totalDrainRate = baseDrainRate * sprintMultiplier;
             
             // 应用手持重物额外消耗
             totalDrainRate = totalDrainRate * itemBonus;
-            
-            // 坡度保护：防止极端坡度导致消耗爆炸
-            // 限制坡度项的最大贡献，避免陡坡时消耗无限增长
-            const float MAX_SLOPE_DRAIN_CONTRIBUTION = 0.03; // 每0.2秒最大坡度贡献
-            float slopeContribution = totalDrainRate - (baseDrainComponents * sprintMultiplier * itemBonus);
-            if (slopeContribution > MAX_SLOPE_DRAIN_CONTRIBUTION)
-            {
-                totalDrainRate = (baseDrainComponents * sprintMultiplier * itemBonus) + MAX_SLOPE_DRAIN_CONTRIBUTION;
-            }
         }
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
