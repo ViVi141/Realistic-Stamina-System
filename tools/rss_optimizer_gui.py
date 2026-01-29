@@ -37,10 +37,13 @@ from typing import Dict, List, Optional
 class RSSTunerGUI:
     """RSS优化器可视化GUI"""
     
-    def __init__(self, root):
+    def __init__(self, root, total_iterations=70000):
         self.root = root
         self.root.title("RSS优化器可视化 - RSS Optimizer Visualization")
         self.root.geometry("1400x900")
+        
+        # 总迭代次数
+        self.total_iterations = total_iterations
         
         # 选择支持中文的字体
         self.chinese_font = self._get_chinese_font()
@@ -715,8 +718,7 @@ class RSSTunerGUI:
         self.realism_label.config(text=f"生理学合理性: {realism:.4f}")
         
         # 更新进度条
-        total_iterations = 10000  # 与super pipeline中的n_trials一致
-        progress = (iteration / total_iterations) * 100
+        progress = (iteration / self.total_iterations) * 100
         self.progress_var.set(progress)
         
         # 刷新图表

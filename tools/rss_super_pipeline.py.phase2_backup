@@ -605,7 +605,7 @@ class RSSSuperPipeline:
         # ==================== 9. 应用多阶段优化权重 ====================
         # 获取当前权重
         stability_weight = getattr(self, '_stability_weight', 1.0)
-        realism_weight = 50.0  # 进一步降低到50，优先优化可玩性和稳定性
+        realism_weight = 100.0  # 降低50倍，使其与其他目标权重平衡
         
         # 应用权重到稳定性风险和生理学合理性
         weighted_stability_risk = stability_risk * stability_weight
@@ -623,12 +623,7 @@ class RSSSuperPipeline:
                 params=trial.params
             )
         
-        # 对目标函数进行缩放，使其更容易收敛
-        scaled_playability = playability_burden * 0.1  # 缩小10倍（从100倍调整为10倍，避免精度丢失）
-        scaled_stability = weighted_stability_risk * 0.1  # 缩小10倍
-        scaled_realism = weighted_physiological_realism * 0.1  # 缩小10倍
-
-        return scaled_playability, scaled_stability, scaled_realism
+        return playability_burden, weighted_stability_risk, weighted_physiological_realism
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
@@ -746,10 +741,10 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         # run_delta < 0 表示消耗；越接近 0 表示越不耗体力
-        required_run_drop = 0.025  # 从3%降低到2.5%
+        required_run_drop = 0.03
         actual_run_drop = max(0.0, -run_delta)
         if actual_run_drop < required_run_drop:
-            penalty += (required_run_drop - actual_run_drop) * 3000.0  # 从5000降到3000
+            penalty += (required_run_drop - actual_run_drop) * 5000.0  # 降低4倍
 
         # 2) Sprint：30秒 5.0m/s 空载，期望体力下降至少 4%
         sprint_delta = simulate_fixed_speed(
@@ -759,10 +754,10 @@ class RSSSuperPipeline:
             movement_type=MovementType.SPRINT,
             initial_stamina=1.0,
         )
-        required_sprint_drop = 0.035  # 从4%降低到3.5%
+        required_sprint_drop = 0.04
         actual_sprint_drop = max(0.0, -sprint_delta)
         if actual_sprint_drop < required_sprint_drop:
-            penalty += (required_sprint_drop - actual_sprint_drop) * 4000.0  # 从6000降到4000
+            penalty += (required_sprint_drop - actual_sprint_drop) * 6000.0  # 降低4倍多
 
         # 3) Walk：120秒 1.8m/s 标准战斗负载，期望“缓慢恢复”
         # 这里用 30KG 负载（总重 120KG）更符合玩家场景。
@@ -773,13 +768,13 @@ class RSSSuperPipeline:
             movement_type=MovementType.WALK,
             initial_stamina=0.50,
         )
-        # 期望 2分钟至少 +0.8%（从1%降低到0.8%），最多 +8%（从6%提高到8%）
-        min_walk_gain = 0.008  # 从1%降低到0.8%
-        max_walk_gain = 0.08  # 从6%提高到8%
+        # 期望 2分钟至少 +1%（太慢则不恢复），最多 +6%（太快则像原地回血）
+        min_walk_gain = 0.01
+        max_walk_gain = 0.06
         if walk_delta < min_walk_gain:
-            penalty += (min_walk_gain - walk_delta) * 3000.0  # 从5000降到3000
+            penalty += (min_walk_gain - walk_delta) * 5000.0  # 降低3倍
         elif walk_delta > max_walk_gain:
-            penalty += (walk_delta - max_walk_gain) * 2000.0  # 从3000降到2000
+            penalty += (walk_delta - max_walk_gain) * 3000.0  # 降低2.7倍
 
         return float(penalty)
     
@@ -864,8 +859,8 @@ class RSSSuperPipeline:
 
                 # 1) 完成时间惩罚：允许轻微超时，但超时越多惩罚越大（连续而非阶梯）
                 # 目标：30KG 下不要“过分慢”，但也不强迫极限跑。
-                scenario_burden += max(0.0, time_ratio - 1.15) * 200.0  # 从110%/300放宽到115%/200
-                scenario_burden += max(0.0, time_ratio - 1.30) * 500.0  # 从120%/800放宽到130%/500
+                scenario_burden += max(0.0, time_ratio - 1.10) * 300.0  # 从105%放宽到110%，降低系数
+                scenario_burden += max(0.0, time_ratio - 1.20) * 800.0  # 从110%放宽到120%，降低系数
 
                 # 2) 体力压力惩罚：min/mean 体力越低，可玩性越差（连续）
                 stamina_history = results.get('stamina_history', [])
@@ -874,10 +869,10 @@ class RSSSuperPipeline:
                     mean_stamina = float(sum(stamina_history) / len(stamina_history))
 
                     # 偏好：最低体力至少 15%（从20%放宽到15%）
-                    scenario_burden += max(0.0, 0.10 - min_stamina) * 1000.0  # 从15%/1500放宽到10%/1000
+                    scenario_burden += max(0.0, 0.15 - min_stamina) * 1500.0  # 从20%/2500降到15%/1500
 
                     # 偏好：平均体力不要太低（避免全程“红条”）
-                    scenario_burden += max(0.0, 0.25 - mean_stamina) * 300.0  # 从35%/400放宽到25%/300
+                    scenario_burden += max(0.0, 0.35 - mean_stamina) * 400.0  # 从45%/600降到35%/400
 
                     # 3) “耗尽占比”惩罚：低体力时长占比越高，惩罚越大（平方增强区分度）
                     exhausted_frames = sum(1 for s in stamina_history if s < 0.05)
@@ -1135,8 +1130,8 @@ class RSSSuperPipeline:
                     storage=storage_url,
                     directions=['minimize', 'minimize', 'minimize'],
                     sampler=optuna.samplers.NSGAIISampler(
-                        population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
-                        mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）
+                        population_size=200,  # 增加种群大小以提高多样性
+                        mutation_prob=0.4,  # 增加变异概率以提高探索能力
                         crossover_prob=0.9,  # 增加交叉概率以提高收敛速度
                         swapping_prob=0.5,    # 增加交换概率以提高多样性
                         seed=42  # 固定随机种子，提高可重复性
@@ -1151,8 +1146,8 @@ class RSSSuperPipeline:
                 study_name=study_name,
                 directions=['minimize', 'minimize', 'minimize'],
                 sampler=optuna.samplers.NSGAIISampler(
-                    population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
-                    mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）
+                    population_size=200,  # 增加种群大小以提高多样性
+                    mutation_prob=0.4,  # 增加变异概率以提高探索能力
                     crossover_prob=0.9,  # 增加交叉概率以提高收敛速度
                     swapping_prob=0.5,    # 增加交换概率以提高多样性
                     seed=42  # 固定随机种子，提高可重复性
