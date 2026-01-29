@@ -4,10 +4,10 @@
   "optimization_method": "NSGA-II (Super Pipeline)",
   "objectives": {
     "playability_burden": 140.0,
-    "stability_risk": 756.1424300183826
+    "stability_risk": 668.0886800183825
   },
   "parameters": {
-    "energy_to_stamina_coeff": 3.293987070090669e-05,
+    "energy_to_stamina_coeff": 1.6192180467189915e-05,
     "base_recovery_rate": 0.00017847480409603674,
     "prone_recovery_multiplier": 2.0219881558634967,
     "standing_recovery_multiplier": 1.561643124650125,
@@ -15,7 +15,7 @@
     "load_recovery_penalty_exponent": 1.5386917581222086,
     "encumbrance_speed_penalty_coeff": 0.1523951128557035,
     "encumbrance_stamina_drain_coeff": 1.9753409157353885,
-    "sprint_stamina_drain_multiplier": 2.627727504938786,
+    "sprint_stamina_drain_multiplier": 1.4457956287040894,
     "fatigue_accumulation_coeff": 0.017863913632851832,
     "fatigue_max_factor": 2.9724141409980214,
     "aerobic_efficiency_factor": 0.9221281152941742,

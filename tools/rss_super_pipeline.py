@@ -300,9 +300,11 @@ class RSSSuperPipeline:
         # 使用与 rss_optimizer_optuna.py 相同的参数范围（但已优化）
         
         # 能量转换相关
-        # 调整：提高下界，避免 Run/Sprint 消耗被压得过低（用户反馈：冲刺/奔跑耗体力太低）。
+        # 调整：降低搜索空间，让 Walk 消耗更低，允许净恢复
+        # 注意：Walk 使用 Pandolf 模型，低速时消耗较高
+        # Run 使用 Givoni 模型，速度对消耗影响很大（2.2次幂）
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 3.0e-5, 7e-5, log=True
+            'energy_to_stamina_coeff', 1.5e-5, 3.0e-5, log=True
         )
         
         # 恢复系统相关
@@ -333,9 +335,11 @@ class RSSSuperPipeline:
         )
         
         # Sprint 相关
-        # 新设计标准：冲刺消耗为 Run 的 2.5x
+        # 调整：降低搜索空间，考虑速度差异（5.0 m/s vs 3.7 m/s）
+        # Sprint 自然消耗是 Run 的 1.86x（速度的2.2次幂）
+        # 只需要额外的 1.34x 倍数就能达到 2.5x 的目标
         sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', 2.3, 2.7  # 调整范围以更接近 2.5x
+            'sprint_stamina_drain_multiplier', 1.2, 1.5
         )
         
         # 疲劳系统相关
@@ -776,7 +780,9 @@ class RSSSuperPipeline:
 
         penalty = 0.0
 
-        # 1) Run：60秒 3.7m/s 空载，期望体力下降至少 3%
+        # 1) Run：60秒 3.7m/s 空载，期望体力下降至少 5%
+        # 对应：927秒消耗80%（100% → 20%），每秒消耗0.0863%
+        # 60秒消耗：5.18%，约5%
         run_delta = simulate_fixed_speed(
             speed=3.7,
             duration_seconds=60.0,
@@ -785,12 +791,15 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         # run_delta < 0 表示消耗；越接近 0 表示越不耗体力
-        required_run_drop = 0.025  # 从3%降低到2.5%
+        required_run_drop = 0.05  # 对应927秒消耗80%（100% → 20%）
         actual_run_drop = max(0.0, -run_delta)
         if actual_run_drop < required_run_drop:
-            penalty += (required_run_drop - actual_run_drop) * 3000.0  # 从5000降到3000
+            penalty += (required_run_drop - actual_run_drop) * 3000.0
 
-        # 2) Sprint：30秒 5.0m/s 空载，期望体力下降至少 4%
+        # 2) Sprint：30秒 5.0m/s 空载，期望体力下降至少 6.5%
+        # 对应：跑步消耗的2.5x
+        # 跑步：60秒消耗5%，每秒消耗0.0833%
+        # 冲刺：30秒消耗6.5%，每秒消耗0.217%（约跑步的2.5x）
         sprint_delta = simulate_fixed_speed(
             speed=5.0,
             duration_seconds=30.0,
@@ -798,10 +807,10 @@ class RSSSuperPipeline:
             movement_type=MovementType.SPRINT,
             initial_stamina=1.0,
         )
-        required_sprint_drop = 0.035  # 从4%降低到3.5%
+        required_sprint_drop = 0.065  # 约跑步消耗的2.5x
         actual_sprint_drop = max(0.0, -sprint_delta)
         if actual_sprint_drop < required_sprint_drop:
-            penalty += (required_sprint_drop - actual_sprint_drop) * 4000.0  # 从6000降到4000
+            penalty += (required_sprint_drop - actual_sprint_drop) * 4000.0
 
         # 3) Walk：120秒 1.8m/s 标准战斗负载，期望“缓慢恢复”
         # 这里用 30KG 负载（总重 120KG）更符合玩家场景。
@@ -815,8 +824,10 @@ class RSSSuperPipeline:
         # 期望 2分钟至少 +0.8%（从1%降低到0.8%），最多 +8%（从6%提高到8%）
         # 新设计标准：每 5 秒恢复 1% 体力
         # 120 秒应该恢复：120 / 5 × 1% = 24%
-        min_walk_gain = 0.20  # 最小恢复 20%
-        max_walk_gain = 0.28  # 最大恢复 28%
+        # 期望 2 分钟恢复 0.5-2%（降低目标，考虑 Pandolf 模型的消耗）
+        # 注意：Walk 使用 Pandolf 模型，低速时消耗较高
+        min_walk_gain = 0.005  # 最小恢复 0.5%
+        max_walk_gain = 0.02  # 最大恢复 2%
         if walk_delta < min_walk_gain:
             penalty += (min_walk_gain - walk_delta) * 3000.0  # 从5000降到3000
         elif walk_delta > max_walk_gain:
@@ -869,8 +880,8 @@ class RSSSuperPipeline:
             else:
                 avg_stamina = 1.0  # 如果没有历史数据，假设为100%
 
-            # 通过条件：时间不超过120%且体力不低于10%且平均体力 > 15%
-            return time_ratio <= 1.2 and min_stamina >= 0.10 and avg_stamina > 0.15
+            # 通过条件：时间不超过120%且体力不低于20%且平均体力 > 25%
+            return time_ratio <= 1.2 and min_stamina >= 0.20 and avg_stamina > 0.25
 
         except Exception:
             return False
