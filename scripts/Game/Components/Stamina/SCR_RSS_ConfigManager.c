@@ -5,7 +5,7 @@
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
-    protected static const string CURRENT_VERSION = "3.10.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.11.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -22,6 +22,18 @@ class SCR_RSS_ConfigManager
     // 加载配置文件
     static void Load()
     {
+        // 工作台模式：强制使用嵌入的预设值，避免 profile 覆盖导致消耗为 0
+        #ifdef WORKBENCH
+        m_Settings = new SCR_RSS_Settings();
+        m_Settings.m_sSelectedPreset = "EliteStandard";
+        m_Settings.InitPresets(true);
+        m_bIsLoaded = true;
+        m_fLastLoadTime = 0.0;
+        EnsureDefaultValues();
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed)");
+        return;
+        #endif
+        
         // 防止频繁重载
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         if (m_bIsLoaded && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
@@ -59,8 +71,30 @@ class SCR_RSS_ConfigManager
                 presetStatus += "Custom=NULL";
             Print("[RSS_ConfigManager] " + presetStatus);
             
-            // 初始化预设默认值（只有当预设对象为空时才会初始化）
-            m_Settings.InitPresets();
+            // --- 核心修复逻辑开始 ---
+            
+            // 检查玩家当前选中的预设
+            string selected = m_Settings.m_sSelectedPreset;
+            bool isCustom = (selected == "Custom");
+
+            if (!isCustom)
+            {
+                // 如果玩家用的是系统预设，强制用代码里的最新Optuna值覆盖内存
+                // 这样即使 JSON 里是旧值，也会被更新
+                m_Settings.InitPresets(true);
+                
+                // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
+                Save();
+                Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+            }
+            else
+            {
+                // 如果是 Custom 模式，仅执行常规初始化（补全可能缺失的字段），不覆盖已有数值
+                m_Settings.InitPresets(false);
+                Print("[RSS_ConfigManager] Custom preset active. Preserving user-defined JSON values.");
+            }
+            
+            // --- 核心修复逻辑结束 ---
             
             // 检查版本号并执行迁移
             string configVersion = m_Settings.m_sConfigVersion;

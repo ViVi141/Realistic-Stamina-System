@@ -52,8 +52,31 @@ class EncumbranceCache
             return;
         }
         
-        // 获取当前重量（这是唯一需要访问库存组件的地方）
-        float currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
+        float currentWeight = 0.0;
+        
+        // 获取角色实体
+        IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
+        if (!ownerEntity)
+        {
+            m_bEncumbranceCacheValid = false;
+            return;
+        }
+        
+        // 使用 SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages() 方法（唯一方式）
+        SCR_InventoryStorageManagerComponent inventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
+        if (inventoryManager)
+        {
+            // 使用官方推荐的 GetTotalWeightOfAllStorages() 方法，确保计算所有存储的重量
+            currentWeight = inventoryManager.GetTotalWeightOfAllStorages();
+        }
+        else
+        {
+            // 如果无法获取 inventoryManager，设置缓存无效
+            m_bEncumbranceCacheValid = false;
+            Print("[RSS_Debug] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
+            return;
+        }
+        
         if (currentWeight < 0.0)
         {
             m_bEncumbranceCacheValid = false;
@@ -62,9 +85,10 @@ class EncumbranceCache
         
         // 更新缓存值
         m_fCachedCurrentWeight = currentWeight;
-        
-        // 计算有效负重（减去基准重量）
-        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.BASE_WEIGHT, 0.0);
+
+        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        // 修复：此前用 (总重 - 1.36) 导致 bodyMassPercent 约 4 倍于正确值
+        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
         // 计算速度惩罚（基于体重百分比，使用幂函数）
@@ -87,8 +111,65 @@ class EncumbranceCache
         if (!m_pCachedInventoryComponent)
             return;
         
-        // 快速检查：获取当前重量并与缓存比较
-        float currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
+        float currentWeight = 0.0;
+        
+        // 获取角色实体
+        IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
+        if (ownerEntity)
+        {
+            // 尝试使用 SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages() 方法（推荐方式）
+            SCR_InventoryStorageManagerComponent inventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
+            if (inventoryManager)
+            {
+                // 使用官方推荐的 GetTotalWeightOfAllStorages() 方法，确保计算所有存储的重量
+                currentWeight = inventoryManager.GetTotalWeightOfAllStorages();
+            }
+            else
+            {
+                // 回退方案：手动计算所有必要存储的重量
+                array<BaseInventoryStorageComponent> storages = {};
+                float weaponWeight = 0.0;
+                float characterWeight = 0.0;
+                
+                // 按照官方 GetTotalWeightOfAllStorages() 方法的逻辑，手动添加必要的存储
+                BaseInventoryStorageComponent weaponStorage = m_pCachedInventoryComponent.GetWeaponStorage();
+                storages.Insert(weaponStorage); // 主副武器插槽
+                storages.Insert(m_pCachedInventoryComponent);                    // 衣服、背包、背心里的东西
+                
+                // 遍历所有存储，累加重量
+                foreach (BaseInventoryStorageComponent storage : storages)
+                {
+                    if (storage)
+                    {
+                        float storageWeight = storage.GetTotalWeight();
+                        currentWeight += storageWeight;
+                        
+                        if (storage == weaponStorage)
+                            weaponWeight = storageWeight;
+                        else if (storage == m_pCachedInventoryComponent)
+                            characterWeight = storageWeight;
+                    }
+                }
+                
+
+            }
+        }
+        else
+        {
+            // 无角色实体时的回退方案
+            float weaponWeight = 0.0;
+            currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
+            
+            // 添加武器存储重量
+            BaseInventoryStorageComponent weaponStorage = m_pCachedInventoryComponent.GetWeaponStorage();
+            if (weaponStorage)
+            {
+                weaponWeight = weaponStorage.GetTotalWeight();
+                currentWeight += weaponWeight;
+            }
+            
+
+        }
         
         // 如果重量变化超过0.1kg，重新计算缓存（避免微小浮点误差触发）
         if (Math.AbsFloat(currentWeight - m_fCachedCurrentWeight) > 0.1 || !m_bEncumbranceCacheValid)

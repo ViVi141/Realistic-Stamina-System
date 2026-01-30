@@ -51,14 +51,14 @@ COMBAT_LOAD_WEIGHT = 30.0  # kg，战斗负重（用于计算动态阈值）
 # ==================== 基础消耗率（pts/s，每秒消耗的点数）====================
 SPRINT_BASE_DRAIN_RATE = 0.480  # pts/s（Sprint）
 RUN_BASE_DRAIN_RATE = 0.075  # pts/s（Run，优化后约22分钟耗尽）
-WALK_BASE_DRAIN_RATE = 0.060  # pts/s（Walk）
+WALK_BASE_DRAIN_RATE = 0.045  # pts/s（Walk，降低消耗率以突出与跑步的差距）
 REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
 
 # 转换为每0.2秒的消耗率
-SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
-RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
-WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
-REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * UPDATE_INTERVAL
+SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE * UPDATE_INTERVAL
+RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE * UPDATE_INTERVAL
+WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE * UPDATE_INTERVAL
+REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE * UPDATE_INTERVAL
 
 # 初始体力状态（满值）
 INITIAL_STAMINA_AFTER_ACFT = 1.0  # 100.0 / 100.0 = 1.0（100%，满值）
@@ -114,19 +114,19 @@ TERRAIN_FACTOR_SAND = 1.8  # 软沙地
 # 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
 # 自动校准：使用二分搜索确定最优值
 # 场景：Idle 60秒，起始体力0.10，目标结束体力0.40
-BASE_RECOVERY_RATE = 5.00e-04  # 基础恢复率（每0.2秒），Decreased from 5.00e-03 to 5.00e-04 (10x slower recovery)
+BASE_RECOVERY_RATE = 3.50e-04  # 基础恢复率（每0.2秒），从4.00e-04降低到3.50e-04，降低12.5%
 RECOVERY_NONLINEAR_COEFF = 0.5  # 恢复率非线性系数
 # 拟真平衡点：模拟"喘匀第一口氧气"
 # 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
 # 模拟停止运动后前90秒的高效恢复
 FAST_RECOVERY_DURATION_MINUTES = 1.5  # 快速恢复期持续时间（分钟）
-FAST_RECOVERY_MULTIPLIER = 3.5  # 快速恢复期恢复速度倍数
+FAST_RECOVERY_MULTIPLIER = 2.5  # 快速恢复期恢复速度倍数，从3.5降低到2.5，降低28.6%
 # 拟真平衡点：平衡快速恢复期和慢速恢复期
 MEDIUM_RECOVERY_START_MINUTES = 1.5  # 中等恢复期开始时间（分钟）
 MEDIUM_RECOVERY_DURATION_MINUTES = 8.5  # 中等恢复期持续时间（分钟）
-MEDIUM_RECOVERY_MULTIPLIER = 1.8  # 中等恢复期恢复速度倍数
+MEDIUM_RECOVERY_MULTIPLIER = 1.4  # 中等恢复期恢复速度倍数，从1.8降低到1.4，降低22.2%
 SLOW_RECOVERY_START_MINUTES = 10.0  # 慢速恢复期开始时间（分钟）
-SLOW_RECOVERY_MULTIPLIER = 0.8  # 慢速恢复期恢复速度倍数
+SLOW_RECOVERY_MULTIPLIER = 0.6  # 慢速恢复期恢复速度倍数，从0.8降低到0.6，降低25%
 AGE_RECOVERY_COEFF = 0.2  # 年龄恢复系数
 AGE_REFERENCE = 30.0  # 年龄参考值（30岁为标准）
 FATIGUE_RECOVERY_PENALTY = 0.05  # 疲劳恢复惩罚系数（最大5%恢复速度减少）
@@ -139,9 +139,9 @@ FATIGUE_RECOVERY_DURATION_MINUTES = 20.0  # 疲劳完全恢复所需时间（分
 # 蹲姿：减少下肢肌肉紧张，+50%恢复速度
 # 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
 # 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
-STANDING_RECOVERY_MULTIPLIER = 2.0  # 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
+STANDING_RECOVERY_MULTIPLIER = 1.5  # 站姿恢复倍数，从2.0降低到1.5，降低25%
 CROUCHING_RECOVERY_MULTIPLIER = 1.5  # 蹲姿恢复倍数（+50%，从1.3提升到1.5）
-PRONE_RECOVERY_MULTIPLIER = 2.2  # 趴姿恢复倍数（+120%，从1.7提升到2.2）
+PRONE_RECOVERY_MULTIPLIER = 1.8  # 趴姿恢复倍数，从2.2降低到1.8，降低18.2%
 
 # ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
 # 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -194,29 +194,29 @@ JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0  # m/s，跳跃检测阈值（垂直速�
 VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5  # m/s，翻越检测阈值（垂直速度）
 
 # ==================== 恢复启动延迟常量（深度生理压制版本）====================
-# 深度生理压制：停止运动后5秒内系统完全不处理恢复
+# 深度生理压制：停止运动后3秒内系统完全不处理恢复
 # 医学解释：剧烈运动停止后的前10-15秒，身体处于摄氧量极度不足状态（Oxygen Deficit）
 # 此时血液流速仍处于峰值，心脏负担极重，体能并不会开始"恢复"，而是在维持不崩塌
-# 目的：消除"跑两步停一下瞬间回血"的游击战式打法
-RECOVERY_STARTUP_DELAY_SECONDS = 5.0  # 恢复启动延迟（秒）- 从1.5秒增加到5秒
+# 目的：消除"跑两步停一下瞬间回血"的游击战式打法，同时提高游戏流畅度
+RECOVERY_STARTUP_DELAY_SECONDS = 3.0  # 恢复启动延迟（秒）- 从5秒缩短到3秒
 
 # ==================== EPOC（过量耗氧）延迟参数 ====================
 # 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
 # 参考：Brooks et al., 2000; LaForgia et al., 2006
-# 拟真平衡点：缩短到2秒，与恢复启动延迟保持一致
-EPOC_DELAY_SECONDS = 2.0  # EPOC延迟时间（秒）- 从4秒降到2秒
+# 拟真平衡点：与数字孪生模拟器保持一致
+EPOC_DELAY_SECONDS = 0.5  # EPOC延迟时间（秒）- 与数字孪生模拟器一致
 EPOC_DRAIN_RATE = 0.001  # EPOC期间的基础消耗率（每0.2秒）
 
 # ==================== 姿态交互修正参数 ====================
-POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数
-POSTURE_PRONE_MULTIPLIER = 3.0  # 匍匐爬行消耗倍数
-POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走消耗倍数（基准）
+POSTURE_CROUCH_MULTIPLIER = 0.8  # 蹲姿行走速度倍数（减速）
+POSTURE_PRONE_MULTIPLIER = 0.5  # 匍匐爬行速度倍数（减速）
+POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走速度倍数（基准）
 
 # ==================== 游泳体力消耗参数 ====================
 SWIMMING_DRAG_COEFFICIENT = 0.5  # 阻力系数（C_d）
 SWIMMING_WATER_DENSITY = 1000.0  # 水密度（ρ，kg/m³）
 SWIMMING_FRONTAL_AREA = 0.5  # 正面面积（A，m²）
-SWIMMING_BASE_POWER = 25.0  # 基础游泳功率（W）
+SWIMMING_BASE_POWER = 20.0  # 基础游泳功率（W），降低以提高水中存活率
 SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0  # kg，超过此重量时静态消耗大幅增加
 SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0  # 超过阈值时的静态消耗倍数
 SWIMMING_FULL_PENALTY_WEIGHT = 40.0  # kg，达到此重量时应用满额惩罚
@@ -246,7 +246,7 @@ SWIMMING_VERTICAL_VELOCITY_THRESHOLD = -0.5  # m/s，垂直速度阈值（检测
 ENV_HEAT_STRESS_START_HOUR = 10.0  # 热应激开始时间（小时）
 ENV_HEAT_STRESS_PEAK_HOUR = 14.0  # 热应激峰值时间（小时，正午）
 ENV_HEAT_STRESS_END_HOUR = 18.0  # 热应激结束时间（小时）
-ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3  # 热应激最大倍数（30%消耗增加）
+ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5  # 热应激最大倍数（50%消耗增加，提高环境影响）
 ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0  # 热应激基础倍数（无影响）
 ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5  # 室内热应激减少比例（50%）
 ENV_RAIN_WEIGHT_MIN = 2.0  # kg，小雨时的湿重
@@ -267,6 +267,11 @@ ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT = 1.5  # 降雨强度指数（非线性
 ENV_RAIN_INTENSITY_THRESHOLD = 0.01  # 降雨强度阈值（低于此值不计算湿重）
 ENV_RAIN_INTENSITY_HEAVY_THRESHOLD = 0.8  # 暴雨阈值（呼吸阻力触发）
 ENV_RAIN_INTENSITY_BREATHING_PENALTY = 0.05  # 暴雨时的无氧代谢增加比例
+
+# 环境因子惩罚最大值（与EnvironmentFactor类一致）
+ENV_HEAT_STRESS_PENALTY_MAX = 0.3  # 最大热应激惩罚
+ENV_COLD_STRESS_PENALTY_MAX = 0.2  # 最大冷应激惩罚
+ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15  # 最大地表湿度惩罚
 
 # 风阻相关常量
 ENV_WIND_RESISTANCE_COEFF = 0.05  # 风阻系数（体力消耗权重）

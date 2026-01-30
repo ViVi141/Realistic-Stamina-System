@@ -142,8 +142,9 @@ class JumpVaultDetector
                 }
                 
                 // 使用动态负重倍率计算基础消耗
+                float jumpBaseCost = StaminaConstants.GetJumpStaminaBaseCost();
                 float baseJumpCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                    RealisticStaminaSpeedSystem.JUMP_STAMINA_BASE_COST, 
+                    jumpBaseCost, 
                     currentTotalWeight
                 );
                 
@@ -239,8 +240,9 @@ class JumpVaultDetector
                     }
                 }
                 
+                float vaultBaseCost = StaminaConstants.GetVaultStaminaStartCost();
                 float vaultCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                    RealisticStaminaSpeedSystem.VAULT_STAMINA_START_COST, 
+                    vaultBaseCost, 
                     currentTotalWeight
                 );
                 
@@ -254,7 +256,7 @@ class JumpVaultDetector
                 {
                     PrintFormat("[RealisticSystem] 检测到翻越动作！消耗体力: %1%% (基础: %2%%, 冷却: 5秒)", 
                         Math.Round(vaultCost * 100.0).ToString(),
-                        Math.Round(RealisticStaminaSpeedSystem.VAULT_STAMINA_START_COST * 100.0).ToString());
+                        Math.Round(vaultBaseCost * 100.0).ToString());
                 }
             }
             else
@@ -278,8 +280,9 @@ class JumpVaultDetector
                         }
                     }
                     
+                    float climbBaseCost = StaminaConstants.GetClimbStaminaTickCost();
                     float continuousClimbCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                        RealisticStaminaSpeedSystem.CLIMB_STAMINA_TICK_COST, 
+                        climbBaseCost, 
                         currentTotalWeight
                     );
                     

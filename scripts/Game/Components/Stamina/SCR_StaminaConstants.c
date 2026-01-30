@@ -26,7 +26,7 @@ class StaminaConstants
     // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
     static const float SPRINT_BASE_DRAIN_RATE = 0.480; // pts/s（Sprint）
     static const float RUN_BASE_DRAIN_RATE = 0.075; // pts/s（Run，优化后约22分钟耗尽，支撑20分钟连续运行）
-    static const float WALK_BASE_DRAIN_RATE = 0.060; // pts/s（Walk）
+    static const float WALK_BASE_DRAIN_RATE = 0.045; // pts/s（Walk，降低消耗率以突出与跑步的差距）
     static const float REST_RECOVERY_RATE = 0.250; // pts/s（Rest，恢复）
     
     // 转换为0.0-1.0范围的消耗率（每0.2秒）
@@ -93,7 +93,8 @@ class StaminaConstants
     
     // 负重对体力消耗的影响系数（γ）- 基于体重的真实模型
     // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5; // 基于体重的体力消耗系数
+    // [修复] 与Python数字孪生保持一致，从1.5改为2.0
+    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0; // 基于体重的体力消耗系数
     
     // 最小速度倍数（防止体力完全耗尽时完全无法移动）
     static const float MIN_SPEED_MULTIPLIER = 0.15; // 15%最低速度（约0.78 m/s，勉强行走）
@@ -133,11 +134,10 @@ class StaminaConstants
     // 最终恢复率 = (基础恢复率 * 姿态修正) - (负重压制 + 氧债惩罚)
     
     // 基础恢复率（每0.2秒，在50%体力时的恢复率）
-    // 深度生理压制：将基础全满时间（静止空载）从约5分钟延长至约10分钟
-    // 计算逻辑：1.0(体力) / 600秒(10分钟) / 5(每秒tick数) = 0.00033
-    // 建议值：0.0003（站立基础恢复全满约11分钟）
+    // [修复] 与Python数字孪生保持一致，从0.00035降低到0.00015（降低57%）
+    // 计算逻辑：1.0(体力) / 1333秒(22.2分钟) / 5(每秒tick数) = 0.00015
     // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
-    static const float BASE_RECOVERY_RATE = 0.0003; // 每0.2秒恢复0.03%
+    static const float BASE_RECOVERY_RATE = 0.00015; // 每0.2秒恢复0.015%（与Python一致）
     
     // 恢复率非线性系数（基于当前体力百分比）
     static const float RECOVERY_NONLINEAR_COEFF = 0.5; // 非线性恢复系数（0.0-1.0）
@@ -146,20 +146,21 @@ class StaminaConstants
     // 拟真平衡点：模拟"喘匀第一口氧气"
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
-    static const float FAST_RECOVERY_DURATION_MINUTES = 1.5; // 快速恢复期持续时间（分钟）
-    static const float FAST_RECOVERY_MULTIPLIER = 3.5; // 快速恢复期恢复速度倍数（从8降到3.5）
+    static const float FAST_RECOVERY_DURATION_MINUTES = 0.4;  // 快速恢复期（分钟）：缩短至24秒，减少“刚停即猛回”体感
+    static const float FAST_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从2.5降低到1.6（降低36%）
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
-    static const float MEDIUM_RECOVERY_START_MINUTES = 1.5; // 中等恢复期开始时间（分钟）
-    static const float MEDIUM_RECOVERY_DURATION_MINUTES = 8.5; // 中等恢复期持续时间（分钟）
-    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.8; // 中等恢复期恢复速度倍数（从3.0降到1.8）
+    static const float MEDIUM_RECOVERY_START_MINUTES = 0.4;  // 与快速恢复期衔接
+    // [修复] 与Python数字孪生保持一致，从8.5改为5.0
+    static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
+    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.4降低到1.3（降低7%）
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
     // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
     // 优化：提升到0.8倍（从0.7倍）
     static const float SLOW_RECOVERY_START_MINUTES = 10.0; // 慢速恢复期开始时间（分钟）
-    static const float SLOW_RECOVERY_MULTIPLIER = 0.8; // 慢速恢复期恢复速度倍数（0.8倍）
+    static const float SLOW_RECOVERY_MULTIPLIER = 0.6; // 慢速恢复期恢复速度倍数（从0.8降低到0.6，降低25%）
     
     // 年龄对恢复速度的影响系数
     static const float AGE_RECOVERY_COEFF = 0.2; // 年龄恢复系数
@@ -173,14 +174,14 @@ class StaminaConstants
     // ==================== 姿态恢复加成参数（深度生理压制版本）====================
     // 深度生理压制：趴下不只是为了隐蔽，更是为了让心脏负荷最小化
     // 姿态加成设定的更有体感，但不过分
-    // 站姿：提升至2.0倍，确保能够覆盖静态站立消耗（0.0027%每0.2秒）
-    // 蹲姿：减少下肢肌肉紧张，+50%恢复速度
-    // 趴姿：全身放松，最大化血液循环，+120%恢复速度（2.2倍）
+    // 站姿：确保能够覆盖静态站立消耗
+    // 蹲姿：减少下肢肌肉紧张，+40%恢复速度
+    // 趴姿：全身放松，最大化血液循环，+60%恢复速度
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
     // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
-    static const float STANDING_RECOVERY_MULTIPLIER = 2.0; // 站姿恢复倍数（从0.4提升到2.0，确保静态站立时能恢复体力）
-    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.5; // 蹲姿恢复倍数（+50%，从1.3提升到1.5）
-    static const float PRONE_RECOVERY_MULTIPLIER = 2.2; // 趴姿恢复倍数（+120%，从1.7提升到2.2）
+    static const float STANDING_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.5降低到1.3（降低13%）
+    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.4; // [修复] 与Python一致，从1.5降低到1.4（降低7%）
+    static const float PRONE_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从1.8降低到1.6（降低11%）
     
     // ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
     // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -190,9 +191,9 @@ class StaminaConstants
     // 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除70%
     // 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
     // 注意：这些值现在从配置管理器获取（GetLoadRecoveryPenaltyCoeff(), GetLoadRecoveryPenaltyExponent()）
-    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0004; // 负重恢复惩罚系数
+    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0001; // [修复] 负重恢复惩罚系数，从 0.0004 降低到 0.0001
     static const float LOAD_RECOVERY_PENALTY_EXPONENT = 2.0; // 负重恢复惩罚指数（2.0 = 平方）
-    static const float BODY_TOLERANCE_BASE = 30.0; // 身体耐受基准（kg）
+    static const float BODY_TOLERANCE_BASE = 90.0; // [修复] 身体耐受基准（kg），从 30.0 增加到 90.0（参考体重）
     
     // ==================== 边际效应衰减机制（深度生理压制版本）====================
     // 医学解释：身体从"半死不活"恢复到"喘匀气"很快（前80%），但要从"喘匀气"恢复到"肌肉巅峰竞技状态"非常慢（最后20%）
@@ -300,13 +301,14 @@ class StaminaConstants
     
     // 能量到体力的转换系数
     // 注意：此值现在从配置管理器获取（GetEnergyToStaminaCoeff()）
-    static const float ENERGY_TO_STAMINA_COEFF = 0.000035; // 能量到体力的转换系数（优化后，支持16-18分钟连续运行）
+    // [修复] 与Python数字孪生保持一致，从0.000035降低到0.000015
+    static const float ENERGY_TO_STAMINA_COEFF = 0.000015; // 能量到体力的转换系数（与Python一致）
     
     // 参考体重（用于 Pandolf 模型）
     static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
     
     // ==================== Givoni-Goldman 跑步模型常量 ====================
-    static const float GIVONI_CONSTANT = 0.3; // 跑步常数（W/kg·m²/s²），需要根据实际测试校准
+    static const float GIVONI_CONSTANT = 0.8; // 跑步常数（W/kg·m²/s²），从1.0降低到0.8，减缓奔跑时的消耗速度
     static const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
     
     // ==================== 地形系数常量 ====================
@@ -317,19 +319,20 @@ class StaminaConstants
     static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
     
     // ==================== 恢复启动延迟常量（深度生理压制版本）====================
-    // 深度生理压制：停止运动后5秒内系统完全不处理恢复
+    // 恢复启动延迟常量（深度生理压制版本）
+    // 深度生理压制：停止运动后3秒内系统完全不处理恢复
     // 医学解释：剧烈运动停止后的前10-15秒，身体处于摄氧量极度不足状态（Oxygen Deficit）
     // 此时血液流速仍处于峰值，心脏负担极重，体能并不会开始"恢复"，而是在维持不崩塌
-    // 目的：消除"跑两步停一下瞬间回血"的游击战式打法
-    static const float RECOVERY_STARTUP_DELAY_SECONDS = 5.0; // 恢复启动延迟（秒）- 从1.5秒增加到5秒
+    // 目的：消除"跑两步停一下瞬间回血"的游击战式打法，同时提高游戏流畅度
+    static const float RECOVERY_STARTUP_DELAY_SECONDS = 3.0; // 恢复启动延迟（秒）- 从5秒缩短到3秒
     
     // ==================== EPOC（过量耗氧）延迟参数 ====================
     // 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
     // 参考：Brooks et al., 2000; LaForgia et al., 2006
-    // 拟真平衡点：缩短到2秒，与恢复启动延迟保持一致
-    static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）- 从4秒降到2秒
+    // 拟真平衡点：缩短到0.5秒，减少按键无响应感
+    static const float EPOC_DELAY_SECONDS = 0.5; // EPOC延迟时间（秒）- 从2秒降到0.5秒
     static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
-    
+
     // ==================== 姿态交互修正参数 ====================
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
@@ -348,7 +351,7 @@ class StaminaConstants
     static const float SWIMMING_DRAG_COEFFICIENT = 0.5; // 阻力系数（C_d，简化值）
     static const float SWIMMING_WATER_DENSITY = 1000.0; // 水密度（ρ，kg/m³）
     static const float SWIMMING_FRONTAL_AREA = 0.5; // 正面面积（A，m²，简化值）
-    static const float SWIMMING_BASE_POWER = 25.0; // 基础游泳功率（W，维持浮力和基本动作，从50W降至25W）
+    static const float SWIMMING_BASE_POWER = 20.0; // 基础游泳功率（W，维持浮力和基本动作，从25W降至20W，提高水中存活率）
     
     // 负重阈值（负浮力效应）
     static const float SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0; // kg，超过此重量时静态消耗大幅增加（从20kg提高到25kg）
@@ -398,7 +401,7 @@ class StaminaConstants
     static const float ENV_HEAT_STRESS_START_HOUR = 10.0; // 热应激开始时间（小时）
     static const float ENV_HEAT_STRESS_PEAK_HOUR = 14.0; // 热应激峰值时间（小时，正午）
     static const float ENV_HEAT_STRESS_END_HOUR = 18.0; // 热应激结束时间（小时）
-    static const float ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.3; // 热应激最大倍数（30%消耗增加）
+    static const float ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5; // 热应激最大倍数（50%消耗增加，提高环境影响）
     static const float ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0; // 热应激基础倍数（无影响）
     static const float ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5; // 室内热应激减少比例（50%）
     
@@ -454,6 +457,8 @@ class StaminaConstants
     // ==================== 配置系统桥接方法 ====================
     
     // 获取能量到体力转换系数（从配置管理器）
+    // 修复：确保不低于最小值，避免优化器输出过小导致体力不消耗
+    static const float ENERGY_TO_STAMINA_COEFF_MIN = 0.000001;  // 1e-06，校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
     static float GetEnergyToStaminaCoeff()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -461,7 +466,10 @@ class StaminaConstants
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.energy_to_stamina_coeff;
+            {
+                float coeff = params.energy_to_stamina_coeff;
+                return Math.Max(coeff, ENERGY_TO_STAMINA_COEFF_MIN);
+            }
         }
         return 0.000035; // 默认值
     }
@@ -476,7 +484,7 @@ class StaminaConstants
             if (params)
                 return params.base_recovery_rate;
         }
-        return 0.0003; // 默认值
+        return 0.00035; // 默认值（更新为0.00035，从0.0004降低）
     }
     
     // 获取站姿恢复倍数（从配置管理器）
@@ -489,7 +497,7 @@ class StaminaConstants
             if (params)
                 return params.standing_recovery_multiplier;
         }
-        return 2.0; // 默认值
+        return 1.5; // 默认值（从2.0降低到1.5）
     }
     
     // 获取趴姿恢复倍数（从配置管理器）
@@ -502,7 +510,7 @@ class StaminaConstants
             if (params)
                 return params.prone_recovery_multiplier;
         }
-        return 2.2; // 默认值
+        return 1.8; // 默认值（从2.2降低到1.8）
     }
     
     // 获取负重恢复惩罚系数（从配置管理器）
@@ -558,6 +566,7 @@ class StaminaConstants
     }
     
     // 获取Sprint体力消耗倍数（从配置管理器）
+    // 修复：确保不低于1.0，避免为0导致体力不消耗
     static float GetSprintStaminaDrainMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -565,7 +574,10 @@ class StaminaConstants
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.sprint_stamina_drain_multiplier;
+            {
+                float v = params.sprint_stamina_drain_multiplier;
+                return Math.Max(v, 1.0);
+            }
         }
         return 3.0; // 默认值
     }
@@ -596,6 +608,226 @@ class StaminaConstants
         return 2.0; // 默认值
     }
     
+    // 获取蹲姿消耗倍数（从配置管理器）
+    // 修复：添加此桥接方法，使配置参数生效
+    static float GetPostureCrouchMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.posture_crouch_multiplier;
+        }
+        return 2.0; // 默认值（蹲姿消耗是站姿的2倍）
+    }
+
+    // 获取趴姿消耗倍数（从配置管理器）
+    // 修复：添加此桥接方法，使配置参数生效
+    static float GetPostureProneMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.posture_prone_multiplier;
+        }
+        return 2.5; // 默认值（趴姿消耗是站姿的2.5倍）
+    }
+
+    // ==================== 恢复模型参数配置方法 ====================
+
+    // 获取恢复非线性系数（从配置管理器）
+    static float GetRecoveryNonlinearCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.recovery_nonlinear_coeff;
+        }
+        return 0.5; // 默认值
+    }
+
+    // 获取快速恢复倍数（从配置管理器）
+    static float GetFastRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.fast_recovery_multiplier;
+        }
+        return 2.5; // 默认值
+    }
+
+    // 获取中等恢复倍数（从配置管理器）
+    static float GetMediumRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.medium_recovery_multiplier;
+        }
+        return 1.4; // 默认值
+    }
+
+    // 获取慢速恢复倍数（从配置管理器）
+    static float GetSlowRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.slow_recovery_multiplier;
+        }
+        return 0.6; // 默认值
+    }
+
+    // ==================== Sprint参数配置方法 ====================
+
+    // 获取Sprint速度阈值（从配置管理器）
+    static float GetSprintVelocityThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.sprint_velocity_threshold;
+        }
+        return 5.2; // 默认值（m/s）
+    }
+
+    // 获取Sprint速度加成（从配置管理器）
+    static float GetSprintSpeedBoost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.sprint_speed_boost;
+        }
+        return 0.30; // 默认值（30%）
+    }
+
+    // ==================== 边际效应参数配置方法 ====================
+
+    // 获取边际效应衰减阈值（从配置管理器）
+    static float GetMarginalDecayThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.marginal_decay_threshold;
+        }
+        return 0.8; // 默认值（80%体力）
+    }
+
+    // 获取边际效应衰减系数（从配置管理器）
+    static float GetMarginalDecayCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.marginal_decay_coeff;
+        }
+        return 1.1; // 默认值
+    }
+
+    // ==================== 动作消耗参数配置方法 ====================
+
+    // 获取跳跃基础消耗（从配置管理器）
+    static float GetJumpStaminaBaseCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.jump_stamina_base_cost;
+        }
+        return 0.035; // 默认值（3.5%体力）
+    }
+
+    // 获取翻越起始消耗（从配置管理器）
+    static float GetVaultStaminaStartCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.vault_stamina_start_cost;
+        }
+        return 0.02; // 默认值（2%体力）
+    }
+
+    // 获取攀爬消耗（从配置管理器）
+    static float GetClimbStaminaTickCost()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.climb_stamina_tick_cost;
+        }
+        return 0.01; // 默认值（1%体力/秒）
+    }
+
+    // ==================== 环境因子参数配置方法 ====================
+
+    // 获取热应激惩罚系数（从配置管理器）
+    static float GetEnvTemperatureHeatPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_temperature_heat_penalty_coeff;
+        }
+        return 0.02; // 默认值（每高1度恢复率降低2%）
+    }
+
+    // 获取冷应激恢复惩罚系数（从配置管理器）
+    static float GetEnvTemperatureColdRecoveryPenaltyCoeff()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_temperature_cold_recovery_penalty_coeff;
+        }
+        return 0.05; // 默认值（每低1度恢复率降低5%）
+    }
+
+    // 获取地表湿度惩罚最大值（从配置管理器）
+    static float GetEnvSurfaceWetnessPenaltyMax()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.env_surface_wetness_prone_penalty;
+        }
+        return 0.15; // 默认值（最大15%恢复惩罚）
+    }
+
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {
@@ -796,7 +1028,7 @@ class StaminaConstants
     static const float STANCE_FATIGUE_ACCUMULATION = 1.0; // 每次姿态转换增加 1.0 疲劳值
     
     // 疲劳堆积衰减速率（每秒）
-    static const float STANCE_FATIGUE_DECAY = 0.5; // 每秒衰减 0.5 疲劳值
+    static const float STANCE_FATIGUE_DECAY = 0.3; // 每秒衰减 0.3 疲劳值，降低衰减速率以延长疲劳影响时间
     
     // 疲劳堆积最大值（防止无限累积）
     static const float STANCE_FATIGUE_MAX = 10.0; // 最大疲劳堆积值（10.0）

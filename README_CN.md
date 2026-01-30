@@ -1,9 +1,10 @@
-# Realistic Stamina System (RSS)
+# Realistic Stamina System (RSS) v3.11.0
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
+[![Version](https://img.shields.io/badge/Version-3.11.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -119,97 +120,80 @@ RealisticStaminaSystem/
 │           └── Stamina/
 │               ├── SCR_RealisticStaminaSystem.c  # 体力-速度系统核心（数学计算）
 │               ├── SCR_StaminaOverride.c          # 体力系统覆盖（拦截原生系统）
-│               ├── SCR_SwimmingState.c            # 游泳状态管理模块（121行，v2.11.0新增）
-│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块（333行，v2.11.0新增）
-│               ├── SCR_SpeedCalculation.c        # 速度计算模块（163行，v2.11.0扩展）
-│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块（187行）
-│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块（127行）
-│               ├── SCR_DebugDisplay.c            # 调试信息显示模块（352行，v2.11.0扩展）
+│               ├── SCR_SwimmingState.c            # 游泳状态管理模块
+│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块
+│               ├── SCR_SpeedCalculation.c        # 速度计算模块
+│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块
+│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块
+│               ├── SCR_DebugDisplay.c            # 调试信息显示模块
 │               ├── SCR_CollapseTransition.c      # "撞墙"阻尼过渡模块
 │               ├── SCR_ExerciseTracking.c        # 运动持续时间跟踪模块
 │               ├── SCR_JumpVaultDetection.c      # 跳跃和翻越检测模块
 │               ├── SCR_EncumbranceCache.c        # 负重缓存管理模块
 │               ├── SCR_FatigueSystem.c           # 疲劳积累系统模块
 │               ├── SCR_TerrainDetection.c        # 地形检测模块
-│               ├── SCR_EnvironmentFactor.c       # 环境因子模块（v2.10.0）
+│               ├── SCR_EnvironmentFactor.c       # 环境因子模块
 │               ├── SCR_EpocState.c               # EPOC状态管理模块
 │               ├── SCR_NetworkSync.c             # 网络同步模块
 │               ├── SCR_UISignalBridge.c          # UI信号桥接模块
 │               ├── SCR_StaminaConstants.c        # 常量定义模块
-│               └── SCR_StaminaHelpers.c          # 辅助函数模块
+│               ├── SCR_StaminaHelpers.c          # 辅助函数模块
+│               ├── SCR_StaminaHUDComponent.c     # 实时状态HUD组件
+│               ├── SCR_RSS_ConfigManager.c        # 配置管理器
+│               ├── SCR_RSS_Settings.c            # 配置类
+│               ├── SCR_InventoryStorageManagerComponent_Override.c # 库存存储管理器覆盖
+│               └── SCR_StanceTransitionManager.c # 姿态转换管理器
 ├── Prefabs/                              # 预制体文件
 │   └── Characters/
 │       └── Core/
 │           └── Character_Base.et         # 角色基础预制体
 └── tools/                                # 开发工具和脚本
-    ├── simulate_stamina_system.py        # 基础趋势图生成脚本
-    ├── generate_comprehensive_trends.py  # 综合趋势图生成脚本（包含移动类型对比）
-    ├── multi_dimensional_analysis.py     # 多维度趋势分析脚本
-    └── *.png                             # 生成的趋势图
+    ├── rss_super_pipeline.py             # 主优化管道（内置多目标优化，推荐）
+    ├── rss_digital_twin_fix.py           # 数字孪生仿真器（被 pipeline/校准脚本调用）
+    ├── stamina_constants.py              # 常数定义工具库
+    ├── calibrate_run_3_5km.py            # 3.5km/15:27 校准
+    ├── calibrate_recovery.py             # 恢复时间校准
+    ├── embed_json_to_c.py                # JSON → C 预设嵌入
+    ├── verify_json_params.py            # JSON 参数校验
+    ├── rss_optimizer_gui.py             # 优化器 GUI（可选）
+    ├── requirements.txt                  # Python 依赖
+    ├── optimized_rss_config_*.json       # 优化后的配置文件（3 个预设）
+    └── README.md                         # Tools 工具集文档
 ```
 
-## 趋势图 / Trend Plots
+## v3.11.0 版本更新 / v3.11.0 Updates
 
-以下图表由 `tools/` 目录下脚本生成，**统一为中英双语标注**（标题/坐标轴/图例）。  
-These plots are generated by scripts in `tools/` and use **bilingual (ZH/EN) labels** (title/axes/legend).
+**2026-01-26**
 
-### 1) 基础趋势图 / Basic Trends
+### 🌟 核心功能更新
+- ✅ **体力系统优化** - 优化体力系统响应速度和起步体验
+- ✅ **体力系统修复** - 修复体力系统的高频监听和速度计算问题
+- ✅ **负重系统增强** - 实现库存变更时实时更新负重缓存
+- ✅ **负重计算修复** - 修复武器重量未计入总负重的问题
+- ✅ **环境感知增强** - 添加室内环境忽略坡度影响功能
+- ✅ **配置管理优化** - 修复预设配置逻辑，确保系统预设值保持最新
+- ✅ **参数优化** - 优化RSS系统参数并调整配置文件路径
 
-![stamina_system_trends](stamina_system_trends.png)
+### 📁 项目清理与优化
+- ✅ **项目文件清理** - 删除所有生成的 PNG 图表文件
+- ✅ **Tools 目录优化** - 仅保留核心 NSGA-II 优化管道，删除过时脚本
+- ✅ **配置文件更新** - 移除旧的优化配置文件和更新相关路径
 
-### 2) 综合趋势图 / Comprehensive Trends
+### 📚 文档完善
+- ✅ **工具集文档** - 新增 tools/README.md - 完整工具集文档
+- ✅ **配置验证报告** - 新增 CONFIG_APPLICATION_VERIFICATION.md - 配置应用验证报告
+- ✅ **开关验证报告** - 新增 DEBUG_AND_HINT_SWITCH_VERIFICATION.md - 开关验证报告
 
-以下图表由 `generate_comprehensive_trends.py` 生成，拆分为多个独立图表以便查看：
+### 🎯 版本整并
+- ✅ **版本统一** - 将从提交 d1ebb9c 到现在的所有变更作为 v3.11.0
 
-#### 2.1) 2英里测试 / 2-mile Test
-![comprehensive_2mile_test](comprehensive_2mile_test.png)
+详细信息请参考 [CHANGELOG.md](CHANGELOG.md) / See [CHANGELOG.md](CHANGELOG.md) for details.
 
-#### 2.2) 不同负重对比 / Load Comparison
-![comprehensive_load_comparison](comprehensive_load_comparison.png)
+## 技术文档 / Technical Documentation
 
-#### 2.3) 移动类型速度对比 / Movement Type Speed
-![comprehensive_movement_type_speed](comprehensive_movement_type_speed.png)
-
-#### 2.4) 恢复速度分析 / Recovery Analysis
-![comprehensive_recovery_analysis](comprehensive_recovery_analysis.png)
-
-#### 2.5) 2英里测试速度变化 / 2-mile Speed Profile
-![comprehensive_2mile_speed](comprehensive_2mile_speed.png)
-
-#### 2.6) 负重对速度的影响 / Load vs Speed Penalty
-![comprehensive_load_speed_penalty](comprehensive_load_speed_penalty.png)
-
-#### 2.7) 多维度对比 / Multi-factor Comparison
-![comprehensive_multi_factor_comparison](comprehensive_multi_factor_comparison.png)
-
-### 3) 多维度分析 / Multi-dimensional Analysis
-
-以下图表由 `multi_dimensional_analysis.py` 生成，拆分为多个独立图表以便查看：
-
-#### 3.1) 不同负重下的2英里测试 / 2-mile Test by Load
-![multi_2mile_by_load](multi_2mile_by_load.png)
-
-#### 3.2) 不同移动类型速度对比 / Speed by Movement Type
-![multi_speed_by_movement_type](multi_speed_by_movement_type.png)
-
-#### 3.3) 不同坡度体力消耗 / Drain by Slope
-![multi_drain_by_slope](multi_drain_by_slope.png)
-
-#### 3.4) 不同移动类型&坡度速度对比 / Speed (Types & Slopes)
-![multi_speed_types_slopes](multi_speed_types_slopes.png)
-
-#### 3.5) 不同移动类型&坡度消耗对比 / Drain (Types & Slopes)
-![multi_drain_types_slopes](multi_drain_types_slopes.png)
-
-#### 3.6) 不同移动类型2英里测试 / 2-mile by Movement Type
-![multi_2mile_by_movement_type](multi_2mile_by_movement_type.png)
-
-#### 3.7) 不同坡度2英里测试 / 2-mile by Slope
-![multi_2mile_by_slope](multi_2mile_by_slope.png)
-
-#### 3.8) 速度与消耗率关系 / Speed vs Drain Rate
-![multi_speed_vs_drain](multi_speed_vs_drain.png)
-
+- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 体力系统计算逻辑与常量说明
+- **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
+- **[tools/README.md](tools/README.md)** - 工具集完整文档
 
 ## 技术实现
 

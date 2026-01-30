@@ -20,6 +20,77 @@ class BaseDrainRateResult
 
 class StaminaUpdateCoordinator
 {
+    // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
+    // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
+    // @param currentSpeed 当前速度（m/s）
+    // @param currentWeightWithWet 包含湿重的总重量（kg）
+    // @param gradePercent 坡度百分比
+    // @param terrainFactor 地形系数（已包含泥泞修正）
+    // @param windDrag 风阻系数
+    // @param coldStaticPenalty 冷应激静态惩罚
+    // @return 基础消耗率（每0.2秒）
+    static float CalculateLandBaseDrainRate(
+        float currentSpeed,
+        float currentWeightWithWet,
+        float gradePercent,
+        float terrainFactor,
+        float windDrag,
+        float coldStaticPenalty)
+    {
+        float baseDrainRate = 0.0;
+
+        // 陆地移动模式判断（Givoni-Goldman / Pandolf）
+        // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
+        // 否则使用标准 Pandolf 步行模型
+        bool isRunning = (currentSpeed > 2.2);
+
+        if (currentSpeed < 0.1)
+        {
+            // ==================== 静态负重站立消耗（Pandolf 静态项）====================
+            float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
+            float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0); // 负重（去除身体重量，使用湿重）
+
+            float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
+
+            // 应用冷应激静态惩罚
+            staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
+
+            baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
+        }
+        else if (isRunning)
+        {
+            // ==================== Givoni-Goldman 跑步模型 ====================
+            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+
+            // 应用地形系数（跑步时同样受地形影响）
+            runningDrainRate = runningDrainRate * terrainFactor;
+
+            // 应用风阻：逆风时增加消耗
+            runningDrainRate = runningDrainRate * (1.0 + windDrag);
+
+            baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+        }
+        else
+        {
+            // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
+            baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                currentSpeed,
+                currentWeightWithWet,
+                gradePercent,
+                terrainFactor,  // 地形系数（已包含泥泞修正）
+                true            // 使用 Santee 下坡修正
+            );
+
+            // 应用风阻：逆风时增加消耗
+            baseDrainRate = baseDrainRate * (1.0 + windDrag);
+
+            // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
+            baseDrainRate = baseDrainRate * 0.2;
+        }
+
+        return baseDrainRate;
+    }
+
     // ==================== 速度计算和更新 ====================
     
     // 更新速度（基于体力和负重）
@@ -27,12 +98,16 @@ class StaminaUpdateCoordinator
     // @param staminaPercent 当前体力百分比
     // @param encumbranceSpeedPenalty 负重速度惩罚
     // @param collapseTransition "撞墙"阻尼过渡模块
+    // @param currentSpeed 当前速度 (m/s)
+    // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 最终速度倍数
     static float UpdateSpeed(
         SCR_CharacterControllerComponent controller,
         float staminaPercent,
         float encumbranceSpeedPenalty,
-        CollapseTransition collapseTransition)
+        CollapseTransition collapseTransition,
+        float currentSpeed = 0.0,
+        EnvironmentFactor environmentFactor = null)
     {
         if (!controller)
             return 1.0;
@@ -57,7 +132,9 @@ class StaminaUpdateCoordinator
         
         // 计算速度倍数
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller);
+        
+        // 获取坡度角度，考虑室内检测
+        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor);
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
         
@@ -76,7 +153,8 @@ class StaminaUpdateCoordinator
             currentMovementPhase,
             isExhausted,
             canSprint,
-            staminaPercent);
+            staminaPercent,
+            currentSpeed);
         
         // 应用速度倍数
         controller.OverrideMaxSpeed(finalSpeedMultiplier);
@@ -153,6 +231,7 @@ class StaminaUpdateCoordinator
     // @param computedVelocity 计算得到的速度向量（用于游泳）
     // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（输入）
     // @param owner 角色实体（用于调试）
+    // @param environmentFactor 环境因子模块引用（v2.14.0修复：添加此参数以支持环境因子）
     // @return 基础消耗率结果（包含消耗率和调试标志）
     static BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
@@ -163,7 +242,8 @@ class StaminaUpdateCoordinator
         float terrainFactor,
         vector computedVelocity,
         bool swimmingVelocityDebugPrinted,
-        IEntity owner)
+        IEntity owner,
+        EnvironmentFactor environmentFactor = null)
     {
         float baseDrainRate = 0.0;
         
@@ -186,44 +266,41 @@ class StaminaUpdateCoordinator
         }
         else
         {
-            // ==================== 陆地移动模式判断（Givoni-Goldman / Pandolf）====================
-            // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
-            // 否则使用标准 Pandolf 步行模型
-            bool isRunning = (currentSpeed > 2.2);
-            
-            if (currentSpeed < 0.1)
+            // ==================== v2.14.0修复：环境因子处理 ====================
+            // 获取环境因子（如果环境因子模块存在）
+            float windDrag = 0.0;
+            float mudTerrainFactor = 0.0;
+            float totalWetWeight = 0.0;
+            float coldStaticPenalty = 0.0;
+
+            if (environmentFactor)
             {
-                // ==================== 静态负重站立消耗（Pandolf 静态项）====================
-                float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
-                float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0); // 负重（去除身体重量）
-                
-                float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
-                baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
+                windDrag = environmentFactor.GetWindDrag();
+                mudTerrainFactor = environmentFactor.GetMudTerrainFactor();
+                totalWetWeight = environmentFactor.GetTotalWetWeight();
+                coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+
+                // 检查是否在室内，如果是则忽略坡度影响
+                if (environmentFactor.IsIndoor())
+                {
+                    gradePercent = 0.0; // 室内时坡度为0
+                }
             }
-            else if (isRunning)
-            {
-                // ==================== Givoni-Goldman 跑步模型 ====================
-                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-                
-                // 应用地形系数（跑步时同样受地形影响）
-                runningDrainRate = runningDrainRate * terrainFactor;
-                
-                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
-            }
-            else
-            {
-                // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
-                baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                    currentSpeed, 
-                    currentWeightWithWet, 
-                    gradePercent,
-                    terrainFactor,  // 地形系数
-                    true            // 使用 Santee 下坡修正
-                );
-                
-                // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
-                baseDrainRate = baseDrainRate * 0.2;
-            }
+
+            // 应用泥泞地形系数（修正地形因子）
+            terrainFactor = terrainFactor + mudTerrainFactor;
+
+            // 应用降雨湿重（修正当前重量）
+            currentWeightWithWet = currentWeightWithWet + totalWetWeight;
+
+                // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
+            baseDrainRate = CalculateLandBaseDrainRate(
+                currentSpeed,
+                currentWeightWithWet,
+                gradePercent,
+                terrainFactor,
+                windDrag,
+                coldStaticPenalty);
         }
         
         BaseDrainRateResult result = new BaseDrainRateResult();
@@ -249,6 +326,7 @@ class StaminaUpdateCoordinator
     // @param fatigueSystem 疲劳系统
     // @param controller 角色控制器组件
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @param timeDeltaSeconds 实际距上次更新的秒数（恢复/消耗率按每0.2s设计，需按 timeDelta/0.2 缩放）
     // @return 新的目标体力值
     static float UpdateStaminaValue(
         SCR_CharacterStaminaComponent staminaComponent,
@@ -264,7 +342,8 @@ class StaminaUpdateCoordinator
         ExerciseTracker exerciseTracker,
         FatigueSystem fatigueSystem,
         SCR_CharacterControllerComponent controller,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        float timeDeltaSeconds = 0.2)
     {
         if (!staminaComponent)
             return staminaPercent;
@@ -348,8 +427,10 @@ class StaminaUpdateCoordinator
         // 计算总消耗率
         float finalDrainRate = totalDrainRate + epocDrainRate;
         
-        // 代谢净值算法：netChange = recoveryRate - totalDrainRate
-        float netChange = recoveryRate - finalDrainRate;
+        // 代谢净值算法：netChange = (recoveryRate - totalDrainRate) * (timeDelta/0.2)
+        // 恢复/消耗率按每0.2秒设计；实际更新间隔可能为50ms，需按时间比例缩放
+        float tickScale = Math.Clamp(timeDeltaSeconds / 0.2, 0.01, 2.0);
+        float netChange = (recoveryRate - finalDrainRate) * tickScale;
         
         // 更新目标体力值
         newTargetStamina = staminaPercent + netChange;
@@ -360,11 +441,12 @@ class StaminaUpdateCoordinator
         if (metabolismDebugCounter >= 25)
         {
             metabolismDebugCounter = 0;
-            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值: %5/0.2s) | %1%% → %2%% (Recovery: %3/0.2s, Drain: %4/0.2s, Net: %5/0.2s)",
+            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值×%.2f: %5) | %1%% → %2%%",
                 Math.Round(staminaPercent * 100.0).ToString(),
                 Math.Round(newTargetStamina * 100.0).ToString(),
                 Math.Round(recoveryRate * 1000000.0) / 1000000.0,
                 Math.Round(finalDrainRate * 1000000.0) / 1000000.0,
+                tickScale,
                 Math.Round(netChange * 1000000.0) / 1000000.0);
         }
         

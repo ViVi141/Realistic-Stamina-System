@@ -48,14 +48,14 @@ class RealisticStaminaSpeedSystem
     static const float FITNESS_EFFICIENCY_COEFF = StaminaConstants.FITNESS_EFFICIENCY_COEFF;
     static const float FITNESS_RECOVERY_COEFF = StaminaConstants.FITNESS_RECOVERY_COEFF;
     // 注意：BASE_RECOVERY_RATE 现在从配置管理器获取
-    static const float RECOVERY_NONLINEAR_COEFF = StaminaConstants.RECOVERY_NONLINEAR_COEFF;
+    // 注意：RECOVERY_NONLINEAR_COEFF 现在从配置管理器获取
+    // 注意：FAST_RECOVERY_MULTIPLIER 现在从配置管理器获取
+    // 注意：MEDIUM_RECOVERY_MULTIPLIER 现在从配置管理器获取
+    // 注意：SLOW_RECOVERY_MULTIPLIER 现在从配置管理器获取
     static const float FAST_RECOVERY_DURATION_MINUTES = StaminaConstants.FAST_RECOVERY_DURATION_MINUTES;
-    static const float FAST_RECOVERY_MULTIPLIER = StaminaConstants.FAST_RECOVERY_MULTIPLIER;
     static const float MEDIUM_RECOVERY_START_MINUTES = StaminaConstants.MEDIUM_RECOVERY_START_MINUTES;
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = StaminaConstants.MEDIUM_RECOVERY_DURATION_MINUTES;
-    static const float MEDIUM_RECOVERY_MULTIPLIER = StaminaConstants.MEDIUM_RECOVERY_MULTIPLIER;
     static const float SLOW_RECOVERY_START_MINUTES = StaminaConstants.SLOW_RECOVERY_START_MINUTES;
-    static const float SLOW_RECOVERY_MULTIPLIER = StaminaConstants.SLOW_RECOVERY_MULTIPLIER;
     static const float AGE_RECOVERY_COEFF = StaminaConstants.AGE_RECOVERY_COEFF;
     static const float AGE_REFERENCE = StaminaConstants.AGE_REFERENCE;
     static const float FATIGUE_RECOVERY_PENALTY = StaminaConstants.FATIGUE_RECOVERY_PENALTY;
@@ -63,8 +63,7 @@ class RealisticStaminaSpeedSystem
     // 注意：STANDING_RECOVERY_MULTIPLIER, PRONE_RECOVERY_MULTIPLIER 现在从配置管理器获取
     // 注意：LOAD_RECOVERY_PENALTY_COEFF, LOAD_RECOVERY_PENALTY_EXPONENT 现在从配置管理器获取
     static const float BODY_TOLERANCE_BASE = StaminaConstants.BODY_TOLERANCE_BASE;
-    static const float MARGINAL_DECAY_THRESHOLD = StaminaConstants.MARGINAL_DECAY_THRESHOLD;
-    static const float MARGINAL_DECAY_COEFF = StaminaConstants.MARGINAL_DECAY_COEFF;
+    // 注意：MARGINAL_DECAY_THRESHOLD, MARGINAL_DECAY_COEFF 现在从配置管理器获取
     static const float MIN_RECOVERY_STAMINA_THRESHOLD = StaminaConstants.MIN_RECOVERY_STAMINA_THRESHOLD;
     static const float MIN_RECOVERY_REST_TIME_SECONDS = StaminaConstants.MIN_RECOVERY_REST_TIME_SECONDS;
     // 注意：FATIGUE_ACCUMULATION_COEFF, FATIGUE_MAX_FACTOR 现在从配置管理器获取
@@ -73,9 +72,7 @@ class RealisticStaminaSpeedSystem
     static const float AEROBIC_EFFICIENCY_FACTOR = StaminaConstants.AEROBIC_EFFICIENCY_FACTOR;
     static const float ANAEROBIC_EFFICIENCY_FACTOR = StaminaConstants.ANAEROBIC_EFFICIENCY_FACTOR;
     // 注意：ENCUMBRANCE_SPEED_PENALTY_COEFF, ENCUMBRANCE_STAMINA_DRAIN_COEFF 现在从配置管理器获取
-    static const float JUMP_STAMINA_BASE_COST = StaminaConstants.JUMP_STAMINA_BASE_COST;
-    static const float VAULT_STAMINA_START_COST = StaminaConstants.VAULT_STAMINA_START_COST;
-    static const float CLIMB_STAMINA_TICK_COST = StaminaConstants.CLIMB_STAMINA_TICK_COST;
+    // 注意：JUMP_STAMINA_BASE_COST, VAULT_STAMINA_START_COST, CLIMB_STAMINA_TICK_COST 现在从配置管理器获取
     static const float JUMP_MIN_STAMINA_THRESHOLD = StaminaConstants.JUMP_MIN_STAMINA_THRESHOLD;
     static const float JUMP_CONSECUTIVE_WINDOW = StaminaConstants.JUMP_CONSECUTIVE_WINDOW;
     static const float JUMP_CONSECUTIVE_PENALTY = StaminaConstants.JUMP_CONSECUTIVE_PENALTY;
@@ -200,24 +197,7 @@ class RealisticStaminaSpeedSystem
         float currentWeight = characterInventory.GetTotalWeight();
         float maxWeight = characterInventory.GetMaxLoad();
         
-        // 调试输出（仅在第一次或值变化时输出，避免过多日志，仅在客户端）
-        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
-        {
-            static float lastCurrentWeight = -1.0;
-            static float lastMaxWeight = -1.0;
-            static int debugCallCount = 0;
-            debugCallCount++;
-            
-            if (debugCallCount % 25 == 0 || Math.AbsFloat(currentWeight - lastCurrentWeight) > 0.1 || Math.AbsFloat(maxWeight - lastMaxWeight) > 0.1)
-            {
-                PrintFormat("[RealisticSystem] 负重计算调试: currentWeight=%1 | maxWeight=%2 | inventory组件=%3", 
-                    currentWeight.ToString(), 
-                    maxWeight.ToString(),
-                    (characterInventory != null).ToString());
-                lastCurrentWeight = currentWeight;
-                lastMaxWeight = maxWeight;
-            }
-        }
+
         
         // 如果maxWeight和currentWeight都为0，说明可能方法不存在或返回默认值
         // 在这种情况下，暂时返回0（无负重），等待找到正确的API
@@ -329,13 +309,12 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 0.0;
         
-        // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-        // 基准重量（12kg）是基本战斗装备的重量，不应该影响速度和消耗
-        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
-        
+        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
+
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
-        
+
         // 应用真实医学模型：速度惩罚 = β * (负重/体重)
         // β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
@@ -458,7 +437,8 @@ class RealisticStaminaSpeedSystem
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
         // 体力越低，恢复越快；体力越高，恢复越慢
         // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
-        float staminaRecoveryMultiplier = 1.0 + (RECOVERY_NONLINEAR_COEFF * (1.0 - staminaPercent));
+        float recoveryNonlinearCoeff = StaminaConstants.GetRecoveryNonlinearCoeff();
+        float staminaRecoveryMultiplier = 1.0 + (recoveryNonlinearCoeff * (1.0 - staminaPercent));
         float baseRecoveryRate = StaminaConstants.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
         
         // ==================== 2. 健康状态/训练水平影响 ====================
@@ -468,15 +448,20 @@ class RealisticStaminaSpeedSystem
         
         // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
+        float fastRecoveryMultiplier = StaminaConstants.GetFastRecoveryMultiplier();
+        float mediumRecoveryMultiplier = StaminaConstants.GetMediumRecoveryMultiplier();
+        float slowRecoveryMultiplier = StaminaConstants.GetSlowRecoveryMultiplier();
+        
         if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
         {
             // 快速恢复期（0-3分钟）：恢复速度增加200%（3倍）
-            restTimeMultiplier = FAST_RECOVERY_MULTIPLIER;
+            restTimeMultiplier = fastRecoveryMultiplier;
         }
         else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
         {
-            // 中等恢复期（3-10分钟）：恢复速度增加50%（1.5倍）
-            restTimeMultiplier = MEDIUM_RECOVERY_MULTIPLIER;
+            // 中等恢复期（1.5-6.5分钟）：恢复速度增加40%（1.4倍）
+            // [修复注释] 从"3-10分钟"改为"1.5-6.5分钟"（与Python数字孪生一致）
+            restTimeMultiplier = mediumRecoveryMultiplier;
         }
         else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
         {
@@ -484,7 +469,7 @@ class RealisticStaminaSpeedSystem
             // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.8倍
             const float transitionDuration = 10.0; // 过渡时间（分钟）
             float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
-            restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - SLOW_RECOVERY_MULTIPLIER));
+            restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
         }
         // 否则：标准恢复期（10分钟内），restTimeMultiplier = 1.0
         
@@ -544,12 +529,15 @@ class RealisticStaminaSpeedSystem
         // 结果：最后10%的体力恢复速度会比前50%慢3-4倍
         // 战术意图：玩家经常会处于80%-90%的"亚健康"状态，只有长时间修整才能真正满血
         float marginalDecayMultiplier = 1.0;
-        if (staminaPercent > MARGINAL_DECAY_THRESHOLD)
+        float marginalDecayThreshold = StaminaConstants.GetMarginalDecayThreshold();
+        float marginalDecayCoeff = StaminaConstants.GetMarginalDecayCoeff();
+        
+        if (staminaPercent > marginalDecayThreshold)
         {
             // 当体力>80%时，应用边际效应衰减
             // 恢复率 = (1.1 - 当前体力百分比)
             // 例如：体力90%时，恢复率 = 1.1 - 0.9 = 0.2（即20%的原始恢复速度）
-            marginalDecayMultiplier = MARGINAL_DECAY_COEFF - staminaPercent;
+            marginalDecayMultiplier = marginalDecayCoeff - staminaPercent;
             marginalDecayMultiplier = Math.Clamp(marginalDecayMultiplier, 0.2, 1.0); // 限制在20%-100%之间
         }
         
@@ -672,9 +660,9 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 1.0;
         
-        // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-        // 基准重量（12kg）是基本战斗装备的重量，不应该影响消耗
-        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
+        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        // 修复：与 SCR_EncumbranceCache 保持一致，30kg 负载时 bodyMassPercent ≈ 0.318
+        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
         
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
@@ -761,20 +749,18 @@ class RealisticStaminaSpeedSystem
         }
         else if (velocity >= RUN_VELOCITY_THRESHOLD || velocity >= 3.2)
         {
-            // Run消耗（核心修正：大幅调低RUN的基础消耗，以补偿负重）
-            // 基础消耗从0.105 pts/s降低到约0.08 pts/s（每0.2秒 = 0.00016）
-            // 这是为了确保30kg负载下仍能坚持约16分钟
-            return 0.00008 * loadFactor; // 每0.2秒，调整后的Run消耗
+            // Run消耗 × 负重影响因子
+            return 0.015 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
         }
         else if (velocity >= dynamicThreshold)
         {
-            // Walk消耗（缓慢消耗）
-            return 0.00002 * loadFactor; // 每0.2秒，调整后的Walk消耗
+            // Walk消耗 × 负重影响因子
+            return 0.009 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
         }
         else
         {
-            // 速度 < 动态阈值：恢复（保持较高的恢复率）
-            return -0.00025; // Rest恢复（负数），每0.2秒
+            // 速度 < 动态阈值：恢复
+            return -0.05; // Rest恢复（负数），每0.2秒，基于 stamina_constants.py 的正确值
         }
     }
     
@@ -891,6 +877,11 @@ class RealisticStaminaSpeedSystem
         float velocitySquared = velocity * velocity;
         float gradeTerm = gradeDecimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocitySquared));
         
+        // 坡度保护：限制坡度项的最大贡献，防止极端坡度导致消耗爆炸
+        // 坡度项不应超过基础项的3倍（即最多增加300%消耗）
+        float maxGradeTerm = baseTerm * 3.0;
+        gradeTerm = Math.Min(gradeTerm, maxGradeTerm);
+        
         // 应用 Santee 下坡修正（如果启用）
         // 当下坡超过 -15% 时，需要用力"刹车"，消耗增加
         if (useSanteeCorrection && gradePercent < 0.0)
@@ -912,19 +903,25 @@ class RealisticStaminaSpeedSystem
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
-        
-        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor;
+        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
+        // 只防止负数，不限制上限（完全尊重玩家选择）
+        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
+
+        // [修复] 根据原始 Pandolf 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
+        // 原始公式：E = M · (基础项 + 坡度项) · η
+        // 其中 E 的单位是 Watts，M 是总重量（kg）
+        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor * REFERENCE_WEIGHT;
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
-        // 从0.0001降低到0.000035，减少约65%的体力消耗速度
+        // 从0.0001降低到0.000015，减少约85%的体力消耗速度
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内（避免数值爆炸）
-        staminaDrainRate = Math.Clamp(staminaDrainRate, 0.0, 0.05); // 最多每秒消耗5%
-        
+        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
+        // 只防止负数，不限制上限
+        staminaDrainRate = Math.Max(staminaDrainRate, 0.0);
+
         return staminaDrainRate;
     }
     
@@ -1078,6 +1075,18 @@ class RealisticStaminaSpeedSystem
     {
         // Pandolf 静态项常量（使用类常量，避免变量名冲突）
         
+        // 确保重量有效
+        bodyWeight = Math.Max(bodyWeight, 0.0);
+        loadWeight = Math.Max(loadWeight, 0.0);
+        
+        // 空载时返回恢复率（负数）
+        if (loadWeight < 5.0)
+            return -0.0025; // 恢复率（负数）
+        
+        // 轻负重时返回小的恢复率
+        if (loadWeight < 15.0)
+            return -0.001; // 轻微恢复
+        
         // 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
         float baseStaticTerm = PANDOLF_STATIC_COEFF_1 * bodyWeight;
         
@@ -1095,14 +1104,13 @@ class RealisticStaminaSpeedSystem
         float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
         
         // 将能量消耗率（W）转换为体力消耗率（%/s）
-        // 参考：CalculatePandolfEnergyExpenditure 的转换系数（使用类常量）
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内
-        // 空载时约0.0135%/s，40kg负重时约0.04%/s
-        staticDrainRate = Math.Clamp(staticDrainRate, 0.0, 0.05); // 最多每秒消耗5%
-        
+        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
+        // 只防止负数，不限制上限
+        staticDrainRate = Math.Max(staticDrainRate, 0.0);
+
         return staticDrainRate;
     }
     
@@ -1159,25 +1167,31 @@ class RealisticStaminaSpeedSystem
             return 0.0; // 使用标准 Pandolf 模型
         
         // Givoni-Goldman 模型常量（使用类常量，避免变量名冲突）
-        
-        // 计算速度的幂：V^α
-        // 使用 StaminaHelpers.Pow 函数计算 V^2.2
-        float velocityPower = StaminaHelpers.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
+
+        // [修复] 直接使用 Math.Pow 计算 V^2.2，确保数值准确
+        // 不要使用 StaminaHelpers.Pow，它主要针对 < 1.0 的指数优化
+        float velocityPower = Math.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
         
         // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
         // 使用相对于基准体重的倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        weightMultiplier = Math.Clamp(weightMultiplier, 0.5, 2.0); // 限制在0.5-2.0倍之间
-        
-        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower;
+        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
+        // 只防止负数，不限制上限（完全尊重玩家选择）
+        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
+
+        // [修复] 根据原始 Givoni-Goldman 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
+        // 原始公式：E_run = (W_body + L) · Constant · V^α
+        // 其中 E_run 的单位是 Watts，(W_body + L) 是总重量（kg）
+        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower * REFERENCE_WEIGHT;
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（从配置管理器获取）
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
         float runningDrainRate = runningEnergyExpenditure * energyToStaminaCoeff;
         
-        // 限制消耗率在合理范围内
-        runningDrainRate = Math.Clamp(runningDrainRate, 0.0, 0.05); // 最多每秒消耗5%
-        
+        // [修复] 完全移除 clip 上限，让 Givoni 模型自然输出
+        // 只防止负数，不限制上限
+        runningDrainRate = Math.Max(runningDrainRate, 0.0);
+
         return runningDrainRate;
     }
     
@@ -1221,7 +1235,7 @@ class RealisticStaminaSpeedSystem
             loadFactor = Math.Clamp(loadFactor, 0.0, 1.0);
             
             // 使用平方律：让 25-30kg 之间依然相对温和，35kg之后才真正痛苦
-            float powerExponent = 2.0; // 平方律
+            const float powerExponent = 2.0; // 平方律
             staticMultiplier = 1.0 + (Math.Pow(loadFactor, powerExponent) * (StaminaConstants.SWIMMING_STATIC_DRAIN_MULTIPLIER - 1.0));
         }
         
@@ -1310,11 +1324,18 @@ class RealisticStaminaSpeedSystem
         float staticPower = baseMaintenancePower * staticMultiplier;
         
         // ==================== B. 水平阻力功率（v^3）====================
+        // [修复 fix2.md #2] 使用合速度计算阻力，避免分量立方的和 ≠ 合矢量模长的立方
         float horizontalPower = 0.0;
         if (vH > StaminaConstants.SWIMMING_MIN_SPEED)
         {
-            float vHCubed = vH * vH * vH;
-            horizontalPower = 0.5 * StaminaConstants.SWIMMING_WATER_DENSITY * vHCubed *
+            // [修复] 计算合速度（包括垂直分量），然后应用阻力公式
+            // 物理原理：P_total ∝ |v_total|^3 = (sqrt(v_x^2 + v_y^2))^3
+            // 而不是：|v_x|^3 + |v_y|^3
+            float vTotal = Math.Sqrt(vH * vH + vY * vY);
+            float vTotalCubed = vTotal * vTotal * vTotal; // 合速度的立方
+
+            // 使用合速度计算阻力功率
+            horizontalPower = 0.5 * StaminaConstants.SWIMMING_WATER_DENSITY * vTotalCubed *
                               StaminaConstants.SWIMMING_DRAG_COEFFICIENT * StaminaConstants.SWIMMING_FRONTAL_AREA;
             
             // 人体效率/游戏平衡折中
