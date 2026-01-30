@@ -699,30 +699,34 @@ class RSSTunerGUI:
         messagebox.showinfo("预设", f"已选择预设: {preset}")
     
     def update_data(self, iteration, playability, stability, realism, params):
-        """更新优化数据"""
-        self.optimization_data['iterations'].append(iteration)
-        self.optimization_data['playability_burden'].append(playability)
-        self.optimization_data['stability_risk'].append(stability)
-        self.optimization_data['physiological_realism'].append(realism)
+        """更新优化数据（线程安全：通过 root.after 调度到主线程）"""
+        def _do_update():
+            self.optimization_data['iterations'].append(iteration)
+            self.optimization_data['playability_burden'].append(playability)
+            self.optimization_data['stability_risk'].append(stability)
+            self.optimization_data['physiological_realism'].append(realism)
+            
+            # 更新参数数据
+            for param_name, param_value in params.items():
+                if param_name not in self.optimization_data['params']:
+                    self.optimization_data['params'][param_name] = []
+                self.optimization_data['params'][param_name].append(param_value)
+            
+            # 更新UI
+            self.iteration_label.config(text=f"迭代次数: {iteration}")
+            self.playability_label.config(text=f"可玩性负担: {playability:.4f}")
+            self.stability_label.config(text=f"稳定性风险: {stability:.4f}")
+            self.realism_label.config(text=f"生理学合理性: {realism:.4f}")
+            
+            # 更新进度条
+            progress = (iteration / self.total_iterations) * 100
+            self.progress_var.set(progress)
+            
+            # 刷新图表
+            self._refresh_monitor_chart()
         
-        # 更新参数数据
-        for param_name, param_value in params.items():
-            if param_name not in self.optimization_data['params']:
-                self.optimization_data['params'][param_name] = []
-            self.optimization_data['params'][param_name].append(param_value)
-        
-        # 更新UI
-        self.iteration_label.config(text=f"迭代次数: {iteration}")
-        self.playability_label.config(text=f"可玩性负担: {playability:.4f}")
-        self.stability_label.config(text=f"稳定性风险: {stability:.4f}")
-        self.realism_label.config(text=f"生理学合理性: {realism:.4f}")
-        
-        # 更新进度条
-        progress = (iteration / self.total_iterations) * 100
-        self.progress_var.set(progress)
-        
-        # 刷新图表
-        self._refresh_monitor_chart()
+        # 从后台线程调度到 Tk 主线程执行
+        self.root.after(0, _do_update)
 
 
 def main():

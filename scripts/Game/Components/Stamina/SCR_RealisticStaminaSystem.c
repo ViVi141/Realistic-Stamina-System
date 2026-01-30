@@ -309,13 +309,12 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 0.0;
         
-        // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-        // 基准重量（12kg）是基本战斗装备的重量，不应该影响速度和消耗
-        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
-        
+        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
+
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
-        
+
         // 应用真实医学模型：速度惩罚 = β * (负重/体重)
         // β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
@@ -661,9 +660,9 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 1.0;
         
-        // 计算有效负重（减去基准重量，基准重量是基本战斗装备）
-        // 基准重量（12kg）是基本战斗装备的重量，不应该影响消耗
-        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
+        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        // 修复：与 SCR_EncumbranceCache 保持一致，30kg 负载时 bodyMassPercent ≈ 0.318
+        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
         
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;

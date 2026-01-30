@@ -369,8 +369,10 @@ modded class SCR_CharacterControllerComponent
                         m_pEnvironmentFactor, // v2.15.0：传递环境因子模块
                         0.0); // 载具中视为静止，currentSpeed为0.0
                     
-                    // 更新体力值
-                    float newStamina = Math.Clamp(currentStamina + recoveryRate, 0.0, 1.0);
+                    // 更新体力值（恢复率按每0.2s设计，需按实际间隔缩放）
+                    float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
+                    float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
+                    float newStamina = Math.Clamp(currentStamina + recoveryRate * tickScale, 0.0, 1.0);
                     m_pStaminaComponent.SetTargetStamina(newStamina);
                     
                     // 调试信息：载具中体力恢复
@@ -862,6 +864,7 @@ modded class SCR_CharacterControllerComponent
         // 模块化：使用 StaminaUpdateCoordinator 协调体力更新
         if (m_pStaminaComponent)
         {
+            float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
             float newTargetStamina = StaminaUpdateCoordinator.UpdateStaminaValue(
                 m_pStaminaComponent,
                 staminaPercent,
@@ -876,7 +879,8 @@ modded class SCR_CharacterControllerComponent
                 m_pExerciseTracker,
                 m_pFatigueSystem,
                 this,
-                m_pEnvironmentFactor); // v2.14.0：传递环境因子模块
+                m_pEnvironmentFactor,
+                timeDeltaSec);
             
             // 设置目标体力值（这会自动应用到体力组件）
             m_pStaminaComponent.SetTargetStamina(newTargetStamina);

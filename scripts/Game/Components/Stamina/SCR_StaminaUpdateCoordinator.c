@@ -326,6 +326,7 @@ class StaminaUpdateCoordinator
     // @param fatigueSystem 疲劳系统
     // @param controller 角色控制器组件
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @param timeDeltaSeconds 实际距上次更新的秒数（恢复/消耗率按每0.2s设计，需按 timeDelta/0.2 缩放）
     // @return 新的目标体力值
     static float UpdateStaminaValue(
         SCR_CharacterStaminaComponent staminaComponent,
@@ -341,7 +342,8 @@ class StaminaUpdateCoordinator
         ExerciseTracker exerciseTracker,
         FatigueSystem fatigueSystem,
         SCR_CharacterControllerComponent controller,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        float timeDeltaSeconds = 0.2)
     {
         if (!staminaComponent)
             return staminaPercent;
@@ -425,8 +427,10 @@ class StaminaUpdateCoordinator
         // 计算总消耗率
         float finalDrainRate = totalDrainRate + epocDrainRate;
         
-        // 代谢净值算法：netChange = recoveryRate - totalDrainRate
-        float netChange = recoveryRate - finalDrainRate;
+        // 代谢净值算法：netChange = (recoveryRate - totalDrainRate) * (timeDelta/0.2)
+        // 恢复/消耗率按每0.2秒设计；实际更新间隔可能为50ms，需按时间比例缩放
+        float tickScale = Math.Clamp(timeDeltaSeconds / 0.2, 0.01, 2.0);
+        float netChange = (recoveryRate - finalDrainRate) * tickScale;
         
         // 更新目标体力值
         newTargetStamina = staminaPercent + netChange;
@@ -437,11 +441,12 @@ class StaminaUpdateCoordinator
         if (metabolismDebugCounter >= 25)
         {
             metabolismDebugCounter = 0;
-            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值: %5/0.2s) | %1%% → %2%% (Recovery: %3/0.2s, Drain: %4/0.2s, Net: %5/0.2s)",
+            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值×%.2f: %5) | %1%% → %2%%",
                 Math.Round(staminaPercent * 100.0).ToString(),
                 Math.Round(newTargetStamina * 100.0).ToString(),
                 Math.Round(recoveryRate * 1000000.0) / 1000000.0,
                 Math.Round(finalDrainRate * 1000000.0) / 1000000.0,
+                tickScale,
                 Math.Round(netChange * 1000000.0) / 1000000.0);
         }
         

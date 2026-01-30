@@ -146,12 +146,12 @@ class StaminaConstants
     // 拟真平衡点：模拟"喘匀第一口氧气"
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
-    static const float FAST_RECOVERY_DURATION_MINUTES = 1.5; // 快速恢复期持续时间（分钟）
+    static const float FAST_RECOVERY_DURATION_MINUTES = 0.4;  // 快速恢复期（分钟）：缩短至24秒，减少“刚停即猛回”体感
     static const float FAST_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从2.5降低到1.6（降低36%）
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
-    static const float MEDIUM_RECOVERY_START_MINUTES = 1.5; // 中等恢复期开始时间（分钟）
+    static const float MEDIUM_RECOVERY_START_MINUTES = 0.4;  // 与快速恢复期衔接
     // [修复] 与Python数字孪生保持一致，从8.5改为5.0
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
     static const float MEDIUM_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.4降低到1.3（降低7%）
@@ -457,6 +457,8 @@ class StaminaConstants
     // ==================== 配置系统桥接方法 ====================
     
     // 获取能量到体力转换系数（从配置管理器）
+    // 修复：确保不低于最小值，避免优化器输出过小导致体力不消耗
+    static const float ENERGY_TO_STAMINA_COEFF_MIN = 0.000001;  // 1e-06，校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
     static float GetEnergyToStaminaCoeff()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -464,7 +466,10 @@ class StaminaConstants
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.energy_to_stamina_coeff;
+            {
+                float coeff = params.energy_to_stamina_coeff;
+                return Math.Max(coeff, ENERGY_TO_STAMINA_COEFF_MIN);
+            }
         }
         return 0.000035; // 默认值
     }
@@ -561,6 +566,7 @@ class StaminaConstants
     }
     
     // 获取Sprint体力消耗倍数（从配置管理器）
+    // 修复：确保不低于1.0，避免为0导致体力不消耗
     static float GetSprintStaminaDrainMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -568,7 +574,10 @@ class StaminaConstants
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.sprint_stamina_drain_multiplier;
+            {
+                float v = params.sprint_stamina_drain_multiplier;
+                return Math.Max(v, 1.0);
+            }
         }
         return 3.0; // 默认值
     }

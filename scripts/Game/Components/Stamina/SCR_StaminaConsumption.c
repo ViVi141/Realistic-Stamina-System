@@ -150,7 +150,10 @@ class StaminaConsumptionCalculator
         {
             // 消耗时，应用 Sprint 倍数
             totalDrainRate = baseDrainRate * sprintMultiplier;
-            
+
+            // 应用负重体力消耗倍数（修复：此前传入但未使用）
+            totalDrainRate = totalDrainRate * encumbranceStaminaDrainMultiplier;
+
             // 应用手持重物额外消耗
             totalDrainRate = totalDrainRate * itemBonus;
         }

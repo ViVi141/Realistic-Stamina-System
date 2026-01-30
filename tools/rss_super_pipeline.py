@@ -14,6 +14,11 @@ RSS Super Pipeline - Enhanced Multi-Objective Optimization with Robustness Testi
 7. 生成稳定性报告
 
 设计原则：零侵入性 - 不修改现有文件，仅通过导入使用
+
+时间步长同步说明（与游戏 tickScale 修复一致）：
+- 数字孪生使用 dt=0.2s 步长，恢复/消耗率为「每0.2秒」
+- 游戏内 UpdateSpeedBasedOnStamina 每 50ms 调用，应用 tickScale=0.05/0.2 缩放
+- 孪生体预测与游戏实际行为一致
 """
 
 import optuna
@@ -171,9 +176,11 @@ class ScenarioLibrary:
         Args:
             load_weight: 负载重量（kg），ACFT标准测试应为0.0
         """
-        # ACFT 2英里测试标准：15分27秒，空载
+        # 校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
+        # 3500m / 927s ≈ 3.776 m/s
+        target_speed = 3500.0 / 927.0
         return Scenario(
-            speed_profile=[(0, 3.7), (927, 3.7)],  # 2英里测试，目标速度3.7m/s
+            speed_profile=[(0, target_speed), (927, target_speed)],
             current_weight=90.0 + load_weight,  # 体重90kg + 负载
             grade_percent=0.0,  # 平地
             terrain_factor=1.0,  # 普通地形
@@ -227,6 +234,24 @@ class ScenarioLibrary:
             movement_type=MovementType.RUN,  # 跑步
             target_finish_time=270.0,  # 4.5分钟场景
             test_type="撤离场景"
+        )
+
+    @staticmethod
+    def create_realistic_field_patrol_scenario(load_weight=30.0):
+        """创建 realistic 野战巡逻场景（模拟游戏内典型环境压力）
+
+        目的：使优化器在更接近真实游戏条件下调参，避免理想条件优化导致游戏内消耗偏高。
+        条件：草地+缓坡+中等地形，模拟 Everon 野外常见情况。
+        """
+        return Scenario(
+            speed_profile=[(0, 2.8), (120, 3.5), (180, 2.8)],  # 巡逻速度曲线
+            current_weight=90.0 + load_weight,
+            grade_percent=5.0,   # 5%缓坡（游戏中常见）
+            terrain_factor=1.35,  # 草地+轻度越野
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=180.0,  # 3分钟
+            test_type="野战巡逻场景"
         )
 
 
@@ -300,17 +325,16 @@ class RSSSuperPipeline:
         # 使用与 rss_optimizer_optuna.py 相同的参数范围（但已优化）
         
         # 能量转换相关
-        # 调整：降低搜索空间，让 Walk 消耗更低，允许净恢复
-        # 注意：Walk 使用 Pandolf 模型，低速时消耗较高
-        # Run 使用 Givoni 模型，速度对消耗影响很大（2.2次幂）
+        # 校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
+        # 8e-7 时 ACFT 约 3%，需更低以达 20%。范围 3e-7~2.5e-6
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 1.5e-5, 3.0e-5, log=True
+            'energy_to_stamina_coeff', 3e-7, 2.5e-6, log=True
         )
         
         # 恢复系统相关
         # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1.5e-4, 4.0e-4, log=True  # 从4.5e-4降低到4.0e-4，与默认值3.5e-4保持一致
+            'base_recovery_rate', 2e-5, 1.2e-4, log=True  # 兼顾静止慢恢复与 Walk 30kg 净恢复
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
@@ -319,27 +343,27 @@ class RSSSuperPipeline:
         standing_recovery_multiplier = trial.suggest_float(
             'standing_recovery_multiplier', 1.3, 1.8  # 提高下界，确保>medium
         )
+        # 30kg Walk 需净恢复：penalty 过大会扼杀恢复。1e-3 时 penalty≈0.0016>>base_recovery
         load_recovery_penalty_coeff = trial.suggest_float(
-            'load_recovery_penalty_coeff', 1e-4, 1e-3, log=True
+            'load_recovery_penalty_coeff', 5e-6, 5e-5, log=True
         )
         load_recovery_penalty_exponent = trial.suggest_float(
-            'load_recovery_penalty_exponent', 1.0, 3.0
+            'load_recovery_penalty_exponent', 1.0, 2.0  # 降低上界，避免 penalty 爆炸
         )
         
         # 负重系统相关（改进：允许更低负重惩罚以通过30KG测试）
         encumbrance_speed_penalty_coeff = trial.suggest_float(
-            'encumbrance_speed_penalty_coeff', 0.1, 0.3
+            'encumbrance_speed_penalty_coeff', 0.1, 0.22  # 降低上界，减轻速度限制
         )
         encumbrance_stamina_drain_coeff = trial.suggest_float(
             'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
         )
         
         # Sprint 相关
-        # 调整：降低搜索空间，考虑速度差异（5.0 m/s vs 3.7 m/s）
-        # Sprint 自然消耗是 Run 的 1.86x（速度的2.2次幂）
-        # 只需要额外的 1.34x 倍数就能达到 2.5x 的目标
+        # Sprint 消耗 = Run × 3x
+        # 范围 2.0~3.5：允许 3x 冲刺消耗
         sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', 1.2, 1.5
+            'sprint_stamina_drain_multiplier', 2.0, 3.5
         )
         
         # 疲劳系统相关
@@ -351,27 +375,29 @@ class RSSSuperPipeline:
         )
         
         # 代谢适应相关
-        # 调整：提高效率因子下界（效率因子越高，消耗越大），避免 Run/Sprint 被优化得过“省体力”。
+        # 调整：放宽范围，允许更高效率（更低消耗），改善可玩性
         aerobic_efficiency_factor = trial.suggest_float(
-            'aerobic_efficiency_factor', 0.88, 1.05
+            'aerobic_efficiency_factor', 0.85, 1.05
         )
         anaerobic_efficiency_factor = trial.suggest_float(
-            'anaerobic_efficiency_factor', 1.15, 1.6
+            'anaerobic_efficiency_factor', 1.1, 1.5
         )
         
-        # 恢复系统高级参数（优化：确保逻辑递减 fast > medium > slow）
+        # 恢复系统高级参数（优化：减缓"平台恢复期"，fast/medium/slow 均下调）
+        # recovery_nonlinear_coeff 0.15~0.35：降低低体力时的恢复加成
         recovery_nonlinear_coeff = trial.suggest_float(
-            'recovery_nonlinear_coeff', 0.3, 0.7
+            'recovery_nonlinear_coeff', 0.15, 0.35
         )
-        # 约束：fast > medium > slow 必须满足
+        # 约束：fast > medium > slow，但整体降低以减缓平台期
+        # fast 1.0~1.3（原 1.6~2.4 导致恢复过快）
         fast_recovery_multiplier = trial.suggest_float(
-            'fast_recovery_multiplier', 1.6, 2.4  # 降低范围，确保<prone
+            'fast_recovery_multiplier', 1.0, 1.3
         )
         medium_recovery_multiplier = trial.suggest_float(
-            'medium_recovery_multiplier', 1.0, 1.5  # 降低上界，确保<standing
+            'medium_recovery_multiplier', 0.85, 1.1  # 必须 < fast
         )
         slow_recovery_multiplier = trial.suggest_float(
-            'slow_recovery_multiplier', 0.5, 0.8  # 从0.5~1.2改为0.5~0.8，与默认值0.6保持一致
+            'slow_recovery_multiplier', 0.5, 0.8
         )
         marginal_decay_threshold = trial.suggest_float(
             'marginal_decay_threshold', 0.7, 0.9
@@ -388,18 +414,18 @@ class RSSSuperPipeline:
         
         # Sprint系统高级参数
         sprint_speed_boost = trial.suggest_float(
-            'sprint_speed_boost', 0.25, 0.35
+            'sprint_speed_boost', 0.28, 0.35  # 提高下界，确保 Sprint 有足够速度
         )
         
-        # 姿态系统参数
-        # 修正：这些应该是 < 1.0，表示速度减速，不是加速
-        # posture_crouch: 蹲下时速度 = 原速 * 0.5~1.0
-        # posture_prone: 趴下时速度 = 原速 * 0.2~0.8
+        # 姿态系统参数（消耗倍数：蹲/趴移动时体力消耗增加）
+        # 修复：与游戏 SCR_StaminaConsumption 语义一致，游戏将其作为消耗倍数使用
+        # posture_crouch: 蹲姿行走消耗倍数 1.2~2.2（站立=1.0）
+        # posture_prone: 趴姿匍匐消耗倍数 2.0~4.0
         posture_crouch_multiplier = trial.suggest_float(
-            'posture_crouch_multiplier', 0.5, 1.0  # 从1.5~2.2改为0.5~1.0（物理正确）
+            'posture_crouch_multiplier', 1.2, 2.2
         )
         posture_prone_multiplier = trial.suggest_float(
-            'posture_prone_multiplier', 0.2, 0.8  # 从2.5~3.5改为0.2~0.8（物理正确）
+            'posture_prone_multiplier', 2.3, 4.0  # 确保 > crouch_max(2.2)
         )
         
         # 动作消耗参数
@@ -618,21 +644,16 @@ class RSSSuperPipeline:
         # ==================== 9. 返回三个目标函数（包含约束惩罚） ====================
         
         # 更新GUI（如果存在）
+        # 注意：优化在后台线程运行，回调由 GUI 通过 root.after(0, ...) 调度到主线程
         if self.gui_update_callback:
             try:
-                # 确保在主线程中更新GUI
-                import threading
-                if threading.current_thread().name == 'MainThread':
-                    self.gui_update_callback(
-                        iteration=trial.number,
-                        playability=playability_burden,
-                        stability=stability_risk,
-                        realism=physiological_realism,
-                        params=trial.params
-                    )
-                else:
-                    # 在后台线程中，不更新GUI，避免主线程错误
-                    pass
+                self.gui_update_callback(
+                    iteration=trial.number,
+                    playability=playability_burden,
+                    stability=stability_risk,
+                    realism=physiological_realism,
+                    params=dict(trial.params)
+                )
             except Exception as e:
                 print(f"GUI更新失败: {e}")
         
@@ -699,9 +720,10 @@ class RSSSuperPipeline:
             realism_score -= 20.0  # 有氧阈值应该低于无氧阈值
         
         # 4. 能量转换合理性
-        # 检查能量转换系数是否合理
+        # 校准目标：0kg Run 3.5km/15:27 → 20%，约 1.5e-06
+        # 允许 5e-7~5e-5 范围
         energy_coeff = constants.ENERGY_TO_STAMINA_COEFF
-        if energy_coeff < 2.0e-5 or energy_coeff > 1.0e-4:
+        if energy_coeff < 5e-7 or energy_coeff > 5e-5:
             realism_score -= 10.0  # 能量转换系数偏离生理学范围
         
         # 5. 负重影响合理性
@@ -711,12 +733,11 @@ class RSSSuperPipeline:
             realism_score -= 10.0  # 负重系数偏离生理学范围
         
         # 6. 运动消耗合理性
-        # 检查奔跑消耗是否明显高于行走
+        # Sprint 消耗倍数应 > 1.0（Sprint 比 Run 更耗体）
+        # 搜索空间 1.2~2.5，游戏测试 2.0x 体验良好
         sprint_multiplier = constants.SPRINT_STAMINA_DRAIN_MULTIPLIER
-        if sprint_multiplier < 2.0:
-            realism_score -= 10.0  # 冲刺应该比跑步更耗体力
-        elif 2.8 <= sprint_multiplier <= 3.2:
-            realism_score -= 5.0  # 惩罚过于接近默认值的参数
+        if sprint_multiplier <= 1.0:
+            realism_score -= 10.0  # 冲刺应比跑步更耗体力
         
         # 7. 疲劳系统合理性
         # 检查疲劳积累系数是否合理
@@ -780,9 +801,8 @@ class RSSSuperPipeline:
 
         penalty = 0.0
 
-        # 1) Run：60秒 3.7m/s 空载，期望体力下降至少 5%
-        # 对应：927秒消耗80%（100% → 20%），每秒消耗0.0863%
-        # 60秒消耗：5.18%，约5%
+        # 1) Run：60秒 3.7m/s 空载
+        # 期望：5% ≤ 消耗 ≤ 15%（避免消耗过大导致可玩性差）
         run_delta = simulate_fixed_speed(
             speed=3.7,
             duration_seconds=60.0,
@@ -790,16 +810,16 @@ class RSSSuperPipeline:
             movement_type=MovementType.RUN,
             initial_stamina=1.0,
         )
-        # run_delta < 0 表示消耗；越接近 0 表示越不耗体力
-        required_run_drop = 0.05  # 对应927秒消耗80%（100% → 20%）
         actual_run_drop = max(0.0, -run_delta)
-        if actual_run_drop < required_run_drop:
-            penalty += (required_run_drop - actual_run_drop) * 3000.0
+        required_run_drop_min = 0.05
+        required_run_drop_max = 0.15  # 消耗上限，避免"消耗非常大"
+        if actual_run_drop < required_run_drop_min:
+            penalty += (required_run_drop_min - actual_run_drop) * 3000.0
+        elif actual_run_drop > required_run_drop_max:
+            penalty += (actual_run_drop - required_run_drop_max) * 4000.0
 
-        # 2) Sprint：30秒 5.0m/s 空载，期望体力下降至少 6.5%
-        # 对应：跑步消耗的2.5x
-        # 跑步：60秒消耗5%，每秒消耗0.0833%
-        # 冲刺：30秒消耗6.5%，每秒消耗0.217%（约跑步的2.5x）
+        # 2) Sprint：30秒 5.0m/s 空载
+        # 期望：10% ≤ 消耗 ≤ 45%（sprint_mult 3.0 时约 35-40%）
         sprint_delta = simulate_fixed_speed(
             speed=5.0,
             duration_seconds=30.0,
@@ -807,31 +827,29 @@ class RSSSuperPipeline:
             movement_type=MovementType.SPRINT,
             initial_stamina=1.0,
         )
-        required_sprint_drop = 0.065  # 约跑步消耗的2.5x
         actual_sprint_drop = max(0.0, -sprint_delta)
-        if actual_sprint_drop < required_sprint_drop:
-            penalty += (required_sprint_drop - actual_sprint_drop) * 4000.0
+        required_sprint_drop_min = 0.10
+        required_sprint_drop_max = 0.45
+        if actual_sprint_drop < required_sprint_drop_min:
+            penalty += (required_sprint_drop_min - actual_sprint_drop) * 4000.0
+        elif actual_sprint_drop > required_sprint_drop_max:
+            penalty += (actual_sprint_drop - required_sprint_drop_max) * 5000.0
 
-        # 3) Walk：120秒 1.8m/s 标准战斗负载，期望“缓慢恢复”
-        # 这里用 30KG 负载（总重 120KG）更符合玩家场景。
+        # 3) Walk：120秒 1.8m/s 标准战斗负载（30KG，总重 120KG）
         walk_delta = simulate_fixed_speed(
             speed=1.8,
             duration_seconds=120.0,
-            current_weight=90.0,  # 空载
+            current_weight=120.0,  # 90kg 体重 + 30kg 负载
             movement_type=MovementType.WALK,
             initial_stamina=0.50,
         )
-        # 期望 2分钟至少 +0.8%（从1%降低到0.8%），最多 +8%（从6%提高到8%）
-        # 新设计标准：每 5 秒恢复 1% 体力
-        # 120 秒应该恢复：120 / 5 × 1% = 24%
-        # 期望 2 分钟恢复 0.5-2%（降低目标，考虑 Pandolf 模型的消耗）
-        # 注意：Walk 使用 Pandolf 模型，低速时消耗较高
-        min_walk_gain = 0.005  # 最小恢复 0.5%
-        max_walk_gain = 0.02  # 最大恢复 2%
+        # 30KG 负载下 Walk 净恢复应 0.2%~3%，超 3% 严重惩罚（避免 Walk 回血过快）
+        min_walk_gain = 0.002  # 最小恢复 0.2%
+        max_walk_gain = 0.03   # 最大恢复 3%
         if walk_delta < min_walk_gain:
-            penalty += (min_walk_gain - walk_delta) * 3000.0  # 从5000降到3000
+            penalty += (min_walk_gain - walk_delta) * 3000.0
         elif walk_delta > max_walk_gain:
-            penalty += (walk_delta - max_walk_gain) * 2000.0  # 从3000降到2000
+            penalty += (walk_delta - max_walk_gain) * 5000.0  # 提高超限惩罚
 
         return float(penalty)
     
@@ -839,10 +857,10 @@ class RSSSuperPipeline:
         """
         检查基础体能标准（ACFT 2英里测试，空载）
         
-        新设计标准：
-        - 0kg 负重，3.2km 用时 15分27秒（927秒）
-        - 体力最低不能跌破 10%
-        - 体力不能长期处于 10%（平均体力应该 > 15%）
+        设计标准（与游戏时间缩放 tickScale=0.25 一致）：
+        - 0kg 负重，3.5km 用时 15分27秒（927秒），速度 3.776 m/s
+        - 体力最低不能跌破 20%
+        - 平均体力应 > 25%
 
         Args:
             twin: 数字孪生仿真器
@@ -896,11 +914,12 @@ class RSSSuperPipeline:
         Returns:
             可玩性负担（越小越好）
         """
-        # 30KG战斗负载测试 - 结合多个场景
+        # 30KG战斗负载测试 - 结合多个场景（含环境压力场景）
         scenarios = [
             ScenarioLibrary.create_acft_2mile_scenario(load_weight=30.0),
             ScenarioLibrary.create_urban_combat_scenario(load_weight=30.0),
-            ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0)
+            ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0),
+            ScenarioLibrary.create_realistic_field_patrol_scenario(load_weight=30.0),
         ]
         
         # 使用并行处理提高性能
@@ -968,7 +987,7 @@ class RSSSuperPipeline:
             results_list = [evaluate_scenario(scenario) for scenario in scenarios]
         
         total_burden = 0.0
-        weights = [0.5, 0.3, 0.2]  # 2英里测试权重最高
+        weights = [0.35, 0.25, 0.2, 0.2]  # 2英里、城市、山地、野战巡逻
         
         for i, (scenario_burden, scenario) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
@@ -976,23 +995,20 @@ class RSSSuperPipeline:
                 return 2_000_000.0
             total_burden += float(scenario_burden) * weights[i]
         
-        # 添加参数多样性惩罚，确保不同参数组合产生不同结果
+        # 参数多样性惩罚：降低权重，避免与可玩性目标冲突
+        # sprint_mult 校准 2.0，不惩罚 1.8~2.2 区间
         param_variation_score = 0.0
-        # 检查关键参数的变化范围
         key_params = [
-            ('sprint_stamina_drain_multiplier', 2.8, 3.2, 80.0),
-            ('base_recovery_rate', 1.8e-4, 2.2e-4, 60.0),
-            ('encumbrance_stamina_drain_coeff', 1.4, 1.6, 50.0),
-            ('fatigue_accumulation_coeff', 0.012, 0.018, 40.0),
-            ('fast_recovery_multiplier', 2.2, 2.4, 40.0)
+            ('SPRINT_STAMINA_DRAIN_MULTIPLIER', 2.8, 3.2, 15.0),  # Sprint=3x Run
+            ('BASE_RECOVERY_RATE', 4e-5, 8e-5, 15.0),  # Walk 可净恢复
+            ('ENCUMBRANCE_STAMINA_DRAIN_COEFF', 0.9, 1.5, 15.0),
         ]
         for param_name, min_val, max_val, penalty in key_params:
             if hasattr(twin.constants, param_name):
                 value = getattr(twin.constants, param_name)
-                # 根据参数类型添加适当的多样性惩罚
                 if min_val <= value <= max_val:
-                    param_variation_score += penalty  # 惩罚过于接近默认值的参数
-        
+                    param_variation_score += penalty
+
         total_burden += param_variation_score
         
         # 添加场景结果多样性惩罚
@@ -1417,9 +1433,35 @@ class RSSSuperPipeline:
         if self.parallel_worker:
             self.parallel_worker.shutdown()
     
+    def _trial_has_minimum_consumption(self, trial) -> bool:
+        """验证 trial 是否满足最低消耗要求（Run 60s 至少 3%，Sprint 30s 至少 4%）"""
+        param_to_attr = {
+            'energy_to_stamina_coeff': 'ENERGY_TO_STAMINA_COEFF',
+            'sprint_stamina_drain_multiplier': 'SPRINT_STAMINA_DRAIN_MULTIPLIER',
+            'base_recovery_rate': 'BASE_RECOVERY_RATE',
+            'aerobic_efficiency_factor': 'AEROBIC_EFFICIENCY_FACTOR',
+            'anaerobic_efficiency_factor': 'ANAEROBIC_EFFICIENCY_FACTOR',
+        }
+        constants = RSSConstants()
+        for pk, attr in param_to_attr.items():
+            if pk in trial.params and hasattr(constants, attr):
+                setattr(constants, attr, trial.params[pk])
+        twin = RSSDigitalTwin(constants)
+        twin.reset()
+        twin.stamina = 1.0
+        for i in range(300):
+            twin.step(3.7, 90.0, 0.0, 1.0, 0, MovementType.RUN, i * 0.2, False)
+        run_drop = 1.0 - twin.stamina
+        twin.reset()
+        twin.stamina = 1.0
+        for i in range(150):
+            twin.step(5.0, 90.0, 0.0, 1.0, 0, MovementType.SPRINT, i * 0.2, False)
+        sprint_drop = 1.0 - twin.stamina
+        return run_drop >= 0.03 and sprint_drop >= 0.04
+
     def extract_archetypes(self) -> Dict[str, Dict]:
         """
-        从帕累托前沿自动提取三个预设（改进：确保选择不同的解）
+        从帕累托前沿自动提取三个预设（改进：确保选择不同的解，且满足最低消耗）
         
         Returns:
             预设参数字典
@@ -1452,31 +1494,58 @@ class RSSSuperPipeline:
         playability_values = [t.values[0] for t in self.best_trials]
         stability_values = [t.values[1] for t in self.best_trials]
         
-        # 1. Realism-oriented (EliteStandard): 基于稳定性和可玩性的平衡
-        # 由于移除了拟真度目标，我们选择稳定性最好的解
-        stability_idx = np.argmin(stability_values)
-        realism_trial = self.best_trials[stability_idx]
+        # 过滤：只保留满足最低消耗的 trial（Run 60s>=3%, Sprint 30s>=4%）
+        valid_trials = [(i, t) for i, t in enumerate(self.best_trials) if self._trial_has_minimum_consumption(t)]
+        if not valid_trials:
+            print("警告：帕累托前沿中无满足最低消耗的解，使用全部 trial（可能消耗为 0）")
+            valid_indices = list(range(len(self.best_trials)))
+            valid_trial_list = self.best_trials
+        else:
+            valid_indices = [v[0] for v in valid_trials]
+            valid_trial_list = [v[1] for v in valid_trials]
+            playability_values = [self.best_trials[i].values[0] for i in valid_indices]
+            stability_values = [self.best_trials[i].values[1] for i in valid_indices]
         
-        # 2. Playability-oriented (TacticalAction): 可玩性负担最低的解（30KG最轻松）
-        playability_idx = np.argmin(playability_values)
+        # 按参数特征选择，确保 strictness: realism >= balanced >= playability
+        # 不跨预设交换参数（避免产生不一致的 param 组合）
+        candidates = valid_trial_list if valid_trials else self.best_trials
+        cand_indices = valid_indices if valid_trials else list(range(len(self.best_trials)))
+
+        def energy_coeff(t):
+            return t.params.get('energy_to_stamina_coeff', 0)
+
+        # 1. Realism (EliteStandard): 稳定性好的 trial 中选 energy_coeff 最高的
+        stability_ordered = sorted(cand_indices, key=lambda i: self.best_trials[i].values[1])
+        top_stability = stability_ordered[: max(3, len(cand_indices) // 3)]
+        realism_idx = max(top_stability, key=lambda i: energy_coeff(self.best_trials[i]))
+        realism_trial = self.best_trials[realism_idx]
+
+        # 2. Playability (TacticalAction): 可玩性好的 trial 中选 energy_coeff 最低的
+        playability_ordered = sorted(cand_indices, key=lambda i: self.best_trials[i].values[0])
+        top_playability = playability_ordered[: max(3, len(cand_indices) // 3)]
+        playability_idx = min(top_playability, key=lambda i: energy_coeff(self.best_trials[i]))
         playability_trial = self.best_trials[playability_idx]
-        
-        # 3. Balanced (StandardMilsim): 两个目标的平衡解
-        playability_min, playability_max = min(playability_values), max(playability_values)
-        stability_min, stability_max = min(stability_values), max(stability_values)
-        
+
+        # 3. Balanced: 综合目标平衡且 energy_coeff 居中
+        p_vals = [t.values[0] for t in candidates]
+        s_vals = [t.values[1] for t in candidates]
+        playability_min, playability_max = min(p_vals), max(p_vals)
+        stability_min, stability_max = min(s_vals), max(s_vals)
+        e_vals = [energy_coeff(t) for t in candidates]
+        e_min, e_max = min(e_vals), max(e_vals)
         balanced_scores = []
-        for trial in self.best_trials:
+        for trial in candidates:
             p_norm = (trial.values[0] - playability_min) / (playability_max - playability_min + 1e-10)
             s_norm = (trial.values[1] - stability_min) / (stability_max - stability_min + 1e-10)
-            balanced_score = (p_norm + s_norm) / 2.0
-            balanced_scores.append(balanced_score)
-        
-        balanced_idx = np.argmin(balanced_scores)
-        balanced_trial = self.best_trials[balanced_idx]
+            e_norm = (energy_coeff(trial) - e_min) / (e_max - e_min + 1e-10)
+            # 平衡解：目标折中，且 energy 居中（偏好中等严格程度）
+            balanced_scores.append((p_norm + s_norm) / 2.0 - 0.2 * (0.5 - abs(e_norm - 0.5)))
+        balanced_in_candidates = np.argmin(balanced_scores)
+        balanced_trial = candidates[balanced_in_candidates]
+        balanced_idx = cand_indices[balanced_in_candidates]
         
         # 改进：如果选择了相同的解，尝试从不同区域选择
-        selected_indices = set([stability_idx, playability_idx, balanced_idx])
+        selected_indices = set([realism_idx, playability_idx, balanced_idx])
         
         # 如果三个解都相同，尝试基于参数差异选择不同的解
         if len(selected_indices) == 1:

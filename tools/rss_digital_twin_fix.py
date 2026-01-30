@@ -7,6 +7,11 @@ RSS Digital Twin (Final Corrected Version)
 2. 速度惩罚修正：由 (总重-基础) 改为 (总重-体重-基础)
 3. 移除双重乘法 (x0.2)
 4. 清理重复类定义
+
+时间步长说明：
+- 本孪生体使用 dt=0.2s 步长仿真，恢复/消耗率均为「每0.2秒」设计
+- 游戏内 UpdateSpeedBasedOnStamina 每 50ms 调用，应用 tickScale=0.05/0.2=0.25 缩放
+- 因此孪生体预测与游戏实际行为一致
 """
 
 import numpy as np
@@ -45,7 +50,7 @@ class RSSConstants:
     # 恢复系统（修复版：降低恢复速度）
     BASE_RECOVERY_RATE = 0.00015  # 从0.00035降低约57%，解决恢复太快的问题
     RECOVERY_NONLINEAR_COEFF = 0.5
-    FAST_RECOVERY_DURATION_MINUTES = 1.5
+    FAST_RECOVERY_DURATION_MINUTES = 0.4  # 与 C 一致：缩短快速恢复期，减少“刚停即猛回”体感
     FAST_RECOVERY_MULTIPLIER = 1.6  # 从2.5降低约36%，解决恢复太快的问题
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
     MEDIUM_RECOVERY_MULTIPLIER = 1.3  # 从1.4降低约7%，解决恢复太快的问题
@@ -80,9 +85,13 @@ class RSSConstants:
     AEROBIC_EFFICIENCY_FACTOR = 0.9
     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
     
-    # 姿态消耗倍数
-    POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数（1.6-2.0倍，取1.8），与C文件保持一致
-    POSTURE_PRONE_MULTIPLIER = 3.0  # 匍匐爬行消耗倍数（与中速跑步相当），与C文件保持一致
+    # 姿态消耗倍数（由优化器覆盖，范围 1.2-2.2 和 2.0-4.0）
+    POSTURE_CROUCH_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数
+    POSTURE_PRONE_MULTIPLIER = 3.0   # 匍匐爬行消耗倍数
+
+    # 姿态速度倍数（物理常量：蹲/趴时移动更慢，不参与优化）
+    POSTURE_CROUCH_SPEED_MULTIPLIER = 0.7  # 蹲姿 = 70% 跑速
+    POSTURE_PRONE_SPEED_MULTIPLIER = 0.3   # 趴姿 = 30% 跑速
     
     # 动作消耗
     JUMP_STAMINA_BASE_COST = 0.035
@@ -272,9 +281,10 @@ class RSSDigitalTwin:
 
     def _encumbrance_stamina_drain_multiplier(self, current_weight):
         base = getattr(self.constants, 'BASE_WEIGHT', 1.36)
-        eff = max(0.0, current_weight - base)
         bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
         coeff = getattr(self.constants, 'ENCUMBRANCE_STAMINA_DRAIN_COEFF', 2.0)
+        # 修复：有效负重 = 总重 - 体重 - 基准装备，与游戏 SCR_EncumbranceCache 一致
+        eff = max(0.0, current_weight - bw - base)
         mult = 1.0 + coeff * (eff / bw)
         return float(np.clip(mult, 1.0, 3.0))
 
@@ -413,20 +423,20 @@ class RSSDigitalTwin:
             min_recovery = base_recovery * 0.5
             recovery_rate = max(recovery_rate, min_recovery)
         
-        # ==================== 运动状态恢复率调整 ====================
+        # ==================== 运动状态恢复率调整（与 SCR_StaminaRecovery.c 同步）====================
         
-        # 根据当前速度调整恢复率
+        # 根据当前速度调整恢复率（与游戏 C 代码一致）
         # - 静止时：正常恢复率
-        # - Walk状态：适当恢复率，允许净恢复
-        # - Run状态：大幅降低恢复率，确保消耗率大于恢复率
-        # - Sprint状态：几乎不恢复
+        # - Walk状态：适当恢复率(0.8)，允许净恢复
+        # - Run状态：大幅降低恢复率(0.3)，确保消耗率大于恢复率
+        # - Sprint状态：几乎不恢复(0.1)
         speed_based_recovery_multiplier = 1.0
-        if current_speed >= 5.0: # Sprint
-            speed_based_recovery_multiplier = 0.05 # 几乎不恢复
-        elif current_speed >= 3.2: # Run
-            speed_based_recovery_multiplier = 0.2 # 大幅降低恢复率
-        elif current_speed >= 0.1: # Walk
-            speed_based_recovery_multiplier = 0.6 # 适当降低恢复率，允许净恢复
+        if current_speed >= 5.0:  # Sprint
+            speed_based_recovery_multiplier = 0.1  # 几乎不恢复
+        elif current_speed >= 3.2:  # Run
+            speed_based_recovery_multiplier = 0.3  # 大幅降低恢复率
+        elif current_speed >= 0.1:  # Walk
+            speed_based_recovery_multiplier = 0.8  # 适当降低恢复率，允许净恢复
         # 静止时：speed_based_recovery_multiplier = 1.0（正常恢复）
         
         # 应用速度基于的恢复率调整
@@ -625,12 +635,12 @@ class RSSDigitalTwin:
                 current_time += 0.2
                 nominal_distance += speed * 0.2
 
-                # 修正2：负重速度惩罚计算
+                # 修正2：负重速度惩罚计算（使用姿态速度倍数，与消耗倍数区分）
                 posture_speed_mult = 1.0
                 if stance == Stance.CROUCH:
-                    posture_speed_mult = getattr(self.constants, 'POSTURE_CROUCH_MULTIPLIER', 0.7)
+                    posture_speed_mult = getattr(self.constants, 'POSTURE_CROUCH_SPEED_MULTIPLIER', 0.7)
                 elif stance == Stance.PRONE:
-                    posture_speed_mult = getattr(self.constants, 'POSTURE_PRONE_MULTIPLIER', 0.3)
+                    posture_speed_mult = getattr(self.constants, 'POSTURE_PRONE_SPEED_MULTIPLIER', 0.3)
 
                 base_weight = getattr(self.constants, 'BASE_WEIGHT', 1.36)
                 body_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
@@ -669,10 +679,11 @@ if __name__ == "__main__":
     print("测试1: ACFT 2英里测试（空载，标准条件）...")
     twin = RSSDigitalTwin(constants)
     
-    # ACFT标准测试：0KG负载
+    # ACFT标准测试：0KG负载，3.5km/15:27 → 3.776 m/s（与优化器一致）
+    target_speed = 3500.0 / 927.0
     class ACFTScenario:
         def __init__(self):
-            self.speed_profile = [(0, 3.7), (927, 3.7)]  # 3.7m/s 跑927秒
+            self.speed_profile = [(0, target_speed), (927, target_speed)]
             self.current_weight = 90.0 + 0.0 
             self.grade_percent = 0.0  
             self.terrain_factor = 1.0  
@@ -696,14 +707,14 @@ if __name__ == "__main__":
     
     # 验证修复
     if results['total_time_with_penalty'] < 950.0:
-        print("✅ 时间修复成功：速度惩罚逻辑正常")
+        print("[OK] 时间修复成功：速度惩罚逻辑正常")
     else:
-        print("❌ 时间依然异常：请检查 effective_weight 计算")
-        
+        print("[FAIL] 时间依然异常：请检查 effective_weight 计算")
+
     if results['min_stamina'] < 0.2:
-        print("✅ 消耗修复成功：体力已大幅消耗")
+        print("[OK] 消耗修复成功：体力已大幅消耗")
     else:
-        print("❌ 消耗依然过慢：请检查 能量乘90倍 的逻辑")
+        print("[FAIL] 消耗依然过慢：请检查 能量乘90倍 的逻辑")
     
     print()
     
@@ -737,9 +748,9 @@ if __name__ == "__main__":
     print(f"体力变化: {results['min_stamina'] - 0.5:.4f}")
     
     if results['min_stamina'] > 0.5:
-        print("✅ 静态恢复正常：负重站立时体力恢复")
+        print("[OK] 静态恢复正常：负重站立时体力恢复")
     else:
-        print("❌ 静态恢复异常：负重站立时体力未恢复")
+        print("[FAIL] 静态恢复异常：负重站立时体力未恢复")
     
     print()
     
@@ -772,11 +783,11 @@ if __name__ == "__main__":
     print(f"体力消耗: {(1.0 - results['min_stamina']) * 100:.1f}%")
     
     if 0.3 <= results['min_stamina'] <= 0.7:
-        print("✅ 城市战斗消耗合理：体力消耗30-70%")
+        print("[OK] 城市战斗消耗合理：体力消耗30-70%")
     elif results['min_stamina'] < 0.3:
-        print("❌ 城市战斗消耗过快：体力消耗超过70%，请调整消耗系数")
+        print("[FAIL] 城市战斗消耗过快：体力消耗超过70%，请调整消耗系数")
     else:
-        print("❌ 城市战斗消耗过慢：体力消耗不足30%，请检查负重消耗逻辑")
+        print("[FAIL] 城市战斗消耗过慢：体力消耗不足30%，请检查负重消耗逻辑")
     
     print()
     
@@ -809,11 +820,11 @@ if __name__ == "__main__":
     print(f"体力消耗: {(1.0 - results['min_stamina']) * 100:.1f}%")
     
     if 0.4 <= results['min_stamina'] <= 0.8:
-        print("✅ 山地战斗消耗合理：体力消耗20-60%")
+        print("[OK] 山地战斗消耗合理：体力消耗20-60%")
     elif results['min_stamina'] < 0.4:
-        print("❌ 山地战斗消耗过快：体力消耗超过60%，请调整坡度/地形惩罚")
+        print("[FAIL] 山地战斗消耗过快：体力消耗超过60%，请调整坡度/地形惩罚")
     else:
-        print("❌ 山地战斗消耗过慢：体力消耗不足20%，请检查坡度和地形惩罚")
+        print("[FAIL] 山地战斗消耗过慢：体力消耗不足20%，请检查坡度和地形惩罚")
     
     print()
     
@@ -846,8 +857,8 @@ if __name__ == "__main__":
     print(f"体力消耗: {(1.0 - results['min_stamina']) * 100:.1f}%")
     
     if 0.3 <= results['min_stamina'] <= 0.7:
-        print("✅ 重载撤离消耗合理：体力消耗30-70%")
+        print("[OK] 重载撤离消耗合理：体力消耗30-70%")
     elif results['min_stamina'] < 0.3:
-        print("❌ 重载撤离消耗过快：体力消耗超过70%，请调整重载惩罚")
+        print("[FAIL] 重载撤离消耗过快：体力消耗超过70%，请调整重载惩罚")
     else:
-        print("❌ 重载撤离消耗过慢：体力消耗不足30%，请检查重载惩罚逻辑")
+        print("[FAIL] 重载撤离消耗过慢：体力消耗不足30%，请检查重载惩罚逻辑")

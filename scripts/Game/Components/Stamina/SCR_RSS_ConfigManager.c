@@ -22,6 +22,18 @@ class SCR_RSS_ConfigManager
     // 加载配置文件
     static void Load()
     {
+        // 工作台模式：强制使用嵌入的预设值，避免 profile 覆盖导致消耗为 0
+        #ifdef WORKBENCH
+        m_Settings = new SCR_RSS_Settings();
+        m_Settings.m_sSelectedPreset = "EliteStandard";
+        m_Settings.InitPresets(true);
+        m_bIsLoaded = true;
+        m_fLastLoadTime = 0.0;
+        EnsureDefaultValues();
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed)");
+        return;
+        #endif
+        
         // 防止频繁重载
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         if (m_bIsLoaded && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
