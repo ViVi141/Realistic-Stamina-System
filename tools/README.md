@@ -9,9 +9,14 @@
 ```
 tools/
 ├── README.md                                    # 📖 本文件
-├── rss_super_pipeline.py                        # 🎯 主优化管道（推荐运行）
-├── rss_optimizer_optuna.py                      # ⚙️  Optuna 优化器核心（被pipeline调用）
+├── rss_super_pipeline.py                        # 🎯 主优化管道（推荐运行，内置多目标优化）
+├── rss_digital_twin_fix.py                      # 🔬 数字孪生仿真器（被 pipeline 调用）
 ├── stamina_constants.py                         # 📋 常数定义工具库
+├── calibrate_run_3_5km.py                       # 📐 3.5km/15:27 校准（最低体力 20%）
+├── calibrate_recovery.py                        # 📐 恢复时间校准
+├── embed_json_to_c.py                           # 📄 JSON → SCR_RSS_Settings.c 嵌入
+├── verify_json_params.py                        # ✅ JSON 参数校验
+├── rss_optimizer_gui.py                         # 🖥️ 优化器 GUI（可选）
 ├── requirements.txt                             # 📦 Python 依赖列表
 ├── optimized_rss_config_realism_super.json      # 📊 精英拟真配置
 ├── optimized_rss_config_playability_super.json  # 📊 战术平衡配置 ⭐ 推荐
@@ -36,12 +41,13 @@ python rss_super_pipeline.py
 ```
 
 这将执行：
-- ✅ 10,000 次 Optuna 试验
-- ✅ 7 个约束条件验证
+- ✅ 可配置次数的 Optuna 多目标试验（默认 500，可在 pipeline 中改为 10000 等）
+- ✅ 多目标：Realism_Loss、Playability_Burden、Stability_Risk
+- ✅ 物理与逻辑约束验证（恢复倍数顺序、姿态消耗等）
 - ✅ 3 个 Pareto 最优预设生成
 - ✅ 自动保存为 JSON 配置文件
 
-**预计耗时**: 1-3 小时（取决于计算机性能）
+**预计耗时**: 默认 500 次约数分钟至十几分钟；若改为 10000 次约 1–3 小时（取决于计算机性能）
 
 ### 3. 在游戏中应用配置
 
@@ -60,15 +66,13 @@ $profile:RealisticStaminaSystem.json
 **用途**: 执行完整的 NSGA-II 多目标优化
 
 **功能**:
-- 运行 Optuna 贝叶斯优化（10,000 试验）
-- 7 个约束条件验证：
-  - ✅ 约束1: 完成时间 ≤ 928 秒（2英里）
-  - ✅ 约束2: 完成时间 ≥ 920 秒（2英里）
-  - ✅ 约束3: 精疲力尽速度 ≥ 1.0 m/s
-  - ✅ 约束4: 恢复时间 ≤ 10 分钟
-  - ✅ 约束5: 恢复时间 ≥ 8 分钟
-  - ✅ 约束6: Sprint 速度 ≥ 5.0 m/s
-  - ✅ 约束7: 所有参数在有效范围内
+- 运行 Optuna 多目标优化（试验次数可配置，默认 500）
+- 三目标：Realism_Loss、Playability_Burden、Stability_Risk（含鲁棒性/稳定性测试）
+- 约束与合理性验证：
+  - ✅ 基础体能：0kg Run 3.5km/15:27 最低体力约 20%
+  - ✅ 恢复倍数顺序：prone > standing > slow；fast > medium > slow
+  - ✅ 姿态消耗：蹲姿/趴姿倍数 > 1，趴姿 > 蹲姿
+  - ✅ 参数范围与生物学/物理学逻辑
 
 **优化目标**:
 1. 最小化拟真损失 (realism_loss) → EliteStandard
@@ -82,9 +86,9 @@ $profile:RealisticStaminaSystem.json
 
 **调用关系**:
 ```
-rss_super_pipeline.py
-  └─> rss_optimizer_optuna.py (优化器核心)
-  └─> stamina_constants.py (常数定义)
+rss_super_pipeline.py（内置优化逻辑）
+  └─> rss_digital_twin_fix.py (数字孪生仿真)
+  └─> stamina_constants.py (常数定义，若被引用)
 ```
 
 **运行示例**:
@@ -92,8 +96,8 @@ rss_super_pipeline.py
 python rss_super_pipeline.py
 # 输出：
 # [INFO] Starting RSS Super Optimization Pipeline...
-# [INFO] Running Optuna optimization (10,000 trials)...
-# [PROGRESS] Trial 1/10000 | Best realism_loss=0.185 | Best playability_burden=425
+# [INFO] Running Optuna optimization (500 trials, 可配置)...
+# [PROGRESS] Trial 1/500 | Best realism_loss=0.185 | Best playability_burden=425
 # ...
 # [SUCCESS] Optimization complete!
 # [SUCCESS] Generated 3 Pareto-optimal presets
@@ -102,33 +106,18 @@ python rss_super_pipeline.py
 
 ---
 
-### ⚙️ rss_optimizer_optuna.py（Optuna 优化器核心）
+### 🔬 rss_digital_twin_fix.py（数字孪生仿真器）
 
-**用途**: 定义优化问题和目标函数
+**用途**: 与游戏内体力逻辑对齐的 Python 仿真器，用于优化与校准
 
 **包含内容**:
-- Optuna Study 创建和配置
-- 目标函数实现
-- 约束条件验证逻辑
-- Pareto 前沿提取算法
+- `RSSDigitalTwin`：单步更新、场景模拟、EPOC 延迟
+- Pandolf / Givoni-Goldman 消耗、恢复率、姿态/负重/疲劳等
+- `RSSConstants`、`MovementType`、`Stance`、`EnvironmentFactor`
 
-**不直接运行** - 被 `rss_super_pipeline.py` 调用
+**不直接运行** - 被 `rss_super_pipeline.py`、`calibrate_run_3_5km.py`、`calibrate_recovery.py` 等调用
 
-**关键类和函数**:
-```python
-class RSSOptimizer:
-    def __init__(self, config):
-        # 初始化优化器
-        
-    def objective(self, trial):
-        # 目标函数：返回 [realism_loss, playability_burden]
-        
-    def apply_constraints(self, trial):
-        # 应用 7 个约束条件
-        
-    def extract_pareto_front(self):
-        # 提取 Pareto 最优解
-```
+详细公式与决策树见：[docs/数字孪生优化器计算逻辑文档.md](../docs/数字孪生优化器计算逻辑文档.md)
 
 ---
 
@@ -167,8 +156,20 @@ def calculate_recovery_time(params):
     # 根据参数计算恢复时间
     
 def validate_constraints(params, values):
-    # 验证所有 7 个约束条件
+    # 验证约束条件
 ```
+
+---
+
+### 其他工具（校准 / 嵌入 / 校验 / GUI）
+
+| 脚本 | 用途 |
+|------|------|
+| **calibrate_run_3_5km.py** | 校准 `energy_to_stamina_coeff`，使 0kg Run 3.5km/15:27 结束时最低体力约 20% |
+| **calibrate_recovery.py** | 校准恢复相关参数（恢复时间等） |
+| **embed_json_to_c.py** | 将 JSON 预设嵌入到 `SCR_RSS_Settings.c` 中 |
+| **verify_json_params.py** | 校验 JSON 参数格式与范围 |
+| **rss_optimizer_gui.py** | 优化器图形界面（可选） |
 
 ---
 
@@ -349,34 +350,11 @@ with open('optimized_rss_config_playability_super.json') as f:
 
 ### 任务3: 修改优化目标
 
-编辑 `rss_optimizer_optuna.py` 中的 `objective()` 函数：
-
-```python
-def objective(self, trial):
-    # 修改权重来改变优化侧重
-    realism_weight = 0.5  # 改变这个值
-    playability_weight = 0.5
-    
-    realism_loss = ...
-    playability_burden = ...
-    
-    return [realism_weight * realism_loss, 
-            playability_weight * playability_burden]
-```
+编辑 `rss_super_pipeline.py` 中的目标函数（如 `_run_trial` / 多目标返回值），调整 Realism_Loss、Playability_Burden、Stability_Risk 的权重或定义。
 
 ### 任务4: 添加新的约束
 
-在 `rss_optimizer_optuna.py` 中的 `apply_constraints()` 方法中添加：
-
-```python
-def apply_constraints(self, trial):
-    # 现有约束...
-    
-    # 新约束: 跳跃体力消耗
-    jump_cost = trial.suggest_float('jump_stamina_cost', 10, 20)
-    if jump_cost < 12:
-        raise optuna.TrialPruned()
-```
+在 `rss_super_pipeline.py` 中与「物理约束条件」「稳定性风险」相关的逻辑里添加新约束（如恢复倍数、姿态倍数、参数上下界等），并计入 `constraint_penalty` 或 `stability_risk`。
 
 ---
 
@@ -389,14 +367,11 @@ def apply_constraints(self, trial):
 [INFO] Starting optimization run...
 [INFO] Optuna Study created with seed=42
 
-[PROGRESS] Trial 1/10000 - Best realism_loss: 0.185 | Best playability_burden: 425
-[PROGRESS] Trial 100/10000 - Best realism_loss: 0.182 | Best playability_burden: 422
-[PROGRESS] Trial 1000/10000 - Best realism_loss: 0.1815 | Best playability_burden: 422.8
-[PROGRESS] Trial 5000/10000 - Best realism_loss: 0.1815 | Best playability_burden: 422.8
-[PROGRESS] Trial 10000/10000 - Best realism_loss: 0.1815 | Best playability_burden: 422.8
-
+[PROGRESS] Trial 1/500 - Best realism_loss: 0.185 | Best playability_burden: 425
+[PROGRESS] Trial 100/500 - Best realism_loss: 0.182 | Best playability_burden: 422
+...
 [SUCCESS] Optimization complete!
-[SUCCESS] Total trials: 10000 | Time: 2h 34m 12s
+[SUCCESS] Total trials: 500 | Time: ~数分钟（可配置 n_trials 为 10000 等以延长）
 [SUCCESS] Pareto front size: 157 points
 [SUCCESS] Generated 3 presets:
   - EliteStandard (realism=0.1815, playability=434.0)
@@ -432,7 +407,7 @@ python rss_super_pipeline.py
 ### 问题3: 优化时间太长
 
 **优化**:
-- 减少试验次数（在 pipeline 中修改 `n_trials=5000`）
+- 减少试验次数（在 pipeline 中修改 `n_trials`，默认 500）
 - 使用更快的计算机
 - 在后台运行，不影响其他工作
 
@@ -486,7 +461,7 @@ python rss_super_pipeline.py
 
 ---
 
-**最后更新**: 2026年1月26日  
-**工具版本**: 3.10.0  
-**优化版本**: Optuna + NSGA-II  
+**最后更新**: 2026-01-30  
+**工具版本**: 与 RSS 主项目同步  
+**优化版本**: Optuna 多目标（Realism / Playability / Stability）  
 **状态**: ✅ 生产就绪

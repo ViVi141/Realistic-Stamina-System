@@ -148,10 +148,16 @@ RealisticStaminaSystem/
 │       └── Core/
 │           └── Character_Base.et         # 角色基础预制体
 └── tools/                                # 开发工具和脚本
-    ├── rss_super_pipeline.py             # NSGA-II 主优化管道（推荐）
+    ├── rss_super_pipeline.py             # 主优化管道（内置多目标优化，推荐）
+    ├── rss_digital_twin_fix.py           # 数字孪生仿真器（被 pipeline/校准脚本调用）
     ├── stamina_constants.py              # 常数定义工具库
+    ├── calibrate_run_3_5km.py            # 3.5km/15:27 校准
+    ├── calibrate_recovery.py             # 恢复时间校准
+    ├── embed_json_to_c.py                # JSON → C 预设嵌入
+    ├── verify_json_params.py            # JSON 参数校验
+    ├── rss_optimizer_gui.py             # 优化器 GUI（可选）
     ├── requirements.txt                  # Python 依赖
-    ├── optimized_rss_config_*.json       # 优化后的配置文件（3个预设）
+    ├── optimized_rss_config_*.json       # 优化后的配置文件（3 个预设）
     └── README.md                         # Tools 工具集文档
 ```
 
@@ -185,8 +191,8 @@ RealisticStaminaSystem/
 
 ## 技术文档 / Technical Documentation
 
-- **[CONFIG_APPLICATION_VERIFICATION.md](CONFIG_APPLICATION_VERIFICATION.md)** - 配置应用流程验证
-- **[DEBUG_AND_HINT_SWITCH_VERIFICATION.md](DEBUG_AND_HINT_SWITCH_VERIFICATION.md)** - 调试开关验证
+- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 体力系统计算逻辑与常量说明
+- **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
 - **[tools/README.md](tools/README.md)** - 工具集完整文档
 
 ## 技术实现
