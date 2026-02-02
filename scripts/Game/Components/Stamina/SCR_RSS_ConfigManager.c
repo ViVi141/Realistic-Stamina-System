@@ -84,7 +84,13 @@ class SCR_RSS_ConfigManager
             
             // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）
             string selected = m_Settings.m_sSelectedPreset;
-            bool isCustom = (selected && selected.ToLower() == "custom");
+            bool isCustom = false;
+            if (selected)
+            {
+                string selectedLower = selected;
+                selectedLower.ToLower();
+                isCustom = (selectedLower == "custom");
+            }
 
             if (!isCustom)
             {
