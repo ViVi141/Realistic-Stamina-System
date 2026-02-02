@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.11.0
+# Realistic Stamina System (RSS) v3.11.1
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.11.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.11.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
@@ -31,6 +31,17 @@ It dynamically adjusts movement speed based on stamina, encumbrance, slope, envi
 For the full, detailed (and frequently updated) explanation, see:
 - **Changelog**: `CHANGELOG.md`
 - **Chinese full README**: `README_CN.md`
+
+## v3.11.1 Updates
+
+**2026-02-02**
+
+### 🔧 Config Fixes & Improvements
+- ✅ **JSON overwrite fix** - User-modified hint/debug etc. no longer overwritten
+- ✅ **ValidateSettings fix** - Only clamp out-of-range values, don't reset entire config
+- ✅ **Custom preset case-insensitive** - "custom" / "CUSTOM" recognized
+- ✅ **HUD default OFF** - New configs don't show HUD by default
+- ✅ **Config readability** - Constants extracted, descriptions streamlined, grouping improved
 
 ## v3.11.0 Updates
 

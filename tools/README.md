@@ -462,7 +462,7 @@ python rss_super_pipeline.py
 ---
 
 **最后更新**: 2026-01-30  
-**RSS 版本**: 3.11.0  
-**工具版本**: 与 RSS 主项目同步（3.11.0）  
+**RSS 版本**: 3.11.1  
+**工具版本**: 与 RSS 主项目同步（3.11.1）  
 **优化版本**: Optuna 多目标（Realism / Playability / Stability）  
 **状态**: ✅ 生产就绪

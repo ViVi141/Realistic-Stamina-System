@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.11.0
+# Realistic Stamina System (RSS) v3.11.1
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.11.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.11.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -160,6 +160,17 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*.json       # 优化后的配置文件（3 个预设）
     └── README.md                         # Tools 工具集文档
 ```
+
+## v3.11.1 版本更新 / v3.11.1 Updates
+
+**2026-02-02**
+
+### 🔧 配置修复与优化
+- ✅ **JSON 配置覆盖修复** - 用户修改的 hint/debug 等不再被覆盖
+- ✅ **ValidateSettings 修正** - 参数越界时仅 clamp，不清空全部配置
+- ✅ **Custom 预设大小写** - 支持 "custom" / "CUSTOM" 识别
+- ✅ **HUD 默认关闭** - 新配置默认不显示 HUD
+- ✅ **配置可读性** - 常量提取、描述精简、分组优化
 
 ## v3.11.0 版本更新 / v3.11.0 Updates
 

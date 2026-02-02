@@ -2,10 +2,9 @@
 // 利用 [BaseContainerProps] 和 [Attribute] 属性实现自动序列化
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_Settings.c
 
-// ==================== 预设参数包类 ====================
-// 这个类包含所有由 Optuna 贝叶斯优化器优化的核心参数
-// 每个预设（EliteStandard, StandardMilsim, TacticalAction, Custom）都有自己的参数包
-// 管理员可以通过修改 JSON 文件中的这些参数来调整游戏体验
+// ==================== 预设参数包（SCR_RSS_Params）====================
+// 包含 Optuna 优化核心参数，每预设一份。Custom 预设下可直接改 JSON 调参。
+// 分组：恢复 | 负重 | 疲劳 | 姿态 | 跳跃/攀爬 | 坡度 | 游泳 | 环境
 [BaseContainerProps()]
 class SCR_RSS_Params
 {
@@ -15,7 +14,8 @@ class SCR_RSS_Params
     // EliteStandard: 0.000025（精英拟真）
     // TacticalAction: 0.000020（战术动作）
     // 说明：值越小，体力消耗越慢，玩家可以运动更长时间
-    [Attribute(defvalue: "0.000035", desc: "Energy to stamina conversion coefficient.\nConverts Pandolf energy expenditure (W/kg) to game stamina drain rate (%/s).\nOptimized range: 0.000015 - 0.000050.\nLower value = slower stamina drain, longer endurance.\n能量到体力转换系数。\n将 Pandolf 能量消耗模型（W/kg）转换为游戏体力消耗率（%/s）。\nOptuna 优化范围：0.000015 - 0.000050。\n值越小，体力消耗越慢，耐力越持久。")]
+    // --- 消耗与恢复基础 ---
+    [Attribute(defvalue: "0.000035", desc: "Energy→stamina coeff. Lower=slower drain. Range ~1.5e-5~5e-5. | 能量转体力系数，值越小消耗越慢")]
     float energy_to_stamina_coeff;
 
     // 基础恢复率（每0.2秒）
@@ -71,7 +71,8 @@ class SCR_RSS_Params
     // EliteStandard: 0.272（精英拟真）
     // TacticalAction: 0.217（战术动作）
     // 说明：值越大，负重时移动速度越慢
-    [Attribute(defvalue: "0.20", desc: "Encumbrance speed penalty coefficient.\nSpeed penalty coefficient for load (based on body mass percentage).\nFormula: speed_penalty = coeff * (load_weight / body_weight).\nOptimized range: 0.15 - 0.35.\nHigher value = slower movement under load.\n负重速度惩罚系数。\n负重对移动速度的惩罚系数（基于体重百分比）。\n公式：speed_penalty = coeff * (load_weight / body_weight)。\nOptuna 优化范围：0.15 - 0.35。\n值越大，负重时移动速度越慢。")]
+    // --- 负重 ---
+    [Attribute(defvalue: "0.20", desc: "Encumbrance speed penalty. Higher=slower when loaded. | 负重速度惩罚")]
     float encumbrance_speed_penalty_coeff;
 
     // 负重体力消耗系数
@@ -100,7 +101,8 @@ class SCR_RSS_Params
     // EliteStandard: 0.02（精英拟真）
     // TacticalAction: 0.023（战术动作）
     // 说明：值越大，疲劳累积越快，长期运动后恢复越慢
-    [Attribute(defvalue: "0.015", desc: "Fatigue accumulation coefficient.\nFatigue accumulation speed during prolonged exercise (based on exercise duration).\nFormula: fatigue_factor = 1.0 + coeff * max(0, exercise_duration - 5.0).\nOptimized range: 0.010 - 0.030.\nHigher value = faster fatigue accumulation, slower recovery after prolonged exercise.\n疲劳累积系数。\n长时间运动时的疲劳累积速度（基于运动持续时间）。\n公式：fatigue_factor = 1.0 + coeff * max(0, exercise_duration - 5.0)。\nOptuna 优化范围：0.010 - 0.030。\n值越大，疲劳累积越快，长期运动后恢复越慢。")]
+    // --- 疲劳 ---
+    [Attribute(defvalue: "0.015", desc: "Fatigue accumulation. Higher=more fatigue over time. | 疲劳累积系数")]
     float fatigue_accumulation_coeff;
 
     // 最大疲劳因子
@@ -200,7 +202,8 @@ class SCR_RSS_Params
     // 蹲下时的体力消耗倍数（相对于站姿）
     // Optuna 优化范围：1.8 - 2.3
     // 说明：值越大，蹲下时体力消耗越快
-    [Attribute(defvalue: "2.0", desc: "Posture crouch multiplier.\nStamina drain multiplier when crouching (relative to standing).\nOptimized range: 1.8 - 2.3.\nHigher value = faster stamina drain when crouching.\n蹲姿消耗倍数。\n蹲下时的体力消耗倍数（相对于站姿）。\nOptuna 优化范围：1.8 - 2.3。\n值越大，蹲下时体力消耗越快。")]
+    // --- 姿态 ---
+    [Attribute(defvalue: "2.0", desc: "Crouch stamina multiplier. | 蹲姿消耗倍数")]
     float posture_crouch_multiplier;
 
     // 趴姿消耗倍数
@@ -242,7 +245,8 @@ class SCR_RSS_Params
     // 上坡时的体力消耗系数
     // Optuna 优化范围：0.05 - 0.1
     // 说明：值越大，上坡消耗体力越快
-    [Attribute(defvalue: "0.08", desc: "Slope uphill coefficient.\nStamina drain coefficient when going uphill.\nOptimized range: 0.05 - 0.1.\nHigher value = faster stamina drain when going uphill.\n上坡系数。\n上坡时的体力消耗系数。\nOptuna 优化范围：0.05 - 0.1。\n值越大，上坡消耗体力越快。")]
+    // --- 坡度 ---
+    [Attribute(defvalue: "0.08", desc: "Uphill stamina coeff. | 上坡消耗系数")]
     float slope_uphill_coeff;
 
     // 下坡系数
@@ -256,7 +260,8 @@ class SCR_RSS_Params
     // 游泳时的基础功率消耗（W）
     // Optuna 优化范围：15 - 30
     // 说明：值越大，游泳基础消耗越大
-    [Attribute(defvalue: "25.0", desc: "Swimming base power.\nBase power consumption when swimming (W).\nOptimized range: 15 - 30.\nHigher value = higher base swimming power consumption.\n游泳基础功率。\n游泳时的基础功率消耗（W）。\nOptuna 优化范围：15 - 30。\n值越大，游泳基础消耗越大。")]
+    // --- 游泳 ---
+    [Attribute(defvalue: "25.0", desc: "Swimming base power (W). | 游泳基础功率")]
     float swimming_base_power;
 
     // 游泳负重阈值
@@ -291,7 +296,8 @@ class SCR_RSS_Params
     // 高温环境下的最大体力消耗倍数
     // Optuna 优化范围：1.1 - 1.5
     // 说明：值越大，高温环境下体力消耗越快
-    [Attribute(defvalue: "1.3", desc: "Environment heat stress max multiplier.\nMaximum stamina drain multiplier in hot environment.\nOptimized range: 1.1 - 1.5.\nHigher value = faster stamina drain in hot environment.\n环境热应激最大倍数。\n高温环境下的最大体力消耗倍数。\nOptuna 优化范围：1.1 - 1.5。\n值越大，高温环境下体力消耗越快。")]
+    // --- 环境 ---
+    [Attribute(defvalue: "1.3", desc: "Heat stress max multiplier. | 热应激最大倍数")]
     float env_heat_stress_max_multiplier;
 
     // 环境雨量最大值
@@ -344,21 +350,11 @@ class SCR_RSS_Params
 [BaseContainerProps(configRoot: true)]
 class SCR_RSS_Settings
 {
-    // ==================== 配置版本号 ====================
-    // 用于检测配置文件版本，当模组更新时自动迁移旧配置
-    // 格式：主版本.次版本.修订版本（如 "3.4.0"）
-    // 当模组版本与配置版本不匹配时，会自动添加新字段的默认值
-    [Attribute("3.4.0", desc: "Config file version.\nUsed to detect config version and auto-migrate old configs.\nFormat: major.minor.patch (e.g. '3.4.0').\nWhen mod version differs from config version, new fields will be added with default values.\n配置文件版本号。\n用于检测配置版本并自动迁移旧配置。\n格式：主版本.次版本.修订版本（如 '3.4.0'）。\n当模组版本与配置版本不匹配时，会自动添加新字段的默认值。")]
+    // ==================== 基础配置 ====================
+    [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
-    // ==================== 预设选择 ====================
-    // 预设选择器：管理员可以选择使用哪个预设配置
-    // EliteStandard：精英拟真模式（Optuna 优化出的最严格模式）
-    // StandardMilsim：标准军事模拟模式（平衡体验）
-    // TacticalAction：战术动作模式（更流畅的游戏体验）
-    // Custom：自定义模式（管理员可以手动调整所有参数）
-    // 工作台模式：默认使用 StandardMilsim
-    [Attribute("StandardMilsim", UIWidgets.ComboBox, "Select preset configuration.\nEliteStandard: Most realistic, optimized by Optuna for hardcore players.\nStandardMilsim: Standard military simulation, balanced experience.\nTacticalAction: More fluid gameplay, optimized for action-oriented servers.\nCustom: Manually adjust all parameters.\n选择预设配置方案。\nEliteStandard：最拟真，由 Optuna 为硬核玩家优化。\nStandardMilsim：标准军事模拟，平衡体验。\nTacticalAction：更流畅的游戏体验，为动作导向的服务器优化。\nCustom：手动调整所有参数。", "EliteStandard StandardMilsim TacticalAction Custom")]
+    [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard(最拟真) | StandardMilsim(平衡) | TacticalAction(流畅) | Custom(自定义)", "EliteStandard StandardMilsim TacticalAction Custom")]
     string m_sSelectedPreset;
 
     // ==================== 预设参数包 ====================
@@ -653,151 +649,74 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     }
 
     // ==================== 调试配置 ====================
-    // 调试日志配置：控制调试信息的输出
-    // 适用于开发和测试阶段，帮助管理员了解系统运行状态
-    
-    // 启用详细 RSS 调试日志
-    // 工作台模式：自动启用
-    [Attribute("false", UIWidgets.CheckBox, "Enable detailed RSS debug logs in console.\nAutomatically enabled in Workbench mode.\n启用详细RSS调试日志输出到控制台。\n工作台模式下自动启用。")]
+    [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Workbench auto-on. | 调试：控制台输出详细日志，工作台模式自动开启")]
     bool m_bDebugLogEnabled;
     
-    // 调试日志刷新间隔（毫秒）
-    // 控制调试日志的输出频率
-    [Attribute("5000", UIWidgets.EditBox, "Debug log interval in milliseconds.\nControls the frequency of debug log output.\n调试日志刷新间隔（毫秒）。\n控制调试日志的输出频率。")]
+    [Attribute("5000", UIWidgets.EditBox, "Debug log interval (ms). Range: 1000-60000. | 调试日志间隔（毫秒），范围 1-60 秒")]
     int m_iDebugUpdateInterval;
     
-    // 启用详细日志（包含所有计算细节）
-    // 输出所有计算过程的详细信息，适用于深度调试
-    [Attribute("false", UIWidgets.CheckBox, "Enable verbose logging (includes all calculation details).\nOutputs detailed information of all calculation processes.\n启用详细日志（包含所有计算细节）。\n输出所有计算过程的详细信息。")]
+    [Attribute("false", UIWidgets.CheckBox, "Verbose: Log all calculation details. | 详细模式：输出完整计算过程")]
     bool m_bVerboseLogging;
     
-    // 启用日志输出到文件（RSS_Log.txt）
-    // 将日志输出到文件，便于长期保存和分析
-    [Attribute("false", UIWidgets.CheckBox, "Enable logging to file (RSS_Log.txt).\nOutputs logs to file for long-term storage and analysis.\n启用日志输出到文件（RSS_Log.txt）。\n将日志输出到文件，便于长期保存和分析。")]
+    [Attribute("false", UIWidgets.CheckBox, "Log to file (RSS_Log.txt). | 将日志写入文件")]
     bool m_bLogToFile;
     
     // ==================== HUD 显示配置 ====================
-    // 在屏幕右上角显示实时体力状态信息（类似游戏原生的 FPS/Ping 显示）
-    // 让玩家无需查看控制台也能了解当前体力状态
-    
-    // 启用屏幕 HUD 显示
-    // 在屏幕右上角显示体力、速度、负重、温度、风向等实时状态
-    [Attribute("true", UIWidgets.CheckBox, "Enable on-screen HUD display.\nShows real-time stamina status in top-right corner (stamina, speed, weight, temperature, wind, etc.).\n启用屏幕 HUD 显示。\n在屏幕右上角显示实时体力状态（体力、速度、负重、温度、风向等）。")]
+    [Attribute("false", UIWidgets.CheckBox, "HUD: Show stamina/speed/weight in top-right. Default OFF. | 屏幕右上角显示体力/速度/负重等，默认关闭")]
     bool m_bHintDisplayEnabled;
     
-    // [已弃用] Hint 显示间隔（毫秒）
-    // 注意：此配置项已弃用，HUD 现在是实时更新的（每 0.2 秒）
-    [Attribute("5000", UIWidgets.EditBox, "[DEPRECATED] Hint display interval in milliseconds.\nNote: This setting is deprecated. HUD now updates in real-time (every 0.2 seconds).\n[已弃用] Hint 显示间隔（毫秒）。\n注意：此配置项已弃用，HUD 现在是实时更新的（每 0.2 秒）。")]
+    [Attribute("5000", UIWidgets.EditBox, "[Deprecated] HUD is real-time now. Kept for compatibility. | [已弃用] HUD 已实时更新，保留兼容")]
     int m_iHintUpdateInterval;
     
-    // [已弃用] Hint 显示时长（秒）
-    // 注意：此配置项已弃用，HUD 是常驻显示的
-    [Attribute("2.0", UIWidgets.EditBox, "[DEPRECATED] Hint display duration in seconds.\nNote: This setting is deprecated. HUD is now always visible.\n[已弃用] Hint 显示时长（秒）。\n注意：此配置项已弃用，HUD 是常驻显示的。")]
+    [Attribute("2.0", UIWidgets.EditBox, "[Deprecated] HUD is always visible. Kept for compatibility. | [已弃用] HUD 常驻显示，保留兼容")]
     float m_fHintDuration;
     
-    // ==================== 体力系统配置（仅 Custom 预设生效） ====================
-    // 全局体力系统配置：控制体力的消耗和恢复
-    // 注意：这些配置仅在选择 Custom 预设时生效！
-    // 使用 EliteStandard/StandardMilsim/TacticalAction 预设时，这些配置将被忽略
+    // ==================== Custom 预设：体力/移动 ====================
+    // 以下配置仅在选择 Custom 预设时生效
     
-    // 全局体力消耗倍率（0.1-5.0）
-    // 值越大，体力消耗越快，游戏难度越高
-    // 仅 Custom 预设生效
-    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Global stamina consumption multiplier (0.1-5.0).\nHigher value = faster stamina drain, higher difficulty.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 全局体力消耗倍率（0.1-5.0）。\n值越大，体力消耗越快，游戏难度越高。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom] Stamina drain multiplier. Range 0.1-5.0. Higher = harder. | 体力消耗倍率，值越大越难")]
     float m_fStaminaDrainMultiplier;
     
-    // 全局体力恢复倍率（0.1-5.0）
-    // 值越大，体力恢复越快，游戏难度越低
-    // 仅 Custom 预设生效
-    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Global stamina recovery multiplier (0.1-5.0).\nHigher value = faster stamina recovery, lower difficulty.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 全局体力恢复倍率（0.1-5.0）。\n值越大，体力恢复越快，游戏难度越低。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom] Stamina recovery multiplier. Range 0.1-5.0. Higher = easier. | 体力恢复倍率，值越大越易")]
     float m_fStaminaRecoveryMultiplier;
     
-    // 负重速度惩罚倍率（0.1-5.0）
-    // 值越大，负重时移动速度越慢
-    // 仅 Custom 预设生效
-    [Attribute("1.0", UIWidgets.EditBox, "[Custom preset only] Encumbrance speed penalty multiplier (0.1-5.0).\nHigher value = slower movement under load.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 负重速度惩罚倍率（0.1-5.0）。\n值越大，负重时移动速度越慢。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("1.0", UIWidgets.EditBox, "[Custom] Encumbrance speed penalty. Range 0.1-5.0. | 负重速度惩罚倍率")]
     float m_fEncumbranceSpeedPenaltyMultiplier;
     
-    // ==================== 移动系统配置（仅 Custom 预设生效） ====================
-    // 移动系统配置：控制 Sprint 和 Run 的速度与体力消耗
-    // 注意：这些配置仅在选择 Custom 预设时生效！
-    
-    // Sprint 速度倍率（1.0-2.0）
-    // 值越大，Sprint 时移动速度越快
-    // 仅 Custom 预设生效
-    [Attribute("1.3", UIWidgets.EditBox, "[Custom preset only] Sprint speed multiplier (1.0-2.0).\nHigher value = faster sprint speed.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] Sprint速度倍率（1.0-2.0）。\n值越大，Sprint 时移动速度越快。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("1.3", UIWidgets.EditBox, "[Custom] Sprint speed multiplier. Range 1.0-2.0. | Sprint 速度倍率")]
     float m_fSprintSpeedMultiplier;
     
-    // Sprint 体力消耗倍率（1.0-10.0）
-    // 值越大，Sprint 时体力消耗越快
-    // 仅 Custom 预设生效
-    [Attribute("3.0", UIWidgets.EditBox, "[Custom preset only] Sprint stamina drain multiplier (1.0-10.0).\nHigher value = faster stamina drain when sprinting.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] Sprint体力消耗倍率（1.0-10.0）。\n值越大，Sprint 时体力消耗越快。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("3.0", UIWidgets.EditBox, "[Custom] Sprint stamina drain multiplier. Range 1.0-10.0. | Sprint 消耗倍率")]
     float m_fSprintStaminaDrainMultiplier;
     
-    // ==================== 环境因子配置（仅 Custom 预设生效） ====================
-    // 环境因子配置：控制各种环境因素对体力系统的影响
-    // 注意：这些配置仅在选择 Custom 预设时生效！
-    // 使用其他预设时，所有环境因子系统默认启用
-    
-    // 启用热应激系统（10:00-18:00）
-    // 模拟高温环境对体力系统的影响
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable heat stress system (10:00-18:00).\nSimulates the impact of high temperature on stamina system.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用热应激系统（10:00-18:00）。\n模拟高温环境对体力系统的影响。\n仅在选择 Custom 预设时生效。")]
+    // ==================== Custom 预设：环境因子 ====================
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Heat stress (10:00-18:00). | 热应激系统")]
     bool m_bEnableHeatStress;
     
-    // 启用降雨湿重系统（衣服湿重）
-    // 模拟降雨导致衣服湿重增加对体力系统的影响
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable rain weight system (clothes get wet).\nSimulates the impact of rain-soaked clothes on stamina system.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用降雨湿重系统（衣服湿重）。\n模拟降雨导致衣服湿重增加对体力系统的影响。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Rain weight (wet clothes). | 降雨湿重")]
     bool m_bEnableRainWeight;
     
-    // 启用风阻系统
-    // 模拟风速对移动速度和体力消耗的影响
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable wind resistance system.\nSimulates the impact of wind speed on movement speed and stamina drain.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用风阻系统。\n模拟风速对移动速度和体力消耗的影响。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Wind resistance. | 风阻系统")]
     bool m_bEnableWindResistance;
     
-    // 启用泥泞惩罚系统（湿地形）
-    // 模拟湿地形对移动速度和体力消耗的影响
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable mud penalty system (wet terrain).\nSimulates the impact of wet terrain on movement speed and stamina drain.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用泥泞惩罚系统（湿地形）。\n模拟湿地形对移动速度和体力消耗的影响。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Mud penalty (wet terrain). | 泥泞惩罚")]
     bool m_bEnableMudPenalty;
     
-    // ==================== 高级配置（仅 Custom 预设生效） ====================
-    // 高级配置：控制高级系统功能的启用或禁用
-    // 注意：这些配置仅在选择 Custom 预设时生效！
-    // 使用其他预设时，所有高级系统默认启用
-    
-    // 启用疲劳积累系统
-    // 模拟长时间运动后的疲劳累积效应
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable fatigue accumulation system.\nSimulates fatigue accumulation effect after prolonged exercise.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用疲劳积累系统。\n模拟长时间运动后的疲劳累积效应。\n仅在选择 Custom 预设时生效。")]
+    // ==================== Custom 预设：高级系统 ====================
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Fatigue accumulation. | 疲劳积累")]
     bool m_bEnableFatigueSystem;
     
-    // 启用代谢适应系统
-    // 模拟长期训练后的代谢适应效应
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable metabolic adaptation system.\nSimulates metabolic adaptation effect after long-term training.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用代谢适应系统。\n模拟长期训练后的代谢适应效应。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Metabolic adaptation. | 代谢适应")]
     bool m_bEnableMetabolicAdaptation;
     
-    // 启用室内检测系统
-    // 检测玩家是否在室内，调整环境因子影响
-    // 仅 Custom 预设生效
-    [Attribute("true", UIWidgets.CheckBox, "[Custom preset only] Enable indoor detection system.\nDetects if player is indoors, adjusts environmental factor impact.\nOnly effective when Custom preset is selected.\n[仅 Custom 预设生效] 启用室内检测系统。\n检测玩家是否在室内，调整环境因子影响。\n仅在选择 Custom 预设时生效。")]
+    [Attribute("true", UIWidgets.CheckBox, "[Custom] Indoor detection. | 室内检测")]
     bool m_bEnableIndoorDetection;
     
     // ==================== 性能配置 ====================
-    // 性能配置：控制各种检测系统的更新间隔
-    // 较低的值可以提高精度，但会增加 CPU 负载
-    
-    // 地形检测更新间隔（毫秒）
-    // 控制地形检测系统的更新频率
-    [Attribute("5000", UIWidgets.EditBox, "Terrain detection update interval in milliseconds.\nLower value = higher accuracy, higher CPU load.\n地形检测更新间隔（毫秒）。\n值越低，精度越高，CPU 负载越高。")]
+    [Attribute("5000", UIWidgets.EditBox, "Terrain update interval (ms). Lower = more accurate, higher CPU. | 地形检测间隔")]
     int m_iTerrainUpdateInterval;
     
-    // 环境因子更新间隔（毫秒）
-    // 控制环境因子检测系统的更新频率
-    [Attribute("5000", UIWidgets.EditBox, "Environment factor update interval in milliseconds.\nLower value = higher accuracy, higher CPU load.\n环境因子更新间隔（毫秒）。\n值越低，精度越高，CPU 负载越高。")]
+    [Attribute("5000", UIWidgets.EditBox, "Environment update interval (ms). | 环境因子检测间隔")]
     int m_iEnvironmentUpdateInterval;
 
     // ==================== 获取激活的预设参数 ====================
