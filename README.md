@@ -167,7 +167,7 @@ RealisticStaminaSystem/
 - ✅ **JSON 配置覆盖修复** - 用户修改的 hint/debug 等不再被覆盖
 - ✅ **ValidateSettings 修正** - 参数越界时仅 clamp，不清空全部配置
 - ✅ **Custom 预设大小写** - 支持 "custom" / "CUSTOM" 识别
-- ✅ **HUD 默认关闭** - 新配置默认不显示 HUD
+- ✅ **HUD 默认关闭** - 首次下载默认不显示 HUD；已有 JSON 的老用户 HUD 按原设置保持
 - ✅ **配置可读性** - 常量提取、描述精简、分组优化
 
 **v3.11.0** - 2026-01-26

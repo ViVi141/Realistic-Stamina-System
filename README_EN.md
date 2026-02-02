@@ -40,7 +40,7 @@ For the full, detailed (and frequently updated) explanation, see:
 - ✅ **JSON overwrite fix** - User-modified hint/debug etc. no longer overwritten
 - ✅ **ValidateSettings fix** - Only clamp out-of-range values, don't reset entire config
 - ✅ **Custom preset case-insensitive** - "custom" / "CUSTOM" recognized
-- ✅ **HUD default OFF** - New configs don't show HUD by default
+- ✅ **HUD default OFF** - First-time users: HUD off by default. Existing users with JSON: HUD keeps your previous setting
 - ✅ **Config readability** - Constants extracted, descriptions streamlined, grouping improved
 
 ## v3.11.0 Updates
