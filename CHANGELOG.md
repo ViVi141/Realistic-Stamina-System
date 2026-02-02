@@ -6,6 +6,21 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.11.1] - 2026-02-02
+
+本版本为 3.11.0 的配置系统增强与修正版本。
+
+### 🔧 配置修复
+
+- **修复 JSON 配置被强制覆盖** - 用户通过 JSON 修改的 `m_bHintDisplayEnabled`、`m_bDebugLogEnabled` 等 UI 设置不再被 `EnsureDefaultValues()` 覆盖
+- **修复 ValidateSettings 过于激进** - 单个参数越界时改为 `FixInvalidSettings()` 仅 clamp 越界字段，不再清空全部配置
+- **修复 Custom 预设大小写敏感** - "custom" / "CUSTOM" 等变体能正确识别为 Custom 模式
+
+### ⚙️ 配置与默认值
+
+- **HUD 开关默认关闭** - `m_bHintDisplayEnabled` 默认值改为 false。为不破坏已有设置：若你曾使用过该模组并已生成 JSON 配置文件，HUD 会按之前的设置正常工作；首次下载该模组的用户则默认关闭 HUD。工作台模式仍强制开启以便调试。
+- **配置字段可读性优化** - 提取 magic number 为常量，精简 Attribute 描述，统一分组与格式
+
 ## [3.11.0] - 2026-01-30
 
 本版本涵盖自 **main 分支最后一次提交** 至 **当前 dev 最新提交** 的全部变更。

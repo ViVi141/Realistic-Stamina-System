@@ -5,11 +5,20 @@
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
-    protected static const string CURRENT_VERSION = "3.11.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.11.1";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
-    protected static const float RELOAD_COOLDOWN = 5.0; // 重载冷却时间（秒）
+    protected static const float RELOAD_COOLDOWN = 5.0;  // 重载冷却（秒）
+    
+    // 默认值与合理范围常量（便于维护）
+    protected static const int DEFAULT_UPDATE_INTERVAL_MS = 5000;    // 检测/日志更新间隔
+    protected static const int MAX_UPDATE_INTERVAL_MS = 60000;       // 最大间隔 60 秒
+    protected static const float DEFAULT_HINT_DURATION = 2.0;        // Hint 显示时长（秒）
+    protected static const float STAMINA_MULT_MIN = 0.1;             // 体力倍率下限
+    protected static const float STAMINA_MULT_MAX = 5.0;             // 体力倍率上限
+    protected static const float SPRINT_SPEED_MAX = 2.0;             // Sprint 速度倍率上限
+    protected static const float SPRINT_DRAIN_MAX = 10.0;            // Sprint 消耗倍率上限
     
     // 获取配置实例（单例模式）
     static SCR_RSS_Settings GetSettings()
@@ -73,9 +82,15 @@ class SCR_RSS_ConfigManager
             
             // --- 核心修复逻辑开始 ---
             
-            // 检查玩家当前选中的预设
+            // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）
             string selected = m_Settings.m_sSelectedPreset;
-            bool isCustom = (selected == "Custom");
+            bool isCustom = false;
+            if (selected)
+            {
+                string selectedLower = selected;
+                selectedLower.ToLower();
+                isCustom = (selectedLower == "custom");
+            }
 
             if (!isCustom)
             {
@@ -107,11 +122,11 @@ class SCR_RSS_ConfigManager
                 MigrateConfig(configVersion);
             }
             
-            // 验证配置
+            // 验证配置：只修正无效字段，不重置整个配置（避免丢失用户自定义）
             if (!ValidateSettings(m_Settings))
             {
-                Print("[RSS_ConfigManager] Warning: Invalid settings detected, using default values");
-                ResetToDefaults();
+                Print("[RSS_ConfigManager] Warning: Invalid settings detected, correcting out-of-range values");
+                FixInvalidSettings();
             }
         }
         else
@@ -123,13 +138,13 @@ class SCR_RSS_ConfigManager
             // 设置所有必要的默认值
             m_Settings.m_sConfigVersion = CURRENT_VERSION;
             m_Settings.m_sSelectedPreset = "StandardMilsim";
-            m_Settings.m_bHintDisplayEnabled = true;
-            m_Settings.m_iHintUpdateInterval = 5000;
-            m_Settings.m_fHintDuration = 2.0;
+            m_Settings.m_bHintDisplayEnabled = false;
+            m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
             m_Settings.m_bDebugLogEnabled = false;
-            m_Settings.m_iDebugUpdateInterval = 5000;
-            m_Settings.m_iTerrainUpdateInterval = 5000;
-            m_Settings.m_iEnvironmentUpdateInterval = 5000;
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fStaminaDrainMultiplier = 1.0;
             m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
@@ -200,23 +215,11 @@ class SCR_RSS_ConfigManager
         // ==================== v3.4.0 新增字段 ====================
         // HUD 显示系统
         if (m_Settings.m_iHintUpdateInterval <= 0)
-        {
-            m_Settings.m_iHintUpdateInterval = 5000;
-            Print("[RSS_ConfigManager] Migration: Added m_iHintUpdateInterval = 5000");
-        }
+            m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         if (m_Settings.m_fHintDuration <= 0.0)
-        {
-            m_Settings.m_fHintDuration = 2.0;
-            Print("[RSS_ConfigManager] Migration: Added m_fHintDuration = 2.0");
-        }
-        // m_bHintDisplayEnabled 默认为 false，需要显式设置为 true
-        // 从旧版本升级时，默认开启 HUD
-        if (CompareVersions(oldVersion, "3.4.0") < 0)
-        {
-            // 从 3.4.0 之前的版本升级，默认开启 HUD
-            m_Settings.m_bHintDisplayEnabled = true;
-            Print("[RSS_ConfigManager] Migration: Set m_bHintDisplayEnabled = true (upgrading from pre-3.4.0)");
-        }
+            m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
+        // m_bHintDisplayEnabled：新版本默认关闭 HUD
+        // 从旧版本升级时，保持 false（不再强制开启）
         
         // 确保预设选择有效
         if (!m_Settings.m_sSelectedPreset || m_Settings.m_sSelectedPreset == "")
@@ -280,105 +283,71 @@ class SCR_RSS_ConfigManager
         
         bool needsSave = false;
         
-        // 检查是否是旧版本配置（用于决定 bool 字段的默认值）
-        string currentConfigVersion = m_Settings.m_sConfigVersion;
-        bool isOldConfig = !currentConfigVersion || currentConfigVersion == "" || CompareVersions(currentConfigVersion, "3.4.0") < 0;
-        
-        // 版本号
+        // 版本号与预设
         if (!m_Settings.m_sConfigVersion || m_Settings.m_sConfigVersion == "")
         {
             m_Settings.m_sConfigVersion = CURRENT_VERSION;
-            Print("[RSS_ConfigManager] Set default: m_sConfigVersion = " + CURRENT_VERSION);
             needsSave = true;
         }
-        
-        // 预设选择
         if (!m_Settings.m_sSelectedPreset || m_Settings.m_sSelectedPreset == "")
         {
             m_Settings.m_sSelectedPreset = "StandardMilsim";
-            Print("[RSS_ConfigManager] Set default: m_sSelectedPreset = StandardMilsim");
             needsSave = true;
         }
         
         // HUD 显示设置
+        // 间隔类字段：≤0 视为无效，使用默认值
         if (m_Settings.m_iHintUpdateInterval <= 0)
         {
-            m_Settings.m_iHintUpdateInterval = 5000;
-            Print("[RSS_ConfigManager] Set default: m_iHintUpdateInterval = 5000");
+            m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             needsSave = true;
         }
         if (m_Settings.m_fHintDuration <= 0.0)
         {
-            m_Settings.m_fHintDuration = 2.0;
-            Print("[RSS_ConfigManager] Set default: m_fHintDuration = 2.0");
+            m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
             needsSave = true;
         }
-        
-        // 调试更新间隔
         if (m_Settings.m_iDebugUpdateInterval <= 0)
         {
-            m_Settings.m_iDebugUpdateInterval = 5000;
-            Print("[RSS_ConfigManager] Set default: m_iDebugUpdateInterval = 5000");
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             needsSave = true;
         }
-        
-        // 地形更新间隔
         if (m_Settings.m_iTerrainUpdateInterval <= 0)
         {
-            m_Settings.m_iTerrainUpdateInterval = 5000;
-            Print("[RSS_ConfigManager] Set default: m_iTerrainUpdateInterval = 5000");
+            m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             needsSave = true;
         }
-        
-        // 环境更新间隔
         if (m_Settings.m_iEnvironmentUpdateInterval <= 0)
         {
-            m_Settings.m_iEnvironmentUpdateInterval = 5000;
-            Print("[RSS_ConfigManager] Set default: m_iEnvironmentUpdateInterval = 5000");
+            m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             needsSave = true;
         }
         
-        // 体力消耗倍数
+        // 倍率类字段：≤0 视为无效
         if (m_Settings.m_fStaminaDrainMultiplier <= 0.0)
         {
             m_Settings.m_fStaminaDrainMultiplier = 1.0;
-            Print("[RSS_ConfigManager] Set default: m_fStaminaDrainMultiplier = 1.0");
             needsSave = true;
         }
-        
-        // 体力恢复倍数
         if (m_Settings.m_fStaminaRecoveryMultiplier <= 0.0)
         {
             m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
-            Print("[RSS_ConfigManager] Set default: m_fStaminaRecoveryMultiplier = 1.0");
             needsSave = true;
         }
-        
-        // Sprint 速度倍数
         if (m_Settings.m_fSprintSpeedMultiplier <= 0.0)
         {
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
-            Print("[RSS_ConfigManager] Set default: m_fSprintSpeedMultiplier = 1.3");
             needsSave = true;
         }
-        
-        // Sprint 体力消耗倍数
         if (m_Settings.m_fSprintStaminaDrainMultiplier <= 0.0)
         {
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
-            Print("[RSS_ConfigManager] Set default: m_fSprintStaminaDrainMultiplier = 3.0");
             needsSave = true;
         }
         
-        // HUD 显示开关（特殊处理：旧版本配置默认开启）
-        // 由于 bool 默认为 false，无法区分"用户设置为 false"和"字段不存在"
-        // 所以只有在旧版本配置时才强制开启
-        if (isOldConfig && !m_Settings.m_bHintDisplayEnabled)
-        {
-            m_Settings.m_bHintDisplayEnabled = true;
-            Print("[RSS_ConfigManager] Set default: m_bHintDisplayEnabled = true (old config detected)");
-            needsSave = true;
-        }
+        // 注意：m_bHintDisplayEnabled / m_bDebugLogEnabled 不覆盖，保留用户设置
+        // 用户通过 JSON 修改的 UI 设置（hint、debug）必须被保留
+        // 迁移逻辑 MigrateConfig 已处理首次从 pre-3.4.0 升级时的默认值
         
         // 如果有任何默认值被设置，保存配置
         if (needsSave)
@@ -420,19 +389,70 @@ class SCR_RSS_ConfigManager
         // 设置所有必要的默认值
         m_Settings.m_sConfigVersion = CURRENT_VERSION;
         m_Settings.m_sSelectedPreset = "StandardMilsim";
-        m_Settings.m_bHintDisplayEnabled = true;
-        m_Settings.m_iHintUpdateInterval = 5000;
-        m_Settings.m_fHintDuration = 2.0;
+        m_Settings.m_bHintDisplayEnabled = false;
+        m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
         m_Settings.m_bDebugLogEnabled = false;
-        m_Settings.m_iDebugUpdateInterval = 5000;
-        m_Settings.m_iTerrainUpdateInterval = 5000;
-        m_Settings.m_iEnvironmentUpdateInterval = 5000;
+        m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;
         m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
         
         Save();
+    }
+    
+    // 修正无效配置值（仅 clamp 到合法范围，不重置其他字段）
+    // 用于替代 ResetToDefaults，避免因单个字段越界而丢失全部用户配置
+    protected static void FixInvalidSettings()
+    {
+        if (!m_Settings)
+            return;
+        
+        bool needsSave = false;
+        
+        // 倍率类：越界则 clamp 到合理范围
+        if (m_Settings.m_fStaminaDrainMultiplier > 0 && m_Settings.m_fStaminaDrainMultiplier > STAMINA_MULT_MAX)
+        {
+            m_Settings.m_fStaminaDrainMultiplier = STAMINA_MULT_MAX;
+            needsSave = true;
+        }
+        if (m_Settings.m_fStaminaRecoveryMultiplier > 0 && m_Settings.m_fStaminaRecoveryMultiplier > STAMINA_MULT_MAX)
+        {
+            m_Settings.m_fStaminaRecoveryMultiplier = STAMINA_MULT_MAX;
+            needsSave = true;
+        }
+        if (m_Settings.m_fSprintSpeedMultiplier > 0 && m_Settings.m_fSprintSpeedMultiplier > SPRINT_SPEED_MAX)
+        {
+            m_Settings.m_fSprintSpeedMultiplier = SPRINT_SPEED_MAX;
+            needsSave = true;
+        }
+        if (m_Settings.m_fSprintStaminaDrainMultiplier > 0 && m_Settings.m_fSprintStaminaDrainMultiplier > SPRINT_DRAIN_MAX)
+        {
+            m_Settings.m_fSprintStaminaDrainMultiplier = SPRINT_DRAIN_MAX;
+            needsSave = true;
+        }
+        // 间隔类：过大会影响体验
+        if (m_Settings.m_iDebugUpdateInterval > 0 && m_Settings.m_iDebugUpdateInterval > MAX_UPDATE_INTERVAL_MS)
+        {
+            m_Settings.m_iDebugUpdateInterval = MAX_UPDATE_INTERVAL_MS;
+            needsSave = true;
+        }
+        if (m_Settings.m_iTerrainUpdateInterval > 0 && m_Settings.m_iTerrainUpdateInterval > MAX_UPDATE_INTERVAL_MS)
+        {
+            m_Settings.m_iTerrainUpdateInterval = MAX_UPDATE_INTERVAL_MS;
+            needsSave = true;
+        }
+        if (m_Settings.m_iEnvironmentUpdateInterval > 0 && m_Settings.m_iEnvironmentUpdateInterval > MAX_UPDATE_INTERVAL_MS)
+        {
+            m_Settings.m_iEnvironmentUpdateInterval = MAX_UPDATE_INTERVAL_MS;
+            needsSave = true;
+        }
+        
+        if (needsSave)
+            Save();
     }
     
     // 验证配置值的有效性
@@ -445,49 +465,22 @@ class SCR_RSS_ConfigManager
         
         bool isValid = true;
         
-        // 验证倍率范围（只有当值 > 0 时才检查范围）
-        if (settings.m_fStaminaDrainMultiplier > 0 && settings.m_fStaminaDrainMultiplier > 5.0)
-        {
-            Print("[RSS_ConfigManager] Warning: m_fStaminaDrainMultiplier too high (max 5.0)");
+        // 倍率范围（>0 时才校验）
+        if (settings.m_fStaminaDrainMultiplier > 0 && settings.m_fStaminaDrainMultiplier > STAMINA_MULT_MAX)
             isValid = false;
-        }
-        
-        if (settings.m_fStaminaRecoveryMultiplier > 0 && settings.m_fStaminaRecoveryMultiplier > 5.0)
-        {
-            Print("[RSS_ConfigManager] Warning: m_fStaminaRecoveryMultiplier too high (max 5.0)");
+        if (settings.m_fStaminaRecoveryMultiplier > 0 && settings.m_fStaminaRecoveryMultiplier > STAMINA_MULT_MAX)
             isValid = false;
-        }
-        
-        if (settings.m_fSprintSpeedMultiplier > 0 && settings.m_fSprintSpeedMultiplier > 2.0)
-        {
-            Print("[RSS_ConfigManager] Warning: m_fSprintSpeedMultiplier too high (max 2.0)");
+        if (settings.m_fSprintSpeedMultiplier > 0 && settings.m_fSprintSpeedMultiplier > SPRINT_SPEED_MAX)
             isValid = false;
-        }
-        
-        if (settings.m_fSprintStaminaDrainMultiplier > 0 && settings.m_fSprintStaminaDrainMultiplier > 10.0)
-        {
-            Print("[RSS_ConfigManager] Warning: m_fSprintStaminaDrainMultiplier too high (max 10.0)");
+        if (settings.m_fSprintStaminaDrainMultiplier > 0 && settings.m_fSprintStaminaDrainMultiplier > SPRINT_DRAIN_MAX)
             isValid = false;
-        }
-        
-        // 验证间隔范围（只有当值 > 0 时才检查范围）
-        if (settings.m_iDebugUpdateInterval > 0 && settings.m_iDebugUpdateInterval > 60000)
-        {
-            Print("[RSS_ConfigManager] Warning: m_iDebugUpdateInterval too high (max 60000)");
+        // 间隔范围
+        if (settings.m_iDebugUpdateInterval > 0 && settings.m_iDebugUpdateInterval > MAX_UPDATE_INTERVAL_MS)
             isValid = false;
-        }
-        
-        if (settings.m_iTerrainUpdateInterval > 0 && settings.m_iTerrainUpdateInterval > 60000)
-        {
-            Print("[RSS_ConfigManager] Warning: m_iTerrainUpdateInterval too high (max 60000)");
+        if (settings.m_iTerrainUpdateInterval > 0 && settings.m_iTerrainUpdateInterval > MAX_UPDATE_INTERVAL_MS)
             isValid = false;
-        }
-        
-        if (settings.m_iEnvironmentUpdateInterval > 0 && settings.m_iEnvironmentUpdateInterval > 60000)
-        {
-            Print("[RSS_ConfigManager] Warning: m_iEnvironmentUpdateInterval too high (max 60000)");
+        if (settings.m_iEnvironmentUpdateInterval > 0 && settings.m_iEnvironmentUpdateInterval > MAX_UPDATE_INTERVAL_MS)
             isValid = false;
-        }
         
         return isValid;
     }
