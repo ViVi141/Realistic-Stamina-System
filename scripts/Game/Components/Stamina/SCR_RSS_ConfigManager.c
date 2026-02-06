@@ -5,11 +5,12 @@
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
-    protected static const string CURRENT_VERSION = "3.11.1";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.11.2";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
     protected static const float RELOAD_COOLDOWN = 5.0;  // 重载冷却（秒）
+    protected static bool m_bIsServerConfigApplied = false;  // 是否已应用服务器配置
     
     // 默认值与合理范围常量（便于维护）
     protected static const int DEFAULT_UPDATE_INTERVAL_MS = 5000;    // 检测/日志更新间隔
@@ -80,36 +81,47 @@ class SCR_RSS_ConfigManager
                 presetStatus += "Custom=NULL";
             Print("[RSS_ConfigManager] " + presetStatus);
             
-            // --- 核心修复逻辑开始 ---
-            
-            // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）
-            string selected = m_Settings.m_sSelectedPreset;
-            bool isCustom = false;
-            if (selected)
+            // 检查是否已应用服务器配置
+            if (!m_bIsServerConfigApplied)
             {
-                string selectedLower = selected;
-                selectedLower.ToLower();
-                isCustom = (selectedLower == "custom");
-            }
-
-            if (!isCustom)
-            {
-                // 如果玩家用的是系统预设，强制用代码里的最新Optuna值覆盖内存
-                // 这样即使 JSON 里是旧值，也会被更新
-                m_Settings.InitPresets(true);
+                // --- 核心修复逻辑开始 ---
                 
-                // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
-                Save();
-                Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+                // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）
+                string selected = m_Settings.m_sSelectedPreset;
+                bool isCustom = false;
+                if (selected)
+                {
+                    string selectedLower = selected;
+                    selectedLower.ToLower();
+                    isCustom = (selectedLower == "custom");
+                }
+
+                if (!isCustom)
+                {
+                    // 如果玩家用的是系统预设，强制用代码里的最新Optuna值覆盖内存
+                    // 这样即使 JSON 里是旧值，也会被更新
+                    m_Settings.InitPresets(true);
+                    
+                    // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
+                    Save();
+                    Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+                }
+                else
+                {
+                    // 如果是 Custom 模式，仅执行常规初始化（补全可能缺失的字段），不覆盖已有数值
+                    m_Settings.InitPresets(false);
+                    Print("[RSS_ConfigManager] Custom preset active. Preserving user-defined JSON values.");
+                }
+                
+                // --- 核心修复逻辑结束 ---
             }
             else
             {
-                // 如果是 Custom 模式，仅执行常规初始化（补全可能缺失的字段），不覆盖已有数值
+                // 已应用服务器配置，不覆盖预设值
+                Print("[RSS_ConfigManager] Server config already applied. Preserving server preset values.");
+                // 只补全可能缺失的字段，不覆盖已有数值
                 m_Settings.InitPresets(false);
-                Print("[RSS_ConfigManager] Custom preset active. Preserving user-defined JSON values.");
             }
-            
-            // --- 核心修复逻辑结束 ---
             
             // 检查版本号并执行迁移
             string configVersion = m_Settings.m_sConfigVersion;
@@ -495,5 +507,17 @@ class SCR_RSS_ConfigManager
     static bool IsLoaded()
     {
         return m_bIsLoaded;
+    }
+    
+    // 设置服务器配置已应用标志
+    static void SetServerConfigApplied(bool applied)
+    {
+        m_bIsServerConfigApplied = applied;
+    }
+    
+    // 检查服务器配置是否已应用
+    static bool IsServerConfigApplied()
+    {
+        return m_bIsServerConfigApplied;
     }
 }

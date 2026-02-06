@@ -18,6 +18,11 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastSpeedMultiplier = 1.0;
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
     
+    // 网络同步相关
+    protected ref NetworkSyncManager m_pNetworkSyncManager;
+    protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
+    protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
+    
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
     protected ref CollapseTransition m_pCollapseTransition;
@@ -178,6 +183,11 @@ modded class SCR_CharacterControllerComponent
         // 初始化EPOC状态管理
         m_pEpocState = new EpocState();
         
+        // 初始化网络同步管理器
+        m_pNetworkSyncManager = new NetworkSyncManager();
+        if (m_pNetworkSyncManager)
+            m_pNetworkSyncManager.Initialize();
+        
         // 缓存组件，避免在每0.2s的更新循环中重复查找
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
@@ -188,6 +198,12 @@ modded class SCR_CharacterControllerComponent
         
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
+        
+        // 客户端请求服务器配置
+        if (!Replication.IsServer())
+        {
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, 1000, false);
+        }
     }
     
     
@@ -916,6 +932,10 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
         
+        // ==================== 服务器配置同步 ====================
+        // 定期同步服务器配置
+        UpdateServerConfigSync();
+        
         // ==================== 调试输出（模块化）====================
         // 每5秒输出一次完整调试信息，避免过多日志，仅在客户端
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
@@ -1058,4 +1078,79 @@ modded class SCR_CharacterControllerComponent
             m_pEncumbranceCache.UpdateCache();
         }
     }
+    
+    // 客户端请求服务器配置
+    void RequestServerConfig()
+    {
+        if (!Replication.IsServer())
+        {
+            // 发送RPC请求服务器配置
+            RPC_ServerRequestConfig();
+        }
+    }
+    
+    // RPC: 客户端请求服务器配置
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ServerRequestConfig()
+    {
+        if (Replication.IsServer())
+        {
+            // 服务器发送配置给客户端
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 获取当前选中的预设
+                string selectedPreset = settings.m_sSelectedPreset;
+                
+                // 发送RPC给请求的客户端
+                RPC_ClientReceiveConfig(selectedPreset);
+            }
+        }
+    }
+    
+    // RPC: 服务器发送配置给客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ClientReceiveConfig(string serverPreset)
+    {
+        if (!Replication.IsServer())
+        {
+            // 客户端应用服务器配置
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 强制使用服务器的预设
+                settings.m_sSelectedPreset = serverPreset;
+                
+                // 重新初始化预设，使用服务器的值
+                settings.InitPresets(true);
+                
+                // 保存配置
+                SCR_RSS_ConfigManager.Save();
+                
+                // 标记服务器配置已应用
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                
+                Print("[RSS] 应用服务器配置: " + serverPreset);
+            }
+        }
+    }
+    
+    // 定期同步服务器配置
+    void UpdateServerConfigSync()
+    {
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        
+        if (currentTime - m_fLastServerSyncTime >= SERVER_CONFIG_SYNC_INTERVAL)
+        {
+            m_fLastServerSyncTime = currentTime;
+            
+            // 客户端定期请求服务器配置
+            if (!Replication.IsServer())
+            {
+                RequestServerConfig();
+            }
+        }
+    }
+    
+
 }
