@@ -59,11 +59,9 @@ class ExerciseTracker
             bool isIdle = (idleDuration >= IDLE_THRESHOLD_TIME);
             
             // 调试信息：idle 状态检测
-            static int idleDebugCounter = 0;
-            idleDebugCounter++;
-            if (idleDebugCounter >= 25) // 每5秒输出一次
+            static float nextIdleLogTime = 0.0;
+            if (StaminaConstants.ShouldVerboseLog(nextIdleLogTime))
             {
-                idleDebugCounter = 0;
                 PrintFormat("[ExerciseTracker] 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
                     Math.Round(idleDuration * 10.0) / 10.0,
                     isIdle,
@@ -76,11 +74,9 @@ class ExerciseTracker
                 float restTimeDelta = currentTimeSeconds - m_fLastUpdateTime;
                 
                 // 调试信息：休息时间累积
-                static int restDebugCounter = 0;
-                restDebugCounter++;
-                if (restDebugCounter >= 25) // 每5秒输出一次
+                static float nextRestLogTime = 0.0;
+                if (StaminaConstants.ShouldVerboseLog(nextRestLogTime))
                 {
-                    restDebugCounter = 0;
                     PrintFormat("[ExerciseTracker] 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
                         Math.Round(restTimeDelta * 10.0) / 10.0,
                         m_bWasMoving);
@@ -109,8 +105,11 @@ class ExerciseTracker
                 else if (restTimeDelta >= 1.0)
                 {
                     // 时间跳跃异常：重置更新时间，但不累积休息时间
-                    PrintFormat("[ExerciseTracker] 时间跳跃异常 / Time Jump: restTimeDelta=%1s, 重置更新时间 | restTimeDelta=%1s, Resetting update time",
-                        Math.Round(restTimeDelta * 10.0) / 10.0);
+                    if (StaminaConstants.IsDebugEnabled())
+                    {
+                        PrintFormat("[ExerciseTracker] 时间跳跃异常 / Time Jump: restTimeDelta=%1s, 重置更新时间 | restTimeDelta=%1s, Resetting update time",
+                            Math.Round(restTimeDelta * 10.0) / 10.0);
+                    }
                 }
             }
             else

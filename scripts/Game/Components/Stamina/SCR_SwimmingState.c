@@ -56,7 +56,7 @@ class SwimmingStateManager
         IEntity owner)
     {
         // 如果状态变化，输出调试信息
-        if (isSwimming != wasSwimming && owner == SCR_PlayerController.GetLocalControlledEntity())
+        if (StaminaConstants.IsDebugEnabled() && isSwimming != wasSwimming && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             string oldState = "";
             if (wasSwimming)

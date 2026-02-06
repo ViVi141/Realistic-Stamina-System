@@ -130,7 +130,8 @@ class SCR_StaminaHUDComponent
         WorkspaceWidget workspace = GetGame().GetWorkspace();
         if (!workspace)
         {
-            Print("[RSS_StaminaHUD] Workspace not found");
+            if (StaminaConstants.IsDebugEnabled())
+                Print("[RSS_StaminaHUD] Workspace not found");
             return;
         }
         
@@ -140,7 +141,8 @@ class SCR_StaminaHUDComponent
         if (!m_wRoot)
         {
             // 如果布局加载失败，打印日志
-            Print("[RSS_StaminaHUD] Layout not found or failed to load");
+            if (StaminaConstants.IsDebugEnabled())
+                Print("[RSS_StaminaHUD] Layout not found or failed to load");
             return;
         }
         
@@ -179,7 +181,8 @@ class SCR_StaminaHUDComponent
         if (m_wTextGround) widgetCount++;
         if (m_wTextWet) widgetCount++;
         
-        Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets");
+        if (StaminaConstants.IsDebugEnabled())
+            Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets");
     }
     
     

@@ -37,6 +37,9 @@ class EnvironmentFactor
     protected bool m_bCachedIndoorState = false; // 缓存的室内状态
     protected ref array<IEntity> m_pCachedBuildings; // 缓存的建筑物列表（用于回调）
     protected float m_fSurfaceWetnessPenalty = 0.0; // 地表湿度惩罚
+
+    // 调试开关：启用后输出室内检测的详细日志
+    protected bool m_bIndoorDebug = false; // 默认关闭
     
     // ==================== 公共方法 ====================
     
@@ -84,6 +87,19 @@ class EnvironmentFactor
         // 初始化建筑物列表
         m_pCachedBuildings = new array<IEntity>();
     }
+
+    // 设置室内检测调试开关（用于运行时打开/关闭详细日志）
+    void SetIndoorDebug(bool enabled)
+    {
+        m_bIndoorDebug = enabled;
+    }
+
+    bool GetIndoorDebug()
+    {
+        return m_bIndoorDebug;
+    }
+
+
     
     // 更新环境因子（协调方法）
     // @param currentTime 当前时间（秒）
@@ -159,27 +175,10 @@ class EnvironmentFactor
         // 使用 SwimmingStateManager 的方法计算总湿重
         m_fCurrentTotalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(swimmingWetWeight, m_fCachedRainWeight);
         
-        // 调试信息：环境因子更新（每5秒输出一次或值变化时）
-        static int envDebugCounter = 0;
-        static float lastLoggedHeatStress = 1.0;
-        static float lastLoggedRainWeight = 0.0;
-        static float lastLoggedWindSpeed = 0.0;
-        static float lastLoggedTemperature = 20.0;
-        envDebugCounter++;
-        bool shouldLog = (envDebugCounter >= 125) || // 每25秒（5秒 * 5）
-                        (Math.AbsFloat(m_fCachedHeatStressMultiplier - lastLoggedHeatStress) > 0.05) ||
-                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5) ||
-                        (Math.AbsFloat(m_fCachedWindSpeed - lastLoggedWindSpeed) > 2.0) ||
-                        (Math.AbsFloat(m_fCachedTemperature - lastLoggedTemperature) > 2.0);
-        
-        if (shouldLog)
+        // 调试信息：环境因子更新（统一节流）
+        static float nextEnvLogTime = 0.0;
+        if (StaminaConstants.ShouldLog(nextEnvLogTime))
         {
-            envDebugCounter = 0;
-            lastLoggedHeatStress = m_fCachedHeatStressMultiplier;
-            lastLoggedRainWeight = m_fCachedRainWeight;
-            lastLoggedWindSpeed = m_fCachedWindSpeed;
-            lastLoggedTemperature = m_fCachedTemperature;
-            
             PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
@@ -387,8 +386,9 @@ class EnvironmentFactor
         return Math.Clamp(multiplier, 1.0, StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER);
     }
     
-    // 检测角色是否在室内（基于建筑物边界框）
-    // 新方法：查询周围建筑物，检查角色位置是否在建筑物边界框内
+    // 检测角色是否在室内（基于建筑物边界框 + 向上射线确认）
+    // 新方法：先查询周围建筑物，若角色在某建筑物的边界框内则进行向上射线检测（确认有屋顶/覆盖），
+    // 只有当边界框判定为"在内"且射线检测也确认有覆盖时，才返回 true（防止开放屋顶/天窗等假阳性）。
     // @param owner 角色实体
     // @return true表示在室内，false表示在室外
     protected bool IsUnderCover(IEntity owner)
@@ -401,6 +401,7 @@ class EnvironmentFactor
             return false;
         
         vector ownerPos = owner.GetOrigin();
+
         
         // 查询角色周围 50 米范围内的建筑物实体
         vector searchMins = ownerPos + Vector(-50, -50, -50);
@@ -415,24 +416,13 @@ class EnvironmentFactor
         // 使用回调函数收集建筑物
         world.QueryEntitiesByAABB(searchMins, searchMaxs, QueryBuildingCallback);
         
-        // 调试信息：查询结果概览（暂时禁用）
         int buildingCount = m_pCachedBuildings.Count();
-        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 查询范围 (%1, %2, %3) - (%4, %5, %6) | 找到建筑物: %7 个 | Query Range (%1, %2, %3) - (%4, %5, %6) | Buildings Found: %7",
-        //     searchMins[0], searchMins[1], searchMins[2],
-        //     searchMaxs[0], searchMaxs[1], searchMaxs[2],
-        //     buildingCount.ToString());
-        
+        if (m_bIndoorDebug)
+            PrintFormat("[RealisticSystem][IndoorDetect] IsUnderCover: ownerPos=(%1,%2,%3) buildingCount=%4", ownerPos[0], ownerPos[1], ownerPos[2], buildingCount);
         if (buildingCount == 0)
-        {
-            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 周围无建筑物，判定为室外 | No buildings nearby,判定为室外 /判定为室外 /判定为室外");
             return false;
-        }
         
-        // 调试信息：角色位置（暂时禁用）
-        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 角色位置 (%1, %2, %3) | Character Position (%1, %2, %3)",
-        //     ownerPos[0], ownerPos[1], ownerPos[2]);
-        
-        // 检查角色是否在任何一个建筑物的边界框内
+        // 检查角色是否在任何一个建筑物的边界框内，并且通过向上射线确认上方有覆盖
         int checkedBuildings = 0;
         foreach (IEntity building : m_pCachedBuildings)
         {
@@ -441,69 +431,216 @@ class EnvironmentFactor
             
             checkedBuildings++;
             
-            // 获取建筑物的世界坐标边界框
+            // 使用建筑物本地边界 + 世界变换进行 OBB 检测（考虑旋转）
             vector buildingMins, buildingMaxs;
-            building.GetWorldBounds(buildingMins, buildingMaxs);
-            
-            // 检查角色位置是否在边界框内
-            bool xInside = (ownerPos[0] >= buildingMins[0] && ownerPos[0] <= buildingMaxs[0]);
-            bool yInside = (ownerPos[1] >= buildingMins[1] && ownerPos[1] <= buildingMaxs[1]);
-            bool zInside = (ownerPos[2] >= buildingMins[2] && ownerPos[2] <= buildingMaxs[2]);
-            
-            // 初步判定：X、Y、Z 都在边界框内
+            building.GetBounds(buildingMins, buildingMaxs);
+
+            vector buildingMat[4];
+            building.GetWorldTransform(buildingMat);
+
+            vector localPos = WorldToLocal(buildingMat, ownerPos);
+
+            bool xInside = (localPos[0] >= buildingMins[0] && localPos[0] <= buildingMaxs[0]);
+            bool yInside = (localPos[1] >= buildingMins[1] && localPos[1] <= buildingMaxs[1]);
+            bool zInside = (localPos[2] >= buildingMins[2] && localPos[2] <= buildingMaxs[2]);
+
             bool isInside = xInside && yInside && zInside;
-            
-            // 调试信息：建筑物边界框（暂时禁用）
-            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: 建筑物 #%1 | 边界框: (%2, %3, %4) - (%5, %6, %7)",
-            //     checkedBuildings.ToString(),
-            //     buildingMins[0], buildingMins[1], buildingMins[2],
-            //     buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
-            
-            // 调试信息：位置对比（暂时禁用）
-            // string xStatus;
-            // if (xInside)
-            //     xStatus = "✓";
-            // else
-            //     xStatus = "✗";
-            
-            // string yStatus;
-            // if (yInside)
-            //     yStatus = "✓";
-            // else
-            //     yStatus = "✗";
-            
-            // string zStatus;
-            // if (zInside)
-            //     zStatus = "✓";
-            // else
-            //     zStatus = "✗";
-            
-            // string totalStatus;
-            // if (isInside)
-            //     totalStatus = "✓ 在内 / Inside";
-            // else
-            //     totalStatus = "✗ 在外 / Outside";
-            
-            // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: X: %1 Y: %2 Z: %3 总计: %4",
-            //     xStatus, yStatus, zStatus, totalStatus);
+
+            if (m_bIndoorDebug)
+                PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
+                    checkedBuildings,
+                    Math.Round(localPos[0] * 100.0) / 100.0,
+                    Math.Round(localPos[1] * 100.0) / 100.0,
+                    Math.Round(localPos[2] * 100.0) / 100.0,
+                    buildingMins[0], buildingMins[1], buildingMins[2],
+                    buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
             
             if (isInside)
             {
-                // 调试信息：找到包含角色的建筑物（暂时禁用）
-                // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✓ 角色在建筑物内 | 位置: (%1, %2, %3)",
-                //     ownerPos[0], ownerPos[1], ownerPos[2]);
-                return true;
+                // 已由边界框判定为在建筑物内，进一步使用向上射线检测确认是否有屋顶覆盖
+                bool hasRoof = RaycastHasRoof(owner, building);
+                if (m_bIndoorDebug)
+                {
+                    string hasRoofStr;
+                    if (hasRoof)
+                        hasRoofStr = "true";
+                    else
+                        hasRoofStr = "false";
+                    PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
+                }
+                // 如果射线检测也确认被覆盖，则进一步进行水平封闭检测以减少门廊/开放屋顶假阳性
+                if (hasRoof)
+                {
+                    bool enclosed = IsHorizontallyEnclosed(owner);
+                    if (m_bIndoorDebug)
+                    {
+                        string enclosedStr;
+                        if (enclosed)
+                            enclosedStr = "true";
+                        else
+                            enclosedStr = "false";
+                        PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
+                    }
+                    if (enclosed)
+                        return true;
+                    // 否则继续检查其它建筑物
+                }
+                // 否则继续检查其它建筑物
             }
         }
         
-        // 调试信息：未找到包含角色的建筑物（暂时禁用）
-        // PrintFormat("[RealisticSystem] 室内检测 / Indoor Detection: ✗ 角色不在任何建筑物内 | 检查了 %1 个建筑物 | ✗ Character Not Inside Any Building | Checked %1 buildings",
-        //     checkedBuildings.ToString());
-        
-        // 未找到包含角色的建筑物
+        if (m_bIndoorDebug)
+            PrintFormat("[RealisticSystem][IndoorDetect] No indoor building found after checking %1 buildings", checkedBuildings);
+        // 未找到既在建筑物内又有屋顶覆盖的情况
         return false;
     }
-    
+
+    // 向上射线检测上方是否存在覆盖（屋顶/天花板）
+    // 多点采样（中心 + 前后左右）以减少窗户或较小开口导致的误判
+    // 仅检测当前建筑物，避免邻近物体或地形导致假阳性
+    // @param owner 要检测的实体（用于获取位置/世界）
+    // @param building 当前候选建筑物
+    // @return true表示所有样本点上方在检测高度内都命中遮挡物（有屋顶），false表示至少有一处无覆盖
+    protected bool RaycastHasRoof(IEntity owner, IEntity building)
+    {
+        if (!owner || !building)
+            return false;
+        World world = owner.GetWorld();
+        if (!world)
+            return false;
+
+        vector basePos = owner.GetOrigin();
+        // 从头部高度开始检测（单位：米），可根据需要调整
+        const float HEAD_HEIGHT = 1.6;
+        const float CHECK_HEIGHT = StaminaConstants.ENV_INDOOR_CHECK_HEIGHT; // 通用配置（如 10 米）
+        const float SAMPLE_OFFSET = 0.4; // 采样点水平偏移（米）
+
+        array<vector> samples = { vector.Zero, vector.Forward * SAMPLE_OFFSET, -vector.Forward * SAMPLE_OFFSET, vector.Right * SAMPLE_OFFSET, -vector.Right * SAMPLE_OFFSET };
+
+        if (m_bIndoorDebug)
+            PrintFormat("[RealisticSystem][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
+                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, CHECK_HEIGHT, samples.Count());
+
+        int idx = 0;
+        foreach (vector off : samples)
+        {
+            idx++;
+            vector start = basePos + vector.Up * HEAD_HEIGHT + off;
+            vector end = start + vector.Up * CHECK_HEIGHT;
+
+            TraceParam param = new TraceParam();
+            param.Start = start;
+            param.End = end;
+            param.Flags = TraceFlags.ENTS;
+            param.Include = building;
+            param.Exclude = owner;
+            param.LayerMask = EPhysicsLayerDefs.Projectile;
+
+            world.TraceMove(param, null);
+
+            bool hit = (param.TraceEnt != null);
+
+            if (m_bIndoorDebug)
+            {
+                string surface;
+                if (param.SurfaceProps)
+                    surface = param.SurfaceProps.ToString();
+                else
+                    surface = "null";
+                PrintFormat("[RealisticSystem][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
+                    idx, start[0], start[1], start[2], end[0], end[1], end[2], param.TraceEnt, param.ColliderName);
+                PrintFormat("[RealisticSystem][IndoorDetect]   Surface=%1", surface);
+            }
+
+            // 如果任一采样点没有命中任何遮挡物，则不能确认为室内
+            if (!hit)
+            {
+                if (m_bIndoorDebug)
+                    PrintFormat("[RealisticSystem][IndoorDetect] Sample %1 missed -> not indoor", idx);
+                return false;
+            }
+        }
+
+        if (m_bIndoorDebug)
+            PrintFormat("[RealisticSystem][IndoorDetect] All samples hit -> indoor");
+
+        // 所有采样点都命中遮挡物 → 确认为室内
+        return true;
+    }
+
+    // 将世界坐标点转换到实体本地坐标（仅适用于正交旋转矩阵）
+    protected vector WorldToLocal(vector worldMat[4], vector worldPos)
+    {
+        vector delta = worldPos - worldMat[3];
+
+        vector localPos;
+        localPos[0] = vector.Dot(delta, worldMat[0]);
+        localPos[1] = vector.Dot(delta, worldMat[1]);
+        localPos[2] = vector.Dot(delta, worldMat[2]);
+
+        return localPos;
+    }
+
+    // 水平径向封闭检测：在头部高度向周围发多条短射线以验证是否被墙体包围
+    // 若被足够比例的射线在短距离内命中，则认为水平封闭（有墙）
+    // @param owner 要检测的实体
+    // @return true 表示在水平方向上被包围（更可信的室内），false 表示至少有多个方向开放
+    protected bool IsHorizontallyEnclosed(IEntity owner)
+    {
+        if (!owner)
+            return false;
+        World world = owner.GetWorld();
+        if (!world)
+            return false;
+
+        vector basePos = owner.GetOrigin();
+        const float HEAD_HEIGHT = 1.6;
+        const int SAMPLES = 8; // 8向采样
+        const float DIST = 1.2; // 1.2 米检测距离（可根据需要调整）
+        const float HIT_RATIO = 0.75; // 至少 75% 的射线命中视为封闭
+
+        int hits = 0;
+
+        for (int i = 0; i < SAMPLES; i++)
+        {
+            float angle = (360.0 / SAMPLES) * i;
+            const float DEG2RAD = 3.14159265 / 180.0;
+            float rad = angle * DEG2RAD;
+            vector dir = Vector(Math.Cos(rad), Math.Sin(rad), 0);
+
+            vector start = basePos + vector.Up * HEAD_HEIGHT;
+            vector end = start + dir * DIST;
+
+            TraceParam param = new TraceParam();
+            param.Start = start;
+            param.End = end;
+            param.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+            param.Exclude = owner;
+            param.LayerMask = EPhysicsLayerPresets.Projectile;
+
+            world.TraceMove(param, null);
+
+            bool hit = (param.TraceEnt != null) || (param.SurfaceProps != null) || (param.ColliderName != string.Empty);
+            if (hit) hits++;
+
+            if (m_bIndoorDebug)
+            {
+                string hitStr;
+                if (hit)
+                    hitStr = "true";
+                else
+                    hitStr = "false";
+                PrintFormat("[RealisticSystem][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr);
+            }
+        }
+
+        float ratio = (hits / (float)SAMPLES);
+        if (m_bIndoorDebug)
+            PrintFormat("[RealisticSystem][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0);
+
+        return (ratio >= HIT_RATIO);
+    }
+
     // 建筑物查询回调（过滤建筑物实体）
     // @param e 实体
     // @return true表示继续查询，false表示停止
@@ -650,48 +787,9 @@ class EnvironmentFactor
         CalculateSurfaceWetnessPenalty(owner, stance);
         
         // ==================== 调试信息：高级环境因子（v2.14.0）====================
-        // 每5秒输出一次或值变化时
-        static int advancedEnvDebugCounter = 0;
-        static float lastLoggedRainIntensity = 0.0;
-        static float lastLoggedWindSpeed = 0.0;
-        static float lastLoggedWindDirection = 0.0;
-        static float lastLoggedWindDrag = 0.0;
-        static float lastLoggedMudFactor = 0.0;
-        static float lastLoggedTemperature = 0.0;
-        static float lastLoggedSurfaceWetness = 0.0;
-        static float lastLoggedRainWeight = 0.0;
-        static float lastLoggedRainBreathingPenalty = 0.0;
-        static float lastLoggedMudTerrainFactor = 0.0;
-        static float lastLoggedMudSprintPenalty = 0.0;
-        static float lastLoggedSlipRisk = 0.0;
-        static float lastLoggedHeatStressPenalty = 0.0;
-        static float lastLoggedColdStressPenalty = 0.0;
-        static float lastLoggedColdStaticPenalty = 0.0;
-        static float lastLoggedSurfaceWetnessPenalty = 0.0;
-        
-        advancedEnvDebugCounter++;
-        bool shouldLog = (advancedEnvDebugCounter >= 25) || // 每5秒（0.2秒 * 25）
-                        (Math.AbsFloat(m_fCachedRainIntensity - lastLoggedRainIntensity) > 0.1) ||
-                        (Math.AbsFloat(m_fCachedWindSpeed - lastLoggedWindSpeed) > 1.0) ||
-                        (Math.AbsFloat(m_fCachedWindDirection - lastLoggedWindDirection) > 10.0) ||
-                        (Math.AbsFloat(m_fCachedWindDrag - lastLoggedWindDrag) > 0.1) ||
-                        (Math.AbsFloat(m_fCachedMudFactor - lastLoggedMudFactor) > 0.1) ||
-                        (Math.AbsFloat(m_fCachedTemperature - lastLoggedTemperature) > 2.0) ||
-                        (Math.AbsFloat(m_fCachedSurfaceWetness - lastLoggedSurfaceWetness) > 0.1) ||
-                        (Math.AbsFloat(m_fCachedRainWeight - lastLoggedRainWeight) > 0.5) ||
-                        (Math.AbsFloat(m_fRainBreathingPenalty - lastLoggedRainBreathingPenalty) > 0.1) ||
-                        (Math.AbsFloat(m_fMudTerrainFactor - lastLoggedMudTerrainFactor) > 0.1) ||
-                        (Math.AbsFloat(m_fMudSprintPenalty - lastLoggedMudSprintPenalty) > 0.05) ||
-                        (Math.AbsFloat(m_fSlipRisk - lastLoggedSlipRisk) > 0.1) ||
-                        (Math.AbsFloat(m_fHeatStressPenalty - lastLoggedHeatStressPenalty) > 0.1) ||
-                        (Math.AbsFloat(m_fColdStressPenalty - lastLoggedColdStressPenalty) > 0.1) ||
-                        (Math.AbsFloat(m_fColdStaticPenalty - lastLoggedColdStaticPenalty) > 0.1) ||
-                        (Math.AbsFloat(m_fSurfaceWetnessPenalty - lastLoggedSurfaceWetnessPenalty) > 0.05);
-        
-        if (shouldLog)
+        static float nextAdvancedEnvLogTime = 0.0;
+        if (StaminaConstants.ShouldVerboseLog(nextAdvancedEnvLogTime))
         {
-            advancedEnvDebugCounter = 0;
-            
             PrintFormat("[RealisticSystem] 高级环境因子 / Advanced Environment Factors:");
             PrintFormat("  降雨强度 / Rain Intensity: %1 (%2%%)", 
                 Math.Round(m_fCachedRainIntensity * 100.0) / 100.0,
@@ -715,23 +813,6 @@ class EnvironmentFactor
             PrintFormat("  冷应激惩罚 / Cold Stress Penalty: %1", Math.Round(m_fColdStressPenalty * 100.0) / 100.0);
             PrintFormat("  冷应激静态惩罚 / Cold Static Penalty: %1", Math.Round(m_fColdStaticPenalty * 100.0) / 100.0);
             PrintFormat("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(m_fSurfaceWetnessPenalty * 100.0) / 100.0);
-            
-            lastLoggedRainIntensity = m_fCachedRainIntensity;
-            lastLoggedWindSpeed = m_fCachedWindSpeed;
-            lastLoggedWindDirection = m_fCachedWindDirection;
-            lastLoggedWindDrag = m_fCachedWindDrag;
-            lastLoggedMudFactor = m_fCachedMudFactor;
-            lastLoggedTemperature = m_fCachedTemperature;
-            lastLoggedSurfaceWetness = m_fCachedSurfaceWetness;
-            lastLoggedRainWeight = m_fCachedRainWeight;
-            lastLoggedRainBreathingPenalty = m_fRainBreathingPenalty;
-            lastLoggedMudTerrainFactor = m_fMudTerrainFactor;
-            lastLoggedMudSprintPenalty = m_fMudSprintPenalty;
-            lastLoggedSlipRisk = m_fSlipRisk;
-            lastLoggedHeatStressPenalty = m_fHeatStressPenalty;
-            lastLoggedColdStressPenalty = m_fColdStressPenalty;
-            lastLoggedColdStaticPenalty = m_fColdStaticPenalty;
-            lastLoggedSurfaceWetnessPenalty = m_fSurfaceWetnessPenalty;
         }
         
         // 更新时间戳（在所有计算完成后）

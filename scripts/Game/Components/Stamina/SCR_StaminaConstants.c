@@ -862,6 +862,43 @@ class StaminaConstants
         
         return 5000; // 默认5秒
     }
+
+    // 统一调试日志节流（基于 DebugUpdateInterval）
+    static bool ShouldLog(inout float nextTime)
+    {
+        if (!IsDebugEnabled())
+            return false;
+
+        return ShouldLogInternal(nextTime);
+    }
+
+    // 统一详细日志节流（需要 Debug + Verbose）
+    static bool ShouldVerboseLog(inout float nextTime)
+    {
+        if (!IsDebugEnabled() || !IsVerboseLoggingEnabled())
+            return false;
+
+        return ShouldLogInternal(nextTime);
+    }
+
+    // 内部时间节流实现
+    protected static bool ShouldLogInternal(inout float nextTime)
+    {
+        World world = GetGame().GetWorld();
+        if (!world)
+            return false;
+
+        float currentTime = world.GetWorldTime() / 1000.0;
+        float interval = GetDebugUpdateInterval() / 1000.0;
+        if (interval <= 0.0)
+            interval = 5.0;
+
+        if (currentTime < nextTime)
+            return false;
+
+        nextTime = currentTime + interval;
+        return true;
+    }
     
     // ==================== 以下配置仅在 Custom 预设下生效 ====================
     // 当使用 EliteStandard/StandardMilsim/TacticalAction 预设时，这些配置返回默认值

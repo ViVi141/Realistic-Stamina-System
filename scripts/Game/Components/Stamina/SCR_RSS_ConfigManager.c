@@ -46,11 +46,14 @@ class SCR_RSS_ConfigManager
         m_Settings = new SCR_RSS_Settings();
         m_Settings.m_sSelectedPreset = "EliteStandard";
         m_Settings.InitPresets(true);
+        // Workbench: force enable debug and HUD for easy verification in the editor
+        m_Settings.m_bDebugLogEnabled = true;
+        m_Settings.m_bHintDisplayEnabled = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed)");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug/HUD forced ON.");
         return;
         #endif
         

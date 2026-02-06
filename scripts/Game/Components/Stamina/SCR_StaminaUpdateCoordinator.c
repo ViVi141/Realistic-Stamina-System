@@ -251,7 +251,7 @@ class StaminaUpdateCoordinator
         {
             // ==================== 游泳体力消耗模型（物理阻力模型）====================
             // 调试信息：只在第一次检测到游泳速度仍为 0 时输出（避免刷屏）
-            if (owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
+            if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
             {
                 float swimVelLen = computedVelocity.Length();
                 if (swimVelLen < 0.01)
@@ -436,11 +436,9 @@ class StaminaUpdateCoordinator
         newTargetStamina = staminaPercent + netChange;
         
         // ==================== 调试信息 ====================
-        static int metabolismDebugCounter = 0;
-        metabolismDebugCounter++;
-        if (metabolismDebugCounter >= 25)
+        static float nextMetabolismLogTime = 0.0;
+        if (StaminaConstants.ShouldLog(nextMetabolismLogTime))
         {
-            metabolismDebugCounter = 0;
             PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值×%.2f: %5) | %1%% → %2%%",
                 Math.Round(staminaPercent * 100.0).ToString(),
                 Math.Round(newTargetStamina * 100.0).ToString(),
