@@ -21,7 +21,10 @@ modded class SCR_CharacterControllerComponent
     // 网络同步相关
     protected ref NetworkSyncManager m_pNetworkSyncManager;
     protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
+    protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
+    protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
+    protected bool m_bIsConnected = false; // 网络连接状态
     
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
@@ -94,6 +97,8 @@ modded class SCR_CharacterControllerComponent
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
+            // 服务器注册为配置变更监听器
+            SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
         }
         
         // 获取体力组件引用
@@ -203,8 +208,151 @@ modded class SCR_CharacterControllerComponent
         if (!Replication.IsServer())
         {
             GetGame().GetCallqueue().CallLater(RequestServerConfig, 1000, false);
+            // 初始化网络连接状态
+            m_bIsConnected = true;
+            // 开始网络连接监控
+            GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
         }
     }
+    
+    // 处理配置变更通知
+    void OnConfigChanged()
+    {
+        if (Replication.IsServer())
+        {
+            // 服务器配置变更，通知所有客户端
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                string selectedPreset = settings.m_sSelectedPreset;
+                // 发送RPC给所有客户端
+                RPC_BroadcastConfigChange(selectedPreset);
+                
+                // 同时发送关键配置数据，确保客户端配置完全同步
+                RPC_SendConfigData(
+                    settings.m_sConfigVersion,
+                    settings.m_sSelectedPreset,
+                    settings.m_bDebugLogEnabled,
+                    settings.m_bHintDisplayEnabled,
+                    settings.m_fStaminaDrainMultiplier,
+                    settings.m_fStaminaRecoveryMultiplier,
+                    settings.m_iTerrainUpdateInterval,
+                    settings.m_iEnvironmentUpdateInterval
+                );
+            }
+        }
+    }
+    
+    // 处理客户端配置请求
+    void HandleClientConfigRequest(IEntity clientEntity)
+    {
+        if (!Replication.IsServer()) return;
+        
+        // 服务器发送完整配置给请求的客户端
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            // 发送关键配置数据
+            RPC_SendConfigData(
+                settings.m_sConfigVersion,
+                settings.m_sSelectedPreset,
+                settings.m_bDebugLogEnabled,
+                settings.m_bHintDisplayEnabled,
+                settings.m_fStaminaDrainMultiplier,
+                settings.m_fStaminaRecoveryMultiplier,
+                settings.m_iTerrainUpdateInterval,
+                settings.m_iEnvironmentUpdateInterval
+            );
+            Print("[RSS] 已发送配置数据给客户端");
+        }
+    }
+    
+    // RPC: 服务器广播配置变更给所有客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_BroadcastConfigChange(string newPreset)
+    {
+        if (!Replication.IsServer())
+        {
+            // 客户端应用新配置
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                settings.m_sSelectedPreset = newPreset;
+                settings.InitPresets(true);
+                SCR_RSS_ConfigManager.Save();
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                Print("[RSS] 服务器配置已变更: " + newPreset);
+            }
+        }
+    }
+    
+    // RPC: 服务器发送关键配置给客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_SendConfigData(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled, 
+                           float staminaDrainMultiplier, float staminaRecoveryMultiplier, 
+                           int terrainUpdateInterval, int environmentUpdateInterval)
+    {
+        if (!Replication.IsServer())
+        {
+            // 客户端应用配置
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 复制关键配置
+                settings.m_sConfigVersion = configVersion;
+                settings.m_sSelectedPreset = selectedPreset;
+                settings.m_bDebugLogEnabled = debugLogEnabled;
+                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
+                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
+                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
+                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
+                
+                // 重新初始化预设
+                settings.InitPresets(true);
+                
+                SCR_RSS_ConfigManager.Save();
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                Print("[RSS] 服务器配置已同步: " + selectedPreset);
+            }
+        }
+    }
+    
+    // 网络连接监控
+    void MonitorNetworkConnection()
+    {
+        if (Replication.IsServer()) return;
+        
+        // 检测网络连接状态
+        // 在EnforceScript中，使用Replication.IsServer()来间接判断连接状态
+        // 客户端如果能执行到这里，说明已经连接到服务器
+        bool isConnected = true;
+        
+        // 检测重连
+        if (!m_bIsConnected && isConnected)
+        {
+            // 网络重连
+            m_bIsConnected = true;
+            m_fLastReconnectTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            Print("[RSS] 网络已重连，准备同步服务器配置");
+            
+            // 延迟同步配置，确保网络稳定
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, RECONNECT_SYNC_DELAY * 1000, false);
+        }
+        else if (m_bIsConnected && !isConnected)
+        {
+            // 网络断开
+            m_bIsConnected = false;
+            Print("[RSS] 网络连接已断开");
+        }
+        else
+        {
+            // 网络状态未变化
+            m_bIsConnected = isConnected;
+        }
+    }
+    
+
     
     
     // 启动系统
