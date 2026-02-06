@@ -160,6 +160,12 @@ class NetworkSyncManager
     {
         return m_fServerValidatedSpeedMultiplier;
     }
+
+    // 判断服务器是否已设置验证值（用于客户端决定是否优先使用服务器值）
+    bool HasServerValidation()
+    {
+        return Math.AbsFloat(m_fServerValidatedSpeedMultiplier - 1.0) > 0.0001;
+    }
     
     // 更新报告的状态值
     // @param staminaPercent 体力百分比

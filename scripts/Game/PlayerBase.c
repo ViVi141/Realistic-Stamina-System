@@ -669,6 +669,33 @@ modded class SCR_CharacterControllerComponent
             if (inventoryComponent)
                 currentWeight = inventoryComponent.GetTotalWeight();
         }
+
+        // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
+        if (m_pNetworkSyncManager)
+        {
+            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+            // 周期性上报：客户端发给服务器（每 NETWORK_SYNC_INTERVAL 秒一次）
+            if (m_pNetworkSyncManager.ShouldSync(currentWorldTime))
+            {
+                if (!Replication.IsServer())
+                {
+                    RPC_ClientReportStamina(staminaPercent, currentWeight);
+                    m_pNetworkSyncManager.UpdateReportedState(staminaPercent, currentWeight);
+                }
+            }
+
+            // 应用服务器验证/平滑修正（如果服务器已有验证值则使用，否则使用本地预测）
+            float smoothed = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentWorldTime);
+            if (m_pNetworkSyncManager.HasServerValidation())
+            {
+                OverrideMaxSpeed(smoothed);
+            }
+            else
+            {
+                OverrideMaxSpeed(finalSpeedMultiplier);
+            }
+        }
         
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
@@ -1277,28 +1304,98 @@ modded class SCR_CharacterControllerComponent
                 
                 // 标记服务器配置已应用
                 SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-                
-                Print("[RSS] 应用服务器配置: " + serverPreset);
             }
         }
     }
-    
-    // 定期同步服务器配置
+
+    // 定期向服务器请求配置（客户端使用）
     void UpdateServerConfigSync()
     {
+        if (Replication.IsServer()) return;
+
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        
         if (currentTime - m_fLastServerSyncTime >= SERVER_CONFIG_SYNC_INTERVAL)
         {
             m_fLastServerSyncTime = currentTime;
-            
-            // 客户端定期请求服务器配置
-            if (!Replication.IsServer())
+            RequestServerConfig();
+        }
+    }
+
+    // RPC: 客户端向服务器上报体力与负重（周期性）
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ClientReportStamina(float staminaPercent, float weight)
+    {
+        if (Replication.IsServer())
+        {
+            // 服务器端基础校验
+            float clampedStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
+
+            // 使用服务器端的权威负重数据（优先）
+            float serverWeight = 0.0;
+            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+                serverWeight = m_pEncumbranceCache.GetCurrentWeight();
+            else
             {
-                RequestServerConfig();
+                SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
+                    GetOwner().FindComponent(SCR_CharacterInventoryStorageComponent));
+                if (inventoryComponent)
+                    serverWeight = inventoryComponent.GetTotalWeight();
+            }
+
+            // 计算速度惩罚（基于服务器重量）
+            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
+            float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
+            float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, 1.5);
+            encPenalty = Math.Clamp(encPenalty, 0.0, 0.4);
+
+            // 获取服务器端的移动状态（权威）
+            bool isSprinting = IsSprinting();
+            int currentMovementPhase = GetCurrentMovementPhase();
+            bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(clampedStamina);
+            bool canSprint = RealisticStaminaSpeedSystem.CanSprint(clampedStamina);
+
+            // 计算当前速度（使用服务器位置差分）
+            vector velocity = GetVelocity();
+            vector horizontalVelocity = velocity;
+            horizontalVelocity[1] = 0.0;
+            float currentSpeed = horizontalVelocity.Length();
+            currentSpeed = Math.Min(currentSpeed, 7.0);
+
+            // 获取坡度角度（服务器端计算）
+            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor);
+
+            // 使用权威计算函数生成最终速度倍数
+            float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
+                clampedStamina,
+                encPenalty,
+                isSprinting,
+                currentMovementPhase,
+                isExhausted,
+                canSprint,
+                currentSpeed,
+                slopeAngleDegrees);
+
+            validated = Math.Clamp(validated, 0.15, 1.0);
+
+            if (m_pNetworkSyncManager)
+            {
+                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                // 将服务器验证结果发送回客户端（触发客户端平滑）
+                RPC_ServerSyncSpeedMultiplier(validated);
             }
         }
     }
-    
+
+    // RPC: 服务器将验证后的速度同步回客户端（目标客户端）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier)
+    {
+        if (!Replication.IsServer())
+        {
+            if (m_pNetworkSyncManager)
+                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
+        }
+    }
 
 }

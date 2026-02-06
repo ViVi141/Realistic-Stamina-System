@@ -101,6 +101,52 @@ class StaminaUpdateCoordinator
     // @param currentSpeed 当前速度 (m/s)
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 最终速度倍数
+    // 新增：基于输入计算最终速度倍数（供服务器权威使用）
+    static float CalculateFinalSpeedMultiplierFromInputs(
+        float staminaPercent,
+        float encumbranceSpeedPenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        bool isExhausted,
+        bool canSprint,
+        float currentSpeed,
+        float slopeAngleDegrees)
+    {
+        // 与 UpdateSpeed 中相同的决策逻辑，但使用传入参数（无 controller）
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                currentMovementPhase = 2;
+                isSprinting = false;
+            }
+        }
+
+        float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 秒
+
+        float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
+            staminaPercent, null, currentWorldTime);
+
+        // 计算坡度自适应目标速度倍数
+        float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
+        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
+
+        float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+            runBaseSpeedMultiplier,
+            encumbranceSpeedPenalty,
+            isSprinting,
+            currentMovementPhase,
+            isExhausted,
+            canSprint,
+            staminaPercent,
+            currentSpeed);
+
+        return finalSpeedMultiplier;
+    }
+
     static float UpdateSpeed(
         SCR_CharacterControllerComponent controller,
         float staminaPercent,
