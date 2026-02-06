@@ -151,7 +151,12 @@ modded class SCR_CharacterControllerComponent
         {
             World world = GetGame().GetWorld();
             if (world)
+            {
                 m_pEnvironmentFactor.Initialize(world, owner);
+                // 强制使用引擎实时天气（真实天气），避免使用虚拟昼夜模型（但禁用引擎温度，使用模组内计算）
+                m_pEnvironmentFactor.SetUseEngineWeather(true);
+                m_pEnvironmentFactor.SetUseEngineTemperature(false); // 使用模组内温度计算，每 5 秒步进
+            }
         }
         
         // 初始化疲劳积累系统模块

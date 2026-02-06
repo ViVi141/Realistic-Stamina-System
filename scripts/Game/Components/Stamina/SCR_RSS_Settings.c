@@ -646,6 +646,19 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.env_mud_penalty_max = 0.45;
         m_Custom.env_temperature_heat_penalty_coeff = 0.02;
         m_Custom.env_temperature_cold_recovery_penalty_coeff = 0.05;
+
+        // Weather/temperature model defaults (top-level settings)
+        m_fTempUpdateInterval = 5.0;
+        m_fTemperatureMixingHeight = 1000.0;
+        m_fAlbedo = 0.2;
+        m_fAerosolOpticalDepth = 0.14;
+        m_fSurfaceEmissivity = 0.98;
+        m_fCloudBlockingCoeff = 0.7;
+        m_fLECoef = 200.0;
+        m_bUseEngineTemperature = false;
+        m_bUseEngineTimezone = true;
+        m_fLongitude = 0.0;
+        m_fTimeZoneOffsetHours = 0.0;
     }
 
     // ==================== 调试配置 ====================
@@ -701,6 +714,40 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Mud penalty (wet terrain). | 泥泞惩罚")]
     bool m_bEnableMudPenalty;
+
+    // ==================== Weather / Temperature Model Settings ====================
+    [Attribute("5.0", UIWidgets.EditBox, "Temperature update interval (s). How often the physics model steps. | 温度步进间隔（秒），物理模型步进频率")]
+    float m_fTempUpdateInterval;
+
+    [Attribute("1000.0", UIWidgets.EditBox, "Temperature mixing height (m). Effective air mixing depth for near-surface layer. | 温度混合层高度（米），影响温度响应速率")]
+    float m_fTemperatureMixingHeight;
+
+    [Attribute("0.2", UIWidgets.EditBox, "Surface albedo (0-1). Surface reflectance used in SW absorption. | 地表反照率（0-1），短波反射率")]
+    float m_fAlbedo;
+
+    [Attribute("0.14", UIWidgets.EditBox, "Aerosol optical depth (AOD). Used for clear-sky transmittance. | 气溶胶光学厚度，用于透过率估计")]
+    float m_fAerosolOpticalDepth;
+
+    [Attribute("0.98", UIWidgets.EditBox, "Surface emissivity (0-1). Used for LW_up. | 地表发射率（0-1），用于长波发射计算")]
+    float m_fSurfaceEmissivity;
+
+    [Attribute("0.7", UIWidgets.EditBox, "Cloud blocking coefficient. Multiplies inferred cloud factor to estimate SW blocking. | 云遮挡系数，乘以 cloud factor 估计短波遮挡")]
+    float m_fCloudBlockingCoeff;
+
+    [Attribute("200.0", UIWidgets.EditBox, "Latent heat coefficient (W/m2 per wetness). Multiplied by surface wetness to approximate LE. | 潜热系数（W/m2 每单位地表湿度）")]
+    float m_fLECoef;
+
+    [Attribute("false", UIWidgets.CheckBox, "Use engine-provided air temperature (min/max) as model boundary. If false, compute temperature purely from module physics. | 是否使用引擎提供的气温作为模型边界")]
+    bool m_bUseEngineTemperature;
+
+    [Attribute("true", UIWidgets.CheckBox, "Use engine time zone info if available. If false, use longitude/timezone overrides below. | 优先使用引擎时区信息（若存在），否则使用下方经度/时区覆盖")]
+    bool m_bUseEngineTimezone;
+
+    [Attribute("0.0", UIWidgets.EditBox, "Longitude override (deg). Used for solar time correction if engine longitude is not available. | 经度覆盖（度），用于太阳时校正")]
+    float m_fLongitude;
+
+    [Attribute("0.0", UIWidgets.EditBox, "Time zone offset override (hours). Example: +8 for CST. Used when not using engine timezone. | 时区偏移覆盖（小时），例如 +8 表示东八区")]
+    float m_fTimeZoneOffsetHours;
     
     // ==================== Custom 预设：高级系统 ====================
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Fatigue accumulation. | 疲劳积累")]

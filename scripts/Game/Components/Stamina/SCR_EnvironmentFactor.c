@@ -40,6 +40,35 @@ class EnvironmentFactor
 
     // 调试开关：启用后输出室内检测的详细日志
     protected bool m_bIndoorDebug = false; // 默认关闭
+
+    // 是否使用引擎天气API（true=使用引擎数据，false=使用虚拟昼夜模型）
+    protected bool m_bUseEngineWeather = true; // 默认启用真实天气
+
+    // ====== 温度计算相关参数（P1 实现） ======
+    protected float m_fTempUpdateInterval = 5.0; // 温度步进间隔（秒），默认5s（实时每5秒更新）
+    protected float m_fLastTemperatureUpdateTime = 0.0; // 上次温度更新时间（秒）
+    protected float m_fNextTempStepLogTime = 0.0; // 下次非详细温度步进日志时间（用于 ShouldLog）
+    // 是否使用引擎提供的温度（独立于 m_bUseEngineWeather）
+    protected bool m_bUseEngineTemperature = false; // 默认不使用引擎温度，完全通过模组内计算
+    protected float m_fTemperatureMixingHeight = 1000.0; // 混合层高度（m），用于热容量计算
+    protected float m_fAlbedo = 0.2; // 地表反照率（默认：草地/混合地表）
+    protected float m_fAerosolOpticalDepth = 0.14; // 简化的大气光学厚度用于透过率估计
+    protected float m_fSurfaceEmissivity = 0.98; // 地表发射率
+    protected float m_fCachedSurfaceTemperature = 20.0; // 缓存的近地面温度（°C）
+
+    // 物理模型可调系数（可从 SCR_RSS_Settings 读取）
+    protected float m_fCloudBlockingCoeff = 0.7; // 云层遮挡短波的系数（经验）
+    protected float m_fLECoef = 200.0; // 潜热系数（W/m2 每单位地表湿度）
+
+    // 时区/经度用于太阳时校正
+    protected bool m_bUseEngineTimezone = true; // 是否优先使用引擎时区信息
+    protected float m_fLongitude = 0.0; // 经度覆盖（度）
+    protected float m_fTimeZoneOffsetHours = 0.0; // 时区偏移覆盖（小时）
+
+    protected float m_fSolarConstant = 1361.0; // 太阳常数（W/m^2）
+    protected const float STEFAN_BOLTZMANN = 5.670374419e-8; // 斯特藩-玻尔兹曼常数
+    protected const float M_E = 2.718281828459045; // 自然常数 e（用于替代 Math.Exp）
+    // ==========================================
     
     // ==================== 公共方法 ====================
     
@@ -83,6 +112,47 @@ class EnvironmentFactor
             if (chimeraWorld)
                 m_pCachedWeatherManager = chimeraWorld.GetTimeAndWeatherManager();
         }
+
+        // 读取配置并应用到模型参数
+        ApplySettings();
+
+        // 调试：打印天气管理器的重要状态，便于排查温度是否被覆盖为常数（例如10°C）
+        if (m_pCachedWeatherManager)
+        {
+            bool overrideTemp = m_pCachedWeatherManager.GetOverrideTemperature();
+            float tempMin = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
+            float tempMax = m_pCachedWeatherManager.GetTemperatureAirMaxOverride();
+            float wetness = m_pCachedWeatherManager.GetCurrentWetness();
+            float rain = m_pCachedWeatherManager.GetRainIntensity();
+            float wind = m_pCachedWeatherManager.GetWindSpeed();
+            float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+
+            string isServer = "false";
+            if (Replication.IsServer())
+                isServer = "true";
+
+            string useEngineTempStr = "false";
+            if (m_bUseEngineTemperature)
+                useEngineTempStr = "true";
+
+            string useEngineTzStr = "false";
+            if (m_bUseEngineTimezone)
+                useEngineTzStr = "true";
+
+            // 合并少数字段为单个 Extras 字符串，使用 PrintFormat 并限制到 9 个占位符
+            string extras = useEngineTempStr + " | " + useEngineTzStr + " | Lon=" + (Math.Round(m_fLongitude * 10.0) / 10.0) + " | TZOff=" + (Math.Round(m_fTimeZoneOffsetHours * 10.0) / 10.0);
+
+            PrintFormat("[RealisticSystem][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=%8 | Extras=%9",
+                overrideTemp,
+                Math.Round(tempMin * 10.0) / 10.0,
+                Math.Round(tempMax * 10.0) / 10.0,
+                Math.Round(wetness * 100.0) / 100.0,
+                Math.Round(rain * 100.0) / 100.0,
+                Math.Round(wind * 10.0) / 10.0,
+                Math.Round(tod * 10.0) / 10.0,
+                isServer,
+                extras);
+        }
         
         // 初始化建筑物列表
         m_pCachedBuildings = new array<IEntity>();
@@ -97,6 +167,28 @@ class EnvironmentFactor
     bool GetIndoorDebug()
     {
         return m_bIndoorDebug;
+    }
+
+    // 设置是否使用引擎实时天气数据（用于在运行时切换）
+    void SetUseEngineWeather(bool enabled)
+    {
+        m_bUseEngineWeather = enabled;
+    }
+
+    bool GetUseEngineWeather()
+    {
+        return m_bUseEngineWeather;
+    }
+
+    // 控制是否使用引擎温度（仅温度，非整体天气数据）
+    void SetUseEngineTemperature(bool enabled)
+    {
+        m_bUseEngineTemperature = enabled;
+    }
+
+    bool GetUseEngineTemperature()
+    {
+        return m_bUseEngineTemperature;
     }
 
 
@@ -342,8 +434,321 @@ class EnvironmentFactor
         
         return simulatedTemp;
     }
+
+    // ------------------- 太阳与辐照工具函数（P1） -------------------
     
-    // 计算热应激倍数（基于虚拟气温，考虑室内豁免）
+    // 计算某个日期的年积日（1..365/366）
+    protected int DayOfYear(int year, int month, int day)
+    {
+        int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        // 闰年处理
+        bool isLeap = ((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0);
+        if (isLeap)
+            mdays[1] = 29;
+
+        int n = 0;
+        int i = 0;
+        while (i < month - 1)
+        {
+            n += mdays[i];
+            i = i + 1;
+        }
+        n = n + day;
+        return n;
+    }
+
+    // 太阳偏角（弧度）
+    protected float SolarDeclination(int n)
+    {
+        // δ ≈ 23.44° × sin(2π (284 + n) / 365)
+        return 23.44 * Math.DEG2RAD * Math.Sin(2.0 * Math.PI * (284.0 + n) / 365.0);
+    }
+
+    // 计算太阳天顶角余弦（cos θ），输入纬度（deg）、年日、时刻（小时）
+    protected float SolarCosZenith(float latDeg, int n, float localHour)
+    {
+        float latRad = latDeg * Math.DEG2RAD;
+        float decl = SolarDeclination(n);
+        float hourAngleDeg = 15.0 * (localHour - 12.0);
+        float hourAngleRad = hourAngleDeg * Math.DEG2RAD;
+        float cosTheta = Math.Sin(latRad) * Math.Sin(decl) + Math.Cos(latRad) * Math.Cos(decl) * Math.Cos(hourAngleRad);
+        return cosTheta;
+    }
+
+    // 空气质量近似（Kasten & Young，返回 m）
+    protected float AirMass(float cosTheta)
+    {
+        if (cosTheta <= 0.0)
+            return 9999.0; // 夜间或太阳低于地平线
+        float thetaDeg = Math.Acos(cosTheta) * Math.RAD2DEG;
+        float m = 1.0 / (cosTheta + 0.50572 * Math.Pow(96.07995 - thetaDeg, -1.6364));
+        return m;
+    }
+
+    // 根据空气质量计算简单的清空透过率（经验）
+    protected float ClearSkyTransmittance(float m)
+    {
+        // 简化模型：tau = exp(-k * m)
+        // Enfusion 脚本没有 Math.Exp，使用 Math.Pow(M_E, x) 替代
+        float tau = Math.Pow(M_E, -m_fAerosolOpticalDepth * m);
+        return Math.Clamp(tau, 0.0, 1.0);
+    }
+
+    // 简单云因子推断，从雨强、湿度与天气状态推测云量因子 [0,1]
+    protected float InferCloudFactor()
+    {
+        float cloud = 0.0;
+        // 使用降雨强度优先
+        cloud = Math.Max(cloud, m_fCachedRainIntensity);
+        // 使用地表湿度作为次要指标
+        cloud = Math.Max(cloud, m_fCachedSurfaceWetness * 0.8);
+
+        // 基于天气状态名称的增强判断（如果可获得）
+        if (m_pCachedWeatherManager)
+        {
+            BaseWeatherStateTransitionManager transitionManager = m_pCachedWeatherManager.GetTransitionManager();
+            if (transitionManager)
+            {
+                WeatherState currentWeatherState = transitionManager.GetCurrentState();
+                if (currentWeatherState)
+                {
+                    string s = currentWeatherState.GetStateName();
+                    s.ToLower();
+                    if (s.Contains("storm") || s.Contains("heavy"))
+                        cloud = Math.Max(cloud, 0.95);
+                    else if (s.Contains("rain") || s.Contains("shower"))
+                        cloud = Math.Max(cloud, 0.6);
+                    else if (s.Contains("cloud") || s.Contains("overcast"))
+                        cloud = Math.Max(cloud, 0.6);
+                    else if (s.Contains("partly") || s.Contains("few"))
+                        cloud = Math.Max(cloud, 0.25);
+                }
+            }
+        }
+
+        return Math.Clamp(cloud, 0.0, 1.0);
+    }
+
+    // 单步温度更新（基于一层混合层的能量平衡）
+    // @param dt 秒
+    protected void StepTemperature(float dt)
+    {
+        if (!m_pCachedWeatherManager)
+            return;
+
+        // 1) 获取时间/位置/天气因子
+        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+        int year, month, day;
+        m_pCachedWeatherManager.GetDate(year, month, day);
+        int n = DayOfYear(year, month, day);
+        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+
+        // 太阳时校正：使用设置中的经度与时区偏移
+        float localHour = tod; // 基于引擎本地时刻
+        // 使用经度修正：每 15° 经度对应 1 小时的太阳时差
+        localHour += (m_fLongitude / 15.0);
+        // 若未启用引擎时区或引擎不提供时区信息，使用覆盖的时区偏移值
+        if (!m_bUseEngineTimezone)
+            localHour -= m_fTimeZoneOffsetHours;
+        // 归一化到 [0,24)
+        while (localHour < 0.0) localHour += 24.0;
+        while (localHour >= 24.0) localHour -= 24.0;
+
+        // 2) 太阳几何与顶端辐照（使用本地太阳时）
+        float cosTheta = SolarCosZenith(lat, n, localHour);
+        if (cosTheta <= 0.0)
+        {
+            // 夜间：没有短波入射
+            cosTheta = 0.0;
+        }
+
+        float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
+
+        // 3) 计算透过率
+        float m = AirMass(cosTheta);
+        float tau = ClearSkyTransmittance(m);
+
+        // 4) 云修正
+        float cloudFactor = InferCloudFactor();
+        float cloudBlocking = m_fCloudBlockingCoeff * cloudFactor; // 云层削弱短波的系数（经验，可配置）
+
+        // 5) 短波到达地表
+        float SW_down = I0 * tau * (1.0 - cloudBlocking);
+
+        // 6) 长波下行（简化）
+        float T_atm = m_fCachedSurfaceTemperature + 2.0; // 大气温用近地温+偏移近似
+        float eps_atm = 0.78 + 0.14 * cloudFactor; // 大气发射率简单模型
+        float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
+
+        // 7) 地表发射（近似以空气温代替地表温度）
+        float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((m_fCachedSurfaceTemperature + 273.15), 4);
+
+        // 8) 净辐射
+        float netRadiation = (1.0 - m_fAlbedo) * SW_down + LW_down - LW_up;
+
+        // 9) 简化感热/潜热项（经验小值，湿润情况增大潜热损失）
+        float rho = 1.225; // 空气密度 kg/m3
+        float Cp = 1004.0; // 比热 J/(kg·K)
+        float Hmix = m_fTemperatureMixingHeight; // m
+
+        float LE = 0.0;
+        // 若湿度或降雨增加，加入潜热损失（可配置系数）
+        LE = m_fLECoef * m_fCachedSurfaceWetness; // 经验值（可由设置调整）
+
+        // 风速影响混合层高度：风越大，混合层越高，温度变化越小
+        float wind_factor = 1.0 + (m_fCachedWindSpeed / 10.0);
+        float mixing_height_eff = Math.Max(10.0, Hmix * wind_factor);
+
+        float Q_net = netRadiation - LE; // 忽略感热单独项（混合层近似）
+
+        // 10) 温度变化
+        float dT = 0.0;
+        if (mixing_height_eff > 0.0)
+            dT = (Q_net * dt) / (rho * Cp * mixing_height_eff);
+
+        float newT = m_fCachedSurfaceTemperature + dT;
+
+        // 限制合理范围
+        if (newT > 60.0)
+            newT = 60.0;
+        if (newT < -80.0)
+            newT = -80.0;
+
+        // 更新缓存与时间戳
+        m_fCachedSurfaceTemperature = newT;
+
+        // 非详细调试输出：只要启用了 Debug（不需 Verbose）就会看到此日志
+        if (StaminaConstants.ShouldLog(m_fNextTempStepLogTime))
+        {
+            PrintFormat("[RealisticSystem][TempStep] dt=%1s | SW=%2W/m2 | NewT=%3°C | Cloud=%4 | MixingH=%5m",
+                dt,
+                Math.Round(SW_down),
+                Math.Round(newT * 10.0) / 10.0,
+                Math.Round(cloudFactor * 100.0) / 100.0,
+                Math.Round(mixing_height_eff));
+        }
+
+        // 详细调试输出（需要 Verbose 打开）
+        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
+        {
+            PrintFormat("[RealisticSystem][TempStepVerbose] dt=%1s | SW=%2W/m2 | LW_down=%3W/m2 | Net=%4W/m2 | LE=%5 | NewT=%6°C | Cloud=%7",
+                dt,
+                Math.Round(SW_down),
+                Math.Round(LW_down),
+                Math.Round(Q_net),
+                Math.Round(LE),
+                Math.Round(newT * 10.0) / 10.0,
+                Math.Round(cloudFactor * 100.0) / 100.0);
+        }
+
+        // 非详细调试输出：只要启用了 Debug（不需 Verbose）就会看到此日志
+        if (StaminaConstants.ShouldLog(m_fNextTempStepLogTime))
+        {
+            PrintFormat("[RealisticSystem][TempStep] dt=%1s | SW=%2W/m2 | NewT=%3°C | Cloud=%4 | MixingH=%5m",
+                dt,
+                Math.Round(SW_down),
+                Math.Round(newT * 10.0) / 10.0,
+                Math.Round(cloudFactor * 100.0) / 100.0,
+                Math.Round(mixing_height_eff));
+        }
+
+        // 详细调试输出（需要 Verbose 打开）
+        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
+        {
+            PrintFormat("[RealisticSystem][TempStepVerbose] dt=%1s | SW=%2W/m2 | LW_down=%3W/m2 | Net=%4W/m2 | LE=%5 | NewT=%6°C | Cloud=%7",
+                dt,
+                Math.Round(SW_down),
+                Math.Round(LW_down),
+                Math.Round(Q_net),
+                Math.Round(LE),
+                Math.Round(newT * 10.0) / 10.0,
+                Math.Round(cloudFactor * 100.0) / 100.0);
+        }
+    }
+
+    // ------------------- 物理平衡求解（用于初始/回退） -------------------
+    // 计算给定地表温度下的净辐射（短波+长波 - 地表发射 - 潜热）
+    // @param T_surface 地表温度（°C）
+    // @param lat 纬度（deg）
+    // @param n 年日
+    // @param tod 小时
+    // @param cloudFactor 云量因子（0..1）
+    protected float NetRadiationAtSurface(float T_surface, float lat, int n, float tod, float cloudFactor)
+    {
+        // 计算太阳几何与顶端辐照
+        float cosTheta = SolarCosZenith(lat, n, tod);
+        if (cosTheta <= 0.0)
+            cosTheta = 0.0;
+
+        float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
+
+        // 透过率
+        float m = AirMass(cosTheta);
+        float tau = ClearSkyTransmittance(m);
+
+        // 云修正
+        float cloudBlocking = m_fCloudBlockingCoeff * cloudFactor; // 使用配置的云遮挡系数
+
+        // 短波到达地表
+        float SW_down = I0 * tau * (1.0 - cloudBlocking);
+
+        // 长波下行（近似用地表温+2为大气温）
+        float T_atm = T_surface + 2.0;
+        float eps_atm = 0.78 + 0.14 * cloudFactor;
+        float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
+
+        // 地表发射
+        float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((T_surface + 273.15), 4);
+
+        // 潜热项（使用当前地表湿度近似，可配置系数）
+        float LE = m_fLECoef * m_fCachedSurfaceWetness;
+        float net = (1.0 - m_fAlbedo) * SW_down + LW_down - LW_up - LE;
+
+        return net; // W/m2
+    }
+
+    // 用二分法求解稳态平衡温度（使净辐射≈0），回退至模拟模型若求解失败
+    protected float CalculateEquilibriumTemperatureFromPhysics()
+    {
+        if (!m_pCachedWeatherManager)
+            return CalculateSimulatedTemperature();
+
+        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+        int year, month, day;
+        m_pCachedWeatherManager.GetDate(year, month, day);
+        int n = DayOfYear(year, month, day);
+        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+
+        float cloud = InferCloudFactor();
+
+        // 二分法上下界
+        float low = -80.0;
+        float high = 60.0;
+        float mid = 20.0;
+
+        float f_low = NetRadiationAtSurface(low, lat, n, tod, cloud);
+        float f_high = NetRadiationAtSurface(high, lat, n, tod, cloud);
+
+        // 若两端符号相同，退用模拟昼夜模型
+        if (f_low * f_high > 0.0)
+            return CalculateSimulatedTemperature();
+
+        for (int i = 0; i < 40; i++)
+        {
+            mid = (low + high) * 0.5;
+            float f_mid = NetRadiationAtSurface(mid, lat, n, tod, cloud);
+            if (Math.AbsFloat(f_mid) < 1.0)
+                break; // 误差在 1 W/m2 内可接受
+            if (f_mid * f_low <= 0.0)
+                high = mid;
+            else
+                low = mid;
+        }
+
+        return Math.Clamp(mid, -80.0, 60.0);
+    }
+
+    // 计算热应激倍数（基于当前导出的温度，考虑室内豁免）
     // 热应激模型：基于虚拟气温阈值，而非固定时间段
     // 只有当虚拟气温超过 26°C 时，才开始计算热应激
     // 如果角色在室内（头顶有遮挡），热应激减少 50%
@@ -354,25 +759,25 @@ class EnvironmentFactor
         if (!m_pCachedWeatherManager)
             return 1.0;
         
-        // 计算虚拟气温
-        float simulatedTemp = CalculateSimulatedTemperature();
+        // 使用当前导出的气温（统一来自 GetTemperature()，可能是引擎/物理模型或模拟模型）
+        float currentTemp = GetTemperature();
         
         // 热应激触发阈值：26°C
-        // 只有当虚拟气温超过 26°C 时，才开始计算热应激
+        // 只有当当前气温超过 26°C 时，才开始计算热应激
         const float heatStressThreshold = 26.0;
         float multiplier = 1.0;
         
-        if (simulatedTemp < heatStressThreshold)
+        if (currentTemp < heatStressThreshold)
         {
-            // 虚拟气温未达阈值，无热应激
+            // 当前气温未达阈值，无热应激
             multiplier = 1.0;
         }
         else
         {
-            // 虚拟气温超过阈值，计算热应激倍数
-            // 倍数 = 1.0 + (虚拟气温 - 阈值) * 0.02
+            // 当前气温超过阈值，计算热应激倍数
+            // 倍数 = 1.0 + (当前气温 - 阈值) * 0.02
             // 例如：30°C -> 1.0 + (30 - 26) * 0.02 = 1.08x
-            float tempExcess = simulatedTemp - heatStressThreshold;
+            float tempExcess = currentTemp - heatStressThreshold;
             multiplier = 1.0 + tempExcess * 0.02;
         }
         
@@ -719,6 +1124,32 @@ class EnvironmentFactor
     {
         return IsUnderCover(m_pCachedOwner);
     }
+
+    // 应用来自 `SCR_RSS_Settings` 的配置到模型（可在初始化时调用）
+    protected void ApplySettings()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        m_fTempUpdateInterval = settings.m_fTempUpdateInterval;
+        m_fTemperatureMixingHeight = settings.m_fTemperatureMixingHeight;
+        m_fAlbedo = settings.m_fAlbedo;
+        m_fAerosolOpticalDepth = settings.m_fAerosolOpticalDepth;
+        m_fSurfaceEmissivity = settings.m_fSurfaceEmissivity;
+        m_fCloudBlockingCoeff = settings.m_fCloudBlockingCoeff;
+        m_fLECoef = settings.m_fLECoef;
+        m_bUseEngineTemperature = settings.m_bUseEngineTemperature;
+        m_bUseEngineTimezone = settings.m_bUseEngineTimezone;
+        m_fLongitude = settings.m_fLongitude;
+        m_fTimeZoneOffsetHours = settings.m_fTimeZoneOffsetHours;
+    }
+
+    // 外部调用：在配置发生改变时调用以立即应用新设置
+    void OnConfigUpdated()
+    {
+        ApplySettings();
+    }
     
     // 检查是否正在下雨（用于调试）
 // 判断是否正在下雨（基于降雨强度）
@@ -756,8 +1187,55 @@ class EnvironmentFactor
         // 4. 获取泥泞度系数
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
         
-        // 5. 获取当前气温（虚拟气温）
-        m_fCachedTemperature = CalculateSimulatedTemperature();
+        // 5. 获取当前气温（根据配置选择：使用引擎温度或完全由模组计算）
+        if (m_bUseEngineTemperature && m_bUseEngineWeather && m_pCachedWeatherManager)
+        {
+            // 使用引擎提供的 min/max 值作为物理模型的边界与初始值
+            float baseTemp = CalculateTemperatureFromAPI();
+            // 首次采样时初始化缓存表面温度并设置时间戳，避免一次性大步进
+            if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
+            {
+                m_fCachedSurfaceTemperature = baseTemp;
+                m_fLastTemperatureUpdateTime = currentTime; // 初始化时间戳
+            }
+
+            // 以固定间隔步进温度（每 m_fTempUpdateInterval 秒一次）
+            float tempDelta = currentTime - m_fLastTemperatureUpdateTime;
+            if (tempDelta >= m_fTempUpdateInterval)
+            {
+                StepTemperature(tempDelta);
+                m_fLastTemperatureUpdateTime = currentTime;
+                // 安排下次非详细日志时间，确保步进日志按间隔显示
+                m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
+            }
+
+            // 将缓存的表面温度作为当前气温输出
+            m_fCachedTemperature = m_fCachedSurfaceTemperature;
+        }
+        else
+        {
+            // 不使用引擎温度：完全由模组内部计算
+            // 首先使用物理平衡估算作为初始温度（若求解失败会退回到模拟昼夜曲线）
+            float baseTemp = CalculateEquilibriumTemperatureFromPhysics();
+
+            if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
+            {
+                m_fCachedSurfaceTemperature = baseTemp;
+                m_fLastTemperatureUpdateTime = currentTime; // 初始化时间戳
+            }
+
+            // 每 m_fTempUpdateInterval 秒进行一步进
+            float tempDelta = currentTime - m_fLastTemperatureUpdateTime;
+            if (tempDelta >= m_fTempUpdateInterval)
+            {
+                StepTemperature(tempDelta);
+                m_fLastTemperatureUpdateTime = currentTime;
+                // 安排下次非详细日志时间，确保步进日志按间隔显示
+                m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
+            }
+
+            m_fCachedTemperature = m_fCachedSurfaceTemperature;
+        }
         
         // 6. 获取地表湿度
         m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
@@ -800,7 +1278,25 @@ class EnvironmentFactor
             PrintFormat("  泥泞度 / Mud Factor: %1 (%2%%)", 
                 Math.Round(m_fCachedMudFactor * 100.0) / 100.0,
                 Math.Round(m_fCachedMudFactor * 100.0).ToString());
-            PrintFormat("  气温 / Temperature: %1°C", Math.Round(m_fCachedTemperature * 10.0) / 10.0);
+            // 温度信息：显示当前值、来源（engine/simulated）以及 min/max
+            string tempSource = "simulated";
+            if (m_bUseEngineWeather && m_pCachedWeatherManager)
+                tempSource = "engine";
+
+            float tempMinDbg = 0.0;
+            float tempMaxDbg = 0.0;
+            if (m_pCachedWeatherManager)
+            {
+                tempMinDbg = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
+                tempMaxDbg = m_pCachedWeatherManager.GetTemperatureAirMaxOverride();
+            }
+
+            PrintFormat("  Temperature: Current=%1°C (source=%2) | Min=%3 | Max=%4", 
+                Math.Round(m_fCachedTemperature * 10.0) / 10.0,
+                tempSource,
+                Math.Round(tempMinDbg * 10.0) / 10.0,
+                Math.Round(tempMaxDbg * 10.0) / 10.0);
+
             PrintFormat("  地表湿度 / Surface Wetness: %1 (%2%%)", 
                 Math.Round(m_fCachedSurfaceWetness * 100.0) / 100.0,
                 Math.Round(m_fCachedSurfaceWetness * 100.0).ToString());
@@ -945,17 +1441,50 @@ class EnvironmentFactor
         return puddles;
     }
     
-    // 从API获取当前气温
+    // 从API获取当前气温（使用TimeAndWeather的Min/Max进行昼夜插值计算）
     // @return 当前气温（°C）
     protected float CalculateTemperatureFromAPI()
     {
         if (!m_pCachedWeatherManager)
             return 20.0; // 默认20°C
-        
-        // API调用：获取气温
-        float temperature = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
-        
-        return temperature;
+
+        // 优先使用 TimeAndWeather 提供的日间最小/最大气温作为当日极值
+        float tempMin = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
+        float tempMax = m_pCachedWeatherManager.GetTemperatureAirMaxOverride();
+
+        // 若 min/max 几乎相等（例如被固定为同一值），认为这是常数或覆盖导致，回退到模拟昼夜模型
+        if (Math.AbsFloat(tempMax - tempMin) < 0.05)
+        {
+            PrintFormat("[RealisticSystem] Warning: Temperature min/max nearly equal (%1/%2). Attempting physical equilibrium estimate.", tempMin, tempMax);
+            // 若引擎给出的 min/max 是常数或被覆盖，尝试用物理平衡模型求初始温度，回退到模拟昼夜模型仅在无天气管理器时
+            if (m_pCachedWeatherManager)
+                return CalculateEquilibriumTemperatureFromPhysics();
+            else
+                return CalculateSimulatedTemperature();
+        }
+
+        // 使用余弦昼夜曲线（峰值出现在 14:00）基于 min/max 进行插值
+        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+        float mean = (tempMin + tempMax) * 0.5;
+        float amplitude = (tempMax - tempMin) * 0.5;
+        float computedTemp = mean + amplitude * Math.Cos((tod - 14.0) * Math.PI / 12.0);
+
+        // 限制在 min/max 范围内并返回
+        float low;
+        if (tempMin < tempMax)
+            low = tempMin;
+        else
+            low = tempMax;
+
+        float high;
+        if (tempMax > tempMin)
+            high = tempMax;
+        else
+            high = tempMin;
+
+        computedTemp = Math.Clamp(computedTemp, low, high);
+
+        return computedTemp;
     }
     
     // 从API获取地表湿度
