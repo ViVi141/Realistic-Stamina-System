@@ -1,0 +1,12 @@
+{
+  "preset": "optimized_rss_config_playability_super.json",
+  "energy_to_stamina_coeff": 6.133955390390166e-07,
+  "run_drop_pct": 2.53,
+  "sprint_drop_pct": 3.763,
+  "acft_min_pct": 58.409,
+  "acft_ok": true,
+  "walk_delta_pct": 2.14,
+  "walk_ok": true,
+  "engagement_loss": 109.325,
+  "session_fail": false
+}

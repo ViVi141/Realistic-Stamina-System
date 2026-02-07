@@ -1,0 +1,4 @@
+preset,energy_to_stamina_coeff,run_drop_pct,sprint_drop_pct,acft_min_pct,acft_ok,walk_delta_pct,walk_ok,engagement_loss,session_fail
+optimized_rss_config_balanced_super.json,7.8e-07,4.041,5.792,32.87,True,0.739,True,92.327,False
+optimized_rss_config_realism_super.json,8.5e-07,3.601,4.784,40.027,True,2.387,True,107.351,False
+optimized_rss_config_playability_super.json,6.133955390390166e-07,2.53,3.763,58.409,True,2.14,True,109.325,False

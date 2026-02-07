@@ -64,6 +64,8 @@ class RSSTunerGUI:
                 print(f"已设置matplotlib字体为: {self.chinese_font}")
             except Exception as e:
                 print(f"警告：无法设置matplotlib字体: {e}")
+
+        self.charts_enabled = MATPLOTLIB_AVAILABLE
         
         # 数据存储
         self.optimization_data = {
@@ -168,6 +170,14 @@ class RSSTunerGUI:
         # 图表区域
         chart_frame = ttk.LabelFrame(tab, text="目标函数变化", padding="10")
         chart_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        if not self.charts_enabled:
+            ttk.Label(
+                chart_frame,
+                text="Charts disabled: matplotlib is not installed.",
+                foreground='#c62828'
+            ).pack(fill=tk.BOTH, expand=True, pady=20)
+            return
         
         # 创建Matplotlib图表
         self.fig, self.ax = plt.subplots(figsize=(10, 4), dpi=100)
@@ -249,6 +259,14 @@ class RSSTunerGUI:
         # 图表区域
         chart_frame = ttk.LabelFrame(tab, text="参数变化趋势", padding="10")
         chart_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        if not self.charts_enabled:
+            ttk.Label(
+                chart_frame,
+                text="Charts disabled: matplotlib is not installed.",
+                foreground='#c62828'
+            ).pack(fill=tk.BOTH, expand=True, pady=20)
+            return
         
         # 创建Matplotlib图表
         self.trend_fig, self.trend_ax = plt.subplots(figsize=(10, 4), dpi=100)
@@ -302,6 +320,14 @@ class RSSTunerGUI:
         # 图表区域
         chart_frame = ttk.LabelFrame(tab, text="目标函数分布", padding="10")
         chart_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        if not self.charts_enabled:
+            ttk.Label(
+                chart_frame,
+                text="Charts disabled: matplotlib is not installed.",
+                foreground='#c62828'
+            ).pack(fill=tk.BOTH, expand=True, pady=20)
+            return
         
         # 创建Matplotlib图表
         self.obj_fig, self.obj_ax = plt.subplots(figsize=(10, 4), dpi=100)
@@ -381,6 +407,14 @@ class RSSTunerGUI:
         # 图表区域
         chart_frame = ttk.LabelFrame(tab, text="帕累托前沿（可玩性 vs 稳定性）", padding="10")
         chart_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        if not self.charts_enabled:
+            ttk.Label(
+                chart_frame,
+                text="Charts disabled: matplotlib is not installed.",
+                foreground='#c62828'
+            ).pack(fill=tk.BOTH, expand=True, pady=20)
+            return
         
         # 创建Matplotlib图表
         self.pareto_fig, self.pareto_ax = plt.subplots(figsize=(10, 4), dpi=100)
@@ -454,6 +488,8 @@ class RSSTunerGUI:
     
     def _refresh_monitor_chart(self):
         """刷新监控图表"""
+        if not self.charts_enabled:
+            return
         iterations = self.optimization_data['iterations']
         playability = self.optimization_data['playability_burden']
         stability = self.optimization_data['stability_risk']
@@ -476,6 +512,8 @@ class RSSTunerGUI:
     
     def _refresh_trend_chart(self):
         """刷新趋势图表"""
+        if not self.charts_enabled:
+            return
         param_name = self.param_var.get()
         
         if param_name not in self.optimization_data['params']:
@@ -497,6 +535,8 @@ class RSSTunerGUI:
     
     def _refresh_obj_chart(self):
         """刷新目标函数图表"""
+        if not self.charts_enabled:
+            return
         obj_name = self.obj_var.get()
         
         if obj_name not in self.optimization_data:
@@ -525,6 +565,8 @@ class RSSTunerGUI:
     
     def _refresh_pareto_chart(self):
         """刷新帕累托前沿图表"""
+        if not self.charts_enabled:
+            return
         playability = self.optimization_data['playability_burden']
         stability = self.optimization_data['stability_risk']
         
@@ -583,31 +625,35 @@ class RSSTunerGUI:
             'physiological_realism': [],
             'params': {}
         }
-        
-        # 清除所有图表
-        self.playability_line.set_data([], [])
-        self.stability_line.set_data([], [])
-        self.realism_line.set_data([], [])
-        self.trend_line.set_data([], [])
-        
-        if self.obj_bars:
-            self.obj_ax.clear()
-            self.obj_bars = None
-        
-        if self.pareto_scatter:
-            self.pareto_ax.clear()
-            self.pareto_scatter = None
-        
-        self.canvas.draw()
-        self.trend_canvas.draw()
-        self.obj_canvas.draw()
-        self.pareto_canvas.draw()
+
+        if self.charts_enabled:
+            # 清除所有图表
+            self.playability_line.set_data([], [])
+            self.stability_line.set_data([], [])
+            self.realism_line.set_data([], [])
+            self.trend_line.set_data([], [])
+
+            if self.obj_bars:
+                self.obj_ax.clear()
+                self.obj_bars = None
+
+            if self.pareto_scatter:
+                self.pareto_ax.clear()
+                self.pareto_scatter = None
+
+            self.canvas.draw()
+            self.trend_canvas.draw()
+            self.obj_canvas.draw()
+            self.pareto_canvas.draw()
         
         self.status_label.config(text="状态: 数据已清除")
         messagebox.showinfo("成功", "所有数据已清除！")
     
     def _export_charts(self):
         """导出图表为图片"""
+        if not self.charts_enabled:
+            messagebox.showwarning("警告", "matplotlib未安装，无法导出图表")
+            return
         if not self.optimization_data['iterations']:
             messagebox.showwarning("警告", "没有数据可导出")
             return
