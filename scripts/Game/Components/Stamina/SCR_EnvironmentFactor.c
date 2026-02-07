@@ -61,6 +61,7 @@ class EnvironmentFactor
     protected float m_fNextTempStepLogTime = 0.0; // 下次非详细温度步进日志时间（用于 ShouldLog）
     protected bool m_bPendingForceUpdate = false; // 标记是否有管理员触发的即时温度重算请求
     protected float m_fNextForceUpdateLogTime = 0.0; // ForceUpdate 日志节流时间（避免传字面量给 ShouldLog）
+    protected float m_fNextLocationEstimateLogTime = 0.0; // 位置估算日志节流（避免直接传入字面量）
     // 是否使用引擎提供的温度（独立于 m_bUseEngineWeather）
     protected bool m_bUseEngineTemperature = false; // 默认不使用引擎温度，完全通过模组内计算
     protected float m_fTemperatureMixingHeight = 1000.0; // 混合层高度（m），用于热容量计算
@@ -76,6 +77,7 @@ class EnvironmentFactor
     // 时区/经度用于太阳时校正
     protected bool m_bUseEngineTimezone = true; // 是否优先使用引擎时区信息
     protected float m_fLongitude = 0.0; // 经度覆盖（度）
+    protected float m_fLatitude = 0.0; // 纬度覆盖（度）
     protected float m_fTimeZoneOffsetHours = 0.0; // 时区偏移覆盖（小时）
 
     protected float m_fSolarConstant = 1361.0; // 太阳常数（W/m^2）
@@ -188,6 +190,33 @@ class EnvironmentFactor
                 Math.Round(tod * 10.0) / 10.0,
                 isServer,
                 extras);
+
+            // 尝试基于日出/日落估算经纬度，以补齐气温模型所需参数（若未显式配置）
+            float estLat = 0.0;
+            float estLon = 0.0;
+            float estConf = EstimateLatLongFromSunriseSunset(estLat, estLon);
+            if (estConf > 0.0)
+            {
+                PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
+                    Math.Round(estLat * 10.0) / 10.0,
+                    Math.Round(estLon * 10.0) / 10.0,
+                    Math.Round(estConf * 100.0) / 100.0);
+
+                // 若初始置信较低，按需使用天文网格搜索（更慢但更鲁棒）进一步细化
+                if (estConf < 0.9)
+                {
+                    float refinedLat = 0.0;
+                    float refinedLon = 0.0;
+                    float refinedConf = EstimateLatLongFromAstronomicalSearch(refinedLat, refinedLon);
+                    if (refinedConf > estConf)
+                    {
+                        PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
+                            Math.Round(refinedLat * 10.0) / 10.0,
+                            Math.Round(refinedLon * 10.0) / 10.0,
+                            Math.Round(refinedConf * 100.0) / 100.0);
+                    }
+                }
+            }
         }
         
         // 初始化建筑物列表
@@ -610,6 +639,258 @@ class EnvironmentFactor
         float hourAngleRad = hourAngleDeg * Math.DEG2RAD;
         float cosTheta = Math.Sin(latRad) * Math.Sin(decl) + Math.Cos(latRad) * Math.Cos(decl) * Math.Cos(hourAngleRad);
         return cosTheta;
+    }
+
+    // 估算经纬度（基于引擎提供的日出/日落时间，返回置信度 0.0-1.0）
+    // 需要：GetSunriseHour(), GetSunsetHour(), GetDate(), m_fTimeZoneOffsetHours
+    protected float EstimateLatLongFromSunriseSunset(out float outLatDeg, out float outLonDeg)
+    {
+        outLatDeg = 0.0;
+        outLonDeg = 0.0;
+
+        if (!m_pCachedWeatherManager)
+            return 0.0; // 无天气管理器，无法估算
+
+        float sr = 0.0;
+        float ss = 0.0;
+        bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
+        bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
+
+        if (!hasSR || !hasSS)
+            return 0.0; // 缺少关键数据
+
+        // 处理跨日问题
+        if (ss < sr)
+            ss += 24.0;
+
+        float L = ss - sr; // 昼长，小时
+        if (L <= 0.0 || L >= 24.0)
+            return 0.0;
+
+        int year, month, day;
+        m_pCachedWeatherManager.GetDate(year, month, day);
+        int n = DayOfYear(year, month, day);
+
+        // 计算日角 ω0（度）: ω0_deg = 7.5 * L
+        float omega0_deg = 7.5 * L; // 15 * (L/2)
+        float omega0_rad = omega0_deg * Math.DEG2RAD;
+
+        // 太阳偏角（弧度）
+        float decl = SolarDeclination(n); // 返回弧度
+
+        // 检查数值稳定性（tan(decl) 不能接近0）
+        float tanDecl = Math.Tan(decl);
+        if (Math.AbsFloat(tanDecl) < 1e-6)
+            return 0.0; // 不可靠（春/秋分附近）
+
+        // tan(phi) = -cos(omega0) / tan(decl)
+        float tanPhi = -Math.Cos(omega0_rad) / tanDecl;
+
+        // 使用稳定的反正切代替（部分平台缺少 Math.Atan）：φ = asin(tanPhi / sqrt(1 + tanPhi^2))
+        float denom = Math.Sqrt(1.0 + tanPhi * tanPhi);
+        float latRad = Math.Asin(tanPhi / denom);
+        float latDeg = latRad * Math.RAD2DEG;
+
+        // 计算经度：基于局部太阳中天
+        float t_noon_local = (sr + ss) * 0.5;
+        // 归一化
+        while (t_noon_local >= 24.0) t_noon_local -= 24.0;
+
+        float tz = m_fTimeZoneOffsetHours; // 假定已填
+        float solarNoonUTC = t_noon_local - tz; // 小时
+
+        float lonDeg = 15.0 * (12.0 - solarNoonUTC);
+        // 规范化到 -180..180
+        while (lonDeg > 180.0) lonDeg -= 360.0;
+        while (lonDeg < -180.0) lonDeg += 360.0;
+
+        // 置信度估算：基于昼长、太阳偏角、云量（云会影响日出/日落观测）
+        float cloud = InferCloudFactor();
+        float conf = 1.0;
+        // 减少因云/雨导致的置信度
+        conf -= Math.Clamp(cloud * 0.5, 0.0, 0.5);
+        // 当太阳偏角接近0(春秋分)置信度下降
+        conf -= Math.Clamp(1.0 - Math.AbsFloat(tanDecl) * 1000.0, 0.0, 0.3);
+        // 极昼/极夜邻近区域置信度降低
+        if (L < 2.0 || L > 22.0) conf -= 0.3;
+        conf = Math.Clamp(conf, 0.0, 1.0);
+
+        // 写回成员变量
+        m_fLatitude = latDeg;
+        m_fLongitude = lonDeg;
+
+        // 日志（使用节流变量，避免传字面量给 ShouldLog）
+        float tmpLocationLog = m_fNextLocationEstimateLogTime;
+        if (StaminaConstants.ShouldLog(tmpLocationLog))
+        {
+            m_fNextLocationEstimateLogTime = tmpLocationLog;
+            PrintFormat("[RealisticSystem] EstimateLatLong: lat=%1 lon=%2 conf=%3 L=%4 sr=%5 ss=%6 n=%7",
+                Math.Round(latDeg * 10.0) / 10.0,
+                Math.Round(lonDeg * 10.0) / 10.0,
+                Math.Round(conf * 100.0) / 100.0,
+                Math.Round(L * 10.0) / 10.0,
+                Math.Round(sr * 100.0) / 100.0,
+                Math.Round(ss * 100.0) / 100.0,
+                n);
+        }
+
+        outLatDeg = latDeg;
+        outLonDeg = lonDeg;
+        return conf;
+    }
+
+    // 使用引擎天文函数进行网格搜索以细化经纬度估算（返回置信度 0-1）
+    // 利用：GetSunriseHourForDate, GetSunsetHourForDate, GetMoonPhaseForDate
+    protected float EstimateLatLongFromAstronomicalSearch(out float outLatDeg, out float outLonDeg)
+    {
+        outLatDeg = 0.0;
+        outLonDeg = 0.0;
+
+        if (!m_pCachedWeatherManager)
+            return 0.0;
+
+        // 读取观测日出/日落/月相/时间信息
+        float obsSR = 0.0;
+        float obsSS = 0.0;
+        bool hasSR = m_pCachedWeatherManager.GetSunriseHour(obsSR);
+        bool hasSS = m_pCachedWeatherManager.GetSunsetHour(obsSS);
+        float obsMoonPhase = m_pCachedWeatherManager.GetMoonPhase(m_pCachedWeatherManager.GetTimeOfTheDay());
+        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+        int year, month, day;
+        m_pCachedWeatherManager.GetDate(year, month, day);
+        float tz = m_fTimeZoneOffsetHours;
+        float dst = m_pCachedWeatherManager.GetDSTOffset();
+
+        if (!hasSR || !hasSS)
+            return 0.0;
+
+        if (obsSS < obsSR)
+            obsSS += 24.0;
+
+        float obsL = obsSS - obsSR;
+        float obsNoon = (obsSR + obsSS) * 0.5;
+        while (obsNoon >= 24.0) obsNoon -= 24.0;
+
+        // 搜索参数：粗/细两级网格
+        float bestErr = 1e9;
+        float bestLat = 0.0;
+        float bestLon = 0.0;
+
+        // 权重（可调整）
+        float wL = 1.0; // 白昼长度权重
+        float wNoon = 0.5; // 中天时差权重
+        float wMoon = 0.3; // 月相差异权重
+
+        // 1) 粗网格（步长 5°）
+        for (float lat = -85.0; lat <= 85.0; lat += 5.0)
+        {
+            for (float lon = -180.0; lon <= 180.0; lon += 5.0)
+            {
+                float sr_c = 0.0;
+                float ss_c = 0.0;
+                bool okSR = m_pCachedWeatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
+                bool okSS = m_pCachedWeatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
+
+                float penalty = 0.0;
+                if (!okSR || !okSS)
+                {
+                    // 极地季节性无日出/日落，给予大惩罚
+                    penalty += 10.0;
+                    // 尽量继续但以较差适配度记录
+                }
+
+                if (ss_c < sr_c) ss_c += 24.0;
+                float Lc = ss_c - sr_c;
+                float noon_c = (sr_c + ss_c) * 0.5;
+                while (noon_c >= 24.0) noon_c -= 24.0;
+
+                float moon_c = m_pCachedWeatherManager.GetMoonPhaseForDate(year, month, day, tod, tz, dst);
+
+                float err = wL * Math.AbsFloat(obsL - Lc) + wNoon * Math.AbsFloat(obsNoon - noon_c) + wMoon * Math.AbsFloat(obsMoonPhase - moon_c) + penalty;
+
+                if (err < bestErr)
+                {
+                    bestErr = err;
+                    bestLat = lat;
+                    bestLon = lon;
+                }
+            }
+        }
+
+        // 2) 细化搜索：在最佳点周围逐级细化
+        float searchRadius = 5.0;
+        float step = 1.0;
+        for (int iter = 0; iter < 3; iter++)
+        {
+            float localBestErr = bestErr;
+            float localBestLat = bestLat;
+            float localBestLon = bestLon;
+
+            for (float lat = bestLat - searchRadius; lat <= bestLat + searchRadius; lat += step)
+            {
+                if (lat < -89.9 || lat > 89.9) continue;
+                for (float lon = bestLon - searchRadius; lon <= bestLon + searchRadius; lon += step)
+                {
+                    float sr_c = 0.0;
+                    float ss_c = 0.0;
+                    bool okSR = m_pCachedWeatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
+                    bool okSS = m_pCachedWeatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
+
+                    float penalty = 0.0;
+                    if (!okSR || !okSS) penalty += 10.0;
+                    if (ss_c < sr_c) ss_c += 24.0;
+                    float Lc = ss_c - sr_c;
+                    float noon_c = (sr_c + ss_c) * 0.5;
+                    while (noon_c >= 24.0) noon_c -= 24.0;
+
+                    float moon_c = m_pCachedWeatherManager.GetMoonPhaseForDate(year, month, day, tod, tz, dst);
+
+                    float err = wL * Math.AbsFloat(obsL - Lc) + wNoon * Math.AbsFloat(obsNoon - noon_c) + wMoon * Math.AbsFloat(obsMoonPhase - moon_c) + penalty;
+
+                    if (err < localBestErr)
+                    {
+                        localBestErr = err;
+                        localBestLat = lat;
+                        localBestLon = lon;
+                    }
+                }
+            }
+
+            bestErr = localBestErr;
+            bestLat = localBestLat;
+            bestLon = localBestLon;
+            searchRadius = Math.Max(0.5, searchRadius * 0.5);
+            step = Math.Max(0.1, step * 0.5);
+        }
+
+        // 计算置信度：基于误差大小与云因子
+        float maxAcceptableErr = 12.0; // 经验标度（小时），误差越大置信越低
+        float errScore = Math.Clamp(bestErr / maxAcceptableErr, 0.0, 1.0);
+        float conf = 1.0 - errScore;
+        // 云/雨影响置信度
+        float cloud = InferCloudFactor();
+        conf -= Math.Clamp(cloud * 0.5, 0.0, 0.5);
+        conf = Math.Clamp(conf, 0.0, 1.0);
+
+        // 写回与日志
+        m_fLatitude = bestLat;
+        m_fLongitude = bestLon;
+
+        // 日志（使用节流变量，避免传字面量给 ShouldLog）
+        float tmpLocationLog2 = m_fNextLocationEstimateLogTime;
+        if (StaminaConstants.ShouldLog(tmpLocationLog2))
+        {
+            m_fNextLocationEstimateLogTime = tmpLocationLog2;
+            PrintFormat("[RealisticSystem] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3 bestErr=%4",
+                Math.Round(bestLat * 10.0) / 10.0,
+                Math.Round(bestLon * 10.0) / 10.0,
+                Math.Round(conf * 100.0) / 100.0,
+                Math.Round(bestErr * 100.0) / 100.0);
+        }
+
+        outLatDeg = bestLat;
+        outLonDeg = bestLon;
+        return conf;
     }
 
     // 空气质量近似（Kasten & Young，返回 m）
