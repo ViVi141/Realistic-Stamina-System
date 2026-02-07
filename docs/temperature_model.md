@@ -13,12 +13,18 @@
 - 地理：
   - `GetCurrentLatitude()` -> 纬度（度）
   - （经度暂未用于本模型的局地真太阳时修正）
-  - 时区/夏令时：引擎可通过 `GetMoonPhaseInfoForDate(year, month, day, daytime, timeZoneOffset, dstOffset, latitude)` 等接口返回 `timeZoneOffset` / `dstOffset`（以及 `latitude` 参数），因此可以**获取并使用本地时区信息**来进行更精确的太阳时（local solar time）校正，从而让太阳高度/日照角度与地图位置的经纬度匹配。  
-    示例签名：
+  - 时区/夏令时与天文数据：引擎提供多个接口用于返回经纬度/时区/DST、日出/日落和月相，模组会优先使用这些接口（若可用），在引擎不可用或被设置覆盖时回退到内部计算。  
+    示例接口：
     ```cpp
     SCR_MoonPhaseUIInfo moonPhaseInfo = m_TimeAndWeatherManager.GetMoonPhaseInfoForDate(year, month, day, daytime, timeZoneOffset, dstOffset, latitude);
+    bool hasSR = m_TimeAndWeatherManager.GetSunriseHourForDate(year, month, day, latitude, longitude, timezone, dstOffset, out float hour24);
+    bool hasSS = m_TimeAndWeatherManager.GetSunsetHourForDate(year, month, day, latitude, longitude, timezone, dstOffset, out float hour24);
     ```
-    实现建议：若引擎也能返回经度（`GetCurrentLongitude()`）可直接使用；否则可在 `SCR_RSS_Settings` 中添加经度字段或从地图元数据读取经度，用于进行局地太阳时间修正。
+    说明：
+    - `GetSunriseHourForDate` / `GetSunsetHourForDate` 返回布尔值指示在给定经纬度与日期下是否存在有效的日出或日落（极地季节性无日出/日落时返回 false）。
+    - `GetMoonPhaseInfoForDate` / `GetMoonPhaseForDate` 可用于获取月相并用于 UI/夜间辐照的修正。  
+    这些接口可让模组直接使用引擎的经度/时区/DST和日出日落判定来校正本地太阳时并判定昼夜，从而在计算太阳天顶角与短波辐照时与地图经纬度和引擎保持一致。  
+    注意：某些平台或地图可能无法返回经度/经纬信息（例如 `GetCurrentLongitude()` 不可用）。在这种情况下，模组将优先使用引擎提供的日出/日落/月相接口（`GetSunriseHour` / `GetSunsetHour` / `GetMoonPhase`）作为权威来源来判定昼夜与天文参数；只有在用户显式在 `SCR_RSS_Settings` 中配置了覆盖值时才会使用这些覆盖值。
 - 天气相关：
   - `GetRainIntensity()` -> 降雨强度（0.0-1.0）
   - `GetCurrentWetness()` -> 地表湿度（0.0-1.0）

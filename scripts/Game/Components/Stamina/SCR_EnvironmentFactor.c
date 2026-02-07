@@ -12,7 +12,18 @@ class EnvironmentFactor
     protected TimeAndWeatherManagerEntity m_pCachedWeatherManager; // 缓存的天气管理器引用
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
     protected IEntity m_pCachedOwner; // 缓存的角色实体引用（用于室内检测）
-    
+
+    // 实时变更检测缓存（用于即时响应管理员修改）
+    protected float m_fLastKnownTOD = -1.0; // 上次记录的 GetTimeOfTheDay 值
+    protected int m_iLastKnownYear = -1;
+    protected int m_iLastKnownMonth = -1;
+    protected int m_iLastKnownDay = -1;
+    protected float m_fLastKnownRainIntensity = -1.0;
+    protected float m_fLastKnownWindSpeed = -1.0;
+    protected bool m_bLastKnownOverrideTemperature = false;
+    protected float m_fLastKnownSunriseHour = -1.0;
+    protected float m_fLastKnownSunsetHour = -1.0;
+
     // ==================== 高级环境因子状态变量（v2.15.0）====================
     protected float m_fCachedRainIntensity = 0.0; // 缓存的降雨强度（0.0-1.0）
     protected float m_fCachedWindSpeed = 0.0; // 缓存的风速（m/s）
@@ -48,6 +59,8 @@ class EnvironmentFactor
     protected float m_fTempUpdateInterval = 5.0; // 温度步进间隔（秒），默认5s（实时每5秒更新）
     protected float m_fLastTemperatureUpdateTime = 0.0; // 上次温度更新时间（秒）
     protected float m_fNextTempStepLogTime = 0.0; // 下次非详细温度步进日志时间（用于 ShouldLog）
+    protected bool m_bPendingForceUpdate = false; // 标记是否有管理员触发的即时温度重算请求
+    protected float m_fNextForceUpdateLogTime = 0.0; // ForceUpdate 日志节流时间（避免传字面量给 ShouldLog）
     // 是否使用引擎提供的温度（独立于 m_bUseEngineWeather）
     protected bool m_bUseEngineTemperature = false; // 默认不使用引擎温度，完全通过模组内计算
     protected float m_fTemperatureMixingHeight = 1000.0; // 混合层高度（m），用于热容量计算
@@ -112,6 +125,29 @@ class EnvironmentFactor
             if (chimeraWorld)
                 m_pCachedWeatherManager = chimeraWorld.GetTimeAndWeatherManager();
         }
+
+        // 初始化实时检测缓存（若引擎可用）
+        if (m_pCachedWeatherManager)
+        {
+            m_fLastKnownTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            int y, mo, d;
+            m_pCachedWeatherManager.GetDate(y, mo, d);
+            m_iLastKnownYear = y;
+            m_iLastKnownMonth = mo;
+            m_iLastKnownDay = d;
+            m_fLastKnownRainIntensity = m_pCachedWeatherManager.GetRainIntensity();
+            m_fLastKnownWindSpeed = m_pCachedWeatherManager.GetWindSpeed();
+            m_bLastKnownOverrideTemperature = m_pCachedWeatherManager.GetOverrideTemperature();
+            float sr = 0.0;
+            float ss = 0.0;
+            if (m_pCachedWeatherManager.GetSunriseHour(sr))
+                m_fLastKnownSunriseHour = sr;
+            if (m_pCachedWeatherManager.GetSunsetHour(ss))
+                m_fLastKnownSunsetHour = ss;
+        }
+        // 初始化 pending 标志
+        m_bPendingForceUpdate = false;
+        m_fNextForceUpdateLogTime = 0.0;
 
         // 读取配置并应用到模型参数
         ApplySettings();
@@ -191,6 +227,20 @@ class EnvironmentFactor
         return m_bUseEngineTemperature;
     }
 
+    // 封装的 setter：标记需要立即重算温度（用于响应管理员实时更改）
+    protected void MarkPendingForceUpdate()
+    {
+        // 标记待处理（在安全位置执行重算），并使用节流变量记录日志
+        m_bPendingForceUpdate = true;
+        // ShouldLog 参数为 inout，不能直接传递类成员（写保护）。使用临时变量并回写。
+        float tmpLogTime = m_fNextForceUpdateLogTime;
+        if (StaminaConstants.ShouldLog(tmpLogTime))
+        {
+            m_fNextForceUpdateLogTime = tmpLogTime;
+            PrintFormat("[RealisticSystem] ForceUpdate: Pending recompute flagged");
+        }
+    }
+
 
     
     // 更新环境因子（协调方法）
@@ -218,10 +268,43 @@ class EnvironmentFactor
         if (owner)
             m_pCachedOwner = owner;
         
-        // 检查是否需要更新（每5秒更新一次）
-        if (currentTime - m_fLastEnvironmentCheckTime < StaminaConstants.ENV_CHECK_INTERVAL)
+        // 检查是否需要更新（每 m_fLastEnvironmentCheckTime 秒更新一次），但对管理员的即时修改要实时响应
+        bool forceUpdate = false;
+        if (m_pCachedWeatherManager)
+        {
+            // 快速采样当前引擎状态
+            float currTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            int y, mo, d;
+            m_pCachedWeatherManager.GetDate(y, mo, d);
+            float currRain = m_pCachedWeatherManager.GetRainIntensity();
+            float currWind = m_pCachedWeatherManager.GetWindSpeed();
+            bool currOverrideTemp = m_pCachedWeatherManager.GetOverrideTemperature();
+            float sr = 0.0;
+            float ss = 0.0;
+            bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
+            bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
+
+            // 若与缓存值出现显著差异，则触发强制更新（实时响应管理员操作）
+            if (m_fLastKnownTOD < 0.0 || Math.AbsFloat(currTOD - m_fLastKnownTOD) > 0.1) // >6min 变化视为人工修改
+                forceUpdate = true;
+            if (m_iLastKnownYear != y || m_iLastKnownMonth != mo || m_iLastKnownDay != d)
+                forceUpdate = true;
+            if (Math.AbsFloat(currRain - m_fLastKnownRainIntensity) > 0.05)
+                forceUpdate = true;
+            if (Math.AbsFloat(currWind - m_fLastKnownWindSpeed) > 0.5)
+                forceUpdate = true;
+            if (currOverrideTemp != m_bLastKnownOverrideTemperature)
+                forceUpdate = true;
+            if (hasSR && Math.AbsFloat(sr - m_fLastKnownSunriseHour) > 0.01)
+                forceUpdate = true;
+            if (hasSS && Math.AbsFloat(ss - m_fLastKnownSunsetHour) > 0.01)
+                forceUpdate = true;
+        }
+
+        if (!forceUpdate && (currentTime - m_fLastEnvironmentCheckTime < StaminaConstants.ENV_CHECK_INTERVAL))
             return false;
-        
+
+        // 标记为已检查时间
         m_fLastEnvironmentCheckTime = currentTime;
         
         // 获取角色姿态（用于地表湿度惩罚计算）
@@ -266,7 +349,61 @@ class EnvironmentFactor
         // 更新总湿重（游泳湿重 + 降雨湿重，限制在最大值）
         // 使用 SwimmingStateManager 的方法计算总湿重
         m_fCurrentTotalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(swimmingWetWeight, m_fCachedRainWeight);
-        
+
+        // 若检测到管理员即时修改（forceUpdate），通过封装方法标记为待处理（避免在此处直接写入）
+        if (forceUpdate)
+        {
+            MarkPendingForceUpdate();
+        }
+
+        // 同步更新实时检测缓存（记录当前引擎状态，供下一次比较）
+        if (m_pCachedWeatherManager)
+        {
+            m_fLastKnownTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            int y, mo, d;
+            m_pCachedWeatherManager.GetDate(y, mo, d);
+            m_iLastKnownYear = y;
+            m_iLastKnownMonth = mo;
+            m_iLastKnownDay = d;
+            m_fLastKnownRainIntensity = m_pCachedWeatherManager.GetRainIntensity();
+            m_fLastKnownWindSpeed = m_pCachedWeatherManager.GetWindSpeed();
+            m_bLastKnownOverrideTemperature = m_pCachedWeatherManager.GetOverrideTemperature();
+            float sr = 0.0;
+            float ss = 0.0;
+            if (m_pCachedWeatherManager.GetSunriseHour(sr))
+                m_fLastKnownSunriseHour = sr;
+            if (m_pCachedWeatherManager.GetSunsetHour(ss))
+                m_fLastKnownSunsetHour = ss;
+        }
+
+        // 若之前被标记为 pending，则在安全上下文中执行重算并清理标记
+        if (m_bPendingForceUpdate)
+        {
+            if (m_bUseEngineTemperature && m_bUseEngineWeather && m_pCachedWeatherManager)
+            {
+                float baseTemp = CalculateTemperatureFromAPI();
+                m_fCachedSurfaceTemperature = baseTemp;
+                m_fCachedTemperature = m_fCachedSurfaceTemperature;
+            }
+            else
+            {
+                float baseTemp = CalculateEquilibriumTemperatureFromPhysics();
+                m_fCachedSurfaceTemperature = baseTemp;
+                m_fCachedTemperature = m_fCachedSurfaceTemperature;
+            }
+
+            // 清理标记
+            m_bPendingForceUpdate = false;
+
+            // 日志（使用临时变量以避免 inout 成员写入问题）
+            float tmpLogTime2 = m_fNextForceUpdateLogTime;
+            if (StaminaConstants.ShouldLog(tmpLogTime2))
+            {
+                m_fNextForceUpdateLogTime = tmpLogTime2;
+                PrintFormat("[RealisticSystem] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
+            }
+        }
+
         // 调试信息：环境因子更新（统一节流）
         static float nextEnvLogTime = 0.0;
         if (StaminaConstants.ShouldLog(nextEnvLogTime))
@@ -543,23 +680,60 @@ class EnvironmentFactor
         int n = DayOfYear(year, month, day);
         float lat = m_pCachedWeatherManager.GetCurrentLatitude();
 
-        // 太阳时校正：使用设置中的经度与时区偏移
-        float localHour = tod; // 基于引擎本地时刻
-        // 使用经度修正：每 15° 经度对应 1 小时的太阳时差
-        localHour += (m_fLongitude / 15.0);
-        // 若未启用引擎时区或引擎不提供时区信息，使用覆盖的时区偏移值
+        // 使用引擎的日出/日落/月相接口作为权威来源（地图经度可能不可用）
+        float localHour = tod;
         if (!m_bUseEngineTimezone)
             localHour -= m_fTimeZoneOffsetHours;
         // 归一化到 [0,24)
         while (localHour < 0.0) localHour += 24.0;
         while (localHour >= 24.0) localHour -= 24.0;
 
-        // 2) 太阳几何与顶端辐照（使用本地太阳时）
-        float cosTheta = SolarCosZenith(lat, n, localHour);
-        if (cosTheta <= 0.0)
+        // 使用引擎的日出/日落 API（不依赖显式经度/经纬），在不可用时回退到基于天顶角的计算
+        bool hasSunrise = false;
+        bool hasSunset = false;
+        float sunRiseHour = 0.0;
+        float sunSetHour = 0.0;
+        if (m_pCachedWeatherManager)
         {
-            // 夜间：没有短波入射
-            cosTheta = 0.0;
+            hasSunrise = m_pCachedWeatherManager.GetSunriseHour(sunRiseHour);
+            hasSunset = m_pCachedWeatherManager.GetSunsetHour(sunSetHour);
+        }
+
+        float cosTheta = 0.0;
+        if (hasSunrise && hasSunset)
+        {
+            if (localHour < sunRiseHour || localHour > sunSetHour)
+            {
+                // 引擎判定为夜间
+                cosTheta = 0.0;
+            }
+            else
+            {
+                cosTheta = SolarCosZenith(lat, n, localHour);
+                if (cosTheta <= 0.0)
+                    cosTheta = 0.0;
+            }
+        }
+        else
+        {
+            // 回退到原有基于天顶角的计算
+            cosTheta = SolarCosZenith(lat, n, localHour);
+            if (cosTheta <= 0.0)
+                cosTheta = 0.0;
+        }
+
+        // 获取月相（若引擎可用），供日志或后续扩展使用（使用不依赖经度/经纬的接口）
+        float moonPhase01 = 0.0;
+        if (m_pCachedWeatherManager)
+            moonPhase01 = m_pCachedWeatherManager.GetMoonPhase(tod);
+
+        // 调试信息（仅在 Verbose 时输出）
+        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
+        {
+            if (hasSunrise && hasSunset)
+            {
+                PrintFormat("[RealisticSystem][TempStep] Using engine sunrise/sunset: SR=%1, SS=%2, Moon=%3", sunRiseHour, sunSetHour, Math.Round(moonPhase01 * 100.0) / 100.0);
+            }
         }
 
         float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
@@ -675,10 +849,48 @@ class EnvironmentFactor
     // @param cloudFactor 云量因子（0..1）
     protected float NetRadiationAtSurface(float T_surface, float lat, int n, float tod, float cloudFactor)
     {
-        // 计算太阳几何与顶端辐照
-        float cosTheta = SolarCosZenith(lat, n, tod);
-        if (cosTheta <= 0.0)
-            cosTheta = 0.0;
+        // 计算太阳几何与顶端辐照：优先使用引擎的日出/日落判定（若可用），否则回退到基于天顶角的计算
+        float cosTheta = 0.0;
+        if (m_pCachedWeatherManager)
+        {
+            // 使用不依赖显式经度/经纬的引擎日出/日落接口
+            bool hasSR = false;
+            bool hasSS = false;
+            float sr = 0.0;
+            float ss = 0.0;
+            hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
+            hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
+
+            float localHour = tod;
+            if (!m_bUseEngineTimezone)
+                localHour -= m_fTimeZoneOffsetHours;
+            while (localHour < 0.0) localHour += 24.0;
+            while (localHour >= 24.0) localHour -= 24.0;
+
+            if (hasSR && hasSS)
+            {
+                if (localHour < sr || localHour > ss)
+                {
+                    cosTheta = 0.0; // 夜间
+                }
+                else
+                {
+                    cosTheta = SolarCosZenith(lat, n, localHour);
+                    if (cosTheta <= 0.0) cosTheta = 0.0;
+                }
+            }
+            else
+            {
+                cosTheta = SolarCosZenith(lat, n, tod);
+                if (cosTheta <= 0.0) cosTheta = 0.0;
+            }
+        }
+        else
+        {
+            cosTheta = SolarCosZenith(lat, n, tod);
+            if (cosTheta <= 0.0)
+                cosTheta = 0.0;
+        }
 
         float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
 
