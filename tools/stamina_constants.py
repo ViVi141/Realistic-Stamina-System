@@ -35,7 +35,8 @@ STAMINA_EXPONENT = 0.6  # 体力影响指数
 
 # ==================== 负重参数 ====================
 ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20  # 基于体重的速度惩罚系数（线性模型）
-ENCUMBRANCE_SPEED_EXPONENT = 1.0  # 负重速度惩罚指数（1.0 = 线性）
+ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5  # 负重速度惩罚指数（默认1.5）
+ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75  # 速度惩罚上限（默认0.75 = 最多减速75%）
 ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0  # 基于体重的体力消耗系数（Amplify weight effect）
 MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数
 MAX_SPEED_MULTIPLIER = 1.0  # 最大速度倍数限制

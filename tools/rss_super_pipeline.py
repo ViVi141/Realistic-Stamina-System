@@ -363,6 +363,12 @@ class RSSSuperPipeline:
         encumbrance_speed_penalty_coeff = trial.suggest_float(
             'encumbrance_speed_penalty_coeff', 0.1, 0.22  # 降低上界，减轻速度限制
         )
+        encumbrance_speed_penalty_exponent = trial.suggest_float(
+            'encumbrance_speed_penalty_exponent', 1.0, 3.0
+        )
+        encumbrance_speed_penalty_max = trial.suggest_float(
+            'encumbrance_speed_penalty_max', 0.4, 0.95
+        )
         encumbrance_stamina_drain_coeff = trial.suggest_float(
             'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
         )
@@ -508,6 +514,8 @@ class RSSSuperPipeline:
         constants.LOAD_RECOVERY_PENALTY_COEFF = load_recovery_penalty_coeff
         constants.LOAD_RECOVERY_PENALTY_EXPONENT = load_recovery_penalty_exponent
         constants.ENCUMBRANCE_SPEED_PENALTY_COEFF = encumbrance_speed_penalty_coeff
+        constants.ENCUMBRANCE_SPEED_PENALTY_EXPONENT = encumbrance_speed_penalty_exponent
+        constants.ENCUMBRANCE_SPEED_PENALTY_MAX = encumbrance_speed_penalty_max
         constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF = encumbrance_stamina_drain_coeff
         constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier
         constants.FATIGUE_ACCUMULATION_COEFF = fatigue_accumulation_coeff
