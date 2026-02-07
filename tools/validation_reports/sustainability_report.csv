@@ -1,0 +1,17 @@
+preset,movement,duration_s,duration_min
+DEFAULT,IDLE,428.6,7.14
+DEFAULT,WALK,74.6,1.24
+DEFAULT,RUN,24.4,0.41
+DEFAULT,SPRINT,3.8,0.06
+optimized_rss_config_balanced_super,IDLE,inf,inf
+optimized_rss_config_balanced_super,WALK,5204.4,86.74
+optimized_rss_config_balanced_super,RUN,415.6,6.93
+optimized_rss_config_balanced_super,SPRINT,55.2,0.92
+optimized_rss_config_realism_super,IDLE,inf,inf
+optimized_rss_config_realism_super,WALK,6693.8,111.56
+optimized_rss_config_realism_super,RUN,502.4,8.37
+optimized_rss_config_realism_super,SPRINT,91.4,1.52
+optimized_rss_config_playability_super,IDLE,inf,inf
+optimized_rss_config_playability_super,WALK,inf,inf
+optimized_rss_config_playability_super,RUN,811.0,13.52
+optimized_rss_config_playability_super,SPRINT,100.4,1.67

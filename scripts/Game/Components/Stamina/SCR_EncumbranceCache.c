@@ -94,8 +94,10 @@ class EncumbranceCache
         
         // 计算速度惩罚（基于体重百分比，使用幂函数）
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, 1.5);
-        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.4);
+        float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
+        float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, exp);
+        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, max_pen);
         
         // 计算体力消耗倍数
         float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();

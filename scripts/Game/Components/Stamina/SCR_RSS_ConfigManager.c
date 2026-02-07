@@ -29,6 +29,12 @@ class SCR_RSS_ConfigManager
     protected static const float STAMINA_MULT_MAX = 5.0;             // 体力倍率上限
     protected static const float SPRINT_SPEED_MAX = 2.0;             // Sprint 速度倍率上限
     protected static const float SPRINT_DRAIN_MAX = 10.0;            // Sprint 消耗倍率上限
+
+    // Encumbrance parameter bounds
+    protected static const float ENCUMBRANCE_EXP_MIN = 1.0;          // 负重速度惩罚指数下限
+    protected static const float ENCUMBRANCE_EXP_MAX = 3.0;          // 负重速度惩罚指数上限
+    protected static const float ENCUMBRANCE_MAX_MIN = 0.4;          // 负重速度惩罚上限下限（至少0.4）
+    protected static const float ENCUMBRANCE_MAX_MAX = 0.95;         // 负重速度惩罚上限上限（不超过0.95）
     
     // 获取配置实例（单例模式）
     static SCR_RSS_Settings GetSettings()
@@ -633,6 +639,35 @@ class SCR_RSS_ConfigManager
         {
             m_Settings.m_iEnvironmentUpdateInterval = MAX_UPDATE_INTERVAL_MS;
             needsSave = true;
+        }
+
+        // Clamp encumbrance-related parameters across all presets to avoid invalid user edits
+        array<ref SCR_RSS_Params> presets = { m_Settings.m_EliteStandard, m_Settings.m_StandardMilsim, m_Settings.m_TacticalAction, m_Settings.m_Custom };
+        foreach (SCR_RSS_Params p : presets)
+        {
+            if (!p) continue;
+
+            if (p.encumbrance_speed_penalty_exponent < ENCUMBRANCE_EXP_MIN)
+            {
+                p.encumbrance_speed_penalty_exponent = ENCUMBRANCE_EXP_MIN;
+                needsSave = true;
+            }
+            else if (p.encumbrance_speed_penalty_exponent > ENCUMBRANCE_EXP_MAX)
+            {
+                p.encumbrance_speed_penalty_exponent = ENCUMBRANCE_EXP_MAX;
+                needsSave = true;
+            }
+
+            if (p.encumbrance_speed_penalty_max < ENCUMBRANCE_MAX_MIN)
+            {
+                p.encumbrance_speed_penalty_max = ENCUMBRANCE_MAX_MIN;
+                needsSave = true;
+            }
+            else if (p.encumbrance_speed_penalty_max > ENCUMBRANCE_MAX_MAX)
+            {
+                p.encumbrance_speed_penalty_max = ENCUMBRANCE_MAX_MAX;
+                needsSave = true;
+            }
         }
         
         if (needsSave)

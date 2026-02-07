@@ -75,6 +75,16 @@ class SCR_RSS_Params
     [Attribute(defvalue: "0.20", desc: "Encumbrance speed penalty. Higher=slower when loaded. | 负重速度惩罚")]
     float encumbrance_speed_penalty_coeff;
 
+    // 负重速度惩罚指数（幂次）
+    // 控制较高负重时速度惩罚的陡峭程度
+    [Attribute(defvalue: "1.5", desc: "Encumbrance speed penalty exponent.\nPower applied to body mass percent when computing speed penalty. Higher=steeper penalty.\nOptimized range: 1.0 - 3.0. | 负重速度惩罚指数。")]
+    float encumbrance_speed_penalty_exponent;
+
+    // 负重速度惩罚上限（0-1）
+    // 防止惩罚过大导致完全无法移动
+    [Attribute(defvalue: "0.75", desc: "Encumbrance speed penalty max.\nUpper cap for speed penalty (0.0-1.0). Default 0.75 (max 75% slow down). Optimized range: 0.4 - 0.95. | 负重速度惩罚上限。")]
+    float encumbrance_speed_penalty_max;
+
     // 负重体力消耗系数
     // 负重对体力消耗的加成系数（基于体重百分比）
     // 公式：drain_multiplier = 1 + coeff * (load_weight / body_weight)
@@ -437,6 +447,8 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.load_recovery_penalty_coeff = 7.2422474978061481e-06;
 	m_EliteStandard.load_recovery_penalty_exponent = 1.0700352253311651;
 	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.20177135965613457;
+	m_EliteStandard.encumbrance_speed_penalty_exponent = 1.5;
+	m_EliteStandard.encumbrance_speed_penalty_max = 0.75;
 	m_EliteStandard.encumbrance_stamina_drain_coeff = 1.1698832611159302;
 	m_EliteStandard.sprint_stamina_drain_multiplier = 2.180850328665918;
 	m_EliteStandard.fatigue_accumulation_coeff = 0.005206331000305838;
@@ -495,6 +507,8 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.load_recovery_penalty_coeff = 1.6294439541500155e-05;
 	m_StandardMilsim.load_recovery_penalty_exponent = 1.81401673551993;
 	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.19322323922779377;
+	m_StandardMilsim.encumbrance_speed_penalty_exponent = 1.5;
+	m_StandardMilsim.encumbrance_speed_penalty_max = 0.75;
 	m_StandardMilsim.encumbrance_stamina_drain_coeff = 1.7462981181301651;
 	m_StandardMilsim.sprint_stamina_drain_multiplier = 3.0620356759968677;
 	m_StandardMilsim.fatigue_accumulation_coeff = 0.00788478627599702;
@@ -553,6 +567,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.load_recovery_penalty_coeff = 6.3865618093470267e-06;
 	m_TacticalAction.load_recovery_penalty_exponent = 1.4606727916549933;
 	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.20716179202151352;
+	m_TacticalAction.encumbrance_speed_penalty_exponent = 1.5;
+	m_TacticalAction.encumbrance_speed_penalty_max = 0.75;
 	m_TacticalAction.encumbrance_stamina_drain_coeff = 1.0367033332768634;
 	m_TacticalAction.sprint_stamina_drain_multiplier = 3.0530535027232135;
 	m_TacticalAction.fatigue_accumulation_coeff = 0.01059146283870477;
@@ -612,6 +628,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.load_recovery_penalty_coeff = 0.0004;
         m_Custom.load_recovery_penalty_exponent = 2.0;
         m_Custom.encumbrance_speed_penalty_coeff = 0.20;
+        m_Custom.encumbrance_speed_penalty_exponent = 1.5;
+        m_Custom.encumbrance_speed_penalty_max = 0.75;
         m_Custom.encumbrance_stamina_drain_coeff = 1.5;
         m_Custom.sprint_stamina_drain_multiplier = 3.0;
         m_Custom.fatigue_accumulation_coeff = 0.015;

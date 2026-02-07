@@ -1351,8 +1351,10 @@ modded class SCR_CharacterControllerComponent
             float effectiveWeight = Math.Max(serverWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
             float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
             float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, 1.5);
-            encPenalty = Math.Clamp(encPenalty, 0.0, 0.4);
+            float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
+            float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, exp);
+            encPenalty = Math.Clamp(encPenalty, 0.0, max_pen);
 
             // 获取服务器端的移动状态（权威）
             bool isSprinting = IsSprinting();

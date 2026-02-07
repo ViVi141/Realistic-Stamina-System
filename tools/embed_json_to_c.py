@@ -34,6 +34,8 @@ class JsonToCEmbedder:
             'load_recovery_penalty_coeff': 'load_recovery_penalty_coeff',
             'load_recovery_penalty_exponent': 'load_recovery_penalty_exponent',
             'encumbrance_speed_penalty_coeff': 'encumbrance_speed_penalty_coeff',
+            'encumbrance_speed_penalty_exponent': 'encumbrance_speed_penalty_exponent',
+            'encumbrance_speed_penalty_max': 'encumbrance_speed_penalty_max',
             'encumbrance_stamina_drain_coeff': 'encumbrance_stamina_drain_coeff',
             'sprint_stamina_drain_multiplier': 'sprint_stamina_drain_multiplier',
             'fatigue_accumulation_coeff': 'fatigue_accumulation_coeff',
