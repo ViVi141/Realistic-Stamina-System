@@ -6,6 +6,34 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.12.0] - 2026-02-09
+
+本版本仅记录 C 脚本层面的变化。
+
+### ✅ 新增
+
+- **环境温度物理模型** - 新增温度步进、短波/长波与云量修正、太阳/日出日落与月相推断，支持引擎温度或模组模型切换（[scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **室内检测增强** - 增加向上射线与水平封闭检测，降低开放屋顶/天窗误判（[scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **配置变更同步链路** - 新增监听器注册、变更检测、全量参数/设置数组同步与广播（[scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)、[scripts/Game/Components/Stamina/SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)、[scripts/Game/PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **网络校验与平滑** - 客户端上报体力/负重，服务器权威校验并下发速度倍率，含重连延迟同步（[scripts/Game/PlayerBase.c](scripts/Game/PlayerBase.c)、[scripts/Game/Components/Stamina/SCR_NetworkSync.c](scripts/Game/Components/Stamina/SCR_NetworkSync.c)）
+- **日志节流工具** - 统一 Debug/Verbose 日志节流接口（[scripts/Game/Components/Stamina/SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+
+### 🔁 变更
+
+- **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（[scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf/Givoni 路径，并提供服务端权威速度倍数计算接口（[scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）
+- **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（[scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)、[scripts/Game/Components/Stamina/SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)、[scripts/Game/Components/Stamina/SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（[scripts/Game/Components/Stamina/SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）
+- **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（[scripts/Game/Components/Stamina/SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)、[scripts/Game/Components/Stamina/SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **体重参与消耗** - 体力消耗输入改为“装备+身体”的总重，并优化调试输出（[scripts/Game/PlayerBase.c](scripts/Game/PlayerBase.c)）
+
+### 🐞 修复
+
+- **室内判定误报** - 通过屋顶射线与水平封闭检测降低开放屋顶/天窗误判（[scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **引擎温度极值退化** - 当日最小/最大温度趋同会回退到物理/模拟估算，避免温度异常（[scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **客户端写盘覆盖** - 客户端不再写入本地 JSON，避免覆盖服务器配置（[scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+
 ## [3.11.1] - 2026-02-02
 
 本版本为 3.11.0 的配置系统增强与修正版本。
@@ -20,6 +48,7 @@
 
 - **HUD 开关默认关闭** - `m_bHintDisplayEnabled` 默认值改为 false。为不破坏已有设置：若你曾使用过该模组并已生成 JSON 配置文件，HUD 会按之前的设置正常工作；首次下载该模组的用户则默认关闭 HUD。工作台模式仍强制开启以便调试。
 - **配置字段可读性优化** - 提取 magic number 为常量，精简 Attribute 描述，统一分组与格式
+
 
 ## [3.11.0] - 2026-01-30
 
