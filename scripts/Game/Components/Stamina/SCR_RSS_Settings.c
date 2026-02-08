@@ -402,9 +402,13 @@ class SCR_RSS_Settings
     void InitPresets(bool forceRefreshSystemPresets = false)
     {
         // 1. 确保所有对象都已实例化
-        if (!m_EliteStandard) m_EliteStandard = new SCR_RSS_Params();
-        if (!m_StandardMilsim) m_StandardMilsim = new SCR_RSS_Params();
-        if (!m_TacticalAction) m_TacticalAction = new SCR_RSS_Params();
+        bool initElite = !m_EliteStandard;
+        bool initStandard = !m_StandardMilsim;
+        bool initTactical = !m_TacticalAction;
+
+        if (initElite) m_EliteStandard = new SCR_RSS_Params();
+        if (initStandard) m_StandardMilsim = new SCR_RSS_Params();
+        if (initTactical) m_TacticalAction = new SCR_RSS_Params();
         
         // 2. 处理 Custom 预设：仅在不存在时初始化默认值
         bool initCustom = !m_Custom;
@@ -427,9 +431,9 @@ class SCR_RSS_Settings
         {
             // 如果不强制刷新（处于 Custom 模式），则仅初始化缺失的对象
             // 注意：这里传入 false 或根据对象是否为 null 来决定，保持向后兼容
-            InitEliteStandardDefaults(!m_EliteStandard);
-            InitStandardMilsimDefaults(!m_StandardMilsim);
-            InitTacticalActionDefaults(!m_TacticalAction);
+            InitEliteStandardDefaults(initElite);
+            InitStandardMilsimDefaults(initStandard);
+            InitTacticalActionDefaults(initTactical);
         }
     }
     
