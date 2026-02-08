@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.11.2";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.12.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -62,6 +62,33 @@ class SCR_RSS_ConfigManager
         Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug/HUD forced ON.");
         return;
         #endif
+
+        // 客户端不读取本地 JSON，仅使用内存默认值等待服务器同步
+        if (!Replication.IsServer())
+        {
+            m_Settings = new SCR_RSS_Settings();
+            m_Settings.InitPresets();
+            m_Settings.m_sConfigVersion = CURRENT_VERSION;
+            m_Settings.m_sSelectedPreset = "StandardMilsim";
+            m_Settings.m_bHintDisplayEnabled = false;
+            m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
+            m_Settings.m_bDebugLogEnabled = false;
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_fStaminaDrainMultiplier = 1.0;
+            m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
+            m_Settings.m_fSprintSpeedMultiplier = 1.3;
+            m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
+
+            m_bIsLoaded = true;
+            m_fLastLoadTime = 0.0;
+            EnsureDefaultValues();
+            UpdateConfigCache();
+            Print("[RSS_ConfigManager] Client: Using in-memory defaults (JSON read skipped).");
+            return;
+        }
         
         // 防止频繁重载
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
@@ -122,8 +149,11 @@ class SCR_RSS_ConfigManager
                     m_Settings.InitPresets(true);
                     
                     // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
-                    Save();
-                    Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+                    if (CanWriteConfig())
+                    {
+                        Save();
+                        Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
+                    }
                 }
                 else
                 {
@@ -187,9 +217,12 @@ class SCR_RSS_ConfigManager
                 m_Settings.m_bDebugLogEnabled = true;
                 Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
             #endif
-            
-            Save();
-            Print("[RSS_ConfigManager] Default settings created at " + CONFIG_PATH);
+
+            if (CanWriteConfig())
+            {
+                Save();
+                Print("[RSS_ConfigManager] Default settings created at " + CONFIG_PATH);
+            }
         }
         
         m_bIsLoaded = true;
@@ -390,11 +423,28 @@ class SCR_RSS_ConfigManager
             Save();
         }
     }
+
+    // 仅允许服务器写入配置文件，防止客户端覆盖服务器 JSON
+    protected static bool CanWriteConfig()
+    {
+        #ifdef WORKBENCH
+        return true;
+        #endif
+
+        return Replication.IsServer();
+    }
     
     // 保存配置文件
     static void Save()
     {
         if (!m_Settings) m_Settings = new SCR_RSS_Settings();
+
+        if (!CanWriteConfig())
+        {
+            // 客户端保持内存配置，不写入磁盘
+            UpdateConfigCache();
+            return;
+        }
         
         // 创建配置备份
         CreateConfigBackup();
@@ -434,35 +484,14 @@ class SCR_RSS_ConfigManager
     // 管理备份文件
     protected static void ManageBackupFiles()
     {
-        // 删除旧备份，保留最新的几个
-        for (int i = MAX_BACKUP_COUNT; i > 0; i--)
+        // 仅保留单个 .bak.json，不保留编号历史备份
+        for (int i = 1; i <= MAX_BACKUP_COUNT; i++)
         {
             string oldBackupPath = CONFIG_BACKUP_PATH + "." + i.ToString();
-            string newBackupPath = CONFIG_BACKUP_PATH + "." + (i + 1).ToString();
-            
             if (FileIO.FileExists(oldBackupPath))
             {
-                if (i >= MAX_BACKUP_COUNT)
-                {
-                    // 删除超过最大数量的备份
-                    FileIO.DeleteFile(oldBackupPath);
-                }
-                else if (FileIO.FileExists(oldBackupPath))
-                {
-                    // 复制文件作为重命名的替代方案
-                    FileIO.CopyFile(oldBackupPath, newBackupPath);
-                    FileIO.DeleteFile(oldBackupPath);
-                }
+                FileIO.DeleteFile(oldBackupPath);
             }
-        }
-        
-        // 将当前备份重命名为编号备份
-        if (FileIO.FileExists(CONFIG_BACKUP_PATH))
-        {
-            string numberedBackupPath = CONFIG_BACKUP_PATH + ".1";
-            // 复制文件作为重命名的替代方案
-            FileIO.CopyFile(CONFIG_BACKUP_PATH, numberedBackupPath);
-            FileIO.DeleteFile(CONFIG_BACKUP_PATH);
         }
     }
     
