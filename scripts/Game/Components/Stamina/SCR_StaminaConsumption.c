@@ -34,7 +34,9 @@ class StaminaConsumptionCalculator
         FatigueSystem fatigueSystem,
         out float baseDrainRateByVelocity,
         EnvironmentFactor environmentFactor = null,
-        IEntity owner = null)
+        IEntity owner = null,
+        bool isSprinting = false,
+        int currentMovementPhase = -1)
     {
         // ==================== v2.14.0 环境因子修正 ====================
         
@@ -108,14 +110,20 @@ class StaminaConsumptionCalculator
         currentWeight = currentWeight + totalWetWeight;
 
         // ==================== 修复：调用公共静态方法计算基础消耗率 ====================
-        // 避免与 SCR_StaminaUpdateCoordinator.c 中的代码重复
-        baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateLandBaseDrainRate(
-            currentSpeed,
-            currentWeight,
-            gradePercent,
-            terrainFactor,
-            windDrag,
-            coldStaticPenalty);
+        // 如果调用方已经计算好了基线（例如 PlayerBase），我们应使用该值以确保一致性；否则自己计算并确保体重包含身体质量
+        if (baseDrainRateByVelocity <= 0.0)
+        {
+            float weight_for_base = currentWeight + StaminaConstants.CHARACTER_WEIGHT; // 装备+湿重 + 人体
+            baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateLandBaseDrainRate(
+                currentSpeed,
+                weight_for_base,
+                gradePercent,
+                terrainFactor,
+                windDrag,
+                coldStaticPenalty,
+                isSprinting,
+                currentMovementPhase);
+        }
 
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
@@ -156,6 +164,19 @@ class StaminaConsumptionCalculator
 
             // 应用手持重物额外消耗
             totalDrainRate = totalDrainRate * itemBonus;
+        }
+
+        // 调试输出：分解项（原始基线、姿态/效率后基线、Sprint、Enc、Item、最终）
+        if (StaminaConstants.IsDebugEnabled())
+        {
+            PrintFormat("[RSS_DBG] Consumption: orig_base=%1 | base_after_eff=%2 | sprintMult=%3 | encMult=%4 | item=%5 | total_per0.2=%6 | total_per_s=%7",
+                Math.Round(originalBaseDrainRate * 1000000.0) / 1000000.0,
+                Math.Round(baseDrainRate * 1000000.0) / 1000000.0,
+                Math.Round(sprintMultiplier * 100.0) / 100.0,
+                Math.Round(encumbranceStaminaDrainMultiplier * 100.0) / 100.0,
+                Math.Round(itemBonus * 100.0) / 100.0,
+                Math.Round(totalDrainRate * 1000000.0) / 1000000.0,
+                Math.Round(totalDrainRate * 5.0 * 1000000.0) / 1000000.0);
         }
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）

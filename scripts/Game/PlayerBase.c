@@ -761,9 +761,14 @@ modded class SCR_CharacterControllerComponent
         // 模块化：使用 SwimmingStateManager 计算总湿重
         float totalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(m_fCurrentWetWeight, rainWeight);
         float currentWeightWithWet = currentWeight + totalWetWeight;
-        
+
+        // 修复：计算包含身体重量的总重并传入消耗模块（Pandolf/Givoni 期望的输入）
+        // currentWeight/currentWeightWithWet 原本为装备/背包重量（不含身体质量）
+        float totalWeight = currentWeight + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+身体
+        float totalWeightWithWetAndBody = currentWeightWithWet + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+湿重+身体
+
         bool useSwimmingModel = isSwimming;
-        
+
         // ==================== 检测跳跃和翻越动作（模块化：使用 JumpVaultDetector）====================
         // 模块化拆分：使用独立的 JumpVaultDetector 类处理跳跃和翻越检测逻辑
         if (m_pStaminaComponent && m_pJumpVaultDetector)
@@ -920,6 +925,10 @@ modded class SCR_CharacterControllerComponent
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
         
+        // 获取当前移动状态（用于计算冲刺倍数）
+        bool isSprinting = IsSprinting();
+        int currentMovementPhase = GetCurrentMovementPhase();
+
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
         // 修复：传递环境因子参数，使基础消耗率计算支持环境因子
@@ -927,14 +936,16 @@ modded class SCR_CharacterControllerComponent
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
-            currentWeight,
-            currentWeightWithWet,
+            totalWeight,
+            totalWeightWithWetAndBody,
             gradePercent,
             terrainFactor,
             currentVelocity,
             m_bSwimmingVelocityDebugPrinted,
             owner,
-            m_pEnvironmentFactor); // v2.14.0修复：传递环境因子
+            m_pEnvironmentFactor, // v2.14.0修复：传递环境因子
+            isSprinting,
+            currentMovementPhase);
         float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         
@@ -960,9 +971,7 @@ modded class SCR_CharacterControllerComponent
         if (useSwimmingModel)
             encumbranceStaminaDrainMultiplier = 1.0;
         
-        // 获取当前移动状态（用于计算冲刺倍数）
-        bool isSprinting = IsSprinting();
-        int currentMovementPhase = GetCurrentMovementPhase();
+        // 获取当前移动状态（已在上方获取）
         
         float sprintMultiplier = 1.0;
         if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
@@ -979,17 +988,17 @@ modded class SCR_CharacterControllerComponent
                 movementTypeDebug = "游泳 / Swimming";
             else
                 movementTypeDebug = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 坡度=%4%% | 地形系数=%5 | 姿态=%6x | 热应激=%7x | 效率=%8 | 疲劳=%9 | Sprint倍数=%10x",
+            // 使用独立占位符打印负重与总重，避免字符串拼接导致类型不兼容
+            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 总重=%4kg | 坡度=%5%% | 地形系数=%6 | 姿态=%7x | 热应激=%8x | 效率=%9",
                 movementTypeDebug,
                 Math.Round(currentSpeed * 10.0) / 10.0,
                 Math.Round(currentWeight * 10.0) / 10.0,
+                Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0,
                 Math.Round(gradePercentForConsumption * 10.0),
                 Math.Round(terrainFactorForConsumption * 100.0) / 100.0,
                 Math.Round(postureMultiplier * 100.0) / 100.0,
                 Math.Round(heatStressMultiplier * 100.0) / 100.0,
-                Math.Round(totalEfficiencyFactor * 100.0) / 100.0,
-                Math.Round(fatigueFactor * 100.0) / 100.0,
-                Math.Round(sprintMultiplier * 100.0) / 100.0);
+                Math.Round(totalEfficiencyFactor * 100.0) / 100.0);
         }
         
         float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
@@ -1018,7 +1027,9 @@ modded class SCR_CharacterControllerComponent
                 m_pFatigueSystem,
                 baseDrainRateByVelocityForModule,
                 m_pEnvironmentFactor, // v2.14.0：传递环境因子模块
-                owner); // v2.15.0：传递角色实体，用于手持物品检测
+                owner, // v2.15.0：传递角色实体，用于手持物品检测
+                isSprinting,
+                currentMovementPhase);
             
             // 应用热应激倍数（影响体力消耗）
             float drainRateBeforeHeat = totalDrainRate;
