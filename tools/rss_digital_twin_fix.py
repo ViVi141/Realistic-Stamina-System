@@ -76,7 +76,7 @@ class RSSConstants:
     RUN_VELOCITY_THRESHOLD = 3.7
     
     # Sprint 参数
-    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍，与C文件保持一致
+    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # Increased default: Sprint stamina drain multiplier (was 3.0)
     SPRINT_SPEED_BOOST = 0.30
     
     # 疲劳参数

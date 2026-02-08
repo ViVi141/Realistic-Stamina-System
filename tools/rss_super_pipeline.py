@@ -281,8 +281,21 @@ class RSSSuperPipeline:
         n_trials: int = 500,  # 默认500次迭代，平衡性能和多样性
         n_jobs: int = -1,  # -1表示自动检测CPU核心数
         use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
-        batch_size: int = 5  # 批处理大小
-    ):
+        batch_size: int = 5,  # 批处理大小
+        sprint_range: Tuple[float, float] = (2.5, 4.5),  # 可调整的优化器搜索区间
+        sprint_drop_target: Tuple[float, float] = (0.15, 0.40),  # Sprint drop target range (min,max)
+        sprint_drop_penalty_below: float = 4000.0,  # penalty scale when below target
+        sprint_drop_penalty_above: float = 5000.0,  # penalty scale when above target
+        constants_override: Optional[Dict] = None,  # 可选：在试验外覆盖常量（用于对比实验）
+        enable_sprint_objective: bool = False,  # 是否将 Sprint-drop 作为显式优化目标
+        enable_sprint_remaining_objective: bool = True,  # 是否启用 30s 剩余体力显式目标
+        sprint_remaining_penalty_scale: float = 20000.0,  # 30s 剩余差值惩罚scale
+        sprint_prune_threshold: float = 0.10,  # 如果 30s 剩余 < threshold 则早期剪枝（默认10%）
+        sprint_upper_cap: Optional[float] = 3.5,  # 可选：对 sprint multiplier 进行上界限制（若为None则不限制）
+        enable_joint_sprint_energy_constraint: bool = True,  # 是否启用冲刺-能量耦合软约束
+        joint_sprint_energy_penalty_scale: float = 8000.0,  # 联合惩罚规模（线性系数）
+        joint_sprint_energy_target_coeff: float = 1.0e-6,  # 目标 energy_to_stamina_coeff（用于归一化）
+    ): 
         """
         初始化流水线
         
@@ -309,6 +322,25 @@ class RSSSuperPipeline:
         self.study = None
         self.best_trials = []
         self.bug_reports: List[BugReport] = []
+        # 可配置：Sprint 搜索区间与最低消耗要求（可用于对比实验）
+        self.sprint_range = sprint_range
+        # sprint_drop_target: (min, max)
+        self.sprint_drop_target = sprint_drop_target
+        self.sprint_drop_penalty_below = sprint_drop_penalty_below
+        self.sprint_drop_penalty_above = sprint_drop_penalty_above
+        self.constants_override = constants_override or {}
+        # 是否启用 Sprint-drop 作为显式优化目标
+        self.enable_sprint_objective = enable_sprint_objective
+        # 是否启用 30s 剩余体力显式目标
+        self.enable_sprint_remaining_objective = enable_sprint_remaining_objective
+        self.sprint_remaining_penalty_scale = sprint_remaining_penalty_scale
+        # Hard prune threshold for sprint remaining and optional upper cap for sprint multiplier
+        self.sprint_prune_threshold = sprint_prune_threshold
+        self.sprint_upper_cap = sprint_upper_cap
+        # 冲刺-能量耦合约束配置（可选）
+        self.enable_joint_sprint_energy_constraint = enable_joint_sprint_energy_constraint
+        self.joint_sprint_energy_penalty_scale = joint_sprint_energy_penalty_scale
+        self.joint_sprint_energy_target_coeff = joint_sprint_energy_target_coeff
         # 初始化自定义并行工作器
         self.parallel_worker = ParallelWorker(max_workers=n_jobs)
         
@@ -379,8 +411,13 @@ class RSSSuperPipeline:
         # Sprint 相关
         # Sprint 消耗 = Run × 3x
         # 范围 2.0~3.5：允许 3x 冲刺消耗
+        # 使用可配置的 sprint 搜索区间（默认为 2.5-4.5）
+        # Apply optional upper cap to sprint multiplier search range
+        sprint_upper = self.sprint_range[1]
+        if getattr(self, 'sprint_upper_cap', None) is not None:
+            sprint_upper = min(sprint_upper, self.sprint_upper_cap)
         sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', 2.0, 3.5
+            'sprint_stamina_drain_multiplier', self.sprint_range[0], sprint_upper
         )
         
         # 疲劳系统相关
@@ -405,16 +442,17 @@ class RSSSuperPipeline:
         recovery_nonlinear_coeff = trial.suggest_float(
             'recovery_nonlinear_coeff', 0.15, 0.35
         )
-        # 约束：fast > medium > slow，但整体降低以减缓平台期
-        # fast 1.0~1.3（原 1.6~2.4 导致恢复过快）
-        fast_recovery_multiplier = trial.suggest_float(
-            'fast_recovery_multiplier', 1.0, 1.3
-        )
-        medium_recovery_multiplier = trial.suggest_float(
-            'medium_recovery_multiplier', 0.85, 1.1  # 必须 < fast
-        )
+        # 强制 fast > medium > slow：使用顺序采样减少无效样本
         slow_recovery_multiplier = trial.suggest_float(
             'slow_recovery_multiplier', 0.5, 0.8
+        )
+        medium_lower = max(slow_recovery_multiplier + 0.01, 0.85)
+        medium_recovery_multiplier = trial.suggest_float(
+            'medium_recovery_multiplier', medium_lower, 1.1
+        )
+        fast_lower = max(medium_recovery_multiplier + 0.01, 1.0)
+        fast_recovery_multiplier = trial.suggest_float(
+            'fast_recovery_multiplier', fast_lower, 1.3
         )
         marginal_decay_threshold = trial.suggest_float(
             'marginal_decay_threshold', 0.7, 0.9
@@ -442,7 +480,7 @@ class RSSSuperPipeline:
             'posture_crouch_multiplier', 1.2, 2.2
         )
         posture_prone_multiplier = trial.suggest_float(
-            'posture_prone_multiplier', 2.3, 4.0  # 确保 > crouch_max(2.2)
+            'posture_prone_multiplier', max(posture_crouch_multiplier + 0.01, 2.3), 4.0
         )
         
         # 动作消耗参数
@@ -508,6 +546,12 @@ class RSSSuperPipeline:
         
         # 创建新的常量实例（不修改原始类）
         constants = RSSConstants()
+        # 如果外部提供了常量覆盖（用于对比实验），应用它们
+        if getattr(self, 'constants_override', None):
+            for k, v in self.constants_override.items():
+                if hasattr(constants, k):
+                    setattr(constants, k, v)
+
         
         # 更新参数
         constants.ENERGY_TO_STAMINA_COEFF = energy_to_stamina_coeff
@@ -576,17 +620,23 @@ class RSSSuperPipeline:
         
         # 记录BUG报告
         self.bug_reports.extend(bug_reports)
-        
+
+        # 若检测到关键性BUG（NaN/负体力/仿真崩溃），则尽早剪枝该试验以节约资源
+        critical_bug_types = {'negative_stamina', 'nan_value', 'simulation_crash'}
+        if any(b.bug_type in critical_bug_types for b in bug_reports):
+            trial.set_user_attr('critical_bug', True)
+            raise optuna.exceptions.TrialPruned('Critical bug detected during stability evaluation')
+
         # ==================== 7. 添加物理约束条件（JSON合理性修复） ====================
         # 这些约束确保生成的参数满足生物学和物理学逻辑
         
         constraint_penalty = 0.0
         
-        # 基础体能检查约束：未通过基础体能测试的参数组合将被严重惩罚
+        # 基础体能检查约束：未通过基础体能测试应被尽早淘汰以节约计算资源
         if not basic_fitness_passed:
-            penalty = 1000.0  # 严重惩罚未通过基础体能测试的参数
-            constraint_penalty += penalty
-            stability_risk += penalty
+            trial.set_user_attr('basic_fitness', False)
+            # 早期剪枝：Failed basic fitness
+            raise optuna.exceptions.TrialPruned('Failed basic fitness check')
         
         # 约束1: prone_recovery > standing_recovery（生理逻辑）
         # 说明：趴下应该比站立更容易恢复体力
@@ -651,7 +701,7 @@ class RSSSuperPipeline:
         # 目标：
         # - Sprint / Run 必须“净消耗”且消耗不应过低
         # - Walk 必须“缓慢净恢复”（不应快到像静止趴下回血）
-        movement_balance_penalty = self._evaluate_movement_balance_penalty(constants)
+        movement_balance_penalty, actual_sprint_drop = self._evaluate_movement_balance_penalty(constants)
         if movement_balance_penalty > 0.0:
             constraint_penalty += movement_balance_penalty
             stability_risk += movement_balance_penalty
@@ -659,15 +709,100 @@ class RSSSuperPipeline:
         # ==================== 8. 计算生理学合理性 ====================
         # 基于科学文献的生理学合理性评估
         physiological_realism = self._evaluate_physiological_realism(constants)
-        
+
+        # ==================== 新目标：Sprint-drop 作为显式优化目标（可选） ====================
+        # 提前读取目标区间（供后续联合约束使用）
+        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.15, 0.40))
+
+        # 仅在启用时计算 Sprint-drop 目标（以避免与研究的目标数不匹配）
+        sprint_obj = 0.0
+        if getattr(self, 'enable_sprint_objective', False):
+            if actual_sprint_drop < required_sprint_drop_min:
+                sprint_obj = (required_sprint_drop_min - actual_sprint_drop) * getattr(self, 'sprint_drop_penalty_below', 4000.0)
+            elif actual_sprint_drop > required_sprint_drop_max:
+                sprint_obj = (actual_sprint_drop - required_sprint_drop_max) * getattr(self, 'sprint_drop_penalty_above', 5000.0)
+
+        # ==================== 新约束：冲刺与能量系数的联合惩罚（可选） ====================
+        # 目的：避免仅通过增大冲刺倍率而产生不可接受的瞬时耗尽；鼓励 energy_to_stamina_coeff 与 冲刺倍率 联动
+        if getattr(self, 'enable_joint_sprint_energy_constraint', False):
+            # 期望 energy_to_stamina_coeff 接近目标值（joint_sprint_energy_target_coeff）以保证冲刺不会过度耗尽
+            target_coeff = getattr(self, 'joint_sprint_energy_target_coeff', 1.0e-6)
+            scale = getattr(self, 'joint_sprint_energy_penalty_scale', 8000.0)
+
+            # 若冲刺耗尽过高（>上限），对低 energy_to_stamina_coeff 强烈惩罚
+            if actual_sprint_drop > required_sprint_drop_max:
+                # 当 coeff 越小，惩罚越高（鼓励提高能量转化率）
+                coeff_ratio = target_coeff / max(energy_to_stamina_coeff, 1e-12)
+                joint_penalty = (actual_sprint_drop - required_sprint_drop_max) * scale * coeff_ratio
+                constraint_penalty += joint_penalty
+                stability_risk += joint_penalty
+            # 若冲刺耗尽过低（<下限），对过高的 energy_to_stamina_coeff 惩罚（鼓励降低能量转化率或减少冲刺倍率）
+            elif actual_sprint_drop < required_sprint_drop_min:
+                coeff_ratio = max(energy_to_stamina_coeff / target_coeff, 1e-12)
+                joint_penalty = (required_sprint_drop_min - actual_sprint_drop) * scale * coeff_ratio
+                constraint_penalty += joint_penalty
+                stability_risk += joint_penalty
+
+            # 极端耗尽（例如 >= 98%）视为不可接受，早期剪枝
+            if actual_sprint_drop >= 0.98:
+                trial.set_user_attr('sprint_extreme_exhaustion', True)
+                raise optuna.exceptions.TrialPruned('Extreme sprint exhaustion (>=98%)')
+
+        # ==================== 新目标：30s 剩余体力（显式） ====================
+        # 当启用时，把距离目标剩余区间的偏离作为独立目标返回给优化器（越小越好）
+        sprint_remaining_obj = 0.0
+        if getattr(self, 'enable_sprint_remaining_objective', False):
+            # 目标剩余区间由 sprint_drop_target 翻转得到
+            rem_min = 1.0 - required_sprint_drop_max
+            rem_max = 1.0 - required_sprint_drop_min
+            sprint_remaining = 1.0 - actual_sprint_drop  # 实际30s剩余体力
+
+            # Compute a dedicated 30s sprint test (deterministic) to measure realistic depletion
+            # This aligns the optimizer objective with the external 30s sprint simulation used in analysis
+            sprint_test_duration = 30.0
+            twin_30 = RSSDigitalTwin(constants)
+            twin_30.reset()
+            twin_30.stamina = 1.0
+            steps = int(sprint_test_duration / 0.2)
+            for _ in range(steps):
+                twin_30.step(
+                    speed=5.0,
+                    current_weight=90.0,
+                    grade_percent=0.0,
+                    terrain_factor=1.0,
+                    stance=Stance.STAND,
+                    movement_type=MovementType.SPRINT,
+                    current_time=0.0,
+                    enable_randomness=False,
+                )
+            sprint_30s_drop = 1.0 - twin_30.stamina
+
+            # Hard prune if 30s remaining below configured prune threshold
+            prune_thr = getattr(self, 'sprint_prune_threshold', 0.05)
+            if (1.0 - sprint_30s_drop) < prune_thr:
+                trial.set_user_attr('sprint_pruned_low_remaining', True)
+                raise optuna.exceptions.TrialPruned(f'30s sprint remaining {1.0 - sprint_30s_drop:.3f} below prune threshold {prune_thr}')
+
+            # Always-on objective: minimize depletion in the 30s test (drop ranges 0..1)
+            sprint_remaining_obj = sprint_30s_drop
+
+            # Additional normalized penalty if outside target rem range (amplify deviation)
+            rem_range = max(rem_max - rem_min, 1e-6)
+            if (1.0 - sprint_30s_drop) < rem_min:
+                normalized = (rem_min - (1.0 - sprint_30s_drop)) / rem_range
+                sprint_remaining_obj += normalized * (getattr(self, 'sprint_remaining_penalty_scale', 20000.0) / 10000.0)
+            elif (1.0 - sprint_30s_drop) > rem_max:
+                normalized = ((1.0 - sprint_30s_drop) - rem_max) / rem_range
+                sprint_remaining_obj += normalized * (getattr(self, 'sprint_remaining_penalty_scale', 20000.0) / 10000.0)
+
         # ==================== 9. 应用多阶段优化权重 ====================
         # 获取当前权重
         stability_weight = getattr(self, '_stability_weight', 1.0)
         realism_weight = 50.0  # 进一步降低到50，优先优化可玩性和稳定性
-        
+
         # 应用权重到稳定性风险
         weighted_stability_risk = stability_risk * stability_weight
-        
+
         # 生理学合理度是越大越好（0-100），但优化器使用最小化方向。
         # 因此这里将其转换为损失：physiology_loss = (100 - realism_score)，越小越好。
         physiology_loss = max(0.0, 100.0 - physiological_realism)
@@ -684,6 +819,7 @@ class RSSSuperPipeline:
                     playability=playability_burden,
                     stability=stability_risk,
                     realism=physiological_realism,
+                    sprint_drop=actual_sprint_drop,
                     params=dict(trial.params)
                 )
             except Exception as e:
@@ -694,24 +830,35 @@ class RSSSuperPipeline:
         scaled_stability = weighted_stability_risk * 0.1  # 缩小10倍
         scaled_realism = weighted_physiology_loss * 0.1  # 生理学损失：缩小10倍
 
-        # 新：评估 40/60 分钟会话相关指标并作为第四个目标（越小越好）
+        # 新：评估 40/60 分钟会话相关指标并作为额外目标（越小越好）
         engagement_loss, session_fail = self._evaluate_session_metrics(twin)
 
-        # 如果会话硬约束失败，给出极大惩罚，优先淘汰此解
+        # 如果会话硬约束失败，则早期剪枝该试验（会话不可接受）
         if session_fail:
-            severe_penalty = 1e6
-            scaled_stability += severe_penalty
-            scaled_playability += severe_penalty
-            scaled_realism += severe_penalty
-            engagement_loss = severe_penalty
+            trial.set_user_attr('session_fail', True)
+            raise optuna.exceptions.TrialPruned('Session-level failure')
 
-        # 返回目标：根据运行模式（数据库 vs 内存）返回 3 或 4 个目标
-        # - 在数据库模式（self.use_database=True）下返回四目标：playability, stability, realism_loss, engagement_loss
-        # - 在内存模式下返回三目标：playability, stability, realism_loss
+        # Sprint-drop 目标缩放并作为独立目标（仅在启用时包含于返回值中）
+        scaled_sprint = sprint_obj * 0.1 if getattr(self, 'enable_sprint_objective', False) else None
+
+        # 根据配置返回目标向量（长度需与创建研究时的 directions 一致）
+        # 如果启用了 sprint_remaining_objective，它会作为独立目标被包含（在 enable_sprint_objective 为 True 的上下文中）
         if getattr(self, 'use_database', False):
-            return scaled_playability, scaled_stability, scaled_realism, float(engagement_loss)
+            # 数据库模式：可返回 5 或 6 个目标
+            if getattr(self, 'enable_sprint_objective', False) and getattr(self, 'enable_sprint_remaining_objective', False):
+                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, sprint_remaining_obj * 0.1, float(engagement_loss)
+            elif getattr(self, 'enable_sprint_objective', False):
+                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, float(engagement_loss)
+            else:
+                return scaled_playability, scaled_stability, scaled_realism, float(engagement_loss)
         else:
-            return scaled_playability, scaled_stability, scaled_realism
+            # 内存模式：可返回 3、4 或 5 个目标
+            if getattr(self, 'enable_sprint_objective', False) and getattr(self, 'enable_sprint_remaining_objective', False):
+                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, sprint_remaining_obj * 0.1
+            elif getattr(self, 'enable_sprint_objective', False):
+                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint
+            else:
+                return scaled_playability, scaled_stability, scaled_realism
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
@@ -808,17 +955,18 @@ class RSSSuperPipeline:
         
         return realism_score
     
-    def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> float:
+    def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> Tuple[float, float]:
         """基于短时段“移动净值”行为的软硬约束惩罚。
-        
-        设计目标（用户意图）：
-        - Run / Sprint：体力应稳定下降（净消耗）
-        - Walk：体力应缓慢上升（净恢复）
-        
-        说明：
-        - 使用短时段固定速度测试，计算起止体力变化。
-        - 惩罚系数取较大值，使其在 NSGA-II 中具有足够约束力。
+        Returns:
+            (penalty, actual_sprint_drop)
         """
+        # 设计目标（用户意图）：
+        # - Run / Sprint：体力应稳定下降（净消耗）
+        # - Walk：体力应缓慢上升（净恢复）
+        #
+        # 说明：
+        # - 使用短时段固定速度测试，计算起止体力变化。
+        # - 惩罚系数取较大值，使其在 NSGA-II 中具有足够约束力。
         # 使用独立 twin，避免污染主仿真器状态
         twin = RSSDigitalTwin(constants)
 
@@ -868,7 +1016,7 @@ class RSSSuperPipeline:
             penalty += (actual_run_drop - required_run_drop_max) * 4000.0
 
         # 2) Sprint：30秒 5.0m/s 空载
-        # 期望：10% ≤ 消耗 ≤ 45%（sprint_mult 3.0 时约 35-40%）
+        # 期望：在目标区间内（例如 15%~40%）
         sprint_delta = simulate_fixed_speed(
             speed=5.0,
             duration_seconds=30.0,
@@ -877,12 +1025,21 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         actual_sprint_drop = max(0.0, -sprint_delta)
-        required_sprint_drop_min = 0.10
-        required_sprint_drop_max = 0.45
+        # 支持可配置的目标区间和惩罚系数
+        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.10, 0.45))
         if actual_sprint_drop < required_sprint_drop_min:
-            penalty += (required_sprint_drop_min - actual_sprint_drop) * 4000.0
+            # 连续惩罚：低于下限按距离线性惩罚（可调系数）
+            penalty += (required_sprint_drop_min - actual_sprint_drop) * getattr(self, 'sprint_drop_penalty_below', 4000.0)
         elif actual_sprint_drop > required_sprint_drop_max:
-            penalty += (actual_sprint_drop - required_sprint_drop_max) * 5000.0
+            # 连续惩罚：高于上限按距离线性惩罚（避免过度惩罚）
+            penalty += (actual_sprint_drop - required_sprint_drop_max) * getattr(self, 'sprint_drop_penalty_above', 5000.0)
+        # 将 Sprint 的离散惩罚也保留为参数多样性惩罚项（便于诊断）
+        if actual_sprint_drop < required_sprint_drop_min or actual_sprint_drop > required_sprint_drop_max:
+            # 记录轻量日志供 GUI/调试查看（不影响返回值）
+            pass
+
+        # 返回 (penalty, actual_sprint_drop) 以便作为独立目标使用
+        return float(penalty), float(actual_sprint_drop)
 
         # 3) Walk：120秒 1.8m/s 标准战斗负载（30KG，总重 120KG）
         walk_delta = simulate_fixed_speed(
@@ -937,18 +1094,12 @@ class RSSSuperPipeline:
             actual_time = results['total_time_with_penalty']
             time_ratio = actual_time / target_time
 
-            # 检查最低体力是否合理（不低于10%）
+            # 检查最低体力是否合理（不低于20%）
             min_stamina = results['min_stamina']
-            
-            # 检查平均体力是否合理（不能长期处于10%，应该 > 15%）
-            stamina_history = results.get('stamina_history', [])
-            if stamina_history:
-                avg_stamina = sum(stamina_history) / len(stamina_history)
-            else:
-                avg_stamina = 1.0  # 如果没有历史数据，假设为100%
 
-            # 通过条件：时间不超过120%且体力不低于20%且平均体力 > 25%
-            return time_ratio <= 1.2 and min_stamina >= 0.20 and avg_stamina > 0.25
+            # 仅使用最低体力作为基础体能判定：平均值在持续消耗场景中容易产生误导（可能被短时高值抬高）
+            # 通过条件：完成时间不超过 120% 且 最低体力 >= 20%
+            return time_ratio <= 1.2 and min_stamina >= 0.20
 
         except Exception:
             return False
@@ -1287,6 +1438,16 @@ class RSSSuperPipeline:
         start_time = time.time()
         
         # 创建研究（使用NSGA-II采样器，改进参数以增加多样性）
+        # 根据配置动态构建 direction 列表（确保与 objective 返回值匹配）
+        base_directions = ['minimize', 'minimize', 'minimize']
+        # 如果启用 sprint objective，添加其方向；如果还启用了 sprint_remaining objective，则再添加一个方向
+        if getattr(self, 'enable_sprint_objective', False):
+            base_directions.append('minimize')  # sprint objective
+            if getattr(self, 'enable_sprint_remaining_objective', False):
+                base_directions.append('minimize')  # sprint remaining objective
+        if self.use_database:
+            base_directions.append('minimize')  # engagement_loss
+
         if self.use_database:
             # 使用数据库存储以便后续分析（性能较慢）
             storage_url = f"sqlite:///{study_name}.db"
@@ -1299,7 +1460,7 @@ class RSSSuperPipeline:
                 self.study = optuna.create_study(
                     study_name=study_name,
                     storage=storage_url,
-                    directions=['minimize', 'minimize', 'minimize', 'minimize'],
+                    directions=base_directions,
                     sampler=optuna.samplers.NSGAIISampler(
                         population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
                         mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）
@@ -1315,7 +1476,7 @@ class RSSSuperPipeline:
             # 使用内存存储（默认，性能更快）
             self.study = optuna.create_study(
                 study_name=study_name,
-                directions=['minimize', 'minimize', 'minimize'],
+                directions=base_directions,
                 sampler=optuna.samplers.NSGAIISampler(
                     population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
                     mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）

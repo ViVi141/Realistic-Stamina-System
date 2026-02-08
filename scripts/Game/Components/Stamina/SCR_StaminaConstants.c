@@ -285,7 +285,7 @@ class StaminaConstants
     static const float SPRINT_MAX_SPEED_MULTIPLIER = 1.0; // Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
     
     // Sprint体力消耗倍数（相对于Run，v2.5优化）
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0; // Sprint时体力消耗是Run的3.0倍（v2.5优化）
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5; // Sprint时体力消耗是Run的3.5倍（v2.5优化）
     
     // ==================== Pandolf 模型常量 ====================
     // 完整 Pandolf 能量消耗模型（Pandolf et al., 1977）

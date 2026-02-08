@@ -179,7 +179,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fStaminaDrainMultiplier = 1.0;
             m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
-            m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
+            m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             
             // 工作台模式：默认使用 EliteStandard
             #ifdef WORKBENCH
@@ -375,7 +375,7 @@ class SCR_RSS_ConfigManager
         }
         if (m_Settings.m_fSprintStaminaDrainMultiplier <= 0.0)
         {
-            m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
+            m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             needsSave = true;
         }
         
@@ -589,7 +589,7 @@ class SCR_RSS_ConfigManager
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;
-        m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
+        m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
         
         Save();
     }
@@ -918,7 +918,7 @@ class SCR_RSS_ConfigManager
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;
-        m_Settings.m_fSprintStaminaDrainMultiplier = 3.0;
+        m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
         
         Save();
         Print("[RSS_ConfigManager] Created new default config due to corruption");
