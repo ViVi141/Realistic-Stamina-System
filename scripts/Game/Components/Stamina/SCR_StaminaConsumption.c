@@ -166,18 +166,7 @@ class StaminaConsumptionCalculator
             totalDrainRate = totalDrainRate * itemBonus;
         }
 
-        // 调试输出：分解项（原始基线、姿态/效率后基线、Sprint、Enc、Item、最终）
-        if (StaminaConstants.IsDebugEnabled())
-        {
-            PrintFormat("[RSS_DBG] Consumption: orig_base=%1 | base_after_eff=%2 | sprintMult=%3 | encMult=%4 | item=%5 | total_per0.2=%6 | total_per_s=%7",
-                Math.Round(originalBaseDrainRate * 1000000.0) / 1000000.0,
-                Math.Round(baseDrainRate * 1000000.0) / 1000000.0,
-                Math.Round(sprintMultiplier * 100.0) / 100.0,
-                Math.Round(encumbranceStaminaDrainMultiplier * 100.0) / 100.0,
-                Math.Round(itemBonus * 100.0) / 100.0,
-                Math.Round(totalDrainRate * 1000000.0) / 1000000.0,
-                Math.Round(totalDrainRate * 5.0 * 1000000.0) / 1000000.0);
-        }
+
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
         baseDrainRateByVelocity = originalBaseDrainRate;

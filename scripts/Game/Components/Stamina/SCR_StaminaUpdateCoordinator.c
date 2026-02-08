@@ -52,18 +52,6 @@ class StaminaUpdateCoordinator
                 runningDrainRate = runningDrainRate * terrainFactor;
                 runningDrainRate = runningDrainRate * (1.0 + windDrag);
                 baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒
-
-                // 调试输出：Givoni 基线（每秒和每0.2秒）
-                if (StaminaConstants.IsDebugEnabled())
-                {
-                    PrintFormat("[RSS_DBG] LandBase: type=Sprint | speed=%1 m/s | weight=%2 kg | givoni_per_s=%3 | base_per0.2=%4 | terrain=%5 | wind=%6",
-                        Math.Round(currentSpeed * 10.0) / 10.0,
-                        Math.Round(currentWeightWithWet * 10.0) / 10.0,
-                        Math.Round(runningDrainRate * 1000000.0) / 1000000.0,
-                        Math.Round(baseDrainRate * 1000000.0) / 1000000.0,
-                        Math.Round(terrainFactor * 100.0) / 100.0,
-                        Math.Round(windDrag * 100.0) / 100.0);
-                }
             }
             else if (currentMovementPhase == 2)
             {
@@ -72,15 +60,6 @@ class StaminaUpdateCoordinator
                 runningDrainRate = runningDrainRate * terrainFactor;
                 runningDrainRate = runningDrainRate * (1.0 + windDrag);
                 baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
-
-                if (StaminaConstants.IsDebugEnabled())
-                {
-                    PrintFormat("[RSS_DBG] LandBase: type=Run | speed=%1 m/s | weight=%2 kg | givoni_per_s=%3 | base_per0.2=%4",
-                        Math.Round(currentSpeed * 10.0) / 10.0,
-                        Math.Round(currentWeightWithWet * 10.0) / 10.0,
-                        Math.Round(runningDrainRate * 1000000.0) / 1000000.0,
-                        Math.Round(baseDrainRate * 1000000.0) / 1000000.0);
-                }
             }
             else if (currentMovementPhase == 1)
             {
@@ -93,15 +72,6 @@ class StaminaUpdateCoordinator
                     true);
                 pandolfPerS = pandolfPerS * (1.0 + windDrag);
                 baseDrainRate = pandolfPerS * 0.2;
-
-                if (StaminaConstants.IsDebugEnabled())
-                {
-                    PrintFormat("[RSS_DBG] LandBase: type=Walk | speed=%1 m/s | weight=%2 kg | pandolf_per_s=%3 | base_per0.2=%4",
-                        Math.Round(currentSpeed * 10.0) / 10.0,
-                        Math.Round(currentWeightWithWet * 10.0) / 10.0,
-                        Math.Round(pandolfPerS * 1000000.0) / 1000000.0,
-                        Math.Round(baseDrainRate * 1000000.0) / 1000000.0);
-                }
             }
             else
             {
