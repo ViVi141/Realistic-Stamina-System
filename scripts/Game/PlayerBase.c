@@ -1471,7 +1471,8 @@ modded class SCR_CharacterControllerComponent
 
             if (m_pNetworkSyncManager)
             {
-                float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                // 使用外部已声明的 currentTime 以避免重复声明
+                currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
                 // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽
                 if (!m_pNetworkSyncManager.HasServerValidation())

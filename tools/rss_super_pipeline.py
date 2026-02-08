@@ -319,15 +319,18 @@ class RSSSuperPipeline:
         """设置GUI更新回调函数"""
         self.gui_update_callback = callback
         
-    def objective(self, trial: optuna.Trial) -> Tuple[float, float, float]:
+    def objective(self, trial: optuna.Trial) -> Tuple[float, ...]:
         """
-        Optuna 三目标函数
-        
+        Optuna 多目标函数（在数据库模式下为四目标，内存模式下为三目标）
+
         Args:
             trial: Optuna 试验对象
-        
+
         Returns:
-            (playability_burden, stability_risk, physiological_realism)
+            如果使用数据库（self.use_database==True）则返回四元组：
+                (playability_burden, stability_risk, physiological_realism, engagement_loss)
+            否则返回三元组：
+                (playability_burden, stability_risk, physiological_realism)
         """
         # ==================== 1. 定义搜索空间 ====================
         # 使用与 rss_optimizer_optuna.py 相同的参数范围（但已优化）
@@ -702,8 +705,13 @@ class RSSSuperPipeline:
             scaled_realism += severe_penalty
             engagement_loss = severe_penalty
 
-        # 返回四目标：playability, stability, realism_loss, engagement_loss
-        return scaled_playability, scaled_stability, scaled_realism, float(engagement_loss)
+        # 返回目标：根据运行模式（数据库 vs 内存）返回 3 或 4 个目标
+        # - 在数据库模式（self.use_database=True）下返回四目标：playability, stability, realism_loss, engagement_loss
+        # - 在内存模式下返回三目标：playability, stability, realism_loss
+        if getattr(self, 'use_database', False):
+            return scaled_playability, scaled_stability, scaled_realism, float(engagement_loss)
+        else:
+            return scaled_playability, scaled_stability, scaled_realism
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
@@ -1327,14 +1335,19 @@ class RSSSuperPipeline:
                     playability_values = [t.values[0] for t in best_trials]
                     stability_values = [t.values[1] for t in best_trials]
                     realism_values = [t.values[2] for t in best_trials]
-                    engagement_values = [t.values[3] for t in best_trials]
+                    # 安全地提取第四目标（可能只有部分试验包含第四目标）
+                    engagement_values = [t.values[3] for t in best_trials if len(t.values) >= 4]
+                    if engagement_values:
+                        engagement_range = f"会话体验损失=[{min(engagement_values):.2f}, {max(engagement_values):.2f}], "
+                    else:
+                        engagement_range = ""
                     elapsed_time = time.time() - start_time
                     print(f"\n进度更新 [试验 {trial.number}/{self.n_trials}]: "
                           f"帕累托解数量={len(best_trials)}, "
                           f"可玩性=[{min(playability_values):.2f}, {max(playability_values):.2f}], "
                           f"稳定性=[{min(stability_values):.2f}, {max(stability_values):.2f}], "
                           f"生理学=[{min(realism_values):.2f}, {max(realism_values):.2f}], "
-                          f"会话体验损失=[{min(engagement_values):.2f}, {max(engagement_values):.2f}], "
+                          f"{engagement_range}"
                           f"BUG数量={len(self.bug_reports)}, "
                           f"耗时={elapsed_time:.2f}秒")
 
@@ -1390,12 +1403,15 @@ class RSSSuperPipeline:
             playability_values = [trial.values[0] for trial in self.best_trials]
             stability_values = [trial.values[1] for trial in self.best_trials]
             realism_values = [trial.values[2] for trial in self.best_trials]
-            engagement_values = [trial.values[3] for trial in self.best_trials]
+            engagement_values = [trial.values[3] for trial in self.best_trials if len(trial.values) >= 4]
             
             print(f"  可玩性负担范围：[{min(playability_values):.2f}, {max(playability_values):.2f}]")
             print(f"  稳定性风险范围：[{min(stability_values):.2f}, {max(stability_values):.2f}]")
             print(f"  生理学合理性范围：[{min(realism_values):.2f}, {max(realism_values):.2f}]")
-            print(f"  会话体验损失范围：[{min(engagement_values):.2f}, {max(engagement_values):.2f}]")
+            if engagement_values:
+                print(f"  会话体验损失范围：[{min(engagement_values):.2f}, {max(engagement_values):.2f}]")
+            else:
+                print("  会话体验损失范围：无（研究中未包含第四目标）")
             
             # 诊断：检查目标值的唯一性
             playability_unique = len(set(playability_values))
@@ -1657,11 +1673,17 @@ class RSSSuperPipeline:
                 }
             }
         
-        # 提取目标值
+        # 提取目标值（注意：有时只有三目标，没有 engagement_loss）
         playability_values = [t.values[0] for t in self.best_trials]
         stability_values = [t.values[1] for t in self.best_trials]
-        engagement_values = [t.values[3] for t in self.best_trials]
-        
+
+        # 判断当前帕累托解是否含有第四个目标（engagement_loss）
+        # 以实际存在的目标为准：有些 trial 可能没有第四个目标
+        num_objectives = max((len(t.values) for t in self.best_trials), default=(len(self.study.directions) if hasattr(self, 'study') else 3))
+        engagement_values = [t.values[3] for t in self.best_trials if len(t.values) >= 4]
+        if not engagement_values:
+            engagement_values = [0.0 for _ in self.best_trials]
+
         # 过滤：只保留满足最低消耗的 trial（Run 60s>=3%, Sprint 30s>=4%）
         valid_trials = [(i, t) for i, t in enumerate(self.best_trials) if self._trial_has_minimum_consumption(t)]
         if not valid_trials:
@@ -1673,7 +1695,10 @@ class RSSSuperPipeline:
             valid_trial_list = [v[1] for v in valid_trials]
             playability_values = [self.best_trials[i].values[0] for i in valid_indices]
             stability_values = [self.best_trials[i].values[1] for i in valid_indices]
-            engagement_values = [self.best_trials[i].values[3] for i in valid_indices]
+            if num_objectives >= 4:
+                engagement_values = [self.best_trials[i].values[3] for i in valid_indices]
+            else:
+                engagement_values = [0.0 for _ in valid_indices]
         # 不跨预设交换参数（避免产生不一致的 param 组合）
         candidates = valid_trial_list if valid_trials else self.best_trials
         cand_indices = valid_indices if valid_trials else list(range(len(self.best_trials)))
@@ -1700,7 +1725,10 @@ class RSSSuperPipeline:
         stability_min, stability_max = min(s_vals), max(s_vals)
         e_vals = [energy_coeff(t) for t in candidates]
         # 某些情况下 engagement 会影响平衡选择：优先选择 engagement 较低的解
-        engagement_vals = [t.values[3] for t in candidates]
+        if num_objectives >= 4:
+            engagement_vals = [t.values[3] for t in candidates]
+        else:
+            engagement_vals = [0.0 for _ in candidates]
         e_min, e_max = min(e_vals), max(e_vals)
         balanced_scores = []
         for trial in candidates:
@@ -1708,7 +1736,10 @@ class RSSSuperPipeline:
             s_norm = (trial.values[1] - stability_min) / (stability_max - stability_min + 1e-10)
             e_norm = (energy_coeff(trial) - e_min) / (e_max - e_min + 1e-10)
             # 平衡解：目标折中，且 energy 居中（偏好中等严格程度）
-            engagement_norm = (trial.values[3] - min(engagement_vals)) / (max(engagement_vals) - min(engagement_vals) + 1e-10)
+            if num_objectives >= 4:
+                engagement_norm = (trial.values[3] - min(engagement_vals)) / (max(engagement_vals) - min(engagement_vals) + 1e-10)
+            else:
+                engagement_norm = 0.0
             # 平衡解：目标折中，偏好 engagement 小（体验损失小）
             balanced_scores.append((p_norm + s_norm) / 2.0 - 0.2 * (0.5 - abs(e_norm - 0.5)) + 0.3 * engagement_norm)
         balanced_in_candidates = np.argmin(balanced_scores)
