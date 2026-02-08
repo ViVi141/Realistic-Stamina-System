@@ -1348,7 +1348,8 @@ modded class SCR_CharacterControllerComponent
             }
 
             // 计算速度惩罚（基于服务器重量）
-            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
+            // serverWeight 为装备/背包重量，不含身体重量
+            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
             float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
             float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
             float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();

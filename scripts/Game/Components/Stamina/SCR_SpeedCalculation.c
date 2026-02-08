@@ -47,7 +47,7 @@ class SpeedCalculator
     
     // 计算最终速度倍数（根据移动类型）
     // @param runBaseSpeedMultiplier Run的基础速度倍数
-    // @param encumbranceSpeedPenalty 负重速度惩罚
+    // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）
     // @param isSprinting 是否正在Sprint
     // @param currentMovementPhase 当前移动阶段 (0=idle, 1=walk, 2=run, 3=sprint)
     // @param isExhausted 是否精疲力尽
@@ -87,24 +87,32 @@ class SpeedCalculator
         float scaledRunSpeed = runBaseSpeedMultiplier * speedScaleFactor;
         
         float finalSpeedMultiplier = 0.0;
+
+        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）
+        float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
+        float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
+        if (isSprinting || currentMovementPhase == 3)
+            encumbrancePenalty = encumbrancePenalty * 1.5;
+        float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
             // Sprint速度 = Run基础倍率 × (1 + 30%)
             float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
             float sprintMultiplier = 1.0 + sprintSpeedBoost; // 1.30
-            finalSpeedMultiplier = (scaledRunSpeed * sprintMultiplier) - (encumbranceSpeedPenalty * 0.15);
+            finalSpeedMultiplier = (scaledRunSpeed * sprintMultiplier) * (1.0 - encumbrancePenalty);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
         }
         else if (currentMovementPhase == 2) // Run
         {
-            finalSpeedMultiplier = scaledRunSpeed - (encumbranceSpeedPenalty * 0.2);
+            finalSpeedMultiplier = scaledRunSpeed * (1.0 - encumbrancePenalty);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
         }
         else if (currentMovementPhase == 1) // Walk
         {
             float walkBaseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
-            finalSpeedMultiplier = walkBaseSpeedMultiplier * 0.8; // 提高Walk基础速度
+            finalSpeedMultiplier = (walkBaseSpeedMultiplier * 0.8) * (1.0 - encumbrancePenalty); // 提高Walk基础速度
             
             // 放宽Walk阶段的速度限制范围
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.9);

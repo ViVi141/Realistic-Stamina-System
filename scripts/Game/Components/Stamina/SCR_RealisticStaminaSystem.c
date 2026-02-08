@@ -309,8 +309,9 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 0.0;
         
-        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
-        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
+        // 计算有效负重（负载 = 装备重量 - 基准装备重量）
+        // GetTotalWeight() 返回的是装备/背包重量，不含身体重量
+        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
 
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
@@ -660,9 +661,9 @@ class RealisticStaminaSpeedSystem
         if (currentWeight < 0.0)
             return 1.0;
         
-        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
+        // 计算有效负重（负载 = 装备重量 - 基准装备重量）
         // 修复：与 SCR_EncumbranceCache 保持一致，30kg 负载时 bodyMassPercent ≈ 0.318
-        float effectiveWeight = Math.Max(currentWeight - CHARACTER_WEIGHT - BASE_WEIGHT, 0.0);
+        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
         
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;

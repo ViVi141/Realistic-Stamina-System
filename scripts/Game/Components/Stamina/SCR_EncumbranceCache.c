@@ -87,9 +87,9 @@ class EncumbranceCache
         // 更新缓存值
         m_fCachedCurrentWeight = currentWeight;
 
-        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
-        // 修复：此前用 (总重 - 1.36) 导致 bodyMassPercent 约 4 倍于正确值
-        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
+        // 计算有效负重（负载 = 载具/装备重量 - 基准装备重量）
+        // GetTotalWeightOfAllStorages() 返回的是装备/背包重量，不含身体重量
+        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
         // 计算速度惩罚（基于体重百分比，使用幂函数）
