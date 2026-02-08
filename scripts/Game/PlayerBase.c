@@ -1275,41 +1275,104 @@ modded class SCR_CharacterControllerComponent
     {
         if (Replication.IsServer())
         {
-            // 服务器发送配置给客户端
+            // 服务器发送完整配置给请求的客户端（避免客户端只收到预设名称而丢失关键字段）
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
-                // 获取当前选中的预设
-                string selectedPreset = settings.m_sSelectedPreset;
-                
-                // 发送RPC给请求的客户端
-                RPC_ClientReceiveConfig(selectedPreset);
+                RPC_ClientReceiveConfig(
+                    settings.m_sConfigVersion,
+                    settings.m_sSelectedPreset,
+                    settings.m_bDebugLogEnabled,
+                    settings.m_bHintDisplayEnabled,
+                    settings.m_fStaminaDrainMultiplier,
+                    settings.m_fStaminaRecoveryMultiplier,
+                    settings.m_iTerrainUpdateInterval,
+                    settings.m_iEnvironmentUpdateInterval,
+                    false // forceApply = false when client requests
+                );
             }
         }
     }
     
-    // RPC: 服务器发送配置给客户端
+    // 本地版本比较工具（用于决定是否应用服务器配置）
+    protected int CompareVersionsLocal(string v1, string v2)
+    {
+        if (!v1 || v1 == "") v1 = "0.0.0";
+        if (!v2 || v2 == "") v2 = "0.0.0";
+
+        array<string> p1 = new array<string>();
+        array<string> p2 = new array<string>();
+        v1.Split(".", p1, false);
+        v2.Split(".", p2, false);
+
+        int num1 = 0;
+        int num2 = 0;
+        int mul = 10000;
+        for (int i = 0; i < 3; i++)
+        {
+            if (i < p1.Count()) num1 += p1[i].ToInt() * mul;
+            if (i < p2.Count()) num2 += p2[i].ToInt() * mul;
+            mul = mul / 100;
+        }
+
+        if (num1 < num2) return -1;
+        if (num1 > num2) return 1;
+        return 0;
+    }
+
+    // RPC: 服务器发送完整配置给客户端（目标客户端）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ClientReceiveConfig(string serverPreset)
+    void RPC_ClientReceiveConfig(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled,
+                                 float staminaDrainMultiplier, float staminaRecoveryMultiplier,
+                                 int terrainUpdateInterval, int environmentUpdateInterval, bool forceApply)
     {
         if (!Replication.IsServer())
         {
-            // 客户端应用服务器配置
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
-                // 强制使用服务器的预设
-                settings.m_sSelectedPreset = serverPreset;
-                
-                // 重新初始化预设，使用服务器的值
+                // 决定是否应用：如果本地已被服务器配置应用且服务器配置并非强制下发，则仅在服务器版本更高时才覆盖
+                string localVersion = settings.m_sConfigVersion;
+                if (!localVersion || localVersion == "") localVersion = "0.0.0";
+
+                if (!forceApply && SCR_RSS_ConfigManager.IsServerConfigApplied())
+                {
+                    int cmp = CompareVersionsLocal(configVersion, localVersion);
+                    if (cmp <= 0)
+                    {
+                        PrintFormat("[RSS] Ignoring server config v%1 because local server config is already applied and is newer or equal (local=%2)", configVersion, localVersion);
+                        return;
+                    }
+                }
+
+                // 应用收到的关键配置
+                settings.m_sConfigVersion = configVersion;
+                settings.m_sSelectedPreset = selectedPreset;
+                settings.m_bDebugLogEnabled = debugLogEnabled;
+                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
+                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
+                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
+                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
+
+                // 重新初始化预设并保存（使用系统预设刷新，确保一致性）
                 settings.InitPresets(true);
-                
-                // 保存配置
                 SCR_RSS_ConfigManager.Save();
-                
-                // 标记服务器配置已应用
                 SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+
+                PrintFormat("[RSS] Applied server config: preset=%1, version=%2", selectedPreset, configVersion);
             }
+        }
+    }
+
+    // RPC: 清除客户端上记录的“服务器配置已应用”标志（Owner-targeted）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ClearServerConfigApplied()
+    {
+        if (!Replication.IsServer())
+        {
+            SCR_RSS_ConfigManager.SetServerConfigApplied(false);
+            Print("[RSS] Local server-config-applied flag cleared");
         }
     }
 
@@ -1332,8 +1395,28 @@ modded class SCR_CharacterControllerComponent
     {
         if (Replication.IsServer())
         {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+            // 速率限制：拒绝过于频繁的客户端上报（防止恶意刷频）
+            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime))
+            {
+                PrintFormat("[RealisticSystem] Ignored too-frequent stamina report (time=%1)", currentTime);
+                return;
+            }
+
             // 服务器端基础校验
             float clampedStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
+
+            // 记录并检测异常跳变
+            if (m_pNetworkSyncManager)
+            {
+                float lastReported = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
+                if (Math.AbsFloat(clampedStamina - lastReported) > 0.5)
+                    PrintFormat("[RealisticSystem] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
+
+                // 更新服务器端记录（用于后续检测和统计）
+                m_pNetworkSyncManager.UpdateReportedState(clampedStamina, weight);
+            }
 
             // 使用服务器端的权威负重数据（优先）
             float serverWeight = 0.0;
@@ -1388,9 +1471,27 @@ modded class SCR_CharacterControllerComponent
 
             if (m_pNetworkSyncManager)
             {
-                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                // 将服务器验证结果发送回客户端（触发客户端平滑）
-                RPC_ServerSyncSpeedMultiplier(validated);
+                float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+                // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽
+                if (!m_pNetworkSyncManager.HasServerValidation())
+                {
+                    m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                    RPC_ServerSyncSpeedMultiplier(validated);
+                }
+                else
+                {
+                    float speedDiff = Math.AbsFloat(validated - m_pNetworkSyncManager.GetServerValidatedSpeedMultiplier());
+                    if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
+                    {
+                        m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                        RPC_ServerSyncSpeedMultiplier(validated);
+                    }
+                    else
+                    {
+                        // 未达到触发阈值：暂不下发（保持现有客户端平滑逻辑）
+                    }
+                }
             }
         }
     }
