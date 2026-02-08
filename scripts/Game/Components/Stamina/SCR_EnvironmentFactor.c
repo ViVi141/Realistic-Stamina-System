@@ -155,7 +155,7 @@ class EnvironmentFactor
         ApplySettings();
 
         // 调试：打印天气管理器的重要状态，便于排查温度是否被覆盖为常数（例如10°C）
-        if (m_pCachedWeatherManager)
+        if (m_pCachedWeatherManager && Replication.IsServer() && StaminaConstants.IsDebugEnabled())
         {
             bool overrideTemp = m_pCachedWeatherManager.GetOverrideTemperature();
             float tempMin = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
