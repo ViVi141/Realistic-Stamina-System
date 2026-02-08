@@ -230,20 +230,26 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
-                string selectedPreset = settings.m_sSelectedPreset;
-                // 发送RPC给所有客户端
-                RPC_BroadcastConfigChange(selectedPreset);
-                
-                // 同时发送关键配置数据，确保客户端配置完全同步
-                RPC_SendConfigData(
+                array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+                array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+                array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+                array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+                array<float> floatSettings = new array<float>();
+                array<int> intSettings = new array<int>();
+                array<bool> boolSettings = new array<bool>();
+                BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+                RPC_SendFullConfigBroadcast(
                     settings.m_sConfigVersion,
                     settings.m_sSelectedPreset,
-                    settings.m_bDebugLogEnabled,
-                    settings.m_bHintDisplayEnabled,
-                    settings.m_fStaminaDrainMultiplier,
-                    settings.m_fStaminaRecoveryMultiplier,
-                    settings.m_iTerrainUpdateInterval,
-                    settings.m_iEnvironmentUpdateInterval
+                    eliteParams,
+                    standardParams,
+                    tacticalParams,
+                    customParams,
+                    floatSettings,
+                    intSettings,
+                    boolSettings
                 );
             }
         }
@@ -275,6 +281,49 @@ modded class SCR_CharacterControllerComponent
     {
         return StaminaConstants.IsDebugEnabled();
     }
+
+    protected array<float> BuildPresetArray(SCR_RSS_Params p)
+    {
+        array<float> values = new array<float>();
+        SCR_RSS_Settings.WriteParamsToArray(p, values);
+        return values;
+    }
+
+    protected void BuildSettingsArrays(SCR_RSS_Settings s, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        SCR_RSS_Settings.WriteSettingsToArrays(s, floatSettings, intSettings, boolSettings);
+    }
+
+    protected void ApplyFullConfig(string configVersion, string selectedPreset,
+        array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+        array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        if (Replication.IsServer())
+            return;
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            settings = new SCR_RSS_Settings();
+
+        if (!settings.m_EliteStandard) settings.m_EliteStandard = new SCR_RSS_Params();
+        if (!settings.m_StandardMilsim) settings.m_StandardMilsim = new SCR_RSS_Params();
+        if (!settings.m_TacticalAction) settings.m_TacticalAction = new SCR_RSS_Params();
+        if (!settings.m_Custom) settings.m_Custom = new SCR_RSS_Params();
+
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_EliteStandard, eliteParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_StandardMilsim, standardParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_TacticalAction, tacticalParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_Custom, customParams);
+
+        SCR_RSS_Settings.ApplySettingsFromArrays(settings, floatSettings, intSettings, boolSettings);
+
+        settings.m_sConfigVersion = configVersion;
+        settings.m_sSelectedPreset = selectedPreset;
+
+        SCR_RSS_ConfigManager.Save();
+        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
+    }
     
     // 处理客户端配置请求
     void HandleClientConfigRequest(IEntity clientEntity)
@@ -286,18 +335,28 @@ modded class SCR_CharacterControllerComponent
         if (settings)
         {
             PrintFormat("[RSS] Sync config to client (listener): %1", GetPlayerLabel(clientEntity));
-            // 发送关键配置数据
-            RPC_SendConfigData(
+            array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+            array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+            array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+            array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+            array<float> floatSettings = new array<float>();
+            array<int> intSettings = new array<int>();
+            array<bool> boolSettings = new array<bool>();
+            BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+            RPC_SendFullConfigOwner(
                 settings.m_sConfigVersion,
                 settings.m_sSelectedPreset,
-                settings.m_bDebugLogEnabled,
-                settings.m_bHintDisplayEnabled,
-                settings.m_fStaminaDrainMultiplier,
-                settings.m_fStaminaRecoveryMultiplier,
-                settings.m_iTerrainUpdateInterval,
-                settings.m_iEnvironmentUpdateInterval
+                eliteParams,
+                standardParams,
+                tacticalParams,
+                customParams,
+                floatSettings,
+                intSettings,
+                boolSettings
             );
-            Print("[RSS] 已发送配置数据给客户端");
+            Print("[RSS] 已发送完整配置给客户端");
         }
     }
     
@@ -350,6 +409,24 @@ modded class SCR_CharacterControllerComponent
                 Print("[RSS] 服务器配置已同步: " + selectedPreset);
             }
         }
+    }
+
+    // RPC: 服务器发送完整配置给客户端（目标客户端）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_SendFullConfigOwner(string configVersion, string selectedPreset,
+                                 array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                 array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
+    }
+
+    // RPC: 服务器广播完整配置给所有客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_SendFullConfigBroadcast(string configVersion, string selectedPreset,
+                                     array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                     array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
     }
     
     // 网络连接监控
@@ -1321,26 +1398,37 @@ modded class SCR_CharacterControllerComponent
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
     void RPC_ServerRequestConfig()
     {
-        if (Replication.IsServer())
-        {
-            // 服务器发送完整配置给请求的客户端（避免客户端只收到预设名称而丢失关键字段）
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
-                RPC_ClientReceiveConfig(
-                    settings.m_sConfigVersion,
-                    settings.m_sSelectedPreset,
-                    settings.m_bDebugLogEnabled,
-                    settings.m_bHintDisplayEnabled,
-                    settings.m_fStaminaDrainMultiplier,
-                    settings.m_fStaminaRecoveryMultiplier,
-                    settings.m_iTerrainUpdateInterval,
-                    settings.m_iEnvironmentUpdateInterval,
-                    false // forceApply = false when client requests
-                );
-            }
-        }
+        if (!Replication.IsServer())
+            return;
+
+        // 服务器发送完整配置给请求的客户端（避免客户端只收到预设名称而丢失关键字段）
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
+
+        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+        array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+        array<float> floatSettings = new array<float>();
+        array<int> intSettings = new array<int>();
+        array<bool> boolSettings = new array<bool>();
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+        RPC_SendFullConfigOwner(
+            settings.m_sConfigVersion,
+            settings.m_sSelectedPreset,
+            eliteParams,
+            standardParams,
+            tacticalParams,
+            customParams,
+            floatSettings,
+            intSettings,
+            boolSettings
+        );
     }
     
     // 本地版本比较工具（用于决定是否应用服务器配置）
