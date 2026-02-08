@@ -247,6 +247,28 @@ modded class SCR_CharacterControllerComponent
             }
         }
     }
+
+    // 获取用于日志的玩家标识（名称/ID）
+    protected string GetPlayerLabel(IEntity entity)
+    {
+        if (!entity)
+            return "unknown";
+
+        string entityName = entity.GetName();
+        PlayerManager playerManager = GetGame().GetPlayerManager();
+        if (!playerManager)
+            return entityName;
+
+        int playerId = playerManager.GetPlayerIdFromControlledEntity(entity);
+        if (playerId <= 0)
+            return entityName;
+
+        string playerName = playerManager.GetPlayerName(playerId);
+        if (!playerName || playerName == "")
+            playerName = "unknown";
+
+        return playerName + " (id=" + playerId.ToString() + ")";
+    }
     
     // 处理客户端配置请求
     void HandleClientConfigRequest(IEntity clientEntity)
@@ -257,6 +279,7 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
+            PrintFormat("[RSS] Sync config to client (listener): %1", GetPlayerLabel(clientEntity));
             // 发送关键配置数据
             RPC_SendConfigData(
                 settings.m_sConfigVersion,
@@ -1290,6 +1313,7 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
+                PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
                 RPC_ClientReceiveConfig(
                     settings.m_sConfigVersion,
                     settings.m_sSelectedPreset,
