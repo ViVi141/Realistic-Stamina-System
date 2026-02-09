@@ -18,6 +18,15 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastSpeedMultiplier = 1.0;
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
     
+    // 网络同步相关
+    protected ref NetworkSyncManager m_pNetworkSyncManager;
+    protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
+    protected float m_fLastReconnectTime = -1.0; // 上次重连时间
+    protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
+    protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
+    protected bool m_bIsConnected = false; // 网络连接状态
+    protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
+    
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
     protected ref CollapseTransition m_pCollapseTransition;
@@ -89,6 +98,8 @@ modded class SCR_CharacterControllerComponent
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
+            // 服务器注册为配置变更监听器
+            SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
         }
         
         // 获取体力组件引用
@@ -141,7 +152,12 @@ modded class SCR_CharacterControllerComponent
         {
             World world = GetGame().GetWorld();
             if (world)
+            {
                 m_pEnvironmentFactor.Initialize(world, owner);
+                // 强制使用引擎实时天气（真实天气），避免使用虚拟昼夜模型（但禁用引擎温度，使用模组内计算）
+                m_pEnvironmentFactor.SetUseEngineWeather(true);
+                m_pEnvironmentFactor.SetUseEngineTemperature(false); // 使用模组内温度计算，每 5 秒步进
+            }
         }
         
         // 初始化疲劳积累系统模块
@@ -178,6 +194,11 @@ modded class SCR_CharacterControllerComponent
         // 初始化EPOC状态管理
         m_pEpocState = new EpocState();
         
+        // 初始化网络同步管理器
+        m_pNetworkSyncManager = new NetworkSyncManager();
+        if (m_pNetworkSyncManager)
+            m_pNetworkSyncManager.Initialize();
+        
         // 缓存组件，避免在每0.2s的更新循环中重复查找
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
@@ -188,7 +209,261 @@ modded class SCR_CharacterControllerComponent
         
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
+        
+        // 客户端请求服务器配置
+        if (!Replication.IsServer())
+        {
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, 1000, false);
+            // 初始化网络连接状态
+            m_bIsConnected = true;
+            // 开始网络连接监控
+            GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
+        }
     }
+    
+    // 处理配置变更通知
+    void OnConfigChanged()
+    {
+        if (Replication.IsServer())
+        {
+            // 服务器配置变更，通知所有客户端
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+                array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+                array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+                array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+                array<float> floatSettings = new array<float>();
+                array<int> intSettings = new array<int>();
+                array<bool> boolSettings = new array<bool>();
+                BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+                RPC_SendFullConfigBroadcast(
+                    settings.m_sConfigVersion,
+                    settings.m_sSelectedPreset,
+                    eliteParams,
+                    standardParams,
+                    tacticalParams,
+                    customParams,
+                    floatSettings,
+                    intSettings,
+                    boolSettings
+                );
+            }
+        }
+    }
+
+    // 获取用于日志的玩家标识（名称/ID）
+    protected string GetPlayerLabel(IEntity entity)
+    {
+        if (!entity)
+            return "unknown";
+
+        string entityName = entity.GetName();
+        PlayerManager playerManager = GetGame().GetPlayerManager();
+        if (!playerManager)
+            return entityName;
+
+        int playerId = playerManager.GetPlayerIdFromControlledEntity(entity);
+        if (playerId <= 0)
+            return entityName;
+
+        string playerName = playerManager.GetPlayerName(playerId);
+        if (!playerName || playerName == "")
+            playerName = "unknown";
+
+        return playerName + " (id=" + playerId.ToString() + ")";
+    }
+
+    protected bool IsRssDebugEnabled()
+    {
+        return StaminaConstants.IsDebugEnabled();
+    }
+
+    protected array<float> BuildPresetArray(SCR_RSS_Params p)
+    {
+        array<float> values = new array<float>();
+        SCR_RSS_Settings.WriteParamsToArray(p, values);
+        return values;
+    }
+
+    protected void BuildSettingsArrays(SCR_RSS_Settings s, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        SCR_RSS_Settings.WriteSettingsToArrays(s, floatSettings, intSettings, boolSettings);
+    }
+
+    protected void ApplyFullConfig(string configVersion, string selectedPreset,
+        array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+        array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        if (Replication.IsServer())
+            return;
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            settings = new SCR_RSS_Settings();
+
+        if (!settings.m_EliteStandard) settings.m_EliteStandard = new SCR_RSS_Params();
+        if (!settings.m_StandardMilsim) settings.m_StandardMilsim = new SCR_RSS_Params();
+        if (!settings.m_TacticalAction) settings.m_TacticalAction = new SCR_RSS_Params();
+        if (!settings.m_Custom) settings.m_Custom = new SCR_RSS_Params();
+
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_EliteStandard, eliteParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_StandardMilsim, standardParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_TacticalAction, tacticalParams);
+        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_Custom, customParams);
+
+        SCR_RSS_Settings.ApplySettingsFromArrays(settings, floatSettings, intSettings, boolSettings);
+
+        settings.m_sConfigVersion = configVersion;
+        settings.m_sSelectedPreset = selectedPreset;
+
+        SCR_RSS_ConfigManager.Save();
+        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
+    }
+    
+    // 处理客户端配置请求
+    void HandleClientConfigRequest(IEntity clientEntity)
+    {
+        if (!Replication.IsServer()) return;
+        
+        // 服务器发送完整配置给请求的客户端
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            PrintFormat("[RSS] Sync config to client (listener): %1", GetPlayerLabel(clientEntity));
+            array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+            array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+            array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+            array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+            array<float> floatSettings = new array<float>();
+            array<int> intSettings = new array<int>();
+            array<bool> boolSettings = new array<bool>();
+            BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+            RPC_SendFullConfigOwner(
+                settings.m_sConfigVersion,
+                settings.m_sSelectedPreset,
+                eliteParams,
+                standardParams,
+                tacticalParams,
+                customParams,
+                floatSettings,
+                intSettings,
+                boolSettings
+            );
+            Print("[RSS] 已发送完整配置给客户端");
+        }
+    }
+    
+    // RPC: 服务器广播配置变更给所有客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_BroadcastConfigChange(string newPreset)
+    {
+        if (!Replication.IsServer())
+        {
+            // 客户端应用新配置
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                settings.m_sSelectedPreset = newPreset;
+                settings.InitPresets(true);
+                SCR_RSS_ConfigManager.Save();
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                Print("[RSS] 服务器配置已变更: " + newPreset);
+            }
+        }
+    }
+    
+    // RPC: 服务器发送关键配置给客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_SendConfigData(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled, 
+                           float staminaDrainMultiplier, float staminaRecoveryMultiplier, 
+                           int terrainUpdateInterval, int environmentUpdateInterval)
+    {
+        if (!Replication.IsServer())
+        {
+            // 客户端应用配置
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 复制关键配置
+                settings.m_sConfigVersion = configVersion;
+                settings.m_sSelectedPreset = selectedPreset;
+                settings.m_bDebugLogEnabled = debugLogEnabled;
+                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
+                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
+                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
+                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
+                
+                // 重新初始化预设
+                settings.InitPresets(true);
+                
+                SCR_RSS_ConfigManager.Save();
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                Print("[RSS] 服务器配置已同步: " + selectedPreset);
+            }
+        }
+    }
+
+    // RPC: 服务器发送完整配置给客户端（目标客户端）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_SendFullConfigOwner(string configVersion, string selectedPreset,
+                                 array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                 array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
+    }
+
+    // RPC: 服务器广播完整配置给所有客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
+    void RPC_SendFullConfigBroadcast(string configVersion, string selectedPreset,
+                                     array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                     array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
+    }
+    
+    // 网络连接监控
+    void MonitorNetworkConnection()
+    {
+        if (Replication.IsServer()) return;
+        
+        // 检测网络连接状态
+        // 在EnforceScript中，使用Replication.IsServer()来间接判断连接状态
+        // 客户端如果能执行到这里，说明已经连接到服务器
+        bool isConnected = true;
+        
+        // 检测重连
+        if (!m_bIsConnected && isConnected)
+        {
+            // 网络重连
+            m_bIsConnected = true;
+            m_fLastReconnectTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            Print("[RSS] 网络已重连，准备同步服务器配置");
+            
+            // 延迟同步配置，确保网络稳定
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, RECONNECT_SYNC_DELAY * 1000, false);
+        }
+        else if (m_bIsConnected && !isConnected)
+        {
+            // 网络断开
+            m_bIsConnected = false;
+            Print("[RSS] 网络连接已断开");
+        }
+        else
+        {
+            // 网络状态未变化
+            m_bIsConnected = isConnected;
+        }
+    }
+    
+
     
     
     // 启动系统
@@ -236,7 +511,8 @@ modded class SCR_CharacterControllerComponent
                 inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
                 
                 // 调试输出
-                Print("[RealisticSystem] 跳跃动作监听器已添加 / Jump Action Listener Added");
+                if (IsRssDebugEnabled())
+                    Print("[RealisticSystem] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
             
             // 初始化体力 HUD 显示（延迟初始化，确保 HUD 系统已加载）
@@ -281,7 +557,8 @@ modded class SCR_CharacterControllerComponent
         if (!isInVehicle && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
-            Print("[RealisticSystem] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
+            if (IsRssDebugEnabled())
+                Print("[RealisticSystem] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
         }
     }
     
@@ -303,7 +580,8 @@ modded class SCR_CharacterControllerComponent
         if (!isInVehicle && am.GetActionTriggered("Jump") && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
-            Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
+            if (IsRssDebugEnabled())
+                Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
         }
     }
     
@@ -339,7 +617,7 @@ modded class SCR_CharacterControllerComponent
             if (vehicleDebugCounter >= 25) // 每5秒输出一次
             {
                 vehicleDebugCounter = 0;
-                if (m_pStaminaComponent)
+                if (m_pStaminaComponent && IsRssDebugEnabled())
                 {
                     float currentStamina = m_pStaminaComponent.GetTargetStamina();
                     PrintFormat("[RealisticSystem] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%", 
@@ -376,7 +654,7 @@ modded class SCR_CharacterControllerComponent
                     m_pStaminaComponent.SetTargetStamina(newStamina);
                     
                     // 调试信息：载具中体力恢复
-                    if (vehicleDebugCounter == 0)
+                    if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
                     {
                         PrintFormat("[RealisticSystem] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s)",
                             Math.Round(currentStamina * 100.0).ToString(),
@@ -415,7 +693,7 @@ modded class SCR_CharacterControllerComponent
             OverrideMaxSpeed(limpSpeedMultiplier);
             
             // 调试信息：精疲力尽状态
-            if (!lastExhaustedState)
+            if (!lastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RealisticSystem] 精疲力尽 / Exhausted: 速度限制为跛行速度 | Speed Limited to Limp Speed");
                 lastExhaustedState = true;
@@ -426,7 +704,7 @@ modded class SCR_CharacterControllerComponent
         }
         else
         {
-            if (lastExhaustedState)
+            if (lastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RealisticSystem] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
                 lastExhaustedState = false;
@@ -486,7 +764,7 @@ modded class SCR_CharacterControllerComponent
         // 调试信息：速度计算（每5秒输出一次）
         static int speedDebugCounter = 0;
         speedDebugCounter++;
-        if (speedDebugCounter >= 25) // 每5秒输出一次
+        if (speedDebugCounter >= 25 && IsRssDebugEnabled()) // 每5秒输出一次
         {
             speedDebugCounter = 0;
             PrintFormat("[RealisticSystem] 速度计算 / Speed Calculation: 当前速度=%1 m/s | Current Speed=%1 m/s",
@@ -504,6 +782,33 @@ modded class SCR_CharacterControllerComponent
                 owner.FindComponent(SCR_CharacterInventoryStorageComponent));
             if (inventoryComponent)
                 currentWeight = inventoryComponent.GetTotalWeight();
+        }
+
+        // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
+        if (m_pNetworkSyncManager)
+        {
+            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+            // 周期性上报：客户端发给服务器（每 NETWORK_SYNC_INTERVAL 秒一次）
+            if (m_pNetworkSyncManager.ShouldSync(currentWorldTime))
+            {
+                if (!Replication.IsServer())
+                {
+                    RPC_ClientReportStamina(staminaPercent, currentWeight);
+                    m_pNetworkSyncManager.UpdateReportedState(staminaPercent, currentWeight);
+                }
+            }
+
+            // 应用服务器验证/平滑修正（如果服务器已有验证值则使用，否则使用本地预测）
+            float smoothed = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentWorldTime);
+            if (m_pNetworkSyncManager.HasServerValidation())
+            {
+                OverrideMaxSpeed(smoothed);
+            }
+            else
+            {
+                OverrideMaxSpeed(finalSpeedMultiplier);
+            }
         }
         
         // ==================== 检测游泳状态（游泳体力管理）====================
@@ -565,9 +870,14 @@ modded class SCR_CharacterControllerComponent
         // 模块化：使用 SwimmingStateManager 计算总湿重
         float totalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(m_fCurrentWetWeight, rainWeight);
         float currentWeightWithWet = currentWeight + totalWetWeight;
-        
+
+        // 修复：计算包含身体重量的总重并传入消耗模块（Pandolf/Givoni 期望的输入）
+        // currentWeight/currentWeightWithWet 原本为装备/背包重量（不含身体质量）
+        float totalWeight = currentWeight + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+身体
+        float totalWeightWithWetAndBody = currentWeightWithWet + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+湿重+身体
+
         bool useSwimmingModel = isSwimming;
-        
+
         // ==================== 检测跳跃和翻越动作（模块化：使用 JumpVaultDetector）====================
         // 模块化拆分：使用独立的 JumpVaultDetector 类处理跳跃和翻越检测逻辑
         if (m_pStaminaComponent && m_pJumpVaultDetector)
@@ -597,7 +907,7 @@ modded class SCR_CharacterControllerComponent
                 signalsManager, 
                 exhaustionSignalID
             );
-            if (jumpCost > 0.0)
+            if (jumpCost > 0.0 && IsRssDebugEnabled())
             {
                 PrintFormat("[RealisticSystem] 跳跃消耗 / Jump Cost: -%1%% | -%1%%", 
                     Math.Round(jumpCost * 100.0 * 10.0) / 10.0);
@@ -618,7 +928,7 @@ modded class SCR_CharacterControllerComponent
                 vaultEncumbranceCacheValid, 
                 vaultEncumbranceCurrentWeight
             );
-            if (vaultCost > 0.0)
+            if (vaultCost > 0.0 && IsRssDebugEnabled())
             {
                 PrintFormat("[RealisticSystem] 翻越消耗 / Vault Cost: -%1%% | -%1%%", 
                     Math.Round(vaultCost * 100.0 * 10.0) / 10.0);
@@ -724,6 +1034,10 @@ modded class SCR_CharacterControllerComponent
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
         
+        // 获取当前移动状态（用于计算冲刺倍数）
+        bool isSprinting = IsSprinting();
+        int currentMovementPhase = GetCurrentMovementPhase();
+
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
         // 修复：传递环境因子参数，使基础消耗率计算支持环境因子
@@ -731,14 +1045,16 @@ modded class SCR_CharacterControllerComponent
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
-            currentWeight,
-            currentWeightWithWet,
+            totalWeight,
+            totalWeightWithWetAndBody,
             gradePercent,
             terrainFactor,
             currentVelocity,
             m_bSwimmingVelocityDebugPrinted,
             owner,
-            m_pEnvironmentFactor); // v2.14.0修复：传递环境因子
+            m_pEnvironmentFactor, // v2.14.0修复：传递环境因子
+            isSprinting,
+            currentMovementPhase);
         float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         
@@ -764,9 +1080,7 @@ modded class SCR_CharacterControllerComponent
         if (useSwimmingModel)
             encumbranceStaminaDrainMultiplier = 1.0;
         
-        // 获取当前移动状态（用于计算冲刺倍数）
-        bool isSprinting = IsSprinting();
-        int currentMovementPhase = GetCurrentMovementPhase();
+        // 获取当前移动状态（已在上方获取）
         
         float sprintMultiplier = 1.0;
         if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
@@ -775,7 +1089,7 @@ modded class SCR_CharacterControllerComponent
         // 调试信息：体力消耗计算参数（每5秒输出一次）
         static int drainDebugCounter = 0;
         drainDebugCounter++;
-        if (drainDebugCounter >= 25) // 每5秒输出一次
+        if (drainDebugCounter >= 25 && IsRssDebugEnabled()) // 每5秒输出一次
         {
             drainDebugCounter = 0;
             string movementTypeDebug = "";
@@ -783,17 +1097,17 @@ modded class SCR_CharacterControllerComponent
                 movementTypeDebug = "游泳 / Swimming";
             else
                 movementTypeDebug = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 坡度=%4%% | 地形系数=%5 | 姿态=%6x | 热应激=%7x | 效率=%8 | 疲劳=%9 | Sprint倍数=%10x",
+            // 使用独立占位符打印负重与总重，避免字符串拼接导致类型不兼容
+            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 总重=%4kg | 坡度=%5%% | 地形系数=%6 | 姿态=%7x | 热应激=%8x | 效率=%9",
                 movementTypeDebug,
                 Math.Round(currentSpeed * 10.0) / 10.0,
                 Math.Round(currentWeight * 10.0) / 10.0,
+                Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0,
                 Math.Round(gradePercentForConsumption * 10.0),
                 Math.Round(terrainFactorForConsumption * 100.0) / 100.0,
                 Math.Round(postureMultiplier * 100.0) / 100.0,
                 Math.Round(heatStressMultiplier * 100.0) / 100.0,
-                Math.Round(totalEfficiencyFactor * 100.0) / 100.0,
-                Math.Round(fatigueFactor * 100.0) / 100.0,
-                Math.Round(sprintMultiplier * 100.0) / 100.0);
+                Math.Round(totalEfficiencyFactor * 100.0) / 100.0);
         }
         
         float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
@@ -822,14 +1136,16 @@ modded class SCR_CharacterControllerComponent
                 m_pFatigueSystem,
                 baseDrainRateByVelocityForModule,
                 m_pEnvironmentFactor, // v2.14.0：传递环境因子模块
-                owner); // v2.15.0：传递角色实体，用于手持物品检测
+                owner, // v2.15.0：传递角色实体，用于手持物品检测
+                isSprinting,
+                currentMovementPhase);
             
             // 应用热应激倍数（影响体力消耗）
             float drainRateBeforeHeat = totalDrainRate;
             totalDrainRate = totalDrainRate * heatStressMultiplier;
             
             // 调试信息：热应激影响
-            if (drainDebugCounter == 0 && heatStressMultiplier > 1.01)
+            if (drainDebugCounter == 0 && heatStressMultiplier > 1.01 && IsRssDebugEnabled())
             {
                 PrintFormat("[RealisticSystem] 热应激影响 / Heat Stress Effect: 消耗率 %1 → %2 (倍数: %3x) | Drain Rate %1 → %2 (Multiplier: %3x)",
                     Math.Round(drainRateBeforeHeat * 1000000.0).ToString(),
@@ -839,7 +1155,7 @@ modded class SCR_CharacterControllerComponent
         }
         
         // 调试信息：最终体力消耗率
-        if (drainDebugCounter == 0)
+        if (drainDebugCounter == 0 && IsRssDebugEnabled())
         {
             PrintFormat("[RealisticSystem] 最终体力消耗率 / Final Stamina Drain Rate: %1/0.2s | %1/0.2s",
                 Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
@@ -889,7 +1205,7 @@ modded class SCR_CharacterControllerComponent
             // 注意：由于监控频率很高，这里可能不需要立即验证
             // 但保留此检查作为双重保险
             float verifyStamina = m_pStaminaComponent.GetStamina();
-            if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005) // 如果偏差超过0.5%（降低阈值，更敏感）
+            if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005 && IsRssDebugEnabled()) // 如果偏差超过0.5%（降低阈值，更敏感）
             {
                 // 检测到原生系统干扰，强制纠正
                 PrintFormat("[RealisticSystem] 检测到原生系统干扰 / Native System Interference Detected: 目标=%1%% | 实际=%2%% | 偏差=%3%% | Target=%1%% | Actual=%2%% | Diff=%3%%",
@@ -916,13 +1232,17 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
         
+        // ==================== 服务器配置同步 ====================
+        // 定期同步服务器配置
+        UpdateServerConfigSync();
+        
         // ==================== 调试输出（模块化）====================
         // 每5秒输出一次完整调试信息，避免过多日志，仅在客户端
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             static int debugCounter = 0;
             debugCounter++;
-            if (debugCounter >= 25) // 200ms * 25 = 5秒
+            if (debugCounter >= 25 && IsRssDebugEnabled()) // 200ms * 25 = 5秒
             {
                 debugCounter = 0;
                 
@@ -1058,4 +1378,272 @@ modded class SCR_CharacterControllerComponent
             m_pEncumbranceCache.UpdateCache();
         }
     }
+    
+    // 客户端请求服务器配置
+    void RequestServerConfig()
+    {
+        if (!Replication.IsServer())
+        {
+            if (!m_bLoggedInitialConfigRequest)
+            {
+                Print("[RSS] Client requesting server config");
+                m_bLoggedInitialConfigRequest = true;
+            }
+            // 发送RPC请求服务器配置
+            RPC_ServerRequestConfig();
+        }
+    }
+    
+    // RPC: 客户端请求服务器配置
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ServerRequestConfig()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        // 服务器发送完整配置给请求的客户端（避免客户端只收到预设名称而丢失关键字段）
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
+
+        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+        array<float> customParams = BuildPresetArray(settings.m_Custom);
+
+        array<float> floatSettings = new array<float>();
+        array<int> intSettings = new array<int>();
+        array<bool> boolSettings = new array<bool>();
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+        RPC_SendFullConfigOwner(
+            settings.m_sConfigVersion,
+            settings.m_sSelectedPreset,
+            eliteParams,
+            standardParams,
+            tacticalParams,
+            customParams,
+            floatSettings,
+            intSettings,
+            boolSettings
+        );
+    }
+    
+    // 本地版本比较工具（用于决定是否应用服务器配置）
+    protected int CompareVersionsLocal(string v1, string v2)
+    {
+        if (!v1 || v1 == "") v1 = "0.0.0";
+        if (!v2 || v2 == "") v2 = "0.0.0";
+
+        array<string> p1 = new array<string>();
+        array<string> p2 = new array<string>();
+        v1.Split(".", p1, false);
+        v2.Split(".", p2, false);
+
+        int num1 = 0;
+        int num2 = 0;
+        int mul = 10000;
+        for (int i = 0; i < 3; i++)
+        {
+            if (i < p1.Count()) num1 += p1[i].ToInt() * mul;
+            if (i < p2.Count()) num2 += p2[i].ToInt() * mul;
+            mul = mul / 100;
+        }
+
+        if (num1 < num2) return -1;
+        if (num1 > num2) return 1;
+        return 0;
+    }
+
+    // RPC: 服务器发送完整配置给客户端（目标客户端）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ClientReceiveConfig(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled,
+                                 float staminaDrainMultiplier, float staminaRecoveryMultiplier,
+                                 int terrainUpdateInterval, int environmentUpdateInterval, bool forceApply)
+    {
+        if (!Replication.IsServer())
+        {
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 决定是否应用：如果本地已被服务器配置应用且服务器配置并非强制下发，则仅在服务器版本更高时才覆盖
+                string localVersion = settings.m_sConfigVersion;
+                if (!localVersion || localVersion == "") localVersion = "0.0.0";
+
+                if (!forceApply && SCR_RSS_ConfigManager.IsServerConfigApplied())
+                {
+                    int cmp = CompareVersionsLocal(configVersion, localVersion);
+                    if (cmp <= 0)
+                    {
+                        PrintFormat("[RSS] Ignoring server config v%1 because local server config is already applied and is newer or equal (local=%2)", configVersion, localVersion);
+                        return;
+                    }
+                }
+
+                // 应用收到的关键配置
+                settings.m_sConfigVersion = configVersion;
+                settings.m_sSelectedPreset = selectedPreset;
+                settings.m_bDebugLogEnabled = debugLogEnabled;
+                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
+                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
+                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
+                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
+
+                // 重新初始化预设并保存（使用系统预设刷新，确保一致性）
+                settings.InitPresets(true);
+                SCR_RSS_ConfigManager.Save();
+                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+
+                PrintFormat("[RSS] Applied server config: preset=%1, version=%2", selectedPreset, configVersion);
+            }
+        }
+    }
+
+    // RPC: 清除客户端上记录的“服务器配置已应用”标志（Owner-targeted）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ClearServerConfigApplied()
+    {
+        if (!Replication.IsServer())
+        {
+            SCR_RSS_ConfigManager.SetServerConfigApplied(false);
+            Print("[RSS] Local server-config-applied flag cleared");
+        }
+    }
+
+    // 定期向服务器请求配置（客户端使用）
+    void UpdateServerConfigSync()
+    {
+        if (Replication.IsServer()) return;
+
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (currentTime - m_fLastServerSyncTime >= SERVER_CONFIG_SYNC_INTERVAL)
+        {
+            m_fLastServerSyncTime = currentTime;
+            RequestServerConfig();
+        }
+    }
+
+    // RPC: 客户端向服务器上报体力与负重（周期性）
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ClientReportStamina(float staminaPercent, float weight)
+    {
+        if (Replication.IsServer())
+        {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+            // 速率限制：拒绝过于频繁的客户端上报（防止恶意刷频）
+            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime))
+            {
+                if (IsRssDebugEnabled())
+                    PrintFormat("[RealisticSystem] Ignored too-frequent stamina report (time=%1)", currentTime);
+                return;
+            }
+
+            // 服务器端基础校验
+            float clampedStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
+
+            // 记录并检测异常跳变
+            if (m_pNetworkSyncManager)
+            {
+                float lastReported = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
+                if (Math.AbsFloat(clampedStamina - lastReported) > 0.5 && IsRssDebugEnabled())
+                    PrintFormat("[RealisticSystem] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
+
+                // 更新服务器端记录（用于后续检测和统计）
+                m_pNetworkSyncManager.UpdateReportedState(clampedStamina, weight);
+            }
+
+            // 使用服务器端的权威负重数据（优先）
+            float serverWeight = 0.0;
+            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+                serverWeight = m_pEncumbranceCache.GetCurrentWeight();
+            else
+            {
+                SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
+                    GetOwner().FindComponent(SCR_CharacterInventoryStorageComponent));
+                if (inventoryComponent)
+                    serverWeight = inventoryComponent.GetTotalWeight();
+            }
+
+            // 计算速度惩罚（基于服务器重量）
+            // serverWeight 为装备/背包重量，不含身体重量
+            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
+            float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
+            float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+            float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
+            float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, exp);
+            encPenalty = Math.Clamp(encPenalty, 0.0, max_pen);
+
+            // 获取服务器端的移动状态（权威）
+            bool isSprinting = IsSprinting();
+            int currentMovementPhase = GetCurrentMovementPhase();
+            bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(clampedStamina);
+            bool canSprint = RealisticStaminaSpeedSystem.CanSprint(clampedStamina);
+
+            // 计算当前速度（使用服务器位置差分）
+            vector velocity = GetVelocity();
+            vector horizontalVelocity = velocity;
+            horizontalVelocity[1] = 0.0;
+            float currentSpeed = horizontalVelocity.Length();
+            currentSpeed = Math.Min(currentSpeed, 7.0);
+
+            // 获取坡度角度（服务器端计算）
+            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor);
+
+            // 使用权威计算函数生成最终速度倍数
+            float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
+                clampedStamina,
+                encPenalty,
+                isSprinting,
+                currentMovementPhase,
+                isExhausted,
+                canSprint,
+                currentSpeed,
+                slopeAngleDegrees);
+
+            validated = Math.Clamp(validated, 0.15, 1.0);
+
+            if (m_pNetworkSyncManager)
+            {
+                // 使用外部已声明的 currentTime 以避免重复声明
+                currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+                // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽
+                if (!m_pNetworkSyncManager.HasServerValidation())
+                {
+                    m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                    RPC_ServerSyncSpeedMultiplier(validated);
+                }
+                else
+                {
+                    float speedDiff = Math.AbsFloat(validated - m_pNetworkSyncManager.GetServerValidatedSpeedMultiplier());
+                    if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
+                    {
+                        m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                        RPC_ServerSyncSpeedMultiplier(validated);
+                    }
+                    else
+                    {
+                        // 未达到触发阈值：暂不下发（保持现有客户端平滑逻辑）
+                    }
+                }
+            }
+        }
+    }
+
+    // RPC: 服务器将验证后的速度同步回客户端（目标客户端）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier)
+    {
+        if (!Replication.IsServer())
+        {
+            if (m_pNetworkSyncManager)
+                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
+        }
+    }
+
 }

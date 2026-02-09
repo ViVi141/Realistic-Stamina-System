@@ -89,7 +89,7 @@ class StaminaConstants
     // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
     // 注意：这些值现在从配置管理器获取（GetEncumbranceSpeedPenaltyCoeff(), GetEncumbranceStaminaDrainCoeff()）
     static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // 基于体重的速度惩罚系数（线性模型）
-    static const float ENCUMBRANCE_SPEED_EXPONENT = 1.0; // 负重速度惩罚指数（1.0 = 线性）
+    static const float ENCUMBRANCE_SPEED_EXPONENT = 1.5; // 负重速度惩罚指数（默认1.5），已可通过配置覆盖（GetEncumbranceSpeedPenaltyExponent()）
     
     // 负重对体力消耗的影响系数（γ）- 基于体重的真实模型
     // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）
@@ -285,7 +285,7 @@ class StaminaConstants
     static const float SPRINT_MAX_SPEED_MULTIPLIER = 1.0; // Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
     
     // Sprint体力消耗倍数（相对于Run，v2.5优化）
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0; // Sprint时体力消耗是Run的3.0倍（v2.5优化）
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5; // Sprint时体力消耗是Run的3.5倍（v2.5优化）
     
     // ==================== Pandolf 模型常量 ====================
     // 完整 Pandolf 能量消耗模型（Pandolf et al., 1977）
@@ -563,6 +563,32 @@ class StaminaConstants
                 return params.encumbrance_stamina_drain_coeff;
         }
         return 1.5; // 默认值
+    }
+
+    // 获取负重速度惩罚指数（从配置管理器）
+    static float GetEncumbranceSpeedPenaltyExponent()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.encumbrance_speed_penalty_exponent;
+        }
+        return 1.5; // 默认值
+    }
+
+    // 获取负重速度惩罚上限（从配置管理器）
+    static float GetEncumbranceSpeedPenaltyMax()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.encumbrance_speed_penalty_max;
+        }
+        return 0.75; // 默认值
     }
     
     // 获取Sprint体力消耗倍数（从配置管理器）
@@ -861,6 +887,43 @@ class StaminaConstants
             return settings.m_iDebugUpdateInterval;
         
         return 5000; // 默认5秒
+    }
+
+    // 统一调试日志节流（基于 DebugUpdateInterval）
+    static bool ShouldLog(inout float nextTime)
+    {
+        if (!IsDebugEnabled())
+            return false;
+
+        return ShouldLogInternal(nextTime);
+    }
+
+    // 统一详细日志节流（需要 Debug + Verbose）
+    static bool ShouldVerboseLog(inout float nextTime)
+    {
+        if (!IsDebugEnabled() || !IsVerboseLoggingEnabled())
+            return false;
+
+        return ShouldLogInternal(nextTime);
+    }
+
+    // 内部时间节流实现
+    protected static bool ShouldLogInternal(inout float nextTime)
+    {
+        World world = GetGame().GetWorld();
+        if (!world)
+            return false;
+
+        float currentTime = world.GetWorldTime() / 1000.0;
+        float interval = GetDebugUpdateInterval() / 1000.0;
+        if (interval <= 0.0)
+            interval = 5.0;
+
+        if (currentTime < nextTime)
+            return false;
+
+        nextTime = currentTime + interval;
+        return true;
     }
     
     // ==================== 以下配置仅在 Custom 预设下生效 ====================

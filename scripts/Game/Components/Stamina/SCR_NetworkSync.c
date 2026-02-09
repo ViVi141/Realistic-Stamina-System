@@ -12,7 +12,11 @@ class NetworkSyncManager
     protected const float VALIDATION_TOLERANCE = 0.1; // 验证容差（10%差异视为正常）
     protected const float NETWORK_SYNC_INTERVAL = 1.0; // 网络同步间隔（秒）
     protected float m_fLastNetworkSyncTime = 0.0; // 上次网络同步时间
-    
+
+    // 客户端上报速率限制（防滥用）
+    protected float m_fLastClientReportTime = 0.0; // 记录上次接受客户端上报的服务器时间（秒）
+    protected const float MIN_CLIENT_REPORT_INTERVAL = 0.2; // 最小允许的客户端上报间隔（秒）
+
     // 网络同步容差优化：连续偏差累计触发
     protected float m_fDeviationStartTime = -1.0; // 偏差开始时间（-1表示无偏差）
     protected const float DEVIATION_TRIGGER_DURATION = 2.0; // 偏差触发持续时间（秒），连续超过此时间才触发同步
@@ -34,6 +38,7 @@ class NetworkSyncManager
         m_fTargetSpeedMultiplier = 1.0;
         m_fSmoothedSpeedMultiplier = 1.0;
         m_fLastSmoothUpdateTime = 0.0;
+        m_fLastClientReportTime = 0.0;
     }
     
     // 检查是否需要发送网络同步（每1秒一次）
@@ -46,6 +51,18 @@ class NetworkSyncManager
             m_fLastNetworkSyncTime = currentTime;
             return true;
         }
+        return false;
+    }
+
+    // 验证并接受客户端报告（速率限制）
+    bool AcceptClientReport(float currentTime)
+    {
+        if (currentTime - m_fLastClientReportTime >= MIN_CLIENT_REPORT_INTERVAL)
+        {
+            m_fLastClientReportTime = currentTime;
+            return true;
+        }
+        // 报告过于频繁，拒绝
         return false;
     }
     
@@ -159,6 +176,12 @@ class NetworkSyncManager
     float GetServerValidatedSpeedMultiplier()
     {
         return m_fServerValidatedSpeedMultiplier;
+    }
+
+    // 判断服务器是否已设置验证值（用于客户端决定是否优先使用服务器值）
+    bool HasServerValidation()
+    {
+        return Math.AbsFloat(m_fServerValidatedSpeedMultiplier - 1.0) > 0.0001;
     }
     
     // 更新报告的状态值

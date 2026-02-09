@@ -85,7 +85,7 @@ class JumpVaultDetector
                 m_eLastStance = currentStance;
                 
                 // 调试输出（仅在客户端）
-                if (owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RealisticSystem] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
                 }
@@ -98,7 +98,8 @@ class JumpVaultDetector
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
-                Print("[RealisticSystem] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
+                if (StaminaConstants.IsVerboseLoggingEnabled())
+                    Print("[RealisticSystem] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
                 m_eLastStance = currentStance;
                 return 0.0;
             }
@@ -172,7 +173,7 @@ class JumpVaultDetector
                 }
                 
                 // 调试输出（仅在客户端）
-                if (owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (基础: %2%%, 连续: %3次, 倍数: %4, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
@@ -218,7 +219,8 @@ class JumpVaultDetector
             if (m_iVaultCooldownFrames > 0)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
-                Print("[RealisticSystem] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
+                if (StaminaConstants.IsVerboseLoggingEnabled())
+                    Print("[RealisticSystem] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
                 return 0.0;
             }
             
@@ -252,7 +254,7 @@ class JumpVaultDetector
                 m_iVaultCooldownFrames = 25; // 5秒冷却
                 
                 // 调试输出（仅在客户端）
-                if (owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RealisticSystem] 检测到翻越动作！消耗体力: %1%% (基础: %2%%, 冷却: 5秒)", 
                         Math.Round(vaultCost * 100.0).ToString(),

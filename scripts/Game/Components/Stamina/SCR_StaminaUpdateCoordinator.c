@@ -35,57 +35,83 @@ class StaminaUpdateCoordinator
         float gradePercent,
         float terrainFactor,
         float windDrag,
-        float coldStaticPenalty)
+        float coldStaticPenalty,
+        bool isSprinting = false,
+        int currentMovementPhase = -1)
     {
         float baseDrainRate = 0.0;
 
-        // 陆地移动模式判断（Givoni-Goldman / Pandolf）
-        // 当速度 V > 2.2 m/s 时，使用 Givoni-Goldman 跑步模型
-        // 否则使用标准 Pandolf 步行模型
-        bool isRunning = (currentSpeed > 2.2);
-
-        if (currentSpeed < 0.1)
+        // 优先使用移动类型（如果可用）：isSprinting 或 currentMovementPhase（0=idle,1=walk,2=run,3=sprint）
+        if (currentMovementPhase >= 0)
         {
-            // ==================== 静态负重站立消耗（Pandolf 静态项）====================
-            float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
-            float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0); // 负重（去除身体重量，使用湿重）
-
-            float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
-
-            // 应用冷应激静态惩罚
-            staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
-
-            baseDrainRate = staticDrainRate * 0.2; // 转换为每0.2秒的消耗率
-        }
-        else if (isRunning)
-        {
-            // ==================== Givoni-Goldman 跑步模型 ====================
-            float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-
-            // 应用地形系数（跑步时同样受地形影响）
-            runningDrainRate = runningDrainRate * terrainFactor;
-
-            // 应用风阻：逆风时增加消耗
-            runningDrainRate = runningDrainRate * (1.0 + windDrag);
-
-            baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                // Sprint：使用 Givoni-Goldman 跑步模型基线并按 tick 转换
+                // 与 Python 数字孪生保持一致（不再使用固定 SPRINT_DRAIN_PER_TICK）
+                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+                runningDrainRate = runningDrainRate * terrainFactor;
+                runningDrainRate = runningDrainRate * (1.0 + windDrag);
+                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒
+            }
+            else if (currentMovementPhase == 2)
+            {
+                // Run（Givoni-Goldman 跑步模型）
+                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+                runningDrainRate = runningDrainRate * terrainFactor;
+                runningDrainRate = runningDrainRate * (1.0 + windDrag);
+                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+            }
+            else if (currentMovementPhase == 1)
+            {
+                // Walk（Pandolf）
+                float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    currentSpeed,
+                    currentWeightWithWet,
+                    gradePercent,
+                    terrainFactor,
+                    true);
+                pandolfPerS = pandolfPerS * (1.0 + windDrag);
+                baseDrainRate = pandolfPerS * 0.2;
+            }
+            else
+            {
+                // Idle/Rest：恢复（强制）
+                baseDrainRate = -StaminaConstants.REST_RECOVERY_PER_TICK;
+            }
         }
         else
         {
-            // 步行模式：使用 Pandolf 模型（包含地形系数和 Santee 下坡修正）
-            baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                currentSpeed,
-                currentWeightWithWet,
-                gradePercent,
-                terrainFactor,  // 地形系数（已包含泥泞修正）
-                true            // 使用 Santee 下坡修正
-            );
+            // 向后兼容：基于速度的原始逻辑
+            bool isRunning = (currentSpeed > 2.2);
 
-            // 应用风阻：逆风时增加消耗
-            baseDrainRate = baseDrainRate * (1.0 + windDrag);
+            if (currentSpeed < 0.1)
+            {
+                // 静态负重站立消耗（Pandolf 静态项）
+                float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 90kg
+                float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0); // 负重（去除身体重量，使用湿重）
 
-            // Pandolf 模型的结果是每秒的消耗率，需要转换为每0.2秒的消耗率
-            baseDrainRate = baseDrainRate * 0.2;
+                float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
+                staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
+                baseDrainRate = staticDrainRate * 0.2; // 每0.2秒
+            }
+            else if (isRunning)
+            {
+                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
+                runningDrainRate = runningDrainRate * terrainFactor;
+                runningDrainRate = runningDrainRate * (1.0 + windDrag);
+                baseDrainRate = runningDrainRate * 0.2;
+            }
+            else
+            {
+                baseDrainRate = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    currentSpeed,
+                    currentWeightWithWet,
+                    gradePercent,
+                    terrainFactor,
+                    true);
+                baseDrainRate = baseDrainRate * (1.0 + windDrag);
+                baseDrainRate = baseDrainRate * 0.2;
+            }
         }
 
         return baseDrainRate;
@@ -101,6 +127,52 @@ class StaminaUpdateCoordinator
     // @param currentSpeed 当前速度 (m/s)
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 最终速度倍数
+    // 新增：基于输入计算最终速度倍数（供服务器权威使用）
+    static float CalculateFinalSpeedMultiplierFromInputs(
+        float staminaPercent,
+        float encumbranceSpeedPenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        bool isExhausted,
+        bool canSprint,
+        float currentSpeed,
+        float slopeAngleDegrees)
+    {
+        // 与 UpdateSpeed 中相同的决策逻辑，但使用传入参数（无 controller）
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                currentMovementPhase = 2;
+                isSprinting = false;
+            }
+        }
+
+        float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 秒
+
+        float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
+            staminaPercent, null, currentWorldTime);
+
+        // 计算坡度自适应目标速度倍数
+        float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
+        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
+
+        float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+            runBaseSpeedMultiplier,
+            encumbranceSpeedPenalty,
+            isSprinting,
+            currentMovementPhase,
+            isExhausted,
+            canSprint,
+            staminaPercent,
+            currentSpeed);
+
+        return finalSpeedMultiplier;
+    }
+
     static float UpdateSpeed(
         SCR_CharacterControllerComponent controller,
         float staminaPercent,
@@ -243,7 +315,9 @@ class StaminaUpdateCoordinator
         vector computedVelocity,
         bool swimmingVelocityDebugPrinted,
         IEntity owner,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        bool isSprinting = false,
+        int currentMovementPhase = -1)
     {
         float baseDrainRate = 0.0;
         
@@ -251,7 +325,7 @@ class StaminaUpdateCoordinator
         {
             // ==================== 游泳体力消耗模型（物理阻力模型）====================
             // 调试信息：只在第一次检测到游泳速度仍为 0 时输出（避免刷屏）
-            if (owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
+            if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
             {
                 float swimVelLen = computedVelocity.Length();
                 if (swimVelLen < 0.01)
@@ -293,6 +367,11 @@ class StaminaUpdateCoordinator
             // 应用降雨湿重（修正当前重量）
             currentWeightWithWet = currentWeightWithWet + totalWetWeight;
 
+            // 计算负重影响因子（与 RealisticStaminaSpeedSystem 中的实现一致）
+            float weightRatio = currentWeightWithWet / RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
+            float weightRatioPower = StaminaHelpers.Pow(weightRatio, 1.2);
+            float loadFactor = 1.0 + (weightRatioPower * 1.5);
+
                 // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
             baseDrainRate = CalculateLandBaseDrainRate(
                 currentSpeed,
@@ -300,7 +379,12 @@ class StaminaUpdateCoordinator
                 gradePercent,
                 terrainFactor,
                 windDrag,
-                coldStaticPenalty);
+                coldStaticPenalty,
+                isSprinting,
+                currentMovementPhase);
+
+            // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
+            // 因此不再需要对固定 Sprint 基线做特殊处理。
         }
         
         BaseDrainRateResult result = new BaseDrainRateResult();
@@ -436,11 +520,9 @@ class StaminaUpdateCoordinator
         newTargetStamina = staminaPercent + netChange;
         
         // ==================== 调试信息 ====================
-        static int metabolismDebugCounter = 0;
-        metabolismDebugCounter++;
-        if (metabolismDebugCounter >= 25)
+        static float nextMetabolismLogTime = 0.0;
+        if (StaminaConstants.ShouldLog(nextMetabolismLogTime))
         {
-            metabolismDebugCounter = 0;
             PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值×%.2f: %5) | %1%% → %2%%",
                 Math.Round(staminaPercent * 100.0).ToString(),
                 Math.Round(newTargetStamina * 100.0).ToString(),

@@ -73,7 +73,8 @@ class EncumbranceCache
         {
             // 如果无法获取 inventoryManager，设置缓存无效
             m_bEncumbranceCacheValid = false;
-            Print("[RSS_Debug] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
+            if (StaminaConstants.IsDebugEnabled())
+                Print("[RSS_Debug] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
             return;
         }
         
@@ -86,15 +87,17 @@ class EncumbranceCache
         // 更新缓存值
         m_fCachedCurrentWeight = currentWeight;
 
-        // 计算有效负重（负载 = 总重 - 体重 - 基准装备重量）
-        // 修复：此前用 (总重 - 1.36) 导致 bodyMassPercent 约 4 倍于正确值
-        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.CHARACTER_WEIGHT - StaminaConstants.BASE_WEIGHT, 0.0);
+        // 计算有效负重（负载 = 载具/装备重量 - 基准装备重量）
+        // GetTotalWeightOfAllStorages() 返回的是装备/背包重量，不含身体重量
+        float effectiveWeight = Math.Max(currentWeight - StaminaConstants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
         // 计算速度惩罚（基于体重百分比，使用幂函数）
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, 1.5);
-        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, 0.4);
+        float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
+        float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, exp);
+        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, max_pen);
         
         // 计算体力消耗倍数
         float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();

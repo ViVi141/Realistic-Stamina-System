@@ -65,6 +65,8 @@ class RSSConstants:
     # 负重惩罚参数
     BASE_WEIGHT = 1.36
     ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
+    ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5  # 新：速度惩罚的幂次，用于放大较大负重对速度的影响
+    ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75     # 新：速度惩罚的上限（最多减速75%）
     ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0
     LOAD_RECOVERY_PENALTY_COEFF = 0.0001  # 修复：从 0.0004 降低到 0.0001，解决负重导致恢复率为 0 的问题
     LOAD_RECOVERY_PENALTY_EXPONENT = 2.0
@@ -74,7 +76,7 @@ class RSSConstants:
     RUN_VELOCITY_THRESHOLD = 3.7
     
     # Sprint 参数
-    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0  # Sprint时体力消耗是Run的3.0倍，与C文件保持一致
+    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # Increased default: Sprint stamina drain multiplier (was 3.0)
     SPRINT_SPEED_BOOST = 0.30
     
     # 疲劳参数
@@ -650,8 +652,20 @@ class RSSDigitalTwin:
                 
                 body_mass_percent = (effective_weight / body_weight) if body_weight > 0.0 else 0.0
                 coeff = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
-                speed_penalty = coeff * body_mass_percent
-                speed_penalty = float(np.clip(speed_penalty, 0.0, 0.5))
+                exp = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_EXPONENT', 1.5)
+                max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+
+                # 使用幂次-速度加权惩罚：较大负重和更高速度会放大速度惩罚
+                # 公式：penalty = coeff * (body_mass_percent ** exp) * (speed / GAME_MAX_SPEED)
+                game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
+                speed_ratio = min(max(speed / game_max, 0.0), 2.0)
+                speed_penalty = coeff * (body_mass_percent ** exp) * (1.0 + speed_ratio)
+
+                # 当明确为 Sprint 时，进一步加大惩罚感知（Sprint应更受负重影响）
+                if movement_type == MovementType.SPRINT:
+                    speed_penalty *= 1.5
+
+                speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
 
                 effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
                 total_distance += effective_speed * 0.2

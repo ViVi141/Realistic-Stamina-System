@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.11.1
+# Realistic Stamina System (RSS) v3.12.0
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.11.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.12.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
@@ -31,6 +31,32 @@ It dynamically adjusts movement speed based on stamina, encumbrance, slope, envi
 For the full, detailed (and frequently updated) explanation, see:
 - **Changelog**: `CHANGELOG.md`
 - **Chinese full README**: `README_CN.md`
+
+## v3.12.0 Updates
+
+**2026-02-09**
+
+This release documents changes at the C script layer.
+
+### ✅ Added
+- **Environment temperature physics model** - temperature stepping, shortwave/longwave with cloud and cloud fraction corrections, sunrise/sunset & moon-phase inference; supports engine-temperature or module model selection (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
+- **Improved indoor detection** - added upward raycast and horizontal enclosure checks to reduce false positives from open roofs/skylights (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
+- **Configuration change sync pipeline** - listener registration, change detection, full parameter/settings array sync and broadcast (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c, scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/PlayerBase.c)
+- **Network validation & smoothing** - client reports stamina/encumbrance; server authoritative validation and issuance of speed multiplier, including reconnect-delay synchronization (scripts/Game/PlayerBase.c, scripts/Game/Components/Stamina/SCR_NetworkSync.c)
+- **Log throttling utility** - unified Debug/Verbose log throttling interface (scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
+
+### 🔁 Changed
+- **Server-authoritative config** - client no longer writes JSON; defaults kept in-memory awaiting sync; server writes to disk and adds backup/repair flow (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)
+- **Movement-phase-driven drain** - prefer movement phase/sprint state to decide Pandolf/Givoni path; add server-authoritative speed multiplier API (scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)
+- **Encumbrance parameter constraints** - added penalty exponent/upper bound and clamp presets (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c, scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
+- **Preset refresh** - Elite/Standard/Tactical presets updated and top-level defaults for the weather model added (scripts/Game/Components/Stamina/SCR_RSS_Settings.c)
+- **Sprint drain default** - Sprint drain multiplier default changed to 3.5 (configurable) (scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
+- **Body weight included in drain input** - stamina drain input now uses total weight (equipment + body); improved debug output (scripts/Game/PlayerBase.c)
+
+### 🐞 Fixed
+- **Indoor detection false positives** - reduced via roof raycast and horizontal enclosure checks (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
+- **Engine temperature extrema degradation** - fallback to physical/simulated estimates when daily min/max converge (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
+- **Client disk overwrite** - client no longer writes local JSON to avoid overwriting server configs (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)
 
 ## v3.11.1 Updates
 
