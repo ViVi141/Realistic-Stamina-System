@@ -37,8 +37,11 @@ class RSSConstants:
     PANDOLF_STATIC_COEFF_1 = 1.2
     PANDOLF_STATIC_COEFF_2 = 1.6
     
-    GIVONI_CONSTANT = 0.8  # 从1.0降低到0.8，减缓奔跑时的消耗速度，与C文件保持一致
-    GIVONI_VELOCITY_EXPONENT = 2.2
+    # Legacy constants for the now-deprecated Givoni-Goldman running model.
+    # 目前消耗计算完全采用 Pandolf 模型，这些值仅保留用于处理旧数据，
+    # 不应在新的优化或仿真中引用。
+    GIVONI_CONSTANT = 0.8  # (unused) 从1.0降低到0.8，与C文件的遗留值保持一致
+    GIVONI_VELOCITY_EXPONENT = 2.2  # (unused)
     
     AEROBIC_THRESHOLD = 0.6
     ANAEROBIC_THRESHOLD = 0.8
@@ -248,26 +251,17 @@ class RSSDigitalTwin:
         return float(max(0.0, rate))
 
     def _givoni_running(self, velocity, current_weight):
-        if velocity <= 2.2:
-            return 0.0
-        
-        ref = getattr(self.constants, 'REFERENCE_WEIGHT', 90.0)
-        gc = getattr(self.constants, 'GIVONI_CONSTANT', 0.6)
-        ge = getattr(self.constants, 'GIVONI_VELOCITY_EXPONENT', 2.2)
-        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 3.5e-5)
+        """Legacy helper for the Givoni-Goldman running model.
 
-        # 修复：移除负重保护，让玩家承担负重后果（完全尊重玩家选择）
-        w_mult = max(0.1, current_weight / ref)  # 只防止负数，不限制上限
-        vp = np.power(velocity, ge)
-        
-        # 修正1：Givoni公式计算 W/kg。需要乘以体重转换为 Watts。
-        # energy_per_kg = gc * vp
-        # total_watts = energy_per_kg * ref * w_mult
-        total_watts = w_mult * gc * vp * ref
-        
-        rate = total_watts * coeff
-        # 修复：完全移除clip上限，让Givoni模型自然输出（完全尊重生理模型）
-        return float(max(0.0, rate))
+        **Deprecated**: The optimizer and digital twin no longer use this method.
+        All energy calculations are now driven by the Pandolf model. This
+        implementation is left only for reference and for processing old
+        datasets that might still include a Givoni component.
+        """
+        # Givoni is obsolete; return zero so even accidental calls have no effect.
+        if velocity <= 0.0:
+            return 0.0
+        return 0.0
 
     def _metabolic_efficiency_factor(self, speed_ratio):
         aero = getattr(self.constants, 'AEROBIC_THRESHOLD', 0.6)
@@ -324,18 +318,14 @@ class RSSDigitalTwin:
         speed_ratio = np.clip(speed / game_max, 0.0, 1.0)
         total_eff = self._fitness_efficiency_factor() * self._metabolic_efficiency_factor(speed_ratio)
         fatigue = self._fatigue_factor()
-        # sprint decision now based purely on speed threshold
-        is_sprint = speed >= getattr(self.constants, 'SPRINT_VELOCITY_THRESHOLD', 5.2)
-        sprint_mult = getattr(self.constants, 'SPRINT_STAMINA_DRAIN_MULTIPLIER', 3.0) if is_sprint else 1.0
+        # sprint multiplier removed; Pandolf formula handles all running speeds
 
         if speed < 0.1:
             load_weight = max(0.0, current_weight - body_weight)
             static_per_s = self._static_standing_cost(body_weight, load_weight)
             raw = static_per_s * 0.2
-        elif speed > 2.2:
-            run_per_s = self._givoni_running(speed, current_weight) * terrain_factor * (1.0 + wind_drag)
-            raw = run_per_s * 0.2
         else:
+            # use Pandolf for all non‑static movement
             pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor) * (1.0 + wind_drag)
             raw = pandolf_per_s * 0.2
 
@@ -352,8 +342,8 @@ class RSSDigitalTwin:
         # 这些小项的量级（1e-05到1e-03）远小于Pandolf模型的应有输出（1e-02）
         # 移除：speed_linear、speed_sq、enc_base、enc_speed
         
-        # 保留姿态修正，移除其他小项
-        total_drain = base * sprint_mult
+        # 保留姿态修正后直接作为基础消耗
+        total_drain = base
         
         # 应用负重修正（通过enc_mult）
         total_drain = total_drain * enc_mult

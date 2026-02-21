@@ -44,6 +44,7 @@
   - 防止负重+坡度组合导致的数值爆炸
   - 每0.2秒最大消耗不超过0.02（每秒最多掉10%）
 - ✅ **动态速度调整**：根据体力百分比动态调整移动速度（精确数学模型）
+- ✅ **消耗全面采用 Pandolf 模型**：所有行走/奔跑/冲刺的体力下落直接由 Pandolf 能量公式计算，弃用简单常数扣除。
 - ✅ **负重影响系统**：负重主要影响"油耗"（体力消耗）而非直接降低"最高档位"（速度）
   - 负重对速度的影响降低至20%，让30kg负重时仍能短时间跑3.7 m/s
 - ✅ **移动类型系统**：支持Idle/Walk/Run/Sprint四种移动类型，每种有不同的速度和消耗特性
@@ -53,7 +54,7 @@
   - 连续跳跃惩罚机制（无氧欠债）：3秒内连续跳跃，每次额外增加50%消耗
   - 跳跃冷却机制：3秒冷却时间，防止重复触发
   - 低体力禁用：体力 < 10% 时禁用跳跃
-- ✅ **Sprint机制**：Sprint速度比Run快30%（v2.6.0优化），但体力消耗增加3.0倍（v2.6.0优化）
+- ✅ **Sprint机制**：速度仍比Run快30%（由Pandolf模型在高速度下自然输出），不再使用独立的消耗倍数。
 - ✅ **健康状态系统**：训练有素者（fitness=1.0）能量效率提升约35%，恢复速度增加25%（基于个性化运动建模）
 - ✅ **累积疲劳系统**：长时间运动后，相同速度的消耗逐渐增加（基于个性化运动建模）
 - ✅ **代谢适应系统**：根据运动强度动态调整能量效率（有氧区效率高，无氧区效率低但功率高）
@@ -176,7 +177,7 @@ RealisticStaminaSystem/
 
 ### 🔁 变更
 - **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c）
-- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf/Givoni 路径，并提供服务端权威速度倍数计算接口（scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c）
+- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf 路径，并提供服务端权威速度倍数计算接口（scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c）。Givoni模型已弃用。
 - **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c、scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
 - **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（scripts/Game/Components/Stamina/SCR_RSS_Settings.c）
 - **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
@@ -265,7 +266,7 @@ RealisticStaminaSystem/
   - `SMOOTH_TRANSITION_START = 0.25`  
   - `SMOOTH_TRANSITION_END = 0.05`
 - **生理崩溃期（0% - 5%）**：速度快速下降，并由最低速度保护兜底  
-  - `EXHAUSTION_LIMP_SPEED = 1.0 m/s`（跛行）  
+  - `EXHAUSTION_LIMP_SPEED = 1.0 m/s`（跛行）。实际精疲力尽速度将根据当前负重惩罚动态计算，而非始终为 1 m/s。  
   - `MIN_SPEED_MULTIPLIER = 0.15`（最低速度倍率保护）
 
 #### 2. 负重影响系统（精确非线性模型）
@@ -425,7 +426,7 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 - `TARGET_RUN_SPEED = 3.7`（m/s）：平台期目标 Run 速度
 - `SMOOTH_TRANSITION_START = 0.25`：平台期下界（25%）
 - `SMOOTH_TRANSITION_END = 0.05`：平滑过渡终点（5%）
-- `EXHAUSTION_LIMP_SPEED = 1.0`（m/s）：精疲力尽跛行速度
+- `EXHAUSTION_LIMP_SPEED = 1.0`（m/s）：基础跛行速度，作为动态计算的下限
 - `MIN_SPEED_MULTIPLIER = 0.15`：最低速度倍率保护
 
 **Sprint 相关：**
@@ -857,7 +858,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
     - 表面湿度影响：湿地趴下时的恢复惩罚（15%）
   - **动作成本计算系统**：跳跃消耗（3.5%体力，连续跳跃50%惩罚）、攀爬消耗（1%/秒）
   - **特殊运动模式系统**：游泳消耗（静态踩水25W基础+动态v³阻尼）、静态站立消耗（Pandolf静态项）
-  - **高级修正模型系统**：Santee下坡修正、Givoni-Goldman跑步模型
+  - **高级修正模型系统**：Santee下坡修正（Givoni-Goldman 模型已弃用）
   - **战斗负重系统**：战斗负重百分比计算（基于30kg阈值）
   - **模拟器参数扩展**：新增地形类型、温度、风速、表面湿度、姿态、时间、室内等参数
   - **代码统计**：simulate_stamina_system.py新增12个函数（约450行）
@@ -936,7 +937,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 新增地形系数系统：根据地面类型动态调整消耗（铺装路面 1.0 → 深雪 2.1-3.0）
   - 新增静态负重站立消耗：负重下站立时减缓恢复速度（基于 Pandolf 静态项公式）
   - 新增 Santee 下坡修正模型：精确处理下坡时的体力消耗（超过 -15% 时需"刹车"）
-  - 新增 Givoni-Goldman 跑步模式切换：速度 >2.2 m/s 时自动切换到跑步模型
+  - （历史记录）新增 Givoni-Goldman 跑步模式切换：速度 >2.2 m/s 时自动切换到跑步模型
   - 新增恢复启动延迟机制：负重下恢复需静止 3 秒后才生效，防止机制滥用
   - 新增网络同步容差优化：连续偏差累计触发（2 秒容差），速度插值平滑处理
   - 新增疲劳积累系统：超出最大消耗转化为疲劳，降低最大体力上限（最多 30%）

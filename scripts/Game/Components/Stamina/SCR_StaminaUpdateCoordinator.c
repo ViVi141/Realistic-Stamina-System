@@ -46,20 +46,27 @@ class StaminaUpdateCoordinator
         {
             if (isSprinting || currentMovementPhase == 3)
             {
-                // Sprint：使用 Givoni-Goldman 跑步模型基线并按 tick 转换
-                // 与 Python 数字孪生保持一致（不再使用固定 SPRINT_DRAIN_PER_TICK）
-                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-                runningDrainRate = runningDrainRate * terrainFactor;
-                runningDrainRate = runningDrainRate * (1.0 + windDrag);
-                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒
+                // Sprint & Run：统一使用 Pandolf 能量消耗模型
+                float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    currentSpeed,
+                    currentWeightWithWet,
+                    gradePercent,
+                    terrainFactor,
+                    true);
+                pandolfPerS = pandolfPerS * (1.0 + windDrag);
+                baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒
             }
             else if (currentMovementPhase == 2)
             {
-                // Run（Givoni-Goldman 跑步模型）
-                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-                runningDrainRate = runningDrainRate * terrainFactor;
-                runningDrainRate = runningDrainRate * (1.0 + windDrag);
-                baseDrainRate = runningDrainRate * 0.2; // 转换为每0.2秒的消耗率
+                // Run（同上 Pandolf 模型）
+                float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    currentSpeed,
+                    currentWeightWithWet,
+                    gradePercent,
+                    terrainFactor,
+                    true);
+                pandolfPerS = pandolfPerS * (1.0 + windDrag);
+                baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒的消耗率
             }
             else if (currentMovementPhase == 1)
             {
@@ -96,6 +103,12 @@ class StaminaUpdateCoordinator
             }
             else if (isRunning)
             {
+                // Backward-compatibility path: previous versions used the Givoni-Goldman
+                // running formula for speeds >2.2 m/s.  The current system no longer
+                // invokes this branch during normal operation because movement-phase
+                // logic now routes everything through Pandolf.  We keep it here solely
+                // so that older config presets or saved data still produce a plausible
+                // drain value if they somehow re-enter this legacy branch.
                 float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
                 runningDrainRate = runningDrainRate * terrainFactor;
                 runningDrainRate = runningDrainRate * (1.0 + windDrag);

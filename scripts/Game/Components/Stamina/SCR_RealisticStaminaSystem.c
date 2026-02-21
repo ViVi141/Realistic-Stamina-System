@@ -85,8 +85,11 @@ class RealisticStaminaSpeedSystem
     static const float PANDOLF_STATIC_COEFF_2 = StaminaConstants.PANDOLF_STATIC_COEFF_2;
     // 注意：ENERGY_TO_STAMINA_COEFF 现在从配置管理器获取
     static const float REFERENCE_WEIGHT = StaminaConstants.REFERENCE_WEIGHT;
-    static const float GIVONI_CONSTANT = StaminaConstants.GIVONI_CONSTANT;
-    static const float GIVONI_VELOCITY_EXPONENT = StaminaConstants.GIVONI_VELOCITY_EXPONENT;
+    // Legacy aliases retained only for compatibility; not used by current
+    // Pandolf-based drain calculations. These constants originate from the
+    // now-deprecated Givoni-Goldman running model.
+    // static const float GIVONI_CONSTANT = StaminaConstants.GIVONI_CONSTANT;
+    // static const float GIVONI_VELOCITY_EXPONENT = StaminaConstants.GIVONI_VELOCITY_EXPONENT;
     static const float RECOVERY_STARTUP_DELAY_SECONDS = StaminaConstants.RECOVERY_STARTUP_DELAY_SECONDS;
     static const float BASE_WEIGHT = StaminaConstants.BASE_WEIGHT;
     static const float SLOPE_UPHILL_COEFF = StaminaConstants.SLOPE_UPHILL_COEFF;
@@ -163,6 +166,26 @@ class RealisticStaminaSpeedSystem
         baseSpeedMultiplier = Math.Min(baseSpeedMultiplier, MAX_SPEED_MULTIPLIER);
         
         return baseSpeedMultiplier;
+    }
+
+    // 获取基于当前负重惩罚的“跛行”速度倍率
+    // 该倍率对应于当前负重下的最大允许Walk速度，而非固定1m/s。
+    // @param encumbrancePenalty 负重造成的速度降低比例 (0.0-1.0)
+    // @return 速度倍率（相对于 GAME_MAX_SPEED）
+    static float GetDynamicLimpMultiplier(float encumbrancePenalty)
+    {
+        // 先计算未受负重影响的步行上限
+        float maxWalkSpeed = WALK_VELOCITY_THRESHOLD;
+        
+        // 施加负重惩罚（减速）
+        maxWalkSpeed *= (1.0 - encumbrancePenalty);
+        
+        // 保证不低于最小跛行速度，也不超过奔跑阈值
+        float minLimp = EXHAUSTION_LIMP_SPEED;
+        float runThresh = RUN_VELOCITY_THRESHOLD;
+        maxWalkSpeed = Math.Clamp(maxWalkSpeed, minLimp, runThresh);
+        
+        return maxWalkSpeed / GAME_MAX_SPEED;
     }
     
     // 计算负重百分比（供其他系统使用）
@@ -747,29 +770,52 @@ class RealisticStaminaSpeedSystem
         }
         
         // 根据速度和动态阈值计算消耗率
-        if (velocity >= SPRINT_VELOCITY_THRESHOLD || velocity >= 5.0)
-        {
-            // Sprint消耗 × 负重影响因子
-            return SPRINT_DRAIN_PER_TICK * loadFactor;
-        }
-        else if (velocity >= RUN_VELOCITY_THRESHOLD || velocity >= 3.2)
-        {
-            // Run消耗 × 负重影响因子
-            return 0.015 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
-        }
-        else if (velocity >= dynamicThreshold)
-        {
-            // Walk消耗 × 负重影响因子
-            return 0.009 * loadFactor; // 每0.2秒，基于 stamina_constants.py 的正确值
-        }
-        else
+        if (velocity < dynamicThreshold)
         {
             // 速度 < 动态阈值：恢复
             return -0.05; // Rest恢复（负数），每0.2秒，基于 stamina_constants.py 的正确值
         }
+        
+        // 所有移动阶段使用 Pandolf 公式计算消耗，再乘以负重因子。
+        // 由于本函数并不直接感知坡度，将其设为0（平地）。
+        float gradePercent = 0.0;
+        float pandolf = CalculatePandolfDrain(velocity, currentWeight, gradePercent);
+        return pandolf * loadFactor;
     }
     
     // 计算坡度修正乘数（基于百分比坡度，改进的下坡逻辑）
+
+    // ==================== Pandolf 消耗模型 ====================
+    // 使用完整的 Pandolf 能量消耗公式来计算速度阶段上的体力掉点。
+    // 本函数返回每0.2秒的体力消耗率（正值）。
+    // @param velocity 当前水平速度 (m/s)
+    // @param currentWeight 载具/装备总重 (kg)
+    // @param gradePercent 坡度百分比（例如 5% = 5.0）
+    // @return 耗率（正值，负表示恢复）
+    static float CalculatePandolfDrain(float velocity, float currentWeight, float gradePercent)
+    {
+        // Pandolf公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
+        // 其中 M = (body+load)/referenceWeight
+        float bodyMass = CHARACTER_WEIGHT;
+        float totalMass = bodyMass + currentWeight;
+        float M = totalMass / REFERENCE_WEIGHT;
+        float V = velocity;
+        float G = gradePercent * 0.01; // 转换为小数
+        
+        float vOffset = PANDOLF_VELOCITY_OFFSET;
+        float baseCoeff = PANDOLF_BASE_COEFF;
+        float velCoeff = PANDOLF_VELOCITY_COEFF;
+        float gradeBase = PANDOLF_GRADE_BASE_COEFF;
+        float gradeVel = PANDOLF_GRADE_VELOCITY_COEFF;
+        
+        float E = M * (baseCoeff + velCoeff * (V - vOffset) * (V - vOffset) + G * (gradeBase + gradeVel * V * V));
+        // 转换为每0.2s体力点
+        // 转换为每秒体力消耗率（从配置管理器获取最新系数）
+        float energyToStamina = StaminaConstants.GetEnergyToStaminaCoeff();
+        float drainPerSec = E * energyToStamina;
+        // 每次 UpdateSpeedBasedOnStamina 调用间隔 0.2 秒
+        return drainPerSec * 0.2;
+    }
     // 
     // 坡度修正：
     // - 上坡 (G > 0): K_grade = 1 + (G × 0.12)（使用幂函数）
@@ -1151,53 +1197,20 @@ class RealisticStaminaSpeedSystem
         return Math.Clamp(correctionFactor, 0.5, 1.0);
     }
     
-    // ==================== Givoni-Goldman 跑步模式切换 ====================
-    // 基于 Givoni-Goldman 跑步能量消耗模型
-    // Pandolf 模型在速度 V > 2.2 m/s（约 8 km/h）时会失效（设计时针对步行）
-    // 对于 Sprint/Run 模式，应该切换到 Givoni-Goldman 跑步模型
-    // 
-    // 跑步公式：E_run = (W_body + L)·(Givoni_Constant)·V^α
-    // 其中：
-    //   α = 速度指数（通常 2.0-2.4，跑步效率低于步行）
-    //   Givoni_Constant = 跑步常数（需要校准）
-    // 
+    // ==================== Givoni-Goldman 模型（已弃用） ====================
+    // 此函数原用于在跑步/冲刺阶段切换至 Givoni-Goldman 能量模型。
+    //自 v3.12.0 起，所有速度阶段均采用 Pandolf 模型，因此该函数
+    //不再被调用，仅保留以便阅读和历史对比。
+    //
     // @param velocity 当前速度（m/s）
     // @param currentWeight 当前总重量（kg），包括身体重量和负重
     // @param isRunning 是否为跑步模式（true=Run/Sprint，false=Walk）
-    // @return 跑步模式下的能量消耗率（%/s）
+    // @return 跑步模式下的能量消耗率（%/s），始终返回0
     static float CalculateGivoniGoldmanRunning(float velocity, float currentWeight, bool isRunning = true)
     {
-        // 只在跑步模式下（V > 2.2 m/s）使用 Givoni-Goldman 模型
-        if (!isRunning || velocity <= 2.2)
-            return 0.0; // 使用标准 Pandolf 模型
-        
-        // Givoni-Goldman 模型常量（使用类常量，避免变量名冲突）
-
-        // [修复] 直接使用 Math.Pow 计算 V^2.2，确保数值准确
-        // 不要使用 StaminaHelpers.Pow，它主要针对 < 1.0 的指数优化
-        float velocityPower = Math.Pow(velocity, GIVONI_VELOCITY_EXPONENT);
-        
-        // Givoni-Goldman 公式：E_run = (W_body + L)·Constant·V^α
-        // 使用相对于基准体重的倍数
-        float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
-        // 只防止负数，不限制上限（完全尊重玩家选择）
-        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
-
-        // [修复] 根据原始 Givoni-Goldman 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
-        // 原始公式：E_run = (W_body + L) · Constant · V^α
-        // 其中 E_run 的单位是 Watts，(W_body + L) 是总重量（kg）
-        float runningEnergyExpenditure = weightMultiplier * GIVONI_CONSTANT * velocityPower * REFERENCE_WEIGHT;
-        
-        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）（从配置管理器获取）
-        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
-        float runningDrainRate = runningEnergyExpenditure * energyToStaminaCoeff;
-        
-        // [修复] 完全移除 clip 上限，让 Givoni 模型自然输出
-        // 只防止负数，不限制上限
-        runningDrainRate = Math.Max(runningDrainRate, 0.0);
-
-        return runningDrainRate;
+        // 已废弃：本函数不再执行任何计算，直接返回0。保留签名以满足链接兼容性。
+        // 原始实现已于 v3.12.0 迁移至 Pandolf 模型并从其他模块中移除。
+        return 0.0;
     }
     
     // ==================== 游泳体力消耗计算（物理阻力模型 - 优化版）====================

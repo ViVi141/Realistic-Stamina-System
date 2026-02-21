@@ -282,7 +282,7 @@ class RSSSuperPipeline:
         n_jobs: int = -1,  # -1表示自动检测CPU核心数
         use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
         batch_size: int = 5,  # 批处理大小
-        sprint_range: Tuple[float, float] = (2.5, 4.5),  # 可调整的优化器搜索区间
+        sprint_range: Tuple[float, float] = (2.5, 4.5),  # legacy, no longer used (Pandolf covers sprint)
         sprint_drop_target: Tuple[float, float] = (0.15, 0.40),  # Sprint drop target range (min,max)
         sprint_drop_penalty_below: float = 4000.0,  # penalty scale when below target
         sprint_drop_penalty_above: float = 5000.0,  # penalty scale when above target
@@ -323,7 +323,7 @@ class RSSSuperPipeline:
         self.best_trials = []
         self.bug_reports: List[BugReport] = []
         # 可配置：Sprint 搜索区间与最低消耗要求（可用于对比实验）
-        self.sprint_range = sprint_range
+        self.sprint_range = sprint_range  # retained for compatibility but not applied
         # sprint_drop_target: (min, max)
         self.sprint_drop_target = sprint_drop_target
         self.sprint_drop_penalty_below = sprint_drop_penalty_below
@@ -408,17 +408,10 @@ class RSSSuperPipeline:
             'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
         )
         
-        # Sprint 相关
-        # Sprint 消耗 = Run × 3x
-        # 范围 2.0~3.5：允许 3x 冲刺消耗
-        # 使用可配置的 sprint 搜索区间（默认为 2.5-4.5）
-        # Apply optional upper cap to sprint multiplier search range
-        sprint_upper = self.sprint_range[1]
-        if getattr(self, 'sprint_upper_cap', None) is not None:
-            sprint_upper = min(sprint_upper, self.sprint_upper_cap)
-        sprint_stamina_drain_multiplier = trial.suggest_float(
-            'sprint_stamina_drain_multiplier', self.sprint_range[0], sprint_upper
-        )
+        # Sprint 参数已废弃：消耗由 Pandolf 模型自动计算，
+        # 不再在搜索空间中调整。保留上面的 sprint_range 等配置
+        # 仅用于历史兼容或对比实验。
+        sprint_stamina_drain_multiplier = None  # no-op
         
         # 疲劳系统相关
         fatigue_accumulation_coeff = trial.suggest_float(
@@ -867,8 +860,8 @@ class RSSSuperPipeline:
         # 基于科学文献的生理学合理性评估
         # 参考：
         # - Pandolf et al. (1977): 能量消耗模型
-        # - Givoni & Goldman (1971): 跑步模型
         # - ACSM (2018): 生理学阈值
+        # （Givoni-Goldman 跑步模型已弃用，仍在文档中保留历史说明）
         
         realism_score = 100.0
         

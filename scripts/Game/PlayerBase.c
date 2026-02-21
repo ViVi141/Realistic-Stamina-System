@@ -682,20 +682,29 @@ modded class SCR_CharacterControllerComponent
         // 原逻辑：if (staminaPercent < 0.01) staminaPercent = 0.0;
         // 问题：这会导致体力在 0.9% 时被强制清零，与静态消耗形成死循环
         
+        // ==================== 负重缓存 & 惩罚 ====================
+        // 在检查精疲力尽之前预先计算负重惩罚，用于动态跛行速度
+        float encumbranceSpeedPenalty = 0.0;
+        if (m_pEncumbranceCache)
+        {
+            m_pEncumbranceCache.CheckAndUpdate();
+            encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+        }
+
         // ==================== 精疲力尽逻辑（融合模型）====================
-        // 如果体力 ≤ 0，强制速度为跛行速度（1.0 m/s）
+        // 如果体力 ≤ 0，强制速度为当前最大Walk速度（考虑负重）
         bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
         static bool lastExhaustedState = false;
         if (isExhausted)
         {
-            // 精疲力尽：强制速度为跛行速度（1.0 m/s）
-            float limpSpeedMultiplier = RealisticStaminaSpeedSystem.EXHAUSTION_LIMP_SPEED / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            // 计算动态跛行倍率
+            float limpSpeedMultiplier = RealisticStaminaSpeedSystem.GetDynamicLimpMultiplier(encumbranceSpeedPenalty);
             OverrideMaxSpeed(limpSpeedMultiplier);
             
             // 调试信息：精疲力尽状态
             if (!lastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RealisticSystem] 精疲力尽 / Exhausted: 速度限制为跛行速度 | Speed Limited to Limp Speed");
+                Print("[RealisticSystem] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
                 lastExhaustedState = true;
             }
             
@@ -712,14 +721,7 @@ modded class SCR_CharacterControllerComponent
         }
         
         // ==================== 性能优化：使用缓存的负重值（模块化）====================
-        // 检查并更新负重缓存（仅在变化时重新计算）
-        if (m_pEncumbranceCache)
-            m_pEncumbranceCache.CheckAndUpdate();
-        
-        // 使用缓存的速度惩罚（避免重复计算）
-        float encumbranceSpeedPenalty = 0.0;
-        if (m_pEncumbranceCache)
-            encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+        // 注意：负重惩罚已在上文为精疲力尽计算过一次，这里无需再次获取。
         
         // ==================== 获取当前实际速度（m/s）====================
         // 使用游戏引擎原生的 GetVelocity() 方法获取速度
@@ -871,7 +873,7 @@ modded class SCR_CharacterControllerComponent
         float totalWetWeight = SwimmingStateManager.CalculateTotalWetWeight(m_fCurrentWetWeight, rainWeight);
         float currentWeightWithWet = currentWeight + totalWetWeight;
 
-        // 修复：计算包含身体重量的总重并传入消耗模块（Pandolf/Givoni 期望的输入）
+        // 修复：计算包含身体重量的总重并传入消耗模块（Pandolf 期望的输入）
         // currentWeight/currentWeightWithWet 原本为装备/背包重量（不含身体质量）
         float totalWeight = currentWeight + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+身体
         float totalWeightWithWetAndBody = currentWeightWithWet + RealisticStaminaSpeedSystem.CHARACTER_WEIGHT; // 装备+湿重+身体

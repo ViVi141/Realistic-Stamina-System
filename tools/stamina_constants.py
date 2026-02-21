@@ -66,7 +66,7 @@ INITIAL_STAMINA_AFTER_ACFT = 1.0  # 100.0 / 100.0 = 1.0（100%，满值）
 
 # ==================== 精疲力尽阈值 ====================
 EXHAUSTION_THRESHOLD = 0.0  # 0.0（0点）
-EXHAUSTION_LIMP_SPEED = 1.0  # m/s（跛行速度）
+EXHAUSTION_LIMP_SPEED = 1.0  # m/s（跛行速度）。在游戏中仅作为动态计算下限，实际速度会根据负重惩罚降低。
 SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
 
 # ==================== Sprint（冲刺）相关参数 ====================
@@ -85,9 +85,11 @@ PANDOLF_STATIC_COEFF_2 = 1.6
 ENERGY_TO_STAMINA_COEFF = 1.5e-05
 REFERENCE_WEIGHT = 90.0  # 参考体重（kg）
 
-# ==================== Givoni-Goldman 跑步模型常量 ====================
-GIVONI_CONSTANT = 0.15  # 跑步常数（W/kg·m²/s²），增加到0.15（Make running costly again）
-GIVONI_VELOCITY_EXPONENT = 2.2  # 速度指数（2.0-2.4，2.2为推荐值）
+# ==================== Givoni-Goldman 跑步模型常量（已废弃） ====================
+# 这些值在当前的消耗计算中不再使用，系统已完全改用 Pandolf 模型。
+# 仅保留它们以便在旧配置或历史数据转换时参考。
+GIVONI_CONSTANT = 0.15  # (unused) 跑步常数（W/kg·m²/s²）
+GIVONI_VELOCITY_EXPONENT = 2.2  # (unused) 速度指数（2.0-2.4）
 
 # ==================== 坡度影响参数 ====================
 SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）

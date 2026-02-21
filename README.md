@@ -174,7 +174,7 @@ RealisticStaminaSystem/
 
 ### 🔁 变更
 - **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c）
-- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf/Givoni 路径，并提供服务端权威速度倍数计算接口（scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c）
+- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf 路径，并提供服务端权威速度倍数计算接口（scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c）。Givoni 模型已弃用。
 - **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c、scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
 - **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（scripts/Game/Components/Stamina/SCR_RSS_Settings.c）
 - **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
@@ -256,7 +256,7 @@ RSS Tools 是一个完整的 NSGA-II 多目标优化系统，用于平衡"拟真
 
 ## 技术亮点
 
-- **科学性**：基于医学模型（Pandolf、Givoni-Goldman）
+- **科学性**：基于医学模型（Pandolf；Givoni-Goldman 列为历史/兼容参考）
 - **效率**：200 次采样 vs 5000 次评估（25x 更快）
 - **可解释性**：参数敏感度分析
 - **灵活性**：3 种优化配置方案

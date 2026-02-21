@@ -112,7 +112,7 @@ python rss_super_pipeline.py
 
 **包含内容**:
 - `RSSDigitalTwin`：单步更新、场景模拟、EPOC 延迟
-- Pandolf / Givoni-Goldman 消耗、恢复率、姿态/负重/疲劳等
+- **Pandolf** 消耗、恢复率、姿态/负重/疲劳等（Givoni 模型已弃用，仅保留历史记录）
 - `RSSConstants`、`MovementType`、`Stance`、`EnvironmentFactor`
 
 **不直接运行** - 被 `rss_super_pipeline.py`、`calibrate_run_3_5km.py`、`calibrate_recovery.py` 等调用
@@ -127,7 +127,7 @@ python rss_super_pipeline.py
 
 **包含内容**:
 - 游戏常数（速度、体重等）
-- 医学模型参数（Pandolf、Givoni-Goldman）
+- 医学模型参数（Pandolf；Givoni-Goldman 常量已弃用，仅作兼容）
 - 恢复模型参数
 - 工具函数（约束验证、参数转换等）
 
@@ -140,7 +140,7 @@ TARGET_RUN_SPEED = 3.7  # m/s
 
 # 医学模型
 PANDOLF_VELOCITY_COEFF = 0.6
-GIVONI_VELOCITY_EXPONENT = 1.5
+# GIVONI_VELOCITY_EXPONENT = 1.5  # (legacy, unused)
 
 # 恢复模型
 FAST_RECOVERY_DURATION_MINUTES = 1.5

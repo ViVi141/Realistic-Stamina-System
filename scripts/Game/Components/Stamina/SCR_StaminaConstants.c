@@ -299,9 +299,11 @@ class StaminaConstants
     // 参考体重（用于 Pandolf 模型）
     static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
     
-    // ==================== Givoni-Goldman 跑步模型常量 ====================
-    static const float GIVONI_CONSTANT = 0.8; // 跑步常数（W/kg·m²/s²），从1.0降低到0.8，减缓奔跑时的消耗速度
-    static const float GIVONI_VELOCITY_EXPONENT = 2.2; // 速度指数（2.0-2.4，2.2为推荐值）
+    // ==================== Givoni-Goldman 跑步模型常量（已废弃，保留用于旧配置兼容） ====================
+    // Legacy constants for the Givoni-Goldman running model.  性能模型已被 Pandolf 替代，
+    // 运行时不再使用。仅留在源代码以便向后兼容旧配置或进行历史分析。
+    static const float GIVONI_CONSTANT = 0.8; // (unused) 跑步常数（W/kg·m²/s²）
+    static const float GIVONI_VELOCITY_EXPONENT = 2.2; // (unused) 速度指数
     
     // ==================== 地形系数常量 ====================
     static const float TERRAIN_FACTOR_PAVED = 1.0;        // 铺装路面

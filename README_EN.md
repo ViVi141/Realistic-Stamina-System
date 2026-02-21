@@ -21,6 +21,7 @@ It dynamically adjusts movement speed based on stamina, encumbrance, slope, envi
 - **Wall-hit smoothing**: damping transition around the critical stamina threshold.
 - **Slope-adaptive movement**: slope-aware pacing and energy cost.
 - **Encumbrance system**: load affects “fuel economy” (stamina drain) more than hard speed caps.
+- **Pandolf-based drain**: all walking/running/sprinting stamina costs are computed using the Pandolf energy formula instead of fixed rates.
 - **Movement types**: Idle / Walk / Run / Sprint.
 - **Environmental stress**: heat stress + rain wet weight.
 - **Swimming stamina management**: 3D physical model (drag + vertical work + treading).
@@ -47,10 +48,10 @@ This release documents changes at the C script layer.
 
 ### 🔁 Changed
 - **Server-authoritative config** - client no longer writes JSON; defaults kept in-memory awaiting sync; server writes to disk and adds backup/repair flow (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)
-- **Movement-phase-driven drain** - prefer movement phase/sprint state to decide Pandolf/Givoni path; add server-authoritative speed multiplier API (scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)
+- **Movement-phase-driven drain** - sprint state no longer affects choice of expenditure model; Pandolf formula used universally, server‑authoritative speed calculation remains (SCR_StaminaUpdateCoordinator.c)
 - **Encumbrance parameter constraints** - added penalty exponent/upper bound and clamp presets (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c, scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
 - **Preset refresh** - Elite/Standard/Tactical presets updated and top-level defaults for the weather model added (scripts/Game/Components/Stamina/SCR_RSS_Settings.c)
-- **Sprint drain default** - Sprint drain multiplier default changed to 3.5 (configurable) (scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
+- **Sprint drain default** - (legacy) sprint multiplier has no effect under the new Pandolf‑only model; setting retained for config compatibility.
 - **Body weight included in drain input** - stamina drain input now uses total weight (equipment + body); improved debug output (scripts/Game/PlayerBase.c)
 
 ### 🐞 Fixed

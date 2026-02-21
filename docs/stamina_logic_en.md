@@ -280,7 +280,11 @@ File location: SCR_RealisticStaminaSystem.c L852-L921
 
 ---
 
-### 3.2 Givoni-Goldman Running Model
+### 3.2 Givoni-Goldman Running Model *(legacy, replaced by Pandolf)*
+
+> Historically the module used the Givoni-Goldman formula for run/sprint cost,
+> but as of v3.12.0 all movement expenditure is computed with the Pandolf model
+> (see §3.1). The information below is kept for reference only.
 
 **Formula:**
 ```
@@ -713,18 +717,23 @@ The following constants are hardcoded and cannot be changed via config:
 |---------|-------|-------------|---------------|
 | `INITIAL_STAMINA_AFTER_ACFT` | 1.0 (100 percent) | Initial stamina | SCR_StaminaConstants.c L41 |
 | `EXHAUSTION_THRESHOLD` | 0.0 (0 percent) | Exhaustion threshold | SCR_StaminaConstants.c L44 |
-| `EXHAUSTION_LIMP_SPEED` | 1.0 m/s | Limp speed | SCR_StaminaConstants.c L45 |
+| `EXHAUSTION_LIMP_SPEED` | 1.0 m/s | Base limp speed (used as minimum; actual exhaustion speed now scales with encumbrance) | SCR_StaminaConstants.c L45 |
 | `SPRINT_ENABLE_THRESHOLD` | 0.20 (20 percent) | Min stamina to sprint | SCR_StaminaConstants.c L46 |
 | `MIN_RECOVERY_STAMINA_THRESHOLD` | 0.2 (20 percent) | Min recovery stamina | SCR_StaminaConstants.c L212 |
 | `MIN_RECOVERY_REST_TIME_SECONDS` | 3.0 s | Rest time at low stamina | SCR_StaminaConstants.c L213 |
 
-#### 4.1.4 Drain Rate Constants
+#### 4.1.4 Drain Rate Constants *(legacy)*
+
+> **Note:** starting with v3.12.0 the simple constant drain rates for Walk/Run/Sprint
+> are no longer used by the runtime system. all movement costs are now computed
+> using the Pandolf energy expenditure model (see §4.1.6). these constants remain
+> in the codebase only for backward compatibility and toolchain support.
 
 | Constant | Value | Description | File Location |
 |---------|-------|-------------|---------------|
-| `SPRINT_BASE_DRAIN_RATE` | 0.480 pts/s | Sprint base drain rate | SCR_StaminaConstants.c L27 |
-| `RUN_BASE_DRAIN_RATE` | 0.075 pts/s | Run base drain rate | SCR_StaminaConstants.c L28 |
-| `WALK_BASE_DRAIN_RATE` | 0.045 pts/s | Walk base drain rate | SCR_StaminaConstants.c L29 |
+| `SPRINT_BASE_DRAIN_RATE` | 0.480 pts/s | (legacy) Sprint base drain rate | SCR_StaminaConstants.c L27 |
+| `RUN_BASE_DRAIN_RATE` | 0.075 pts/s | (legacy) Run base drain rate | SCR_StaminaConstants.c L28 |
+| `WALK_BASE_DRAIN_RATE` | 0.045 pts/s | (legacy) Walk base drain rate | SCR_StaminaConstants.c L29 |
 | `REST_RECOVERY_RATE` | 0.250 pts/s | Rest recovery rate | SCR_StaminaConstants.c L30 |
 
 #### 4.1.5 Posture Drain Multipliers
