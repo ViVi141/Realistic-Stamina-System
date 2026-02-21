@@ -37,11 +37,11 @@ class JsonToCEmbedder:
             'encumbrance_speed_penalty_exponent': 'encumbrance_speed_penalty_exponent',
             'encumbrance_speed_penalty_max': 'encumbrance_speed_penalty_max',
             'encumbrance_stamina_drain_coeff': 'encumbrance_stamina_drain_coeff',
-            'sprint_stamina_drain_multiplier': 'sprint_stamina_drain_multiplier',
+            # sprint_stamina_drain_multiplier: [HARD] 固定=3.5，不写入 JSON，不嵌入
+            # aerobic_efficiency_factor:       [HARD] 固定=0.9，不写入 JSON，不嵌入
+            # anaerobic_efficiency_factor:     [HARD] 固定=1.2，不写入 JSON，不嵌入
             'fatigue_accumulation_coeff': 'fatigue_accumulation_coeff',
             'fatigue_max_factor': 'fatigue_max_factor',
-            'aerobic_efficiency_factor': 'aerobic_efficiency_factor',
-            'anaerobic_efficiency_factor': 'anaerobic_efficiency_factor',
             'recovery_nonlinear_coeff': 'recovery_nonlinear_coeff',
             'fast_recovery_multiplier': 'fast_recovery_multiplier',
             'medium_recovery_multiplier': 'medium_recovery_multiplier',
@@ -53,7 +53,9 @@ class JsonToCEmbedder:
             'sprint_speed_boost': 'sprint_speed_boost',
             'posture_crouch_multiplier': 'posture_crouch_multiplier',
             'posture_prone_multiplier': 'posture_prone_multiplier',
-                        'jump_consecutive_penalty': 'jump_consecutive_penalty',
+            'jump_consecutive_penalty': 'jump_consecutive_penalty',
+            'jump_height_guess': 'jump_height_guess',                      # [SOFT][OPTIMIZE]
+            'jump_horizontal_speed_guess': 'jump_horizontal_speed_guess',  # [SOFT][OPTIMIZE]
             'slope_uphill_coeff': 'slope_uphill_coeff',
             'slope_downhill_coeff': 'slope_downhill_coeff',
             'swimming_base_power': 'swimming_base_power',

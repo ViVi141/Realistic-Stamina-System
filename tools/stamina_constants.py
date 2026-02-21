@@ -122,7 +122,8 @@ PANDOLF_GRADE_VELOCITY_COEFF = 1.34       # [HARD] 坡度速度系数（W/kg）
 PANDOLF_STATIC_COEFF_1 = 1.2             # [SOFT] 静态基础系数（原1.5→1.2）—— 管理员可调，不经 Optuna 优化
 PANDOLF_STATIC_COEFF_2 = 1.6             # [SOFT] 静态负重系数（原2.0→1.6）—— 管理员可调，不经 Optuna 优化
 # [SOFT][OPTIMIZE] 能量→体力缩放系数（由 Optuna 在正常范围内优化）
-ENERGY_TO_STAMINA_COEFF = 1.5e-05        # [SOFT][OPTIMIZE] Optuna 搜索范围: 5e-7 ~ 2.5e-6
+ENERGY_TO_STAMINA_COEFF = 1.5e-07        # [SOFT][OPTIMIZE] Optuna 搜索范围: 5e-8 ~ 4e-7
+                                         # 校准: 1.5e-7 时 0kg 跳跃 ≈ 15 分钟耗尺; Pandolf 2.7/3.2
 REFERENCE_WEIGHT = 90.0  # [HARD] 参考体重（kg）
 
 # ==================== Givoni-Goldman 跑步模型常量（已废弃） ====================

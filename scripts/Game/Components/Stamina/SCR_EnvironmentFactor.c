@@ -400,7 +400,7 @@ class EnvironmentFactor
                     float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
                     float engLon = m_pCachedWeatherManager.GetCurrentLongitude();
                     float engTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
-                    // 由于 PrintFormat 仅支持最多 9 个占位符，我们需要压缩字段
+	                    // 由于 PrintFormat 仅支持最多 9 个占位符，我们需要压缩字段
                     string dateStr = y.ToString() + "/" + mo.ToString() + "/" + d.ToString();
                     string extras = "lat=" + engLat + " lon=" + engLon + " tz=" + engTZ;
                     PrintFormat("[RSS-debug] engine TOD=%1 rain=%2 wind=%3 ovTemp=%4 sr=%5 ss=%6 date=%7 extras=%8",

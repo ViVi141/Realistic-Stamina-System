@@ -213,16 +213,11 @@ class SpeedCalculator
         // 只在非攀爬、非跳跃状态下获取坡度
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
-            // 获取坡度角度
-            result.slopeAngleDegrees = GetSlopeAngle(controller, environmentFactor);
-            
-            // 将坡度角度（度）转换为坡度百分比
-            // 坡度百分比 = tan(坡度角度) × 100
-            // [修复 fix2.md #5] 在计算 Tan 之前钳制角度，防止数值爆炸
-            // 如果 slopeAngleDegrees 接近 90 度，tan(90°) 趋向于无穷大
-            // 这将导致 gradePercent 变成 Infinity 或 NaN，污染 Pandolf 模型的计算
-            float clampedAngle = Math.Clamp(result.slopeAngleDegrees, -85.0, 85.0); // 限制在85度以内
-            result.gradePercent = Math.Tan(clampedAngle * 0.0174532925199433) * 100.0; // 0.0174532925199433 = π/180
+            // 引擎输出始终为斜率比（vertical/horizontal），无需角度转换。
+            float rawSlope = GetSlopeAngle(controller, environmentFactor);
+            result.gradePercent = rawSlope * 100.0;
+            if (StaminaConstants.IsDebugEnabled())
+                PrintFormat("[SpeedCalc] 斜率比输出: %1 -> %2%%", rawSlope, result.gradePercent);
         }
         
         return result;

@@ -100,6 +100,13 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_ConfigManager.Load();
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
+
+            // debug: 输出当前的能量转体力系数
+            if (IsRssDebugEnabled())
+            {
+                float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
+                PrintFormat("[RealisticSystem] 初始 energie->stamina coeff = %1", coeff);
+            }
         }
         
         // 获取体力组件引用
@@ -818,9 +825,10 @@ modded class SCR_CharacterControllerComponent
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
         
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）
-        float currentTimeForExercise = GetGame().GetWorld().GetWorldTime(); 
+        // previous version used milliseconds here, but most modules expect seconds.
+        float currentTimeForExercise = GetGame().GetWorld().GetWorldTime() / 1000.0; // now in seconds
         // 与旧逻辑保持一致：使用秒单位的 currentTime（供湿重/环境因子等模块使用）
-        float currentTime = currentTimeForExercise / 1000.0;
+        float currentTime = currentTimeForExercise;
         
         // 如果游泳状态变化，重置调试标志
         if (isSwimming != m_bWasSwimming)
@@ -941,8 +949,9 @@ modded class SCR_CharacterControllerComponent
             m_pJumpVaultDetector.UpdateCooldowns();
             
             // ==================== 姿态转换处理（模块化）====================
-            // 更新疲劳堆积（每0.2秒调用一次）
-            m_pStanceTransitionManager.UpdateFatigue(0.2);
+            // 更新疲劳堆积：使用与速度更新相同的实际时间间隔，而不是硬编码0.2秒
+            float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
+            m_pStanceTransitionManager.UpdateFatigue(timeDeltaSec);
             
             // 处理姿态转换的体力消耗（基于乳酸堆积模型）
             bool stanceEncumbranceCacheValid = false;

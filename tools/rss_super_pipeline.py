@@ -369,9 +369,11 @@ class RSSSuperPipeline:
         
         # 能量转换相关
         # 校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
-        # 8e-7 时 ACFT 约 3%，需更低以达 20%。范围已下调以匹配生理学检查：5e-7~2.5e-6
+        # [FIX-001] Pandolf 系数已修正为 2.7/3.2，能量耗散约为旧系数的 2x，搜索范围同步下调 10x
+        # 旧范围：5e-7 ~ 2.5e-6（为 Pandolf 1.5/1.5 设计）
+        # 新范围：5e-8 ~ 4e-7（Pandolf 2.7/3.2 校准：1.5e-7 时约 15 分钟耗尽）
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 5e-7, 2.5e-6, log=True
+            'energy_to_stamina_coeff', 5e-8, 4e-7, log=True
         )
         
         # 恢复系统相关
@@ -408,10 +410,8 @@ class RSSSuperPipeline:
             'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
         )
         
-        # Sprint 参数已废弃：消耗由 Pandolf 模型自动计算，
-        # 不再在搜索空间中调整。保留上面的 sprint_range 等配置
-        # 仅用于历史兼容或对比实验。
-        sprint_stamina_drain_multiplier = None  # no-op
+        # [HARD] Sprint 消耗倍率固定为 3.5，与 C 端一致，不参与 Optuna 优化
+        sprint_stamina_drain_multiplier = 3.5  # no-op for Optuna, fixed HARD value
         
         # 疲劳系统相关
         fatigue_accumulation_coeff = trial.suggest_float(
@@ -546,7 +546,7 @@ class RSSSuperPipeline:
         constants.ENCUMBRANCE_SPEED_PENALTY_EXPONENT = encumbrance_speed_penalty_exponent
         constants.ENCUMBRANCE_SPEED_PENALTY_MAX = encumbrance_speed_penalty_max
         constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF = encumbrance_stamina_drain_coeff
-        constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier
+        constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier  # 3.5 [HARD]
         constants.FATIGUE_ACCUMULATION_COEFF = fatigue_accumulation_coeff
         constants.FATIGUE_MAX_FACTOR = fatigue_max_factor
         # [HARD] AEROBIC/ANAEROBIC_EFFICIENCY_FACTOR 不参与优化，保持类默认值 0.9/1.2
@@ -867,10 +867,10 @@ class RSSSuperPipeline:
         # 1. 恢复模型合理性
         # 检查恢复率是否在生理学合理范围内
         base_recovery = constants.BASE_RECOVERY_RATE
-        if base_recovery < 1.0e-4 or base_recovery > 5.0e-4:
-            realism_score -= 10.0  # 基础恢复率偏离生理学范围
+        if base_recovery < 2e-5 or base_recovery > 3e-4:
+            realism_score -= 10.0  # 基础恢复率偏离生理学范围（Optuna范围：2e-5~1.2e-4）
         # 增加恢复率的精细评估
-        elif 1.8e-4 <= base_recovery <= 2.2e-4:
+        elif 5e-5 <= base_recovery <= 7e-5:
             realism_score -= 5.0  # 惩罚过于接近默认值的参数
         
         # 2. 恢复倍数合理性
@@ -902,10 +902,9 @@ class RSSSuperPipeline:
             realism_score -= 20.0  # 有氧阈值应该低于无氧阈值
         
         # 4. 能量转换合理性
-        # 校准目标：0kg Run 3.5km/15:27 → 20%，约 1.5e-06
-        # 允许 5e-7~5e-5 范围
+        # 校准与 Pandolf(2.7/3.2) 一致：1.5e-7 时约 15 分钟耗尽为设计目标
         energy_coeff = constants.ENERGY_TO_STAMINA_COEFF
-        if energy_coeff < 5e-7 or energy_coeff > 5e-5:
+        if energy_coeff < 1e-9 or energy_coeff > 5e-7:
             realism_score -= 10.0  # 能量转换系数偏离生理学范围
         
         # 5. 负重影响合理性
@@ -994,8 +993,8 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         actual_run_drop = max(0.0, -run_delta)
-        required_run_drop_min = 0.05
-        required_run_drop_max = 0.15  # 消耗上限，避免"消耗非常大"
+        required_run_drop_min = 0.005  # 修正后Pandolf(2.7/3.2) coeff=2e-7: ~1.3%
+        required_run_drop_max = 0.04   # 消耗上限，避免"消耗非常大"
         if actual_run_drop < required_run_drop_min:
             penalty += (required_run_drop_min - actual_run_drop) * 3000.0
         elif actual_run_drop > required_run_drop_max:
@@ -1012,7 +1011,7 @@ class RSSSuperPipeline:
         )
         actual_sprint_drop = max(0.0, -sprint_delta)
         # 支持可配置的目标区间和惩罚系数
-        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.10, 0.45))
+        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.01, 0.10))
         if actual_sprint_drop < required_sprint_drop_min:
             # 连续惩罚：低于下限按距离线性惩罚（可调系数）
             penalty += (required_sprint_drop_min - actual_sprint_drop) * getattr(self, 'sprint_drop_penalty_below', 4000.0)
@@ -1033,8 +1032,8 @@ class RSSSuperPipeline:
             initial_stamina=0.50,
         )
         # 30KG 负载下 Walk 净恢复应 0.2%~3%，超 3% 严重惩罚（避免 Walk 回血过快）
-        min_walk_gain = 0.002  # 最小恢复 0.2%
-        max_walk_gain = 0.03   # 最大恢复 3%
+        min_walk_gain = 0.001  # 最小恢复 0.1%（修正后Pandolf，coeff=2e-7: ~0.5%）
+        max_walk_gain = 0.015  # 最大恢复 1.5%
         if walk_delta < min_walk_gain:
             penalty += (min_walk_gain - walk_delta) * 3000.0
         elif walk_delta > max_walk_gain:
@@ -1183,13 +1182,15 @@ class RSSSuperPipeline:
         # sprint_mult 校准 2.0，不惩罚 1.8~2.2 区间
         param_variation_score = 0.0
         key_params = [
-            ('SPRINT_STAMINA_DRAIN_MULTIPLIER', 2.8, 3.2, 15.0),  # Sprint=3x Run
+            # SPRINT_STAMINA_DRAIN_MULTIPLIER 已锁定为 HARD 值 3.5，不再检查
             ('BASE_RECOVERY_RATE', 4e-5, 8e-5, 15.0),  # Walk 可净恢复
             ('ENCUMBRANCE_STAMINA_DRAIN_COEFF', 0.9, 1.5, 15.0),
         ]
         for param_name, min_val, max_val, penalty in key_params:
             if hasattr(twin.constants, param_name):
                 value = getattr(twin.constants, param_name)
+                if value is None:
+                    continue  # 跳过未设置的参数
                 if not (min_val <= value <= max_val):
                     param_variation_score += penalty
 
