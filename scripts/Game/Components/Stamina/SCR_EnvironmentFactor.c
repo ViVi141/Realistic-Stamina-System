@@ -118,6 +118,15 @@ class EnvironmentFactor
         m_fHeatStressPenalty = 0.0;
         m_fColdStressPenalty = 0.0;
         m_fColdStaticPenalty = 0.0;
+
+        // 调试：立即打印天气管理器坐标（可能为0）
+        if (m_pCachedWeatherManager)
+        {
+            float dbgLat = m_pCachedWeatherManager.GetCurrentLatitude();
+            float dbgLon = m_pCachedWeatherManager.GetCurrentLongitude();
+            float dbgTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
+            PrintFormat("[RSS-debug] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
+        }
         m_fSurfaceWetnessPenalty = 0.0;
         
         // 获取天气管理器引用
@@ -192,32 +201,48 @@ class EnvironmentFactor
                 extras);
 
             // 尝试基于日出/日落估算经纬度，以补齐气温模型所需参数（若未显式配置）
-            float estLat = 0.0;
-            float estLon = 0.0;
-            float estConf = EstimateLatLongFromSunriseSunset(estLat, estLon);
-            if (estConf > 0.0)
+            // 如果引擎已经提供了有效的经纬度，则无需估算
+            bool skipEstimate = false;
+            if (m_pCachedWeatherManager)
             {
-                PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
-                    Math.Round(estLat * 10.0) / 10.0,
-                    Math.Round(estLon * 10.0) / 10.0,
-                    Math.Round(estConf * 100.0) / 100.0);
-
-                // 若初始置信较低，按需使用天文网格搜索（更慢但更鲁棒）进一步细化
-                if (estConf < 0.9)
+                float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
+                float engLon = m_pCachedWeatherManager.GetCurrentLongitude();
+                if (engLat != 0.0 || engLon != 0.0)
                 {
-                    float refinedLat = 0.0;
-                    float refinedLon = 0.0;
-                    float refinedConf = EstimateLatLongFromAstronomicalSearch(refinedLat, refinedLon);
-                    if (refinedConf > estConf)
+                    skipEstimate = true;
+                    // 日志提示我们使用了引擎提供的坐标
+                    PrintFormat("[RealisticSystem][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
+                }
+            }
+
+            if (!skipEstimate)
+            {
+                float estLat = 0.0;
+                float estLon = 0.0;
+                float estConf = EstimateLatLongFromSunriseSunset(estLat, estLon);
+                if (estConf > 0.0)
+                {
+                    PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
+                        Math.Round(estLat * 10.0) / 10.0,
+                        Math.Round(estLon * 10.0) / 10.0,
+                        Math.Round(estConf * 100.0) / 100.0);
+
+                    // 若初始置信较低，按需使用天文网格搜索（更慢但更鲁棒）进一步细化
+                    if (estConf < 0.9)
                     {
-                        PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
-                            Math.Round(refinedLat * 10.0) / 10.0,
-                            Math.Round(refinedLon * 10.0) / 10.0,
-                            Math.Round(refinedConf * 100.0) / 100.0);
+                        float refinedLat = 0.0;
+                        float refinedLon = 0.0;
+                        float refinedConf = EstimateLatLongFromAstronomicalSearch(refinedLat, refinedLon);
+                        if (refinedConf > estConf)
+                        {
+                            PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
+                                Math.Round(refinedLat * 10.0) / 10.0,
+                                Math.Round(refinedLon * 10.0) / 10.0,
+                                Math.Round(refinedConf * 100.0) / 100.0);
+                        }
                     }
                 }
             }
-        }
         
         // 初始化建筑物列表
         m_pCachedBuildings = new array<IEntity>();
@@ -290,6 +315,27 @@ class EnvironmentFactor
                 ChimeraWorld chimeraWorld = ChimeraWorld.CastFrom(world);
                 if (chimeraWorld)
                     m_pCachedWeatherManager = chimeraWorld.GetTimeAndWeatherManager();
+            }
+        }
+
+        // 调试：每次获取时检查是否为零-coordinate
+        if (m_pCachedWeatherManager)
+        {
+            float dbgLat = m_pCachedWeatherManager.GetCurrentLatitude();
+            float dbgLon = m_pCachedWeatherManager.GetCurrentLongitude();
+            if (dbgLat == 0.0 && dbgLon == 0.0)
+            {
+                Print("[RSS-debug] weather mgr returned 0/0 coordinates, delaying");
+            }
+            else
+            {
+                // 如果之前已经打印了0/0，可以输出一次有效坐标
+                static bool once = false;
+                if (!once)
+                {
+                    PrintFormat("[RSS-debug] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
+                    once = true;
+                }
             }
         }
         
