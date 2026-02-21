@@ -125,6 +125,12 @@ class StaminaConsumptionCalculator
                 currentMovementPhase);
         }
 
+        // 在应用姿态之前，使用环境因子对机械能耗做温度/风速补偿
+        if (environmentFactor && baseDrainRateByVelocity > 0.0)
+        {
+            baseDrainRateByVelocity = environmentFactor.AdjustEnergyForTemperature(baseDrainRateByVelocity);
+        }
+
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
         

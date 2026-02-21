@@ -673,27 +673,63 @@ class EnvironmentFactor
     
     // ==================== 私有方法 ====================
     
-    // 计算虚拟气温（基于时间的昼夜温度曲线）
-    // 使用余弦函数模拟昼夜温度变化，峰值出现在 14:00
+    // 计算虚拟气温（统一模拟算法，无论引擎天气与否）
+    // 结合时间/纬度/季节曲线，并叠加雨风修正
     // @return 虚拟气温（°C）
     protected float CalculateSimulatedTemperature()
     {
         if (!m_pCachedWeatherManager)
             return 15.0; // 默认气温
-        
-        float currentHour = m_pCachedWeatherManager.GetTimeOfTheDay();
-        
-        // 昼夜温度模型参数
-        const float baseTemp = 15.0;      // 基础气温（清晨最低温）
-        const float amplitude = 12.0;     // 昼夜温差幅度
-        
-        // 使用余弦函数模拟曲线，使峰值出现在 14:00
-        // 公式：T(t) = baseTemp + amplitude * cos((t - 14) * π / 12)
-        // 14:00 -> 15 + 12 = 27°C (舒适偏热)
-        // 02:00 -> 15 - 12 = 3°C (寒冷)
-        float simulatedTemp = baseTemp + amplitude * Math.Cos((currentHour - 14.0) * Math.PI / 12.0);
-        
-        return simulatedTemp;
+
+        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+        float rain = m_pCachedWeatherManager.GetRainIntensity();
+        float wind = m_pCachedWeatherManager.GetWindSpeed();
+        float sr = 0.0;
+        float ss = 0.0;
+        m_pCachedWeatherManager.GetSunriseHour(sr);
+        m_pCachedWeatherManager.GetSunsetHour(ss);
+        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+        int year, month, day;
+        m_pCachedWeatherManager.GetDate(year, month, day);
+
+        // 1. 基于纬度和季节估算平均温度与昼夜幅度
+        float lat_factor = Math.Cos(lat * Math.DEG2RAD);
+        float season_factor = Math.Sin(((float)(month - 4) / 12.0) * Math.PI);
+
+        float t_avg = 15.0 + (15.0 * lat_factor) + (5.0 * season_factor);
+        float t_range = 8.0 + (4.0 * season_factor);
+
+        float t_max = t_avg + (t_range * 0.5);
+        float t_min = t_avg - (t_range * 0.5);
+
+        // 2. 峰值一般出现在日落前约 4 小时
+        float t_peak = ss - 4.0;
+        if (t_peak < 12.0) t_peak = 15.0;
+
+        float current_t;
+
+        // 3. 升温/降温两段曲线
+        if (tod >= sr && tod <= t_peak)
+        {
+            float p = (tod - sr) / (t_peak - sr);
+            current_t = t_min + (t_max - t_min) * Math.Pow(Math.Sin(p * 1.5707), 1.2);
+        }
+        else
+        {
+            float p;
+            if (tod > t_peak)
+                p = (tod - t_peak) / (24.0 - t_peak + sr);
+            else
+                p = (tod + 24.0 - t_peak) / (24.0 - t_peak + sr);
+
+            current_t = t_min + (t_max - t_min) * Math.Cos(p * 1.5707);
+        }
+
+        // 4. 降雨风速修正
+        current_t -= (rain * 6.5);
+        current_t -= (wind * 0.12);
+
+        return current_t;
     }
 
     // ------------------- 太阳与辐照工具函数（P1） -------------------
@@ -2052,48 +2088,12 @@ class EnvironmentFactor
     
     // 从API获取当前气温（使用TimeAndWeather的Min/Max进行昼夜插值计算）
     // @return 当前气温（°C）
+    // 统一气温模拟接口
+    // 本实现直接调用 CalculateSimulatedTemperature()，忽略引擎 min/max
+    // 这样无论是否开启引擎温度，都使用同一种算法生成基础温度
     protected float CalculateTemperatureFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 20.0; // 默认20°C
-
-        // 优先使用 TimeAndWeather 提供的日间最小/最大气温作为当日极值
-        float tempMin = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
-        float tempMax = m_pCachedWeatherManager.GetTemperatureAirMaxOverride();
-
-        // 若 min/max 几乎相等（例如被固定为同一值），认为这是常数或覆盖导致，回退到模拟昼夜模型
-        if (Math.AbsFloat(tempMax - tempMin) < 0.05)
-        {
-            PrintFormat("[RealisticSystem] Warning: Temperature min/max nearly equal (%1/%2). Attempting physical equilibrium estimate.", tempMin, tempMax);
-            // 若引擎给出的 min/max 是常数或被覆盖，尝试用物理平衡模型求初始温度，回退到模拟昼夜模型仅在无天气管理器时
-            if (m_pCachedWeatherManager)
-                return CalculateEquilibriumTemperatureFromPhysics();
-            else
-                return CalculateSimulatedTemperature();
-        }
-
-        // 使用余弦昼夜曲线（峰值出现在 14:00）基于 min/max 进行插值
-        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-        float mean = (tempMin + tempMax) * 0.5;
-        float amplitude = (tempMax - tempMin) * 0.5;
-        float computedTemp = mean + amplitude * Math.Cos((tod - 14.0) * Math.PI / 12.0);
-
-        // 限制在 min/max 范围内并返回
-        float low;
-        if (tempMin < tempMax)
-            low = tempMin;
-        else
-            low = tempMax;
-
-        float high;
-        if (tempMax > tempMin)
-            high = tempMax;
-        else
-            high = tempMin;
-
-        computedTemp = Math.Clamp(computedTemp, low, high);
-
-        return computedTemp;
+        return CalculateSimulatedTemperature();
     }
     
     // 从API获取地表湿度
@@ -2230,6 +2230,35 @@ class EnvironmentFactor
         float heatPenaltyCoeff = StaminaConstants.GetEnvTemperatureHeatPenaltyCoeff();
         m_fHeatStressPenalty = (m_fCachedTemperature - StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * 
                                heatPenaltyCoeff;
+    }
+
+    // 根据当前环境温度和风速对机械能耗进行补偿
+    // @param basePower 运动机械功率 (J/s)
+    // @return 包含热调节的总功率 (J/s)
+    float AdjustEnergyForTemperature(float basePower)
+    {
+        // 使用缓存的环境温度与风速
+        float T = m_fCachedTemperature;
+        float wind = m_fCachedWindSpeed;
+
+        // 1. 体感温度
+        float T_eff = T - 1.35 * Math.Sqrt(wind);
+
+        // 2. 热调节额外消耗
+        float extra = 0.0;
+        const float T_low = 18.0;
+        const float T_high = 27.0;
+        if (T_eff < T_low)
+        {
+            float dt = T_low - T_eff;
+            extra = 0.15 * (dt * dt);
+        }
+        else if (T_eff > T_high)
+        {
+            extra = 2.0 * (T_eff - T_high);
+        }
+
+        return basePower + extra;
     }
     
     // 计算冷应激惩罚
