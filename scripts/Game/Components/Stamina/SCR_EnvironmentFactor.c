@@ -125,7 +125,12 @@ class EnvironmentFactor
             float dbgLat = m_pCachedWeatherManager.GetCurrentLatitude();
             float dbgLon = m_pCachedWeatherManager.GetCurrentLongitude();
             float dbgTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
-            PrintFormat("[RSS-debug] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
+            float tmpLogInit = m_fNextLocationEstimateLogTime; // reuse same throttle
+            if (StaminaConstants.ShouldLog(tmpLogInit))
+            {
+                m_fNextLocationEstimateLogTime = tmpLogInit;
+                PrintFormat("[RSS-debug] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
+            }
         }
         m_fSurfaceWetnessPenalty = 0.0;
         
@@ -211,7 +216,12 @@ class EnvironmentFactor
                 {
                     skipEstimate = true;
                     // 日志提示我们使用了引擎提供的坐标
-                    PrintFormat("[RealisticSystem][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
+                    float tmpLocLog1 = m_fNextLocationEstimateLogTime;
+                    if (StaminaConstants.ShouldLog(tmpLocLog1))
+                    {
+                        m_fNextLocationEstimateLogTime = tmpLocLog1;
+                        PrintFormat("[RealisticSystem][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
+                    }
                 }
             }
 
@@ -222,10 +232,15 @@ class EnvironmentFactor
                 float estConf = EstimateLatLongFromSunriseSunset(estLat, estLon);
                 if (estConf > 0.0)
                 {
-                    PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
-                        Math.Round(estLat * 10.0) / 10.0,
-                        Math.Round(estLon * 10.0) / 10.0,
-                        Math.Round(estConf * 100.0) / 100.0);
+                    float tmpLocLog2 = m_fNextLocationEstimateLogTime;
+                    if (StaminaConstants.ShouldLog(tmpLocLog2))
+                    {
+                        m_fNextLocationEstimateLogTime = tmpLocLog2;
+                        PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
+                            Math.Round(estLat * 10.0) / 10.0,
+                            Math.Round(estLon * 10.0) / 10.0,
+                            Math.Round(estConf * 100.0) / 100.0);
+                    }
 
                     // 若初始置信较低，按需使用天文网格搜索（更慢但更鲁棒）进一步细化
                     if (estConf < 0.9)
@@ -235,10 +250,15 @@ class EnvironmentFactor
                         float refinedConf = EstimateLatLongFromAstronomicalSearch(refinedLat, refinedLon);
                         if (refinedConf > estConf)
                         {
-                            PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
-                                Math.Round(refinedLat * 10.0) / 10.0,
-                                Math.Round(refinedLon * 10.0) / 10.0,
-                                Math.Round(refinedConf * 100.0) / 100.0);
+                            float tmpLocLog3 = m_fNextLocationEstimateLogTime;
+                            if (StaminaConstants.ShouldLog(tmpLocLog3))
+                            {
+                                m_fNextLocationEstimateLogTime = tmpLocLog3;
+                                PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
+                                    Math.Round(refinedLat * 10.0) / 10.0,
+                                    Math.Round(refinedLon * 10.0) / 10.0,
+                                    Math.Round(refinedConf * 100.0) / 100.0);
+                            }
                         }
                     }
                 }
@@ -246,6 +266,7 @@ class EnvironmentFactor
         
         // 初始化建筑物列表
         m_pCachedBuildings = new array<IEntity>();
+        }
     }
 
     // 设置室内检测调试开关（用于运行时打开/关闭详细日志）
@@ -325,7 +346,12 @@ class EnvironmentFactor
             float dbgLon = m_pCachedWeatherManager.GetCurrentLongitude();
             if (dbgLat == 0.0 && dbgLon == 0.0)
             {
-                Print("[RSS-debug] weather mgr returned 0/0 coordinates, delaying");
+                float tmpLogU1 = m_fNextLocationEstimateLogTime;
+                if (StaminaConstants.ShouldLog(tmpLogU1))
+                {
+                    m_fNextLocationEstimateLogTime = tmpLogU1;
+                    Print("[RSS-debug] weather mgr returned 0/0 coordinates, delaying");
+                }
             }
             else
             {
@@ -333,7 +359,12 @@ class EnvironmentFactor
                 static bool once = false;
                 if (!once)
                 {
-                    PrintFormat("[RSS-debug] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
+                    float tmpLogU2 = m_fNextLocationEstimateLogTime;
+                    if (StaminaConstants.ShouldLog(tmpLogU2))
+                    {
+                        m_fNextLocationEstimateLogTime = tmpLogU2;
+                        PrintFormat("[RSS-debug] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
+                    }
                     once = true;
                 }
             }
@@ -358,6 +389,24 @@ class EnvironmentFactor
             float ss = 0.0;
             bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
             bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
+
+            // 调试：每秒输出引擎天气数据（仅服务器且开启调试）
+            if (Replication.IsServer() && StaminaConstants.IsDebugEnabled())
+            {
+                static float nextEngineLogTime = 0.0;
+                if (currentTime >= nextEngineLogTime)
+                {
+                    nextEngineLogTime = currentTime + 1.0; // 1秒间隔
+                    float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
+                    float engLon = m_pCachedWeatherManager.GetCurrentLongitude();
+                    float engTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
+                    // 由于 PrintFormat 仅支持最多 9 个占位符，我们需要压缩字段
+                    string dateStr = y.ToString() + "/" + mo.ToString() + "/" + d.ToString();
+                    string extras = "lat=" + engLat + " lon=" + engLon + " tz=" + engTZ;
+                    PrintFormat("[RSS-debug] engine TOD=%1 rain=%2 wind=%3 ovTemp=%4 sr=%5 ss=%6 date=%7 extras=%8",
+                                currTOD, currRain, currWind, currOverrideTemp, sr, ss, dateStr, extras);
+                }
+            }
 
             // 若与缓存值出现显著差异，则触发强制更新（实时响应管理员操作）
             if (m_fLastKnownTOD < 0.0 || Math.AbsFloat(currTOD - m_fLastKnownTOD) > 0.1) // >6min 变化视为人工修改
