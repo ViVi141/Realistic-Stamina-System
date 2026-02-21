@@ -100,6 +100,12 @@ class RSSConstants:
     VAULT_STAMINA_START_COST = 0.02
     CLIMB_STAMINA_TICK_COST = 0.01
     JUMP_CONSECUTIVE_PENALTY = 0.5
+    # 物理模型参数（优化器也会覆盖）
+    USE_PHYSICAL_JUMP = False
+    JUMP_EFFICIENCY = 0.22
+    JUMP_HEIGHT_GUESS = 0.5
+    JUMP_HORIZONTAL_SPEED_GUESS = 0.0
+    CLIMB_ISO_EFFICIENCY = 0.12
     
     # 环境参数
     ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5
@@ -310,7 +316,7 @@ class RSSDigitalTwin:
         return float(np.clip(f, 1.0, mx))
 
     def _calculate_drain_rate_c_aligned(self, speed, current_weight, grade_percent, terrain_factor,
-                                        stance, movement_type, wind_drag=0.0, environment_factor=None):
+                                        stance, wind_drag=0.0, environment_factor=None):
         body_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
@@ -318,8 +324,8 @@ class RSSDigitalTwin:
         speed_ratio = np.clip(speed / game_max, 0.0, 1.0)
         total_eff = self._fitness_efficiency_factor() * self._metabolic_efficiency_factor(speed_ratio)
         fatigue = self._fatigue_factor()
-        is_sprint = (speed >= getattr(self.constants, 'SPRINT_VELOCITY_THRESHOLD', 5.2) or
-                     movement_type == MovementType.SPRINT)
+        # sprint decision now based purely on speed threshold
+        is_sprint = speed >= getattr(self.constants, 'SPRINT_VELOCITY_THRESHOLD', 5.2)
         sprint_mult = getattr(self.constants, 'SPRINT_STAMINA_DRAIN_MULTIPLIER', 3.0) if is_sprint else 1.0
 
         if speed < 0.1:
@@ -539,7 +545,7 @@ class RSSDigitalTwin:
         try:
             base_for_recovery, total_drain = self._calculate_drain_rate_c_aligned(
                 speed, current_weight, grade_percent, terrain_factor,
-                stance, movement_type, wind_drag=0.0, environment_factor=self.environment_factor
+                stance, wind_drag=0.0, environment_factor=self.environment_factor
             )
             
             # 确保消耗率合理

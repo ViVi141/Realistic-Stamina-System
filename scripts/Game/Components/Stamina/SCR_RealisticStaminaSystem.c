@@ -72,7 +72,7 @@ class RealisticStaminaSpeedSystem
     static const float AEROBIC_EFFICIENCY_FACTOR = StaminaConstants.AEROBIC_EFFICIENCY_FACTOR;
     static const float ANAEROBIC_EFFICIENCY_FACTOR = StaminaConstants.ANAEROBIC_EFFICIENCY_FACTOR;
     // 注意：ENCUMBRANCE_SPEED_PENALTY_COEFF, ENCUMBRANCE_STAMINA_DRAIN_COEFF 现在从配置管理器获取
-    // 注意：JUMP_STAMINA_BASE_COST, VAULT_STAMINA_START_COST, CLIMB_STAMINA_TICK_COST 现在从配置管理器获取
+    // 注意：跳跃/翻越/攀爬消耗使用新的物理能量模型计算，旧的基准费用已移除
     static const float JUMP_MIN_STAMINA_THRESHOLD = StaminaConstants.JUMP_MIN_STAMINA_THRESHOLD;
     static const float JUMP_CONSECUTIVE_WINDOW = StaminaConstants.JUMP_CONSECUTIVE_WINDOW;
     static const float JUMP_CONSECUTIVE_PENALTY = StaminaConstants.JUMP_CONSECUTIVE_PENALTY;
@@ -604,24 +604,28 @@ class RealisticStaminaSpeedSystem
     // @param baseCost 基础消耗（0.0-1.0）
     // @param currentWeight 当前总重量（kg），包括身体重量和负重
     // @return 实际消耗（0.0-1.0）
-    static float CalculateActionCost(float baseCost, float currentWeight)
+    // 物理模型估算单次跳跃能量消耗（体力百分比）
+    // m: 体重(kg); h: 抬升高度(m); v: 水平速度(m/s); eta: 肌肉效率(0.2-0.25)
+    static float ComputeJumpCostPhys(float m, float h, float v, float eta)
     {
-        // 限制输入参数
-        baseCost = Math.Max(baseCost, 0.0);
-        currentWeight = Math.Max(currentWeight, CHARACTER_WEIGHT); // 至少等于身体重量
-        
-        // 计算重量比例
-        float weightRatio = currentWeight / CHARACTER_WEIGHT; // 例如：120kg / 90kg = 1.33
-        
-        // 使用 1.5 次幂，让超重状态下的跳跃变得极其昂贵
-        // 使用 StaminaHelpers.Pow 函数计算 weightRatio^1.5
-        float weightMultiplier = StaminaHelpers.Pow(weightRatio, 1.5);
-        
-        // 计算实际消耗
-        float actualCost = baseCost * weightMultiplier;
-        
-        // 限制最大消耗（防止数值爆炸）
-        return Math.Clamp(actualCost, 0.0, 0.15); // 最多15%体力
+        const float g = 9.81;
+        float epot = m * g * h;
+        float ekin = 0.5 * m * v * v;
+        float joules = (epot + ekin) / Math.Max(eta, 0.01);
+        // 1体力≈75kcal≈3.14e5J
+        return Math.Clamp(joules / 3.14e5, 0.0, 0.15);
+    }
+
+    // 物理模型估算攀爬能量（每秒体力百分比）
+    // m: 体重; v_vert: 垂直速度; F_iso: 四肢等长力; eta_iso: 等长效率
+    static float ComputeClimbCostPhys(float m, float v_vert, float F_iso, float eta_iso)
+    {
+        const float g = 9.81;
+        float p_vert = m * g * v_vert;
+        float p_iso = eta_iso * F_iso;
+        float p_total = p_vert + p_iso + 50.0; // 加基代 50W
+        float joules = p_total * 0.2; // assuming step 0.2s
+        return Math.Clamp(joules / 3.14e5, 0.0, 0.15);
     }
     
     // 计算负重对体力消耗的影响倍数（基于体重的真实模型）

@@ -223,33 +223,20 @@ class SCR_RSS_Params
     [Attribute(defvalue: "2.5", desc: "Posture prone multiplier.\nStamina drain multiplier when prone (relative to standing).\nOptimized range: 2.2 - 2.8.\nHigher value = faster stamina drain when prone.\n趴姿消耗倍数。\n趴下时的体力消耗倍数（相对于站姿）。\nOptuna 优化范围：2.2 - 2.8。\n值越大，趴下时体力消耗越快。")]
     float posture_prone_multiplier;
 
-    // 跳跃基础体力消耗
-    // 单次跳跃的基础体力消耗
-    // Optuna 优化范围：0.025 - 0.05
-    // 说明：值越大，跳跃消耗体力越多
-    [Attribute(defvalue: "0.035", desc: "Jump stamina base cost.\nBase stamina cost for a single jump.\nOptimized range: 0.025 - 0.05.\nHigher value = more stamina consumed per jump.\n跳跃基础体力消耗。\n单次跳跃的基础体力消耗。\nOptuna 优化范围：0.025 - 0.05。\n值越大，跳跃消耗体力越多。")]
-    float jump_stamina_base_cost;
+
+    [Attribute(defvalue: "0.22", desc: "Jump muscle efficiency (20-25%).\n肌肉效率，0.20-0.25")]
+    float jump_efficiency;
+
+    [Attribute(defvalue: "0.5", desc: "Estimated center-of-mass lift height for jump (m).\n仅在物理模型下使用的抬升高度")]
+    float jump_height_guess;
+
+    [Attribute(defvalue: "0.0", desc: "Estimated horizontal takeoff speed for jump (m/s).\n仅在物理模型下使用")]
+    float jump_horizontal_speed_guess;
+
+    [Attribute(defvalue: "0.12", desc: "Isometric efficiency during climbing (10-15%).\n攀爬时等长收缩效率。")]
+    float climb_iso_efficiency;
 
     // 跃过起始体力消耗
-    // 跃过障碍物时的起始体力消耗
-    // Optuna 优化范围：0.01 - 0.025
-    // 说明：值越大，跃过起始消耗体力越多
-    [Attribute(defvalue: "0.02", desc: "Vault stamina start cost.\nInitial stamina cost for vaulting over obstacles.\nOptimized range: 0.01 - 0.025.\nHigher value = more stamina consumed at vault start.\n跃过起始体力消耗。\n跃过障碍物时的起始体力消耗。\nOptuna 优化范围：0.01 - 0.025。\n值越大，跃过起始消耗体力越多。")]
-    float vault_stamina_start_cost;
-
-    // 攀爬体力消耗（每tick）
-    // 攀爬时的体力消耗（每0.2秒）
-    // Optuna 优化范围：0.008 - 0.015
-    // 说明：值越大，攀爬消耗体力越快
-    [Attribute(defvalue: "0.01", desc: "Climb stamina tick cost.\nStamina cost per tick (0.2s) when climbing.\nOptimized range: 0.008 - 0.015.\nHigher value = faster stamina drain when climbing.\n攀爬体力消耗（每tick）。\n攀爬时的体力消耗（每0.2秒）。\nOptuna 优化范围：0.008 - 0.015。\n值越大，攀爬消耗体力越快。")]
-    float climb_stamina_tick_cost;
-
-    // 连续跳跃惩罚
-    // 连续跳跃时的体力消耗惩罚
-    // Optuna 优化范围：0.4 - 0.7
-    // 说明：值越大，连续跳跃惩罚越严重
-    [Attribute(defvalue: "0.5", desc: "Jump consecutive penalty.\nStamina drain penalty for consecutive jumps.\nOptimized range: 0.4 - 0.7.\nHigher value = more severe penalty for consecutive jumps.\n连续跳跃惩罚。\n连续跳跃时的体力消耗惩罚。\nOptuna 优化范围：0.4 - 0.7。\n值越大，连续跳跃惩罚越严重。")]
-    float jump_consecutive_penalty;
 
     // 上坡系数
     // 上坡时的体力消耗系数
@@ -476,10 +463,6 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.sprint_speed_boost = 0.3156223388913739;
 	m_EliteStandard.posture_crouch_multiplier = 1.5692807702155411;
 	m_EliteStandard.posture_prone_multiplier = 3.8859722663684426;
-	m_EliteStandard.jump_stamina_base_cost = 0.04155012639746442;
-	m_EliteStandard.vault_stamina_start_cost = 0.02197209381909637;
-	m_EliteStandard.climb_stamina_tick_cost = 0.01085730654293999;
-	m_EliteStandard.jump_consecutive_penalty = 0.4923432287626238;
 	m_EliteStandard.slope_uphill_coeff = 0.09683978084386305;
 	m_EliteStandard.slope_downhill_coeff = 0.033891908545065706;
 	m_EliteStandard.swimming_base_power = 22.289810616558164;
@@ -536,10 +519,6 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.sprint_speed_boost = 0.2818512831818367;
 	m_StandardMilsim.posture_crouch_multiplier = 1.5355572016966572;
 	m_StandardMilsim.posture_prone_multiplier = 3.95923426779164;
-	m_StandardMilsim.jump_stamina_base_cost = 0.04247111152454178;
-	m_StandardMilsim.vault_stamina_start_cost = 0.018293780670342177;
-	m_StandardMilsim.climb_stamina_tick_cost = 0.01035118162026549;
-	m_StandardMilsim.jump_consecutive_penalty = 0.5694593491070987;
 	m_StandardMilsim.slope_uphill_coeff = 0.07765097347000274;
 	m_StandardMilsim.slope_downhill_coeff = 0.02035915727500302;
 	m_StandardMilsim.swimming_base_power = 15.745104618186401;
@@ -596,10 +575,6 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.sprint_speed_boost = 0.3462713610246377;
 	m_TacticalAction.posture_crouch_multiplier = 1.3059058044037577;
 	m_TacticalAction.posture_prone_multiplier = 2.5632086414161237;
-	m_TacticalAction.jump_stamina_base_cost = 0.04389472517566159;
-	m_TacticalAction.vault_stamina_start_cost = 0.022365352283347927;
-	m_TacticalAction.climb_stamina_tick_cost = 0.011531975299319092;
-	m_TacticalAction.jump_consecutive_penalty = 0.44052652682706867;
 	m_TacticalAction.slope_uphill_coeff = 0.08350343484437608;
 	m_TacticalAction.slope_downhill_coeff = 0.034022791888349474;
 	m_TacticalAction.swimming_base_power = 21.801118854469728;
@@ -657,10 +632,6 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.sprint_speed_boost = 0.3;
         m_Custom.posture_crouch_multiplier = 2.0;
         m_Custom.posture_prone_multiplier = 2.5;
-        m_Custom.jump_stamina_base_cost = 0.035;
-        m_Custom.vault_stamina_start_cost = 0.02;
-        m_Custom.climb_stamina_tick_cost = 0.01;
-        m_Custom.jump_consecutive_penalty = 0.5;
         m_Custom.slope_uphill_coeff = 0.08;
         m_Custom.slope_downhill_coeff = 0.03;
         m_Custom.swimming_base_power = 25.0;
@@ -861,10 +832,6 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outArr.Insert(p.sprint_velocity_threshold);
         outArr.Insert(p.posture_crouch_multiplier);
         outArr.Insert(p.posture_prone_multiplier);
-        outArr.Insert(p.jump_stamina_base_cost);
-        outArr.Insert(p.vault_stamina_start_cost);
-        outArr.Insert(p.climb_stamina_tick_cost);
-        outArr.Insert(p.jump_consecutive_penalty);
         outArr.Insert(p.slope_uphill_coeff);
         outArr.Insert(p.slope_downhill_coeff);
         outArr.Insert(p.swimming_base_power);
@@ -914,10 +881,6 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         p.sprint_velocity_threshold = values[i++];
         p.posture_crouch_multiplier = values[i++];
         p.posture_prone_multiplier = values[i++];
-        p.jump_stamina_base_cost = values[i++];
-        p.vault_stamina_start_cost = values[i++];
-        p.climb_stamina_tick_cost = values[i++];
-        p.jump_consecutive_penalty = values[i++];
         p.slope_uphill_coeff = values[i++];
         p.slope_downhill_coeff = values[i++];
         p.swimming_base_power = values[i++];

@@ -184,15 +184,6 @@ AEROBIC_EFFICIENCY_FACTOR = 0.9
 MIXED_EFFICIENCY_FACTOR = 1.0  # 混合区效率因子（100%，标准）
 ANAEROBIC_EFFICIENCY_FACTOR = 1.2
 
-# ==================== 动作体力消耗常量 ====================
-JUMP_STAMINA_BASE_COST = 0.035  # 3.5% 体力（单次跳跃）
-VAULT_STAMINA_START_COST = 0.02  # 2% 体力（翻越起始消耗）
-CLIMB_STAMINA_TICK_COST = 0.01  # 1% 体力/秒（持续攀爬消耗）
-JUMP_MIN_STAMINA_THRESHOLD = 0.10  # 10% 体力
-JUMP_CONSECUTIVE_WINDOW = 2.0  # 2秒
-JUMP_CONSECUTIVE_PENALTY = 0.5  # 50%
-JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0  # m/s，跳跃检测阈值（垂直速度）
-VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5  # m/s，翻越检测阈值（垂直速度）
 
 # ==================== 恢复启动延迟常量（深度生理压制版本）====================
 # 深度生理压制：停止运动后3秒内系统完全不处理恢复

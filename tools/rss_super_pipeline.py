@@ -484,18 +484,10 @@ class RSSSuperPipeline:
         )
         
         # 动作消耗参数
-        jump_stamina_base_cost = trial.suggest_float(
-            'jump_stamina_base_cost', 0.025, 0.045
-        )
-        vault_stamina_start_cost = trial.suggest_float(
-            'vault_stamina_start_cost', 0.015, 0.025
-        )
-        climb_stamina_tick_cost = trial.suggest_float(
-            'climb_stamina_tick_cost', 0.008, 0.012
-        )
-        jump_consecutive_penalty = trial.suggest_float(
-            'jump_consecutive_penalty', 0.4, 0.6
-        )
+        # physical jump/climb parameters
+        jump_efficiency = trial.suggest_float('jump_efficiency', 0.20, 0.25)
+        jump_height_guess = trial.suggest_float('jump_height_guess', 0.3, 1.0)
+        jump_horizontal_speed_guess = trial.suggest_float('jump_horizontal_speed_guess', 0.0, 1.5)
         
         # 坡度系统参数
         slope_uphill_coeff = trial.suggest_float(
@@ -580,10 +572,12 @@ class RSSSuperPipeline:
         constants.SPRINT_SPEED_BOOST = sprint_speed_boost
         constants.POSTURE_CROUCH_MULTIPLIER = posture_crouch_multiplier
         constants.POSTURE_PRONE_MULTIPLIER = posture_prone_multiplier
-        constants.JUMP_STAMINA_BASE_COST = jump_stamina_base_cost
-        constants.VAULT_STAMINA_START_COST = vault_stamina_start_cost
-        constants.CLIMB_STAMINA_TICK_COST = climb_stamina_tick_cost
-        constants.JUMP_CONSECUTIVE_PENALTY = jump_consecutive_penalty
+        # constants related to physical jump/climb are set automatically
+        # physical model params
+        constants.JUMP_EFFICIENCY = jump_efficiency
+        constants.JUMP_HEIGHT_GUESS = jump_height_guess
+        constants.JUMP_HORIZONTAL_SPEED_GUESS = jump_horizontal_speed_guess
+        constants.CLIMB_ISO_EFFICIENCY = 0.12
         constants.SLOPE_UPHILL_COEFF = slope_uphill_coeff
         constants.SLOPE_DOWNHILL_COEFF = slope_downhill_coeff
         constants.SWIMMING_BASE_POWER = swimming_base_power
@@ -1038,9 +1032,6 @@ class RSSSuperPipeline:
             # 记录轻量日志供 GUI/调试查看（不影响返回值）
             pass
 
-        # 返回 (penalty, actual_sprint_drop) 以便作为独立目标使用
-        return float(penalty), float(actual_sprint_drop)
-
         # 3) Walk：120秒 1.8m/s 标准战斗负载（30KG，总重 120KG）
         walk_delta = simulate_fixed_speed(
             speed=1.8,
@@ -1057,7 +1048,8 @@ class RSSSuperPipeline:
         elif walk_delta > max_walk_gain:
             penalty += (walk_delta - max_walk_gain) * 5000.0  # 提高超限惩罚
 
-        return float(penalty)
+        # 返回 (penalty, actual_sprint_drop) 以便作为独立目标使用
+        return float(penalty), float(actual_sprint_drop)
     
     def _check_basic_fitness(self, twin: RSSDigitalTwin) -> bool:
         """

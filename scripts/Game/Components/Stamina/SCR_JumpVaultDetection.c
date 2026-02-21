@@ -142,16 +142,17 @@ class JumpVaultDetector
                     }
                 }
                 
-                // 使用动态负重倍率计算基础消耗
-                float jumpBaseCost = StaminaConstants.GetJumpStaminaBaseCost();
-                float baseJumpCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                    jumpBaseCost, 
-                    currentTotalWeight
-                );
+                float finalJumpCost = 0.0;
+                // 物理模型计算跳跃消耗
+                float eta = StaminaConstants.GetJumpEfficiency();
+                float hguess = StaminaConstants.GetJumpHeightGuess();
+                float vguess = StaminaConstants.GetJumpHorizSpeedGuess();
+                finalJumpCost = RealisticStaminaSpeedSystem.ComputeJumpCostPhys(
+                    currentTotalWeight, hguess, vguess, eta);
                 
                 // 应用连续跳跃惩罚：每次连续跳跃额外增加50%消耗
                 float consecutiveMultiplier = 1.0 + (m_iRecentJumpCount - 1) * RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_PENALTY;
-                float finalJumpCost = baseJumpCost * consecutiveMultiplier;
+                finalJumpCost *= consecutiveMultiplier;
                 
                 // 设置2秒冷却（10个更新周期）
                 m_iJumpCooldownFrames = 10;
@@ -175,9 +176,8 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (基础: %2%%, 连续: %3次, 倍数: %4, 冷却: 2秒)", 
+                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
-                        Math.Round(baseJumpCost * 100.0).ToString(),
                         m_iRecentJumpCount.ToString(),
                         Math.Round(consecutiveMultiplier * 100.0) / 100.0);
                 }
@@ -242,11 +242,13 @@ class JumpVaultDetector
                     }
                 }
                 
-                float vaultBaseCost = StaminaConstants.GetVaultStaminaStartCost();
-                float vaultCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                    vaultBaseCost, 
-                    currentTotalWeight
-                );
+                float vaultCost = 0.0;
+                // 物理模型计算翻越初始消耗
+                float eta_iso = 0.12;
+                float vert = 0.5;
+                float limbForce = currentTotalWeight * 0.5;
+                vaultCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
+                    currentTotalWeight, vert, limbForce, eta_iso);
                 
                 totalCost = vaultCost;
                 m_bIsVaulting = true;
@@ -256,9 +258,8 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到翻越动作！消耗体力: %1%% (基础: %2%%, 冷却: 5秒)", 
-                        Math.Round(vaultCost * 100.0).ToString(),
-                        Math.Round(vaultBaseCost * 100.0).ToString());
+                    PrintFormat("[RealisticSystem] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
+                        Math.Round(vaultCost * 100.0).ToString());
                 }
             }
             else
@@ -282,12 +283,13 @@ class JumpVaultDetector
                         }
                     }
                     
-                    float climbBaseCost = StaminaConstants.GetClimbStaminaTickCost();
-                    float continuousClimbCost = RealisticStaminaSpeedSystem.CalculateActionCost(
-                        climbBaseCost, 
-                        currentTotalWeight
-                    );
-                    
+                    float continuousClimbCost = 0.0;
+                    // 物理模型计算持续攀爬消耗
+                    float eta_iso = 0.12;
+                    float vertSpeed = 0.5;
+                    float limbForce = currentTotalWeight * 0.5;
+                    continuousClimbCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
+                        currentTotalWeight, vertSpeed, limbForce, eta_iso);
                     totalCost = continuousClimbCost;
                     m_iVaultingFrameCount = 0;
                 }

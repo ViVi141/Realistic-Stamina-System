@@ -240,14 +240,6 @@ class StaminaConstants
     // ==================== 动作体力消耗常量 ====================
     // 基于医学研究：跳跃和翻越动作的能量消耗远高于普通移动
     
-    // 跳跃体力消耗（单次）
-    static const float JUMP_STAMINA_BASE_COST = 0.035; // 3.5% 体力（单次跳跃，v2.5优化）
-    
-    // 翻越体力消耗（单次）
-    static const float VAULT_STAMINA_START_COST = 0.02; // 2% 体力（翻越起始消耗，v2.5优化）
-    
-    // 持续攀爬消耗（每秒）
-    static const float CLIMB_STAMINA_TICK_COST = 0.01; // 1% 体力/秒（持续攀爬消耗，v2.5优化）
     
     // 低体力跳跃阈值：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
     static const float JUMP_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力
@@ -774,44 +766,49 @@ class StaminaConstants
 
     // ==================== 动作消耗参数配置方法 ====================
 
-    // 获取跳跃基础消耗（从配置管理器）
-    static float GetJumpStaminaBaseCost()
+
+    // 是否使用物理模型计算跳跃消耗
+
+    // 跳跃肌肉效率
+    static float GetJumpEfficiency()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.jump_stamina_base_cost;
+                return params.jump_efficiency;
         }
-        return 0.035; // 默认值（3.5%体力）
+        return 0.22; // default 22%
     }
 
-    // 获取翻越起始消耗（从配置管理器）
-    static float GetVaultStaminaStartCost()
+    // 跳跃重心抬升高度猜测
+    static float GetJumpHeightGuess()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.vault_stamina_start_cost;
+                return params.jump_height_guess;
         }
-        return 0.02; // 默认值（2%体力）
+        return 0.5; // default 0.5 m
     }
 
-    // 获取攀爬消耗（从配置管理器）
-    static float GetClimbStaminaTickCost()
+    // 跳跃水平速度猜测
+    static float GetJumpHorizSpeedGuess()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params)
-                return params.climb_stamina_tick_cost;
+                return params.jump_horizontal_speed_guess;
         }
-        return 0.01; // 默认值（1%体力/秒）
+        return 0.0;
     }
+
+
 
     // ==================== 环境因子参数配置方法 ====================
 
