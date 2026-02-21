@@ -961,13 +961,29 @@ class EnvironmentFactor
         int n = DayOfYear(year, month, day);
         float lat = m_pCachedWeatherManager.GetCurrentLatitude();
 
-        // 使用引擎的日出/日落/月相接口作为权威来源（地图经度可能不可用）
-        float localHour = tod;
-        if (!m_bUseEngineTimezone)
-            localHour -= m_fTimeZoneOffsetHours;
+        // 优先使用引擎时区信息；引擎同时提供 GetCurrentLongitude()，可作太阳时经度校正
+        float tz = 0.0;
+        float lon = m_fLongitude;
+        if (m_bUseEngineTimezone)
+        {
+            tz = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
+            lon = m_pCachedWeatherManager.GetCurrentLongitude(); // 直接从引擎地图配置读取经度
+        }
+        else
+        {
+            tz = m_fTimeZoneOffsetHours;
+        }
+
+        // 时钟小时 → 真太阳时：加入经度与标准子午线之差（每 15° 差 1 小时）
+        // solarHour = clockHour + (longitude - timezone_central_meridian) / 15
+        float localHour = tod - tz; // 先转为 UTC
+        float solarHour = localHour + lon / 15.0;
         // 归一化到 [0,24)
-        while (localHour < 0.0) localHour += 24.0;
-        while (localHour >= 24.0) localHour -= 24.0;
+        while (solarHour < 0.0) solarHour += 24.0;
+        while (solarHour >= 24.0) solarHour -= 24.0;
+        float localHourClock = tod; // 保留时钟小时供日出/日落比较（引擎返回的是本地时钟时间）
+        // 重新以真太阳时覆盖 localHour，后续天顶角计算使用太阳时
+        localHour = solarHour;
 
         // 使用引擎的日出/日落 API（不依赖显式经度/经纬），在不可用时回退到基于天顶角的计算
         bool hasSunrise = false;
@@ -983,21 +999,22 @@ class EnvironmentFactor
         float cosTheta = 0.0;
         if (hasSunrise && hasSunset)
         {
-            if (localHour < sunRiseHour || localHour > sunSetHour)
+            // 日出/日落是引擎返回的本地时钟时间，用时钟小时对比；天顶角用真太阳时计算
+            if (localHourClock < sunRiseHour || localHourClock > sunSetHour)
             {
                 // 引擎判定为夜间
                 cosTheta = 0.0;
             }
             else
             {
-                cosTheta = SolarCosZenith(lat, n, localHour);
+                cosTheta = SolarCosZenith(lat, n, localHour); // localHour 此时为真太阳时
                 if (cosTheta <= 0.0)
                     cosTheta = 0.0;
             }
         }
         else
         {
-            // 回退到原有基于天顶角的计算
+            // 回退到原有基于天顶角的计算（无引擎日出日落时）
             cosTheta = SolarCosZenith(lat, n, localHour);
             if (cosTheta <= 0.0)
                 cosTheta = 0.0;
@@ -1636,6 +1653,10 @@ class EnvironmentFactor
         m_bUseEngineTimezone = settings.m_bUseEngineTimezone;
         m_fLongitude = settings.m_fLongitude;
         m_fTimeZoneOffsetHours = settings.m_fTimeZoneOffsetHours;
+
+        // 若引擎可用且启用了引擎时区模式，直接从地图配置读取经度（World Editor 中 Geographic Coords 提供）
+        if (m_bUseEngineTimezone && m_pCachedWeatherManager)
+            m_fLongitude = m_pCachedWeatherManager.GetCurrentLongitude();
     }
 
     // 外部调用：在配置发生改变时调用以立即应用新设置
