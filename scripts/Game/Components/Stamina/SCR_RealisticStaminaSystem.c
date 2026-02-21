@@ -466,9 +466,9 @@ class RealisticStaminaSpeedSystem
         float baseRecoveryRate = StaminaConstants.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
         
         // ==================== 2. 健康状态/训练水平影响 ====================
-        // 训练有素者（fitness=1.0）恢复速度增加25%
-        float fitnessRecoveryMultiplier = 1.0 + (FITNESS_RECOVERY_COEFF * FITNESS_LEVEL);
-        fitnessRecoveryMultiplier = Math.Clamp(fitnessRecoveryMultiplier, 1.0, 1.5); // 限制在100%-150%之间
+        // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接使用，防止不平等游玩
+        // clamp(1.0 + 0.25 × 1.0, 1.0, 1.5) = 1.25
+        float fitnessRecoveryMultiplier = StaminaConstants.FIXED_FITNESS_RECOVERY_MULTIPLIER;
         
         // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
@@ -498,10 +498,9 @@ class RealisticStaminaSpeedSystem
         // 否则：标准恢复期（10分钟内），restTimeMultiplier = 1.0
         
         // ==================== 4. 年龄影响 ====================
-        // 年轻者恢复更快，年老者恢复较慢
-        // 公式：age_recovery_multiplier = 1.0 + AGE_RECOVERY_COEFF × (AGE_REFERENCE - age) / AGE_REFERENCE
-        float ageRecoveryMultiplier = 1.0 + (AGE_RECOVERY_COEFF * (AGE_REFERENCE - CHARACTER_AGE) / AGE_REFERENCE);
-        ageRecoveryMultiplier = Math.Clamp(ageRecoveryMultiplier, 0.8, 1.2); // 限制在80%-120%之间
+        // 固定值（22岁标准男性）：预计算结果直接使用，防止不平等游玩
+        // clamp(1.0 + 0.2 × (30-22)/30, 0.8, 1.2) = clamp(1.0533, 0.8, 1.2) = 1.053
+        float ageRecoveryMultiplier = StaminaConstants.FIXED_AGE_RECOVERY_MULTIPLIER;
         
         // ==================== 5. 累积疲劳恢复影响 ====================
         // 运动后的疲劳需要时间恢复，影响恢复速度
@@ -631,24 +630,24 @@ class RealisticStaminaSpeedSystem
     // m: 体重(kg); h: 抬升高度(m); v: 水平速度(m/s); eta: 肌肉效率(0.2-0.25)
     static float ComputeJumpCostPhys(float m, float h, float v, float eta)
     {
-        const float g = 9.81;
+        const float g = StaminaConstants.JUMP_GRAVITY;
         float epot = m * g * h;
         float ekin = 0.5 * m * v * v;
         float joules = (epot + ekin) / Math.Max(eta, 0.01);
-        // 1体力≈75kcal≈3.14e5J
-        return Math.Clamp(joules / 3.14e5, 0.0, 0.15);
+        // 1体力 ≈ 75kcal ≈ JUMP_STAMINA_TO_JOULES J
+        return Math.Clamp(joules / StaminaConstants.JUMP_STAMINA_TO_JOULES, 0.0, StaminaConstants.JUMP_VAULT_MAX_DRAIN_CLAMP);
     }
 
     // 物理模型估算攀爬能量（每秒体力百分比）
     // m: 体重; v_vert: 垂直速度; F_iso: 四肢等长力; eta_iso: 等长效率
     static float ComputeClimbCostPhys(float m, float v_vert, float F_iso, float eta_iso)
     {
-        const float g = 9.81;
+        const float g = StaminaConstants.JUMP_GRAVITY;
         float p_vert = m * g * v_vert;
         float p_iso = eta_iso * F_iso;
-        float p_total = p_vert + p_iso + 50.0; // 加基代 50W
-        float joules = p_total * 0.2; // assuming step 0.2s
-        return Math.Clamp(joules / 3.14e5, 0.0, 0.15);
+        float p_total = p_vert + p_iso + StaminaConstants.VAULT_BASE_METABOLISM_WATTS;
+        float joules = p_total * 0.2; // step = UPDATE_INTERVAL = 0.2s
+        return Math.Clamp(joules / StaminaConstants.JUMP_STAMINA_TO_JOULES, 0.0, StaminaConstants.JUMP_VAULT_MAX_DRAIN_CLAMP);
     }
     
     // 计算负重对体力消耗的影响倍数（基于体重的真实模型）
@@ -919,7 +918,8 @@ class RealisticStaminaSpeedSystem
         // 添加 fitness bonus 来降低基础代谢项
         float velocityTerm = velocity - PANDOLF_VELOCITY_OFFSET;
         float velocitySquaredTerm = velocityTerm * velocityTerm;
-        float fitnessBonus = 1.0 - (0.2 * FITNESS_LEVEL); // 训练有素者基础代谢降低20%
+        // 固定值（FITNESS_LEVEL=1.0）：1.0 - 0.2 × 1.0 = 0.80，防止不平等游玩
+        float fitnessBonus = StaminaConstants.FIXED_PANDOLF_FITNESS_BONUS;
         float baseTerm = (PANDOLF_BASE_COEFF * fitnessBonus) + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
         
         // 计算坡度项：G·(0.23 + 1.34·V²)

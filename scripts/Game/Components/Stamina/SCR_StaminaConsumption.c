@@ -230,10 +230,11 @@ class StaminaConsumptionCalculator
     }
     
     // 计算健康状态效率因子
-    // @return 健康状态效率因子
+    // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接返回，防止不平等游玩
+    // = clamp(1.0 - 0.35 × 1.0, 0.7, 1.0) = clamp(0.65, 0.7, 1.0) = 0.70
+    // @return 0.70（固定常量）
     static float CalculateFitnessEfficiencyFactor()
     {
-        float fitnessEfficiencyFactor = 1.0 - (RealisticStaminaSpeedSystem.FITNESS_EFFICIENCY_COEFF * RealisticStaminaSpeedSystem.FITNESS_LEVEL);
-        return Math.Clamp(fitnessEfficiencyFactor, 0.7, 1.0);
+        return StaminaConstants.FIXED_FITNESS_EFFICIENCY_FACTOR;
     }
 }

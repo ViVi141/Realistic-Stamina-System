@@ -103,13 +103,19 @@ class RSSConstants:
     VAULT_STAMINA_START_COST = 0.02
     CLIMB_STAMINA_TICK_COST = 0.01
     JUMP_CONSECUTIVE_PENALTY = 0.5
-    # 物理模型参数（优化器也会覆盖）
+    # [HARD] 跳跃/翻越物理模型常数（Margaria 1963；经典力学）—— 不参与优化
     USE_PHYSICAL_JUMP = False
-    JUMP_EFFICIENCY = 0.22
-    JUMP_HEIGHT_GUESS = 0.5
-    JUMP_HORIZONTAL_SPEED_GUESS = 0.0
-    CLIMB_ISO_EFFICIENCY = 0.12
-    
+    JUMP_EFFICIENCY = 0.22       # [HARD] Margaria 1963 肌肉效率中值（20-25%）
+    JUMP_HEIGHT_GUESS = 0.5      # [SOFT][OPTIMIZE] 跳跃重心抬升高度估算
+    JUMP_HORIZONTAL_SPEED_GUESS = 0.0  # [SOFT][OPTIMIZE] 跳跃水平速度估算
+    CLIMB_ISO_EFFICIENCY = 0.12  # [HARD] Margaria 1963 等长效率（10-15%）—— 不参与优化
+    JUMP_GRAVITY = 9.81          # [HARD] 重力加速度
+    JUMP_STAMINA_TO_JOULES = 3.14e5  # [HARD] 75kcal × 4186 J/kcal
+    JUMP_VAULT_MAX_DRAIN_CLAMP = 0.15  # [HARD] 系统标尺边界
+    VAULT_VERT_LIFT_GUESS = 0.5  # [HARD] 标准障碍高度中值
+    VAULT_LIMB_FORCE_RATIO = 0.5  # [HARD] 生物力学测量值
+    VAULT_BASE_METABOLISM_WATTS = 50.0  # [HARD] 轻度静力基础代谢
+
     # 环境参数
     ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5
     ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02
@@ -130,6 +136,13 @@ class RSSConstants:
     FITNESS_LEVEL = 1.0
     FITNESS_EFFICIENCY_COEFF = 0.35
     FITNESS_RECOVERY_COEFF = 0.25
+
+    # ==================== [HARD] 预计算人物属性固定值 (age=22, fitness=1.0) ====================
+    # 与 C 端 SCR_StaminaConstants.c FIXED_* 常量完全一致，防止不平等游玩
+    FIXED_FITNESS_EFFICIENCY_FACTOR = 0.70    # clamp(1.0 - 0.35*1.0, 0.7, 1.0)
+    FIXED_FITNESS_RECOVERY_MULTIPLIER = 1.25  # clamp(1.0 + 0.25*1.0, 1.0, 1.5)
+    FIXED_AGE_RECOVERY_MULTIPLIER = 1.053     # clamp(1.0 + 0.2*(30-22)/30, 0.8, 1.2)
+    FIXED_PANDOLF_FITNESS_BONUS = 0.80        # 1.0 - 0.2*1.0
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
@@ -276,10 +289,11 @@ class RSSDigitalTwin:
         return fn
 
     def _fitness_efficiency_factor(self):
-        c = getattr(self.constants, 'FITNESS_EFFICIENCY_COEFF', 0.35)
-        lvl = getattr(self.constants, 'FITNESS_LEVEL', 1.0)
-        f = 1.0 - c * lvl
-        return float(np.clip(f, 0.7, 1.0))
+        # [HARD LOCKED] age=22, fitness=1.0 预计算固定值 0.70
+        # 与 C 端 FIXED_FITNESS_EFFICIENCY_FACTOR 完全一致。不再动态计算，防止不平等游玩
+        # C 端应用式： base_term = (vb * FIXED_PANDOLF_FITNESS_BONUS) + vc * vt²
+        # Python 应用式： total_eff = fitness_efficiency_factor * metabolic_efficiency_factor
+        return getattr(self.constants, 'FIXED_FITNESS_EFFICIENCY_FACTOR', 0.70)
 
     def _encumbrance_stamina_drain_multiplier(self, current_weight):
         base = getattr(self.constants, 'BASE_WEIGHT', 1.36)
@@ -369,9 +383,12 @@ class RSSDigitalTwin:
         stamina_recovery_multiplier = 1.0 + (recovery_nonlinear_coeff * (1.0 - stamina_percent_clamped))
         recovery_rate = base_recovery_rate * stamina_recovery_multiplier
         
-        fitness_recovery_multiplier = 1.0 + (self.constants.FITNESS_RECOVERY_COEFF * self.constants.FITNESS_LEVEL)
-        fitness_recovery_multiplier = min(max(fitness_recovery_multiplier, 1.0), 1.5)
-        recovery_rate *= fitness_recovery_multiplier
+        # [HARD LOCKED] 使用预计算固定值，与 C 端完全一致
+        # C: fitnessRecoveryMultiplier = FIXED_FITNESS_RECOVERY_MULTIPLIER = 1.25
+        # C: ageRecoveryMultiplier     = FIXED_AGE_RECOVERY_MULTIPLIER     = 1.053
+        fitness_recovery_multiplier = getattr(self.constants, 'FIXED_FITNESS_RECOVERY_MULTIPLIER', 1.25)
+        age_recovery_multiplier     = getattr(self.constants, 'FIXED_AGE_RECOVERY_MULTIPLIER', 1.053)
+        recovery_rate *= fitness_recovery_multiplier * age_recovery_multiplier
         
         if rest_duration_minutes <= self.constants.FAST_RECOVERY_DURATION_MINUTES:
             recovery_rate *= self.constants.FAST_RECOVERY_MULTIPLIER

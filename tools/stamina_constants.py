@@ -23,6 +23,41 @@ FITNESS_LEVEL = 1.0  # 训练有素（well-trained）
 FITNESS_EFFICIENCY_COEFF = 0.35  # 35%效率提升（训练有素时）
 FITNESS_RECOVERY_COEFF = 0.25  # 25%恢复速度提升（训练有素时）
 
+# ==================== 预计算人物属性固定结果（防止不平等游玩）====================
+# 以下值由上方固定角色属性（AGE=22, FITNESS_LEVEL=1.0）直接预计算，与 C 端完全镜像。
+# 数字孪生优化器也应使用这些固定值，而非重新计算公式。
+# FIXED_FITNESS_EFFICIENCY_FACTOR = clamp(1.0 - 0.35*1.0, 0.7, 1.0) = 0.70
+FIXED_FITNESS_EFFICIENCY_FACTOR = 0.70
+# FIXED_FITNESS_RECOVERY_MULTIPLIER = clamp(1.0 + 0.25*1.0, 1.0, 1.5) = 1.25
+FIXED_FITNESS_RECOVERY_MULTIPLIER = 1.25
+# FIXED_AGE_RECOVERY_MULTIPLIER = clamp(1.0 + 0.2*(30-22)/30, 0.8, 1.2) = 1.053
+FIXED_AGE_RECOVERY_MULTIPLIER = 1.053
+# FIXED_PANDOLF_FITNESS_BONUS = 1.0 - 0.2*1.0 = 0.80
+FIXED_PANDOLF_FITNESS_BONUS = 0.80
+
+# ==================== [HARD] 跳跃/翻越物理模型常量 ====================
+# 来源：Margaria et al., 1963；经典力学；游戏引擎物理参数
+# 必须与 C 端 SCR_StaminaConstants.c 保持完全一致
+
+JUMP_GRAVITY = 9.81            # [HARD] 重力加速度（m/s²），物理定律
+JUMP_STAMINA_TO_JOULES = 3.14e5  # [HARD] 1体力≈75kcal×4186J≈314000J，系统标尺锚点
+JUMP_MUSCLE_EFFICIENCY = 0.22  # [HARD] 跳跃肌肉效率（Margaria 1963: 20-25%）
+VAULT_ISO_EFFICIENCY = 0.12    # [HARD] 攀爬等长收缩效率（Margaria 1963: 10-15%）
+
+# [HARD] 物理/生理锚定参数（与 Settings fallback 同步，实验数据确定，不应随机调整）
+VAULT_VERT_LIFT_GUESS = 0.5    # [HARD] 翻越垂直抬升估算（m），基于标准障碍高度（0.4-0.6m）
+VAULT_LIMB_FORCE_RATIO = 0.5   # [HARD] 四肢等长力占总体重比例（生物力学测量值）
+VAULT_BASE_METABOLISM_WATTS = 50.0  # [HARD] 攀爬基础代谢附加功率（W），对应轻度静力运动基础代谢
+JUMP_VAULT_MAX_DRAIN_CLAMP = 0.15   # [HARD] 单次跳跃/翻越最大体力消耗上限（防止数值爆炸的物理边界）
+
+# [SOFT][OPTIMIZE] 跳跃物理近似参数（Optuna 搜索范围 jump_height_guess: 0.3-1.0）
+JUMP_HEIGHT_GUESS = 0.5          # Settings 中对应 jump_height_guess，用于 ComputeJumpCostPhys
+JUMP_HORIZONTAL_SPEED_GUESS = 0.0  # Settings 中对应 jump_horizontal_speed_guess
+
+# [HARD] 游戏引擎物理检测阈值（与引擎动画绑定，不可任意修改）
+JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0   # 跳跃检测垂直速度阈值（m/s）
+VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5  # 翻越检测垂直速度阈值（m/s）
+
 # ==================== 医学模型参数（双稳态-应激性能模型）====================
 TARGET_RUN_SPEED = 3.7  # m/s
 TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED  # 0.7115
@@ -34,12 +69,12 @@ MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED  # 1.0 m/s / 5.2 = 0.1923
 STAMINA_EXPONENT = 0.6  # 体力影响指数
 
 # ==================== 负重参数 ====================
-ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.2
-ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5
-ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75
-ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0
-MIN_SPEED_MULTIPLIER = 0.15  # 最小速度倍数
-MAX_SPEED_MULTIPLIER = 1.0  # 最大速度倍数限制
+ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.2      # [SOFT][OPTIMIZE] Optuna: 0.1 ~ 0.22
+ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5  # [SOFT][OPTIMIZE] Optuna: 1.0 ~ 3.0
+ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75      # [SOFT][OPTIMIZE] Optuna: 0.4 ~ 0.95
+ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0     # [SOFT][OPTIMIZE] Optuna: 0.8 ~ 2.0
+MIN_SPEED_MULTIPLIER = 0.15  # [SOFT] 最小速度倍数
+MAX_SPEED_MULTIPLIER = 1.0  # [SOFT] 最大速度倍数限制
 
 # ==================== 速度阈值参数 ====================
 SPRINT_VELOCITY_THRESHOLD = 5.2  # m/s，Sprint速度阈值
@@ -70,26 +105,32 @@ EXHAUSTION_LIMP_SPEED = 1.0  # m/s（跛行速度）。在游戏中仅作为动�
 SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
 
 # ==================== Sprint（冲刺）相关参数 ====================
-SPRINT_SPEED_BOOST = 0.30  # Sprint时速度比Run快30%
-SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # Sprint最高速度倍数
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0
+SPRINT_SPEED_BOOST = 0.30  # [SOFT][OPTIMIZE] Sprint时速度比Run加30%，Optuna: 0.28 ~ 0.35
+SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # [SOFT] Sprint最高速度倍数
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [FIX-002] 与 C 端 SPRINT_STAMINA_DRAIN_MULTIPLIER 统一为 3.5
 
 # ==================== Pandolf 模型常量 ====================
-PANDOLF_BASE_COEFF = 1.5  # 基础系数（W/kg），恢复物理基线
-PANDOLF_VELOCITY_COEFF = 1.5  # 速度系数（W/kg），恢复物理基线
-PANDOLF_VELOCITY_OFFSET = 0.7  # 速度偏移（m/s）
-PANDOLF_GRADE_BASE_COEFF = 0.23  # 坡度基础系数（W/kg）
-PANDOLF_GRADE_VELOCITY_COEFF = 1.34  # 坡度速度系数（W/kg）
-PANDOLF_STATIC_COEFF_1 = 1.2
-PANDOLF_STATIC_COEFF_2 = 1.6
-ENERGY_TO_STAMINA_COEFF = 1.5e-05
-REFERENCE_WEIGHT = 90.0  # 参考体重（kg）
+# ==================== [HARD] Pandolf 模型常量（Pandolf et al., 1977）====================
+# 所有 PANDOLF_* 参数均来自论文实验测量结果，属 HARD CONFIG。
+# 必须与 C 端 SCR_StaminaConstants.c 中对应值完全一致，否则数字孪生优化结果无效。
+# [FIX-001] 此前 Python 端错误地使用了1.5/1.5，导致数字孪生低估基础代谢 44-53%
+PANDOLF_BASE_COEFF = 2.7      # [HARD] 基础代谢系数（W/kg），Pandolf 1977 原始值
+PANDOLF_VELOCITY_COEFF = 3.2  # [HARD] 速度代谢系数（W/kg），Pandolf 1977 原始值
+PANDOLF_VELOCITY_OFFSET = 0.7              # [HARD] 速度偏移（m/s）
+PANDOLF_GRADE_BASE_COEFF = 0.23           # [HARD] 坡度基础系数（W/kg）
+PANDOLF_GRADE_VELOCITY_COEFF = 1.34       # [HARD] 坡度速度系数（W/kg）
+PANDOLF_STATIC_COEFF_1 = 1.2             # [SOFT] 静态基础系数（原1.5→1.2）—— 管理员可调，不经 Optuna 优化
+PANDOLF_STATIC_COEFF_2 = 1.6             # [SOFT] 静态负重系数（原2.0→1.6）—— 管理员可调，不经 Optuna 优化
+# [SOFT][OPTIMIZE] 能量→体力缩放系数（由 Optuna 在正常范围内优化）
+ENERGY_TO_STAMINA_COEFF = 1.5e-05        # [SOFT][OPTIMIZE] Optuna 搜索范围: 5e-7 ~ 2.5e-6
+REFERENCE_WEIGHT = 90.0  # [HARD] 参考体重（kg）
 
 # ==================== Givoni-Goldman 跑步模型常量（已废弃） ====================
 # 这些值在当前的消耗计算中不再使用，系统已完全改用 Pandolf 模型。
 # 仅保留它们以便在旧配置或历史数据转换时参考。
-GIVONI_CONSTANT = 0.15  # (unused) 跑步常数（W/kg·m²/s²）
-GIVONI_VELOCITY_EXPONENT = 2.2  # (unused) 速度指数（2.0-2.4）
+# [FIX-004] 与 C 端对齐（均为 LEGACY 未使用值）
+GIVONI_CONSTANT = 0.8          # [LEGACY unused] W/kg·m²/s²，C 端一致
+GIVONI_VELOCITY_EXPONENT = 2.2  # [LEGACY unused] 速度指数
 
 # ==================== 坡度影响参数 ====================
 SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）
@@ -105,12 +146,12 @@ GRADE_DOWNHILL_COEFF = 0.05  # 每1%下坡减少5%消耗
 HIGH_GRADE_THRESHOLD = 15.0  # 15%（高坡度阈值）
 HIGH_GRADE_MULTIPLIER = 1.2  # 高坡度额外1.2×乘数
 
-# ==================== 地形系数常量 ====================
-TERRAIN_FACTOR_PAVED = 1.0  # 铺装路面
-TERRAIN_FACTOR_DIRT = 1.1  # 碎石路
-TERRAIN_FACTOR_GRASS = 1.2  # 高草丛
-TERRAIN_FACTOR_BRUSH = 1.5  # 重度灌木丛
-TERRAIN_FACTOR_SAND = 1.8  # 软沙地
+# ==================== [HARD] 地形系数常量（实验测量比值，基准=铺路）====================
+TERRAIN_FACTOR_PAVED = 1.0  # [HARD] 铺装路面（基准）
+TERRAIN_FACTOR_DIRT  = 1.1  # [HARD] 碎石路 +10%
+TERRAIN_FACTOR_GRASS = 1.2  # [HARD] 草地   +20%
+TERRAIN_FACTOR_BRUSH = 1.5  # [HARD] 灌木丛 +50%
+TERRAIN_FACTOR_SAND  = 1.8  # [HARD] 软沙地 +80%
 
 # ==================== 多维度恢复模型参数（深度生理压制版本）====================
 # 核心概念：从"净增加"改为"代谢净值"
@@ -141,10 +182,10 @@ FATIGUE_RECOVERY_DURATION_MINUTES = 20.0  # 疲劳完全恢复所需时间（分
 # 站姿：确保能够覆盖静态站立消耗
 # 蹲姿：减少下肢肌肉紧张，提高恢复速度
 # 趴姿：全身放松，最大化血液循环
-# 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
-STANDING_RECOVERY_MULTIPLIER = 1.3
-CROUCHING_RECOVERY_MULTIPLIER = 1.4
-PRONE_RECOVERY_MULTIPLIER = 1.6
+# 逻辑：趣下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趣下
+STANDING_RECOVERY_MULTIPLIER = 1.3   # [SOFT][OPTIMIZE] 站姿恢复，Optuna: 1.3 ~ 1.8
+CROUCHING_RECOVERY_MULTIPLIER = 1.4  # [SOFT] 蹲姿恢复倍数，不经 Optuna 优化
+PRONE_RECOVERY_MULTIPLIER = 1.6      # [SOFT][OPTIMIZE] 趣姿恢复，Optuna: 2.0 ~ 2.8
 
 # ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
 # 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -153,17 +194,17 @@ PRONE_RECOVERY_MULTIPLIER = 1.6
 # Penalty = (当前总重 / 身体耐受基准)^2 * COEFF
 # 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除较高比例
 # 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
-LOAD_RECOVERY_PENALTY_COEFF = 0.0001
-LOAD_RECOVERY_PENALTY_EXPONENT = 2.0
-BODY_TOLERANCE_BASE = 90.0
+LOAD_RECOVERY_PENALTY_COEFF = 0.0001      # [SOFT][OPTIMIZE] Optuna: 5e-6 ~ 5e-5
+LOAD_RECOVERY_PENALTY_EXPONENT = 2.0      # [SOFT][OPTIMIZE] Optuna: 1.0 ~ 2.0
+BODY_TOLERANCE_BASE = 90.0                # [HARD] 参考体重，与 CHARACTER_WEIGHT 保持一致
 
 # ==================== 边际效应衰减机制（深度生理压制版本）====================
 # 医学解释：身体从"半死不活"恢复到"喘匀气"很快（前80%），但要从"喘匀气"恢复到"肌肉巅峰竞技状态"非常慢（最后20%）
 # 数学实现：当体力>80%时，恢复率 = 原始恢复率 * (1.1 - 当前体力百分比)
 # 结果：最后10%的体力恢复速度会比前50%慢3-4倍
 # 战术意图：玩家经常会处于80%-90%的"亚健康"状态，只有长时间修整才能真正满血
-MARGINAL_DECAY_THRESHOLD = 0.8  # 边际效应衰减阈值（80%体力）
-MARGINAL_DECAY_COEFF = 1.1  # 边际效应衰减系数
+MARGINAL_DECAY_THRESHOLD = 0.8  # [SOFT][OPTIMIZE] 边际效应衰减阈值（80%体力），Optuna: 0.7 ~ 0.9
+MARGINAL_DECAY_COEFF = 1.1  # [SOFT][OPTIMIZE] 边际效应衰减系数，Optuna: 1.05 ~ 1.15
 
 # ==================== 最低体力阈值限制（深度生理压制版本）====================
 # 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
@@ -171,20 +212,23 @@ MARGINAL_DECAY_COEFF = 1.1  # 边际效应衰减系数
 # 战术意图：防止玩家在极度疲劳时通过"跑两步停一下"的方式快速回血
 # [修复 v3.6.1] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
 # 模拟深呼吸 3 秒后即可开始恢复，而不是发呆 10 秒
-MIN_RECOVERY_STAMINA_THRESHOLD = 0.2  # 最低体力阈值（20%）
-MIN_RECOVERY_REST_TIME_SECONDS = 3.0  # 最低体力时需要的休息时间（秒）
+MIN_RECOVERY_STAMINA_THRESHOLD = 0.2  # [SOFT][OPTIMIZE] 最低体力阈值（20%），Optuna: 0.15 ~ 0.25
+MIN_RECOVERY_REST_TIME_SECONDS = 3.0  # [SOFT][OPTIMIZE] 最低体力时需要的休息时间，Optuna: 1.0 ~ 5.0
 
 # ==================== 运动持续时间影响（累积疲劳）参数 ====================
-FATIGUE_ACCUMULATION_COEFF = 0.015  # 每分钟增加1.5%消耗
-FATIGUE_START_TIME_MINUTES = 5.0  # 疲劳开始累积的时间（分钟）
-FATIGUE_MAX_FACTOR = 2.0  # 最大疲劳因子（2.0倍）
+FATIGUE_ACCUMULATION_COEFF = 0.015  # [SOFT][OPTIMIZE] 每分钟增加1.5%消耗，Optuna: 0.005 ~ 0.03
+FATIGUE_START_TIME_MINUTES = 5.0    # [SOFT] 疲劳开始累积的时间（分钟），不经 Optuna 优化
+FATIGUE_MAX_FACTOR = 2.0            # [SOFT][OPTIMIZE] 最大疲劳因子（2.0倍），Optuna: 1.5 ~ 3.0
 
 # ==================== 代谢适应参数（Metabolic Adaptation）====================
-AEROBIC_THRESHOLD = 0.6
-ANAEROBIC_THRESHOLD = 0.8
-AEROBIC_EFFICIENCY_FACTOR = 0.9
-MIXED_EFFICIENCY_FACTOR = 1.0  # 混合区效率因子（100%，标准）
-ANAEROBIC_EFFICIENCY_FACTOR = 1.2
+# ==================== [HARD] 代谢适应参数（Metabolic Adaptation）====================
+# 有氧/无氧代谢阈值是运动生理学国际共识值，属 HARD CONFIG。
+# 有氧效率 0.9（有氧达到 VO₂max 60% 时能量利用率较高）- 与 C 端一致
+AEROBIC_THRESHOLD = 0.6          # [HARD] 60% VO₂max
+ANAEROBIC_THRESHOLD = 0.8        # [HARD] 80% VO₂max
+AEROBIC_EFFICIENCY_FACTOR = 0.9  # [HARD] 有氧区效率（90%）
+MIXED_EFFICIENCY_FACTOR = 1.0    # [HARD] 混合区效率因子（100%，标准）
+ANAEROBIC_EFFICIENCY_FACTOR = 1.2 # [HARD] 无氧区效率因子，无氧代谢耗能多与 C 端一致
 
 
 # ==================== 恢复启动延迟常量（深度生理压制版本）====================
@@ -210,14 +254,14 @@ POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走速度倍数（基准）
 SWIMMING_DRAG_COEFFICIENT = 0.5  # 阻力系数（C_d）
 SWIMMING_WATER_DENSITY = 1000.0  # 水密度（ρ，kg/m³）
 SWIMMING_FRONTAL_AREA = 0.5  # 正面面积（A，m²）
-SWIMMING_BASE_POWER = 20.0  # 基础游泳功率（W），降低以提高水中存活率
-SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0  # kg，超过此重量时静态消耗大幅增加
-SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0  # 超过阈值时的静态消耗倍数
-SWIMMING_FULL_PENALTY_WEIGHT = 40.0  # kg，达到此重量时应用满额惩罚
-SWIMMING_LOW_INTENSITY_DISCOUNT = 0.7  # 低强度踩水时的消耗折扣
-SWIMMING_LOW_INTENSITY_VELOCITY = 0.2  # m/s，低于此速度视为低强度踩水
-SWIMMING_ENERGY_TO_STAMINA_COEFF = 0.00005  # 游泳功率到体力消耗的转换系数
-SWIMMING_DYNAMIC_POWER_EFFICIENCY = 2.0  # 动态功率效率因子
+SWIMMING_BASE_POWER = 20.0                 # [SOFT][OPTIMIZE] Optuna: 15 ~ 25
+SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0     # [SOFT][OPTIMIZE] Optuna: 20 ~ 30
+SWIMMING_STATIC_DRAIN_MULTIPLIER = 3.0    # [SOFT][OPTIMIZE] Optuna: 2.5 ~ 3.5
+SWIMMING_FULL_PENALTY_WEIGHT = 40.0       # [SOFT] 适用满额惩罚负重（kg）
+SWIMMING_LOW_INTENSITY_DISCOUNT = 0.7     # [SOFT] 低强度踩水消耗折扣
+SWIMMING_LOW_INTENSITY_VELOCITY = 0.2     # [SOFT] 低强度踩水速度阈值
+SWIMMING_ENERGY_TO_STAMINA_COEFF = 0.00005  # [SOFT][OPTIMIZE] Optuna: 0.00004 ~ 0.00006
+SWIMMING_DYNAMIC_POWER_EFFICIENCY = 2.0   # [SOFT][OPTIMIZE] Optuna: 1.5 ~ 2.5
 SWIMMING_VERTICAL_DRAG_COEFFICIENT = 1.2  # 垂直方向阻力系数
 SWIMMING_VERTICAL_FRONTAL_AREA = 0.8  # 垂直方向受力面积（m²）
 SWIMMING_VERTICAL_SPEED_THRESHOLD = 0.05  # m/s，垂直速度阈值
@@ -240,11 +284,11 @@ SWIMMING_VERTICAL_VELOCITY_THRESHOLD = -0.5  # m/s，垂直速度阈值（检测
 ENV_HEAT_STRESS_START_HOUR = 10.0  # 热应激开始时间（小时）
 ENV_HEAT_STRESS_PEAK_HOUR = 14.0  # 热应激峰值时间（小时，正午）
 ENV_HEAT_STRESS_END_HOUR = 18.0  # 热应激结束时间（小时）
-ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5  # 热应激最大倍数（50%消耗增加，提高环境影响）
+ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5  # [SOFT][OPTIMIZE] Optuna: 1.2 ~ 1.6
 ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0  # 热应激基础倍数（无影响）
 ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5  # 室内热应激减少比例（50%）
 ENV_RAIN_WEIGHT_MIN = 2.0  # kg，小雨时的湿重
-ENV_RAIN_WEIGHT_MAX = 8.0  # kg，暴雨时的湿重
+ENV_RAIN_WEIGHT_MAX = 8.0  # [SOFT][OPTIMIZE] Optuna: 6.0 ~ 10.0
 ENV_RAIN_WEIGHT_DURATION = 60.0  # 秒，停止降雨后湿重持续时间
 ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167  # 每秒衰减率（60秒内完全消失）
 ENV_MAX_TOTAL_WET_WEIGHT = 10.0  # kg，总湿重上限（游泳+降雨）
@@ -268,23 +312,23 @@ ENV_COLD_STRESS_PENALTY_MAX = 0.2  # 最大冷应激惩罚
 ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15  # 最大地表湿度惩罚
 
 # 风阻相关常量
-ENV_WIND_RESISTANCE_COEFF = 0.05  # 风阻系数（体力消耗权重）
+ENV_WIND_RESISTANCE_COEFF = 0.05  # [SOFT][OPTIMIZE] Optuna: 0.03 ~ 0.07
 ENV_WIND_SPEED_THRESHOLD = 1.0  # m/s，风速阈值（低于此值忽略）
 ENV_WIND_TAILWIND_BONUS = 0.02  # 顺风时的消耗减少比例
 ENV_WIND_TAILWIND_SPEED_BONUS = 0.01  # 顺风时的速度加成比例
 
 # 路面泥泞度相关常量
-ENV_MUD_PENALTY_MAX = 0.4  # 最大泥泞惩罚（40%地形阻力增加）
+ENV_MUD_PENALTY_MAX = 0.4  # [SOFT][OPTIMIZE] Optuna: 0.3 ~ 0.5
 ENV_MUD_SLIPPERY_THRESHOLD = 0.3  # 积水阈值（高于此值触发滑倒风险）
 ENV_MUD_SPRINT_PENALTY = 0.1  # 泥泞时Sprint速度惩罚
 ENV_MUD_SLIP_RISK_BASE = 0.001  # 基础滑倒风险（每0.2秒）
 
 # 气温相关常量
 ENV_TEMPERATURE_HEAT_THRESHOLD = 30.0  # °C，热应激阈值
-ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02  # 每高1度，恢复率降低2%
-ENV_TEMPERATURE_COLD_THRESHOLD = 0.0  # °C，冷应激阈值
-ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03  # 低温时静态消耗增加比例
-ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05  # 低温时恢复率降低比例
+ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02  # [SOFT][OPTIMIZE] Optuna: 0.015 ~ 0.025
+ENV_TEMPERATURE_COLD_THRESHOLD = 0.0  # [HARD] 冷应激阈值
+ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03  # [SOFT] 低温时静态消耗增加比例
+ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05  # [SOFT][OPTIMIZE] Optuna: 0.04 ~ 0.06
 
 # 地表湿度相关常量
 ENV_SURFACE_WETNESS_SOAK_RATE = 1.0  # kg/秒，趴下时的湿重增加速率

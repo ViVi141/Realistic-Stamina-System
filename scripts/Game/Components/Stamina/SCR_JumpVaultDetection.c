@@ -144,9 +144,9 @@ class JumpVaultDetector
                 
                 float finalJumpCost = 0.0;
                 // 物理模型计算跳跃消耗
-                float eta = StaminaConstants.GetJumpEfficiency();
-                float hguess = StaminaConstants.GetJumpHeightGuess();
-                float vguess = StaminaConstants.GetJumpHorizSpeedGuess();
+                float eta = StaminaConstants.GetJumpEfficiency();     // [SOFT] 从 Settings 读取，生理学约束 0.20-0.25
+                float hguess = StaminaConstants.GetJumpHeightGuess(); // [SOFT] 重心抬升高度估算
+                float vguess = StaminaConstants.GetJumpHorizSpeedGuess(); // [SOFT] 水平速度估算
                 finalJumpCost = RealisticStaminaSpeedSystem.ComputeJumpCostPhys(
                     currentTotalWeight, hguess, vguess, eta);
                 
@@ -244,9 +244,10 @@ class JumpVaultDetector
                 
                 float vaultCost = 0.0;
                 // 物理模型计算翻越初始消耗
-                float eta_iso = 0.12;
-                float vert = 0.5;
-                float limbForce = currentTotalWeight * 0.5;
+                // [HARD] eta_iso 从 Settings 读取（生理学约束 0.10-0.15），使用 GetClimbIsoEfficiency() 而非硬编码
+                float eta_iso = StaminaConstants.GetClimbIsoEfficiency();
+                float vert = StaminaConstants.VAULT_VERT_LIFT_GUESS;          // [HARD] 垂直抬升估算 0.5m
+                float limbForce = currentTotalWeight * StaminaConstants.VAULT_LIMB_FORCE_RATIO; // [HARD] 四肢力 = 总重 × 0.5
                 vaultCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
                     currentTotalWeight, vert, limbForce, eta_iso);
                 
@@ -284,10 +285,10 @@ class JumpVaultDetector
                     }
                     
                     float continuousClimbCost = 0.0;
-                    // 物理模型计算持续攀爬消耗
-                    float eta_iso = 0.12;
-                    float vertSpeed = 0.5;
-                    float limbForce = currentTotalWeight * 0.5;
+                    // 物理模型计算持续攀爬消耗（参数与翻越初始消耗完全一致，从 Settings 读取）
+                    float eta_iso = StaminaConstants.GetClimbIsoEfficiency();
+                    float vertSpeed = StaminaConstants.VAULT_VERT_LIFT_GUESS;
+                    float limbForce = currentTotalWeight * StaminaConstants.VAULT_LIMB_FORCE_RATIO;
                     continuousClimbCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
                         currentTotalWeight, vertSpeed, limbForce, eta_iso);
                     totalCost = continuousClimbCost;

@@ -422,13 +422,10 @@ class RSSSuperPipeline:
         )
         
         # 代谢适应相关
-        # 调整：放宽范围，允许更高效率（更低消耗），改善可玩性
-        aerobic_efficiency_factor = trial.suggest_float(
-            'aerobic_efficiency_factor', 0.85, 1.05
-        )
-        anaerobic_efficiency_factor = trial.suggest_float(
-            'anaerobic_efficiency_factor', 1.1, 1.5
-        )
+        # [HARD] 有氧/无氧效率因子为运动生理学共识常数，不参与 Optuna 优化
+        # C 端对应常量： AEROBIC_EFFICIENCY_FACTOR=0.9， ANAEROBIC_EFFICIENCY_FACTOR=1.2
+        aerobic_efficiency_factor = 0.9   # [HARD] 运动生理学共识值，有氧区 90% 效率
+        anaerobic_efficiency_factor = 1.2  # [HARD] 运动生理学共识值，无氧区耗能多 20%
         
         # 恢复系统高级参数（优化：减缓"平台恢复期"，fast/medium/slow 均下调）
         # recovery_nonlinear_coeff 0.15~0.35：降低低体力时的恢复加成
@@ -477,10 +474,10 @@ class RSSSuperPipeline:
         )
         
         # 动作消耗参数
-        # physical jump/climb parameters
-        jump_efficiency = trial.suggest_float('jump_efficiency', 0.20, 0.25)
-        jump_height_guess = trial.suggest_float('jump_height_guess', 0.3, 1.0)
-        jump_horizontal_speed_guess = trial.suggest_float('jump_horizontal_speed_guess', 0.0, 1.5)
+        # [HARD] jump_efficiency=0.22，Margaria 1963 肌肉效率测量范围中心值 (20-25%)，不参与优化
+        jump_efficiency = 0.22  # [HARD] Margaria 1963
+        jump_height_guess = trial.suggest_float('jump_height_guess', 0.3, 1.0)              # [SOFT][OPTIMIZE]
+        jump_horizontal_speed_guess = trial.suggest_float('jump_horizontal_speed_guess', 0.0, 1.5)  # [SOFT][OPTIMIZE]
         
         # 坡度系统参数
         slope_uphill_coeff = trial.suggest_float(
@@ -552,8 +549,9 @@ class RSSSuperPipeline:
         constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier
         constants.FATIGUE_ACCUMULATION_COEFF = fatigue_accumulation_coeff
         constants.FATIGUE_MAX_FACTOR = fatigue_max_factor
-        constants.AEROBIC_EFFICIENCY_FACTOR = aerobic_efficiency_factor
-        constants.ANAEROBIC_EFFICIENCY_FACTOR = anaerobic_efficiency_factor
+        # [HARD] AEROBIC/ANAEROBIC_EFFICIENCY_FACTOR 不参与优化，保持类默认值 0.9/1.2
+        # constants.AEROBIC_EFFICIENCY_FACTOR = aerobic_efficiency_factor  # HARD - removed
+        # constants.ANAEROBIC_EFFICIENCY_FACTOR = anaerobic_efficiency_factor  # HARD - removed
         constants.RECOVERY_NONLINEAR_COEFF = recovery_nonlinear_coeff
         constants.FAST_RECOVERY_MULTIPLIER = fast_recovery_multiplier
         constants.MEDIUM_RECOVERY_MULTIPLIER = medium_recovery_multiplier
@@ -566,11 +564,12 @@ class RSSSuperPipeline:
         constants.POSTURE_CROUCH_MULTIPLIER = posture_crouch_multiplier
         constants.POSTURE_PRONE_MULTIPLIER = posture_prone_multiplier
         # constants related to physical jump/climb are set automatically
-        # physical model params
-        constants.JUMP_EFFICIENCY = jump_efficiency
+        # [HARD] jump_efficiency=0.22 不修改，保持类默认值
+        # constants.JUMP_EFFICIENCY = jump_efficiency  # HARD - removed from optimization
+        # [HARD] CLIMB_ISO_EFFICIENCY=0.12 不修改，保持类默认值
+        # constants.CLIMB_ISO_EFFICIENCY = 0.12  # HARD - kept at 0.12 (Margaria 1963)
         constants.JUMP_HEIGHT_GUESS = jump_height_guess
         constants.JUMP_HORIZONTAL_SPEED_GUESS = jump_horizontal_speed_guess
-        constants.CLIMB_ISO_EFFICIENCY = 0.12
         constants.SLOPE_UPHILL_COEFF = slope_uphill_coeff
         constants.SLOPE_DOWNHILL_COEFF = slope_downhill_coeff
         constants.SWIMMING_BASE_POWER = swimming_base_power

@@ -1,15 +1,125 @@
 // 体力系统常量定义模块
 // 存放所有体力系统相关的常量定义
 // 模块化拆分：从 SCR_RealisticStaminaSystem.c 提取的常量定义
+//
+// ============================================================
+// 硬配置 (HARD CONFIG) vs 软配置 (SOFT CONFIG) 分类总表
+// ============================================================
+//
+// ── 硬配置 [HARD] ───────────────────────────────────────────
+//   定义：基于已发表科学论文或不可变物理定律，有严格实验/理论依据。
+//   随意改变会导致模型偏离生理现实，应视为系统常数，不得暴露为可配置项。
+//
+//   物理/流体力学常数（不可变）
+//     SWIMMING_WATER_DENSITY    = 1000.0 kg/m³   水密度
+//     SWIMMING_DRAG_COEFFICIENT = 0.5             流体阻力系数
+//     SWIMMING_FRONTAL_AREA     = 0.5 m²          人体正面受力面积
+//
+//   Pandolf 1977 论文原始系数（不可改动）
+//     PANDOLF_BASE_COEFF        = 2.7  W/kg        基础代谢系数
+//     PANDOLF_VELOCITY_COEFF    = 3.2  W/kg        速度代谢系数
+//     PANDOLF_VELOCITY_OFFSET   = 0.7  m/s         速度偏移
+//     PANDOLF_GRADE_BASE_COEFF  = 0.23 W/kg        坡度基础系数
+//     PANDOLF_GRADE_VELOCITY_COEFF = 1.34 W/kg     坡度速度系数
+//
+//   体力-速度影响指数 α（Minetti 2002；Weyand 2010，范围 0.55-0.65）
+//     STAMINA_EXPONENT          = 0.6
+//
+//   有氧/无氧代谢阈值（运动生理学国际共识）
+//     AEROBIC_THRESHOLD         = 0.6  (60% VO₂max)
+//     ANAEROBIC_THRESHOLD       = 0.8  (80% VO₂max)
+//     AEROBIC_EFFICIENCY_FACTOR = 0.9
+//     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
+//
+//   跳跃/翻越物理模型常数（Margaria 1963；经典力学）
+//     JUMP_GRAVITY              = 9.81 m/s²        重力加速度（物理定律）
+//     JUMP_STAMINA_TO_JOULES    = 3.14e5 J         1体力≈75kcal的换算基准（系统校准锚点）
+//     JUMP_MUSCLE_EFFICIENCY    = 0.22             跳跃肌肉效率 20-25%（Margaria 1963）
+//     VAULT_ISO_EFFICIENCY      = 0.12             攀爬等长收缩效率 10-15%（Margaria 1963）
+//     JUMP_DETECTION_VELOCITY   = 2.0  m/s         跳跃垂直速度检测阈值（引擎物理）
+//     VAULT_DETECTION_VELOCITY  = 1.5  m/s         翻越垂直速度检测阈值（引擎物理）
+//     AEROBIC_EFFICIENCY_FACTOR = 0.9
+//     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
+//
+//   地形能量消耗比值（实验测量，铺路=基准）
+//     TERRAIN_FACTOR_PAVED  = 1.0
+//     TERRAIN_FACTOR_DIRT   = 1.1
+//     TERRAIN_FACTOR_GRASS  = 1.2
+//     TERRAIN_FACTOR_BRUSH  = 1.5
+//     TERRAIN_FACTOR_SAND   = 1.8
+//
+//   热应激时间窗口（太阳辐射物理规律，不可调）
+//     ENV_HEAT_STRESS_START_HOUR = 10.0
+//     ENV_HEAT_STRESS_PEAK_HOUR  = 14.0
+//     ENV_HEAT_STRESS_END_HOUR   = 18.0
+//     ENV_TEMPERATURE_HEAT_THRESHOLD = 30.0 °C
+//     ENV_TEMPERATURE_COLD_THRESHOLD =  0.0 °C
+//
+//   角色固定属性（22岁训练有素男性，游戏内无差异化，防止不平等游玩）
+//     CHARACTER_WEIGHT          = 90.0  kg
+//     CHARACTER_AGE             = 22.0  岁
+//     FITNESS_LEVEL             = 1.0
+//     FIXED_FITNESS_EFFICIENCY_FACTOR    = 0.70  （预计算）
+//     FIXED_FITNESS_RECOVERY_MULTIPLIER  = 1.25  （预计算）
+//     FIXED_AGE_RECOVERY_MULTIPLIER      = 1.053 （预计算）
+//     FIXED_PANDOLF_FITNESS_BONUS        = 0.80  （预计算）
+//
+// ── 软配置 [SOFT] ───────────────────────────────────────────
+//   定义：游戏性/体验调节参数，没有唯一正确值。
+//   全部通过 SCR_RSS_Params 的 [Attribute] 字段暴露，
+//   支持 EliteStandard / StandardMilsim / TacticalAction / Custom 四预设。
+//   运行时经 GetXxx() 桥接方法从配置管理器读取。
+//
+//   A. 核心消耗/恢复标尺
+//     energy_to_stamina_coeff           物理能量→游戏体力的缩放标尺
+//     base_recovery_rate                基础恢复率（每tick）
+//     sprint_stamina_drain_multiplier   Sprint 相对消耗倍数
+//     sprint_speed_boost                Sprint 速度加成
+//   B. 姿态系统
+//     standing_recovery_multiplier / prone_recovery_multiplier
+//     posture_crouch_multiplier / posture_prone_multiplier
+//   C. 负重系统
+//     encumbrance_speed_penalty_coeff / exponent / max
+//     encumbrance_stamina_drain_coeff
+//     load_recovery_penalty_coeff / exponent
+//   D. 疲劳累积
+//     fatigue_accumulation_coeff / fatigue_max_factor
+//   E. 恢复曲线非线性
+//     recovery_nonlinear_coeff
+//     fast/medium/slow_recovery_multiplier
+//     marginal_decay_threshold / coeff
+//     min_recovery_stamina_threshold / rest_time_seconds
+//   F. 游泳体验
+//     swimming_base_power / encumbrance_threshold
+//     swimming_static_drain_multiplier / dynamic_power_efficiency
+//     swimming_energy_to_stamina_coeff
+//   G. 环境因子
+//     env_heat_stress_max_multiplier
+//     env_rain_weight_max / env_wind_resistance_coeff
+//     env_mud_penalty_max
+//     env_temperature_heat/cold_penalty_coeff
+//   H. 跳跃/翻越体验调节
+//     jump_height_guess          跳跃重心抬升高度估算（m），值越大消耗越多
+//     jump_horizontal_speed_guess 跳跃水平速度估算（m/s）
+//     jump_efficiency            [NOTE: 生理学值 0.20-0.25，不建议修改实为HARD]
+//     climb_iso_efficiency       [NOTE: 生理学值 0.10-0.15，不建议修改实为HARD]
+//     JUMP_MIN_STAMINA_THRESHOLD  低体力禁止跳跃阈值（游戏设计）
+//     JUMP_CONSECUTIVE_WINDOW     连续跳跃判定时间窗口（游戏设计）
+//     JUMP_CONSECUTIVE_PENALTY    连续跳跃惩罚系数（游戏设计）
+//     VAULT_VERT_LIFT_GUESS       翻越垂直抬升高度估算（标准障碍高度中值）
+//     VAULT_LIMB_FORCE_RATIO      四肢等长力占体重比例（生物力学测量值）
+//     VAULT_BASE_METABOLISM_WATTS 攀爬基础代谢附加功率（轻度静力运动均布值）
+//     JUMP_VAULT_MAX_DRAIN_CLAMP  单次跳跃/翻越最大体力消耗上限
+// ============================================================
 
 class StaminaConstants
 {
-    // ==================== 游戏配置常量 ====================
+    // ==================== [HARD] 游戏配置常量 ====================
     // 游戏最大速度（m/s）- 由游戏引擎提供
     static const float GAME_MAX_SPEED = 5.2; // m/s
     
-    // ==================== 军事体力系统模型常量（基于速度阈值）====================
-    // 基于速度阈值的分段消耗率系统
+    // ==================== [SOFT via Settings] 军事体力系统模型常量（基于速度阈值）====================
+    // 基于速度阈值的分段消耗率系统 - 以下阈值为游戏设计参数，可通过预设间接影响
     // 参考：Military Stamina System Model (90kg Male / 22yo)
     
     // 速度阈值（m/s）
@@ -73,28 +183,27 @@ class StaminaConstants
     // 跛行速度倍数（最低速度）
     static const float MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED; // 1.0 m/s / 5.2 = 0.1923
     
-    // ==================== 医学模型参数 ====================
+    // ==================== [HARD] 医学模型参数 ====================
     
-    // 体力下降对速度的影响指数（α）
+    // [HARD] 体力下降对速度的影响指数（α）
     // 基于耐力下降模型：S(E) = S_max * E^α
     // 根据医学文献（Minetti et al., 2002; Weyand et al., 2010）：
     // - α = 0.55-0.65 时，更符合实际生理学数据
     // - α = 0.5 时，体力50%时速度为71%（平方根关系）
     // - α = 0.6 时，体力50%时速度为66%（更符合实际）
     // - α = 1.0 时，体力50%时速度为50%（线性，不符合实际）
-    // 使用精确的幂函数实现，不使用近似
-    static const float STAMINA_EXPONENT = 0.6; // 体力影响指数（精确值，基于医学文献）
+    // 此值具有严格的生理学约束，不得随意更改
+    static const float STAMINA_EXPONENT = 0.6; // [HARD] 体力影响指数（医学文献范围 0.55-0.65）
     
-    // 负重对速度的惩罚系数（β）- 基于体重的真实模型
+    // [SOFT] 负重对速度的惩罚系数（β）- 由配置管理器动态获取，此处为代码回退默认值
     // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
-    // 注意：这些值现在从配置管理器获取（GetEncumbranceSpeedPenaltyCoeff(), GetEncumbranceStaminaDrainCoeff()）
-    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // 基于体重的速度惩罚系数（线性模型）
-    static const float ENCUMBRANCE_SPEED_EXPONENT = 1.5; // 负重速度惩罚指数（默认1.5），已可通过配置覆盖（GetEncumbranceSpeedPenaltyExponent()）
+    // 注意：运行时通过 GetEncumbranceSpeedPenaltyCoeff() / GetEncumbranceStaminaDrainCoeff() 获取
+    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // [SOFT fallback]
+    static const float ENCUMBRANCE_SPEED_EXPONENT = 1.5; // [SOFT fallback]
     
-    // 负重对体力消耗的影响系数（γ）- 基于体重的真实模型
+    // [SOFT] 负重对体力消耗的影响系数（γ）- 由配置管理器动态获取
     // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）
-    // [修复] 与Python数字孪生保持一致，从1.5改为2.0
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0; // 基于体重的体力消耗系数
+    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0; // [SOFT fallback]
     
     // 最小速度倍数（防止体力完全耗尽时完全无法移动）
     static const float MIN_SPEED_MULTIPLIER = 0.15; // 15%最低速度（约0.78 m/s，勉强行走）
@@ -102,31 +211,55 @@ class StaminaConstants
     // 最大速度倍数限制（防止超过游戏引擎限制）
     static const float MAX_SPEED_MULTIPLIER = 1.0; // 100%最高速度（不超过游戏最大速度）
     
-    // ==================== 角色特征常量 ====================
-    // 角色体重（kg）- 用于计算负重占体重的百分比（基于文献的真实模型）
-    // 游戏内标准体重为90kg
+    // ==================== [HARD] 角色固定属性（防止不平等游玩）====================
+    // 所有玩家角色强制使用相同的生理属性基线。
+    // 这些值是 HARD CONFIG，禁止通过任何配置暴露为可变项。
+    // 修改任意值后，必须同步更新下方的 FIXED_* 预计算常量！
+    //
+    // [HARD] 角色体重（kg）- 游戏内标准体重
     // 参考文献：Knapik et al., 1996; Quesada et al., 2000
-    static const float CHARACTER_WEIGHT = 90.0; // kg
+    static const float CHARACTER_WEIGHT = 90.0; // [HARD] kg，游戏引擎固定体重
     
-    // 角色年龄（岁）- 基于ACFT标准（22-26岁男性）
-    // 当前设置为22岁（训练有素男性）
-    static const float CHARACTER_AGE = 22.0; // 岁
+    // [HARD] 角色年龄（岁）- 基于ACFT标准（22-26岁男性）
+    // 固定为22岁，确保所有玩家体力表现完全一致
+    static const float CHARACTER_AGE = 22.0; // [HARD] 岁，固定不得更改
     
-    // 健康状态/体能水平（Fitness Level）- 基于个性化运动建模
-    // 参考文献：Palumbo et al., 2018 - Personalizing physical exercise in a computational model
-    // 0.0 = 未训练（untrained）
-    // 0.5 = 普通健康（average fitness）
-    // 1.0 = 训练有素（well-trained）- 当前设置
-    static const float FITNESS_LEVEL = 1.0; // 训练有素（well-trained）
+    // [HARD] 健康状态/体能水平 - 固定为训练有素（well-trained）
+    // 参考文献：Palumbo et al., 2018
+    // 固定为 1.0，确保所有玩家体力表现完全一致
+    static const float FITNESS_LEVEL = 1.0; // [HARD] 训练有素，固定不得更改
     
-    // 健康状态对能量效率的影响系数
-    // 训练有素者（fitness=1.0）基础消耗减少，能量利用效率更高
-    // 优化：提升到35%，让训练有素者的能量效率显著提升
-    static const float FITNESS_EFFICIENCY_COEFF = 0.35; // 35%效率提升（训练有素时）
+    // [HARD] 健康状态对能量效率的影响系数（科学参数，不可调）
+    static const float FITNESS_EFFICIENCY_COEFF = 0.35; // [HARD] 35%效率提升系数
     
     // 健康状态对恢复速度的影响系数
     // 训练有素者（fitness=1.0）恢复速度增加20-30%
     static const float FITNESS_RECOVERY_COEFF = 0.25; // 25%恢复速度提升（训练有素时）
+    
+    // ==================== 预计算人物属性固定结果（防止不平等游玩）====================
+    // 以下四个值由上方固定角色属性（AGE=22, FITNESS_LEVEL=1.0, WEIGHT=90kg）直接预计算得出。
+    // 游戏运行时直接使用这些常量，不再执行动态公式，确保所有玩家完全相同。
+    // 修改上方任意角色属性后，必须同步更新这里的预计算值！
+    //
+    // FIXED_FITNESS_EFFICIENCY_FACTOR:
+    //   = clamp(1.0 - FITNESS_EFFICIENCY_COEFF × FITNESS_LEVEL, 0.7, 1.0)
+    //   = clamp(1.0 - 0.35 × 1.0, 0.7, 1.0) = clamp(0.65, 0.7, 1.0) = 0.70
+    static const float FIXED_FITNESS_EFFICIENCY_FACTOR = 0.70;
+    //
+    // FIXED_FITNESS_RECOVERY_MULTIPLIER:
+    //   = clamp(1.0 + FITNESS_RECOVERY_COEFF × FITNESS_LEVEL, 1.0, 1.5)
+    //   = clamp(1.0 + 0.25 × 1.0, 1.0, 1.5) = clamp(1.25, 1.0, 1.5) = 1.25
+    static const float FIXED_FITNESS_RECOVERY_MULTIPLIER = 1.25;
+    //
+    // FIXED_AGE_RECOVERY_MULTIPLIER:
+    //   = clamp(1.0 + AGE_RECOVERY_COEFF × (AGE_REFERENCE - CHARACTER_AGE) / AGE_REFERENCE, 0.8, 1.2)
+    //   = clamp(1.0 + 0.2 × (30.0 - 22.0) / 30.0, 0.8, 1.2) = clamp(1.0533, 0.8, 1.2) = 1.053
+    static const float FIXED_AGE_RECOVERY_MULTIPLIER = 1.053;
+    //
+    // FIXED_PANDOLF_FITNESS_BONUS:
+    //   = 1.0 - 0.2 × FITNESS_LEVEL = 1.0 - 0.2 × 1.0 = 0.80
+    //   （Pandolf 公式中训练有素者基础代谢降低20%）
+    static const float FIXED_PANDOLF_FITNESS_BONUS = 0.80;
     
     // ==================== 多维度恢复模型参数（深度生理压制版本）====================
     // 基于个性化运动建模（Palumbo et al., 2018）和生理学恢复模型
@@ -237,23 +370,57 @@ class StaminaConstants
     // 战斗负重（kg）- 战斗状态下的推荐负重阈值（包含基准负重）
     static const float COMBAT_ENCUMBRANCE_WEIGHT = 30.0; // kg
     
-    // ==================== 动作体力消耗常量 ====================
+    // ==================== [HARD/SOFT 混合] 动作体力消耗常量 ====================
     // 基于医学研究：跳跃和翻越动作的能量消耗远高于普通移动
+    //
+    // ── 物理模型公式 ──────────────────────────────────────────────────────────
+    //   跳跃: E = (m·g·h + 0.5·m·v²) / eta    单位 J
+    //   翻越: P = (m·g·v_vert + eta_iso·F_iso + BASE_METABOLISM) / eta_iso  单位 W
+    //   换算: 体力% = J / JUMP_STAMINA_TO_JOULES
+    //
+    // [HARD] 重力加速度（物理定律）
+    static const float JUMP_GRAVITY = 9.81; // m/s²
     
+    // [HARD] 1体力单位对应的能量焦耳数
+    // 推导：游戏体力池设计为 1.0 ≈ 75 kcal，75 kcal × 4186 J/kcal ≈ 314,000 J
+    // 是整个跳跃/翻越物理模型的标尺锚点，不得随意修改
+    static const float JUMP_STAMINA_TO_JOULES = 3.14e5; // J / 体力单位
     
-    // 低体力跳跃阈值：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
-    static const float JUMP_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力
+    // [HARD] 跳跃肌肉效率（Margaria et al., 1963）
+    // 生理学测量值：20-25%，中心值 0.22；Settings 中 jump_efficiency 应保持在此范围内
+    // 此处为不经过 Settings 时的硬编码默认值
+    static const float JUMP_MUSCLE_EFFICIENCY = 0.22;
     
-    // 连续跳跃时间窗口（秒）：在此时间内的连续跳跃会增加消耗
-    static const float JUMP_CONSECUTIVE_WINDOW = 2.0; // 2秒
+    // [HARD] 攀爬/翻越等长收缩效率（Margaria et al., 1963）
+    // 生理学测量值：10-15%，中心值 0.12；Settings 中 climb_iso_efficiency 应保持在此范围内
+    // 此处同时作为 GetClimbIsoEfficiency() 的硬编码回退值
+    static const float VAULT_ISO_EFFICIENCY = 0.12;
     
-    // 连续跳跃惩罚系数：每次连续跳跃额外增加50%消耗
-    static const float JUMP_CONSECUTIVE_PENALTY = 0.5; // 50%
+    // [HARD] 翻越垂直抬升估算（m），基于标准障碍高度（0.4-0.6m），取中值 0.5
+    static const float VAULT_VERT_LIFT_GUESS = 0.5;
     
-    // 跳跃检测阈值（垂直速度，m/s）
+    // [HARD] 四肢等长力占总体重的比例，生物力学测量值（上肢负担约为体重的 45-55%）
+    static const float VAULT_LIMB_FORCE_RATIO = 0.5;
+    
+    // [HARD] 攀爬基础代谢附加功率（W），对应轻度静力运动基础代谢（约 40-60W）
+    static const float VAULT_BASE_METABOLISM_WATTS = 50.0;
+    
+    // [HARD] 单次跳跃/翻越最大体力消耗上限，由 JUMP_STAMINA_TO_JOULES 标尺推导的物理边界
+    static const float JUMP_VAULT_MAX_DRAIN_CLAMP = 0.15;
+    
+    // [SOFT] 低体力跳跃阈值：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
+    static const float JUMP_MIN_STAMINA_THRESHOLD = 0.10;
+    
+    // [SOFT] 连续跳跃时间窗口（秒）：在此时间内的连续跳跃会触发惩罚
+    static const float JUMP_CONSECUTIVE_WINDOW = 2.0;
+    
+    // [SOFT] 连续跳跃惩罚系数：每次连续跳跃额外增加50%消耗（模拟乳酸堆积）
+    static const float JUMP_CONSECUTIVE_PENALTY = 0.5;
+    
+    // [HARD] 跳跃检测垂直速度阈值（由游戏引擎物理参数决定，不可随意修改）
     static const float JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0; // m/s
     
-    // 翻越检测阈值（垂直速度，m/s）
+    // [HARD] 翻越检测垂直速度阈值（由游戏引擎物理参数决定，不可随意修改）
     static const float VAULT_VERTICAL_VELOCITY_THRESHOLD = 1.5; // m/s
     
     // ==================== 坡度影响参数 ====================
@@ -269,48 +436,52 @@ class StaminaConstants
     // ==================== 速度×负重×坡度三维交互参数 ====================
     static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.10; // 速度×负重×坡度交互系数
     
-    // ==================== Sprint（冲刺）相关参数 ====================
-    // Sprint速度加成（相对于Run，v2.5优化）
-    static const float SPRINT_SPEED_BOOST = 0.30; // Sprint时速度比Run快30%（v2.5优化）
+    // ==================== [SOFT via Settings] Sprint（冲刺）相关参数 ====================
+    // 运行时通过 GetSprintSpeedBoost() / GetSprintStaminaDrainMultiplier() 从配置管理器读取
+    static const float SPRINT_SPEED_BOOST              = 0.30; // [SOFT fallback] Sprint速度比Run快30%
+    static const float SPRINT_MAX_SPEED_MULTIPLIER     = 1.0;  // [HARD] 100%游戏最大速度上限
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5;  // [SOFT fallback] Sprint消耗是Run的3.5×
     
-    // Sprint最高速度倍数限制（基于现实情况）
-    static const float SPRINT_MAX_SPEED_MULTIPLIER = 1.0; // Sprint最高速度倍数（100% = 游戏最大速度5.2 m/s）
+    // ==================== [HARD] Pandolf 能量消耗模型系数（Pandolf et al., 1977 原始值）====================
+    // 以下系数均来自 Pandolf et al., 1977 论文的实验测量结果，属于 HARD CONFIG。
+    // Python 数字孪生必须与这些值完全同步，否则优化器输出与游戏实际行为将产生系统性偏差。
+    //
+    //   公式：P = body_weight × [PANDOLF_STATIC_COEFF_1 + PANDOLF_STATIC_COEFF_2×(load/body)]
+    //         + body_weight × [PANDOLF_BASE_COEFF×FITNESS + PANDOLF_VELOCITY_COEFF×(v-0.7)²]
+    //         + body_weight × grade × [PANDOLF_GRADE_BASE_COEFF + PANDOLF_GRADE_VELOCITY_COEFF×v²]
+    //
+    static const float PANDOLF_BASE_COEFF               = 2.7;  // [HARD] 基础代谢系数（W/kg），论文原始值
+    static const float PANDOLF_VELOCITY_COEFF            = 3.2;  // [HARD] 速度代谢系数（W/kg），论文原始值
+    static const float PANDOLF_VELOCITY_OFFSET           = 0.7;  // [HARD] 速度偏移（m/s），论文原始值
+    static const float PANDOLF_GRADE_BASE_COEFF          = 0.23; // [HARD] 坡度基础系数（W/kg），论文原始值
+    static const float PANDOLF_GRADE_VELOCITY_COEFF      = 1.34; // [HARD] 坡度速度系数（W/kg），论文原始值
     
-    // Sprint体力消耗倍数（相对于Run，v2.5优化）
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5; // Sprint时体力消耗是Run的3.5倍（v2.5优化）
+    // [SOFT fallback] Pandolf 静态站立消耗常量
+    // v2.15.0 游戏性调参：降低静态消耗，给30kg负重留出恢复空间
+    // 非论文原始值，属游戏平衡性调整
+    static const float PANDOLF_STATIC_COEFF_1 = 1.2; // [SOFT fallback] 静态基础系数（原1.5→1.2，-20%）
+    static const float PANDOLF_STATIC_COEFF_2 = 1.6; // [SOFT fallback] 静态负重系数（原2.0→1.6，-20%）
     
-    // ==================== Pandolf 模型常量 ====================
-    // 完整 Pandolf 能量消耗模型（Pandolf et al., 1977）
-    static const float PANDOLF_BASE_COEFF = 2.7; // 基础系数（W/kg）
-    static const float PANDOLF_VELOCITY_COEFF = 3.2; // 速度系数（W/kg）
-    static const float PANDOLF_VELOCITY_OFFSET = 0.7; // 速度偏移（m/s）
-    static const float PANDOLF_GRADE_BASE_COEFF = 0.23; // 坡度基础系数（W/kg）
-    static const float PANDOLF_GRADE_VELOCITY_COEFF = 1.34; // 坡度速度系数（W/kg）
+    // [SOFT fallback] 能量到体力的转换系数
+    // 此值由配置管理器动态获取（GetEnergyToStaminaCoeff()），此处仅为代码回退默认值
+    static const float ENERGY_TO_STAMINA_COEFF = 0.000015; // [SOFT fallback] 与 Python 数字孪生一致
     
-    // Pandolf 静态站立消耗常量（v2.15.0：降低静态消耗，给30KG留出呼吸空间）
-    static const float PANDOLF_STATIC_COEFF_1 = 1.2; // 基础系数（W/kg），从1.5降低到1.2（降低20%）
-    static const float PANDOLF_STATIC_COEFF_2 = 1.6; // 负重系数（W/kg），从2.0降低到1.6（降低20%）
+    // [HARD] 参考体重（Pandolf 模型归一化基准，与 CHARACTER_WEIGHT 保持一致）
+    static const float REFERENCE_WEIGHT = 90.0; // [HARD] kg
     
-    // 能量到体力的转换系数
-    // 注意：此值现在从配置管理器获取（GetEnergyToStaminaCoeff()）
-    // [修复] 与Python数字孪生保持一致，从0.000035降低到0.000015
-    static const float ENERGY_TO_STAMINA_COEFF = 0.000015; // 能量到体力的转换系数（与Python一致）
+    // ==================== [LEGACY - UNUSED] Givoni-Goldman 跑步模型常量 ====================
+    // 运行时完全不使用，仅保留以便向后兼容旧配置或历史分析。
+    // Python 端对应值为 0.8 / 2.2，两端已对齐。
+    static const float GIVONI_CONSTANT          = 0.8; // [LEGACY unused] W/kg·m²/s²
+    static const float GIVONI_VELOCITY_EXPONENT = 2.2; // [LEGACY unused] 速度指数
     
-    // 参考体重（用于 Pandolf 模型）
-    static const float REFERENCE_WEIGHT = 90.0; // 参考体重（kg）
-    
-    // ==================== Givoni-Goldman 跑步模型常量（已废弃，保留用于旧配置兼容） ====================
-    // Legacy constants for the Givoni-Goldman running model.  性能模型已被 Pandolf 替代，
-    // 运行时不再使用。仅留在源代码以便向后兼容旧配置或进行历史分析。
-    static const float GIVONI_CONSTANT = 0.8; // (unused) 跑步常数（W/kg·m²/s²）
-    static const float GIVONI_VELOCITY_EXPONENT = 2.2; // (unused) 速度指数
-    
-    // ==================== 地形系数常量 ====================
-    static const float TERRAIN_FACTOR_PAVED = 1.0;        // 铺装路面
-    static const float TERRAIN_FACTOR_DIRT = 1.1;         // 碎石路
-    static const float TERRAIN_FACTOR_GRASS = 1.2;        // 高草丛
-    static const float TERRAIN_FACTOR_BRUSH = 1.5;        // 重度灌木丛
-    static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
+    // ==================== [HARD] 地形系数常量（实验测量比值，基准=铺装路面）====================
+    // 来自对照实验测量结果，属于 HARD CONFIG，不得随意改变。
+    static const float TERRAIN_FACTOR_PAVED = 1.0; // [HARD] 铺装路面（基准）
+    static const float TERRAIN_FACTOR_DIRT  = 1.1; // [HARD] 碎石路 +10%
+    static const float TERRAIN_FACTOR_GRASS = 1.2; // [HARD] 草地   +20%
+    static const float TERRAIN_FACTOR_BRUSH = 1.5; // [HARD] 灌木丛 +50%
+    static const float TERRAIN_FACTOR_SAND  = 1.8; // [HARD] 软沙地 +80%
     
     // ==================== 恢复启动延迟常量（深度生理压制版本）====================
     // 恢复启动延迟常量（深度生理压制版本）
@@ -341,11 +512,11 @@ class StaminaConstants
     //       Journal of Applied Physiology, 37(5), 762-765.
     //       Pendergast, D. R., et al. (1977). Energy cost of swimming.
     
-    // 游泳物理模型参数
-    static const float SWIMMING_DRAG_COEFFICIENT = 0.5; // 阻力系数（C_d，简化值）
-    static const float SWIMMING_WATER_DENSITY = 1000.0; // 水密度（ρ，kg/m³）
-    static const float SWIMMING_FRONTAL_AREA = 0.5; // 正面面积（A，m²，简化值）
-    static const float SWIMMING_BASE_POWER = 20.0; // 基础游泳功率（W，维持浮力和基本动作，从25W降至20W，提高水中存活率）
+    // [HARD] 游泳物理模型参数（流体力学常数，不可变）
+    static const float SWIMMING_DRAG_COEFFICIENT = 0.5;    // [HARD] 阻力系数 C_d（标准近似值）
+    static const float SWIMMING_WATER_DENSITY    = 1000.0; // [HARD] 水密度 ρ（kg/m³，物理定律）
+    static const float SWIMMING_FRONTAL_AREA     = 0.5;    // [HARD] 正面受力面积（m²，上身投影标准近似）
+    static const float SWIMMING_BASE_POWER       = 20.0;   // [SOFT fallback] 基础游泳功率（W），可通过 swimming_base_power 覆盖
     
     // 负重阈值（负浮力效应）
     static const float SWIMMING_ENCUMBRANCE_THRESHOLD = 25.0; // kg，超过此重量时静态消耗大幅增加（从20kg提高到25kg）
@@ -390,14 +561,14 @@ class StaminaConstants
     static const float SWIMMING_MIN_SPEED = 0.1; // m/s，游泳最小速度阈值
     static const float SWIMMING_VERTICAL_VELOCITY_THRESHOLD = -0.5; // m/s，垂直速度阈值（检测是否在水中）
     
-    // ==================== 环境因子常量 ====================
-    // 热应激参数（基于时间段）
-    static const float ENV_HEAT_STRESS_START_HOUR = 10.0; // 热应激开始时间（小时）
-    static const float ENV_HEAT_STRESS_PEAK_HOUR = 14.0; // 热应激峰值时间（小时，正午）
-    static const float ENV_HEAT_STRESS_END_HOUR = 18.0; // 热应激结束时间（小时）
-    static const float ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5; // 热应激最大倍数（50%消耗增加，提高环境影响）
-    static const float ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0; // 热应激基础倍数（无影响）
-    static const float ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5; // 室内热应激减少比例（50%）
+    // ==================== [HARD/SOFT 混合] 环境因子常量 ====================
+    // 时间窗口为 HARD（太阳辐射物理规律）；强度倍数为 SOFT（通过配置管理器读取）
+    static const float ENV_HEAT_STRESS_START_HOUR      = 10.0; // [HARD] 热应激开始（日照曲线）
+    static const float ENV_HEAT_STRESS_PEAK_HOUR       = 14.0; // [HARD] 峰值（地表温度滞后约2h）
+    static const float ENV_HEAT_STRESS_END_HOUR        = 18.0; // [HARD] 热应激结束
+    static const float ENV_HEAT_STRESS_MAX_MULTIPLIER  = 1.5;  // [SOFT fallback] 最大倍数，可通过 env_heat_stress_max_multiplier 覆盖
+    static const float ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0;  // [HARD] 基准倍数（无热影响）
+    static const float ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5; // [SOFT fallback] 室内减免比例
     
     // 降雨湿重参数
     static const float ENV_RAIN_WEIGHT_MIN = 2.0; // kg，小雨时的湿重
@@ -436,11 +607,11 @@ class StaminaConstants
     static const float ENV_MUD_SLIP_RISK_BASE = 0.001; // 基础滑倒风险（每0.2秒）
     
     // 气温相关常量
-    static const float ENV_TEMPERATURE_HEAT_THRESHOLD = 30.0; // °C，热应激阈值
-    static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02; // 每高1度，恢复率降低2%
-    static const float ENV_TEMPERATURE_COLD_THRESHOLD = 0.0; // °C，冷应激阈值
-    static const float ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03; // 低温时静态消耗增加比例
-    static const float ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05; // 低温时恢复率降低比例
+    static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值
+    static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF   = 0.02; // [SOFT fallback] 每高1°C恢复率降低2%
+    static const float ENV_TEMPERATURE_COLD_THRESHOLD       =  0.0; // [HARD] °C，医学冷应激阈值
+    static const float ENV_TEMPERATURE_COLD_STATIC_PENALTY  = 0.03; // [SOFT fallback] 低温静态消耗增加
+    static const float ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05; // [SOFT fallback] 低温恢复率惩罚
     
     // 地表湿度相关常量
     static const float ENV_SURFACE_WETNESS_SOAK_RATE = 1.0; // kg/秒，趴下时的湿重增加速率
@@ -586,7 +757,7 @@ class StaminaConstants
     }
     
     // 获取Sprint体力消耗倍数（从配置管理器）
-    // 修复：确保不低于1.0，避免为0导致体力不消耗
+    // 确保不低于1.0，避免为0导致体力不消耗
     static float GetSprintStaminaDrainMultiplier()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -599,7 +770,7 @@ class StaminaConstants
                 return Math.Max(v, 1.0);
             }
         }
-        return 3.0; // 默认值
+        return 3.5; // [FIX] 默认值与 SPRINT_STAMINA_DRAIN_MULTIPLIER static const 统一为 3.5
     }
     
     // 获取疲劳累积系数（从配置管理器）
@@ -810,9 +981,20 @@ class StaminaConstants
         return 0.0;
     }
 
-
-
-    // ==================== 环境因子参数配置方法 ====================
+    // 获取攀爬/翻越等长收缩效率（从配置管理器）
+    // [NOTE] 此值具有生理学约束（Margaria 1963: 0.10-0.15），不建议超出此范围
+    // Settings 中 climb_iso_efficiency 的 defvalue 为 0.12（论文中心值）
+    static float GetClimbIsoEfficiency()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return Math.Clamp(params.climb_iso_efficiency, 0.05, 0.25); // 生理学安全范围限制
+        }
+        return VAULT_ISO_EFFICIENCY; // 硬编码回退值 0.12
+    }
 
     // 获取热应激惩罚系数（从配置管理器）
     static float GetEnvTemperatureHeatPenaltyCoeff()
