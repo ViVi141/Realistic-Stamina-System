@@ -47,6 +47,11 @@ class RSSTunerGUI:
         
         # 选择支持中文的字体
         self.chinese_font = self._get_chinese_font()
+        # 将选择的中文字体设置为默认字体，避免 Tkinter 回退到 Segoe UI
+        try:
+            self.root.option_add("*Font", (self.chinese_font, 10))
+        except Exception:
+            pass
         
         # 样式设置
         if MATPLOTLIB_AVAILABLE:
@@ -84,7 +89,7 @@ class RSSTunerGUI:
     
     def _get_chinese_font(self):
         """获取支持中文的字体"""
-        # 尝试常见的中文字体
+        # 尝试常见的中文字体（Segoe UI 仅作为最后备选）
         chinese_fonts = [
             'Microsoft YaHei',
             'SimHei',
@@ -99,12 +104,18 @@ class RSSTunerGUI:
         import tkinter.font as tkfont
         available_fonts = set(tkfont.families())
         
-        # 选择第一个可用的中文字体
+        # 选择第一个可用的中文字体，并验证该字体包含基本汉字
+        test_char = '\u62C5'  # 任意中文字符
         for font_name in chinese_fonts:
             if font_name in available_fonts:
-                return font_name
+                try:
+                    f = tkfont.Font(family=font_name, size=12)
+                    if f.measure(test_char) > 0:
+                        return font_name
+                except Exception:
+                    pass
         
-        # 如果没有找到中文字体，使用默认字体
+        # 如果没有找到合适字体，使用系统默认
         return 'Arial'
     
     def _create_ui(self):
