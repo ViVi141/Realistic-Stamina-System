@@ -43,7 +43,6 @@ class StaminaConsumptionCalculator
         // 获取高级环境因子（如果环境因子模块存在）
         float windDrag = 0.0;
         float mudTerrainFactor = 0.0;
-        float mudSprintPenalty = 0.0;
         float totalWetWeight = 0.0;
         float coldStaticPenalty = 0.0;
         
@@ -51,7 +50,6 @@ class StaminaConsumptionCalculator
         {
             windDrag = environmentFactor.GetWindDrag();
             mudTerrainFactor = environmentFactor.GetMudTerrainFactor();
-            mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
             totalWetWeight = environmentFactor.GetTotalWetWeight();
             coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
 
@@ -98,13 +96,6 @@ class StaminaConsumptionCalculator
         
         // 应用泥泞地形系数（修正地形因子）
         terrainFactor = terrainFactor + mudTerrainFactor;
-        
-        // 应用泥泞Sprint惩罚（修正Sprint倍数，只在Sprint时应用）
-        float sprintVelocityThreshold = StaminaConstants.GetSprintVelocityThreshold();
-        if (currentSpeed >= sprintVelocityThreshold)
-        {
-            sprintMultiplier = sprintMultiplier + mudSprintPenalty;
-        }
         
         // 应用降雨湿重（修正当前重量）
         currentWeight = currentWeight + totalWetWeight;
@@ -162,8 +153,8 @@ class StaminaConsumptionCalculator
         }
         else
         {
-            // 消耗时，应用 Sprint 倍数
-            totalDrainRate = baseDrainRate * sprintMultiplier;
+            // 消耗时：已统一为 Pandolf 公式，不再对 Sprint 单独乘倍数（Pandolf 速度项自然体现 Sprint 更高消耗）
+            totalDrainRate = baseDrainRate;
 
             // 应用负重体力消耗倍数（修复：此前传入但未使用）
             totalDrainRate = totalDrainRate * encumbranceStaminaDrainMultiplier;

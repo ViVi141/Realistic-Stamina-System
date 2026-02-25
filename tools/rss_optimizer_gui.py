@@ -252,7 +252,6 @@ class RSSTunerGUI:
             "fast_recovery_multiplier",
             "medium_recovery_multiplier",
             "slow_recovery_multiplier",
-            "sprint_stamina_drain_multiplier",
             "fatigue_accumulation_coeff",
             "encumbrance_stamina_drain_coeff",
             "posture_crouch_multiplier",
@@ -755,7 +754,7 @@ class RSSTunerGUI:
         # 这里可以添加加载预设配置的逻辑
         messagebox.showinfo("预设", f"已选择预设: {preset}")
     
-    def update_data(self, iteration, playability, stability, realism, params):
+    def update_data(self, iteration, playability, stability, realism, params, sprint_drop=None):
         """更新优化数据（线程安全：通过 root.after 调度到主线程）"""
         def _do_update():
             self.optimization_data['iterations'].append(iteration)

@@ -134,9 +134,11 @@ class SpeedCalculator
     }
     
     // 获取坡度角度（修复了背对坡倒车不消耗体力的漏洞）
+    // 注意：引擎接口返回的是斜率比 vertical/horizontal，而非角度。
+    //       例如 0.15 表示 15% 坡度。要转换为角度请使用 atan()
     // @param controller 角色控制器组件
-    // @param environmentFactor 环境因子组件（可选，用于室内检测）
-    // @return 坡度角度（度）
+    // @param environmentFactor 环境因子组件（可选，用于室内检测)
+    // @return 坡度斜率（vertical/horizontal）；后续乘以100得到百分比
     static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null)
     {
         // 检查是否在室内，如果是则返回0坡度
@@ -214,6 +216,7 @@ class SpeedCalculator
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
             // 引擎输出始终为斜率比（vertical/horizontal），无需角度转换。
+            // 注意：此处 rawSlope 已是比值，可直接乘100获得百分比。
             float rawSlope = GetSlopeAngle(controller, environmentFactor);
             result.gradePercent = rawSlope * 100.0;
             if (StaminaConstants.IsDebugEnabled())

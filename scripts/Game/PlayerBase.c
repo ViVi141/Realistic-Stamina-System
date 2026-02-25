@@ -1091,11 +1091,8 @@ modded class SCR_CharacterControllerComponent
         if (useSwimmingModel)
             encumbranceStaminaDrainMultiplier = 1.0;
         
-        // 获取当前移动状态（已在上方获取）
-        
+        // 已统一为 Pandolf 公式，不再使用 Sprint 倍数（保留参数兼容）
         float sprintMultiplier = 1.0;
-        if (!useSwimmingModel && (isSprinting || currentMovementPhase == 3))
-            sprintMultiplier = StaminaConstants.GetSprintStaminaDrainMultiplier();
         
         // 调试信息：体力消耗计算参数（每5秒输出一次）
         static int drainDebugCounter = 0;

@@ -294,7 +294,7 @@ class RSSSuperPipeline:
         sprint_upper_cap: Optional[float] = 3.5,  # 可选：对 sprint multiplier 进行上界限制（若为None则不限制）
         enable_joint_sprint_energy_constraint: bool = True,  # 是否启用冲刺-能量耦合软约束
         joint_sprint_energy_penalty_scale: float = 8000.0,  # 联合惩罚规模（线性系数）
-        joint_sprint_energy_target_coeff: float = 2.5e-05,  # 目标 energy_to_stamina_coeff（用于归一化，设为区间中点）
+        joint_sprint_energy_target_coeff: float = 1e-06,  # 目标 energy_to_stamina_coeff（与 C 预设 7-9e-7 对齐）
     ): 
         """
         初始化流水线
@@ -367,12 +367,12 @@ class RSSSuperPipeline:
         # ==================== 1. 定义搜索空间 ====================
         # 使用与 rss_optimizer_optuna.py 相同的参数范围（但已优化）
         
-        # 能量转换相关（与游戏参数完全一致）
-        # 校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
-        # 当前 Python 仿真采用 0.2 秒步长，因此不再对系数进行额外缩放。
-        # 游戏配置中的可选范围是 0.000015 - 0.000050。
+        # 能量转换相关（与 C 端 SCR_RSS_Settings 预设完全对齐）
+        # C 端 EliteStandard/StandardMilsim/TacticalAction: 7e-7 ~ 9e-7
+        # C 端 Custom 默认: 3.5e-5
+        # 搜索范围覆盖 C 预设与 Custom，避免优化器与游戏参数尺度脱节
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 1.5e-05, 5e-05, log=True
+            'energy_to_stamina_coeff', 5e-07, 2e-05, log=True
         )
         
         # 恢复系统相关
@@ -410,8 +410,8 @@ class RSSSuperPipeline:
             'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
         )
         
-        # [HARD] Sprint 消耗倍率固定为 3.5，与 C 端一致，不参与 Optuna 优化
-        sprint_stamina_drain_multiplier = 3.5  # no-op for Optuna, fixed HARD value
+        # [DEPRECATED] 已统一 Pandolf 公式，C/Python 不再使用 Sprint 倍数；保留供 JSON 兼容
+        sprint_stamina_drain_multiplier = 3.5
         
         # 疲劳系统相关
         fatigue_accumulation_coeff = trial.suggest_float(
@@ -547,7 +547,7 @@ class RSSSuperPipeline:
         constants.ENCUMBRANCE_SPEED_PENALTY_EXPONENT = encumbrance_speed_penalty_exponent
         constants.ENCUMBRANCE_SPEED_PENALTY_MAX = encumbrance_speed_penalty_max
         constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF = encumbrance_stamina_drain_coeff
-        constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier  # 3.5 [HARD]
+        constants.SPRINT_STAMINA_DRAIN_MULTIPLIER = sprint_stamina_drain_multiplier  # [DEPRECATED] 保留 JSON 兼容
         constants.FATIGUE_ACCUMULATION_COEFF = fatigue_accumulation_coeff
         constants.FATIGUE_MAX_FACTOR = fatigue_max_factor
         # [HARD] AEROBIC/ANAEROBIC_EFFICIENCY_FACTOR 不参与优化，保持类默认值 0.9/1.2
@@ -935,12 +935,8 @@ class RSSSuperPipeline:
             realism_score -= 10.0  # 负重系数偏离生理学范围
         
         # 6. 运动消耗合理性
-        # Sprint 消耗倍数应 > 1.0（Sprint 比 Run 更耗体）
-        # 搜索空间 1.2~2.5，游戏测试 2.0x 体验良好
-        sprint_multiplier = constants.SPRINT_STAMINA_DRAIN_MULTIPLIER
-        if sprint_multiplier <= 1.0:
-            realism_score -= 10.0  # 冲刺应比跑步更耗体力
-        
+        # 已统一为 Pandolf 公式，不再使用 Sprint 倍数（速度项自然体现 Sprint 更高消耗）
+
         # 7. 疲劳系统合理性
         # 检查疲劳积累系数是否合理
         fatigue_accumulation = constants.FATIGUE_ACCUMULATION_COEFF
@@ -1206,10 +1202,8 @@ class RSSSuperPipeline:
             total_burden += float(scenario_burden) * weights[i]
         
         # 参数多样性惩罚：降低权重，避免与可玩性目标冲突
-        # sprint_mult 校准 2.0，不惩罚 1.8~2.2 区间
         param_variation_score = 0.0
         key_params = [
-            # SPRINT_STAMINA_DRAIN_MULTIPLIER 已锁定为 HARD 值 3.5，不再检查
             ('BASE_RECOVERY_RATE', 4e-5, 8e-5, 15.0),  # Walk 可净恢复
             ('ENCUMBRANCE_STAMINA_DRAIN_COEFF', 0.9, 1.5, 15.0),
         ]
@@ -1724,15 +1718,21 @@ class RSSSuperPipeline:
         except Exception:
             acft_res = None
 
-        # 会话层级约束暂时禁用（可能导致所有试验被剪枝）
-        # 直接返回零损失且不标记失败，以便观察优化器行为
-        return 0.0, False
-        min_stamina_overall = min(
-            min(patrol_res.get('stamina_history', [1.0])),
-            min(sprint_res.get('stamina_history', [1.0])),
-            min(acft_res.get('stamina_history', [1.0]))
-        )
+        # 会话层级约束：ACFT / 恢复窗 / 不可复原崩溃
+        if patrol_res is None or sprint_res is None:
+            return 100.0, True  # 样本仿真失败，视为会话不可接受
+        patrol_hist = patrol_res.get('stamina_history', [1.0])
+        sprint_hist = sprint_res.get('stamina_history', [1.0])
+        acft_hist = acft_res.get('stamina_history', [1.0]) if acft_res else [1.0]
+
+        stamina_lists = [patrol_hist, sprint_hist, acft_hist]
+        min_stamina_overall = min(min(s) for s in stamina_lists if s) if stamina_lists else 1.0
         no_permanent_incapacitation = min_stamina_overall > 0.01
+
+        # ACFT 通过：空载 ACFT 最低体力 > 1%
+        acft_ok = acft_res is not None and min(acft_hist) > 0.01
+        # 恢复窗通过：30s 冲刺后 60s 恢复，末端体力应 > 15%
+        recovery_ok = sprint_res is not None and (sprint_hist[-1] > 0.15 if sprint_hist else True)
 
         # low_events：巡逻样本中低于10%的次数（按分钟标准化）
         patrol_low_count = sum(1 for s in patrol_hist if s < 0.10)
@@ -1743,7 +1743,7 @@ class RSSSuperPipeline:
         final_stamina_est = patrol_hist[-1] if len(patrol_hist) > 0 else 1.0
 
         # engagement_score 计算：优先保证 player 在 20%-80% 区间内的时间占比
-        # engagement_loss = 100 - 100*(time_in_window_est)
+        time_in_window_est = sum(1 for s in patrol_hist if 0.2 <= s <= 0.8) / max(len(patrol_hist), 1)
         engagement_loss = 100.0 - 100.0 * time_in_window_est
 
         # 如果 final_stamina_est 不在 [0.25, 0.70] 区间，增加额外惩罚
@@ -1769,7 +1769,6 @@ class RSSSuperPipeline:
         """验证 trial 是否满足最低消耗要求（Run 60s 至少 3%，Sprint 30s 至少 4%）"""
         param_to_attr = {
             'energy_to_stamina_coeff': 'ENERGY_TO_STAMINA_COEFF',
-            'sprint_stamina_drain_multiplier': 'SPRINT_STAMINA_DRAIN_MULTIPLIER',
             'base_recovery_rate': 'BASE_RECOVERY_RATE',
             'aerobic_efficiency_factor': 'AEROBIC_EFFICIENCY_FACTOR',
             'anaerobic_efficiency_factor': 'ANAEROBIC_EFFICIENCY_FACTOR',

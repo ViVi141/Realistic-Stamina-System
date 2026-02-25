@@ -41,12 +41,18 @@ class StaminaUpdateCoordinator
     {
         float baseDrainRate = 0.0;
 
-        // 优先使用移动类型（如果可用）：isSprinting 或 currentMovementPhase（0=idle,1=walk,2=run,3=sprint）
+        // 优先使用移动类型（如果可用）：0=idle, 1=walk, 2=run, 3=sprint
+        // 已统一公式：Walk/Run/Sprint 均用 Pandolf，不再对 Sprint 单独乘倍数
         if (currentMovementPhase >= 0)
         {
-            if (isSprinting || currentMovementPhase == 3)
+            if (currentMovementPhase == 0)
             {
-                // Sprint & Run：统一使用 Pandolf 能量消耗模型
+                // Idle/Rest：恢复（强制）
+                baseDrainRate = -StaminaConstants.REST_RECOVERY_PER_TICK;
+            }
+            else
+            {
+                // Walk/Run/Sprint：统一使用 Pandolf 能量消耗模型
                 float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                     currentSpeed,
                     currentWeightWithWet,
@@ -55,35 +61,6 @@ class StaminaUpdateCoordinator
                     true);
                 pandolfPerS = pandolfPerS * (1.0 + windDrag);
                 baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒
-            }
-            else if (currentMovementPhase == 2)
-            {
-                // Run（同上 Pandolf 模型）
-                float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                    currentSpeed,
-                    currentWeightWithWet,
-                    gradePercent,
-                    terrainFactor,
-                    true);
-                pandolfPerS = pandolfPerS * (1.0 + windDrag);
-                baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒的消耗率
-            }
-            else if (currentMovementPhase == 1)
-            {
-                // Walk（Pandolf）
-                float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                    currentSpeed,
-                    currentWeightWithWet,
-                    gradePercent,
-                    terrainFactor,
-                    true);
-                pandolfPerS = pandolfPerS * (1.0 + windDrag);
-                baseDrainRate = pandolfPerS * 0.2;
-            }
-            else
-            {
-                // Idle/Rest：恢复（强制）
-                baseDrainRate = -StaminaConstants.REST_RECOVERY_PER_TICK;
             }
         }
         else

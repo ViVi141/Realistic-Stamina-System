@@ -90,11 +90,11 @@ RUN_BASE_DRAIN_RATE = 0.075  # pts/s（Run，优化后约22分钟耗尽）
 WALK_BASE_DRAIN_RATE = 0.045  # pts/s（Walk，降低消耗率以突出与跑步的差距）
 REST_RECOVERY_RATE = 0.250  # pts/s（Rest，恢复）
 
-# 转换为每0.2秒的消耗率
-SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE * UPDATE_INTERVAL
-RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE * UPDATE_INTERVAL
-WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE * UPDATE_INTERVAL
-REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE * UPDATE_INTERVAL
+# 转换为每0.2秒的消耗率（与 C SCR_StaminaConstants.c 一致：pts/s / 100 * 0.2）
+SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * UPDATE_INTERVAL
+REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * UPDATE_INTERVAL
 
 # 初始体力状态（满值）
 INITIAL_STAMINA_AFTER_ACFT = 1.0  # 100.0 / 100.0 = 1.0（100%，满值）
@@ -107,7 +107,7 @@ SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
 # ==================== Sprint（冲刺）相关参数 ====================
 SPRINT_SPEED_BOOST = 0.30  # [SOFT][OPTIMIZE] Sprint时速度比Run加30%，Optuna: 0.28 ~ 0.35
 SPRINT_MAX_SPEED_MULTIPLIER = 1.0  # [SOFT] Sprint最高速度倍数
-SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [FIX-002] 与 C 端 SPRINT_STAMINA_DRAIN_MULTIPLIER 统一为 3.5
+SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] 已统一为 Pandolf 公式，不再对 Sprint 单独乘倍数（保留供 JSON 兼容）
 
 # ==================== Pandolf 模型常量 ====================
 # ==================== [HARD] Pandolf 模型常量（Pandolf et al., 1977）====================
@@ -124,8 +124,8 @@ PANDOLF_STATIC_COEFF_2 = 1.6             # [SOFT] 静态负重系数（原2.0→
 # [SOFT][OPTIMIZE] 能量→体力缩放系数（由 Optuna 在正常范围内优化）
 # NOTE: Python 仿真现在使用与游戏完全相同的 0.2s 时间步长，
 #       因此常量值与 C 端一一对应，不再需要额外缩放。
-ENERGY_TO_STAMINA_COEFF = 0.000015        # [SOFT][OPTIMIZE] Optuna 搜索范围: 0.000015 ~ 0.000050
-                                         # 与 C 端默认一致（见 SCR_StaminaConstants.c）。
+ENERGY_TO_STAMINA_COEFF = 9e-07          # [SOFT][OPTIMIZE] 与 C 端 EliteStandard 预设一致
+                                         # Optuna 搜索范围: 5e-7 ~ 2e-5（覆盖 C 预设 7-9e-7 与 Custom 3.5e-5）
 REFERENCE_WEIGHT = 90.0  # [HARD] 参考体重（kg）
 
 # ==================== Givoni-Goldman 跑步模型常量（已废弃） ====================
@@ -249,8 +249,15 @@ EPOC_DELAY_SECONDS = 0.5  # EPOC延迟时间（秒）- 与数字孪生模拟器�
 EPOC_DRAIN_RATE = 0.001  # EPOC期间的基础消耗率（每0.2秒）
 
 # ==================== 姿态交互修正参数 ====================
-POSTURE_CROUCH_MULTIPLIER = 0.8  # 蹲姿行走速度倍数（减速）
-POSTURE_PRONE_MULTIPLIER = 0.5  # 匍匐爬行速度倍数（减速）
+# 消耗倍数（SCR_StaminaConstants.c 362-363 行，用于 StaminaConsumption）
+POSTURE_CROUCH_CONSUMPTION_MULTIPLIER = 1.8  # 蹲姿行走消耗倍数
+POSTURE_PRONE_CONSUMPTION_MULTIPLIER = 3.0   # 匍匐爬行消耗倍数
+# 速度倍数（蹲/趴时移动更慢，用于速度惩罚/距离计算）
+POSTURE_CROUCH_SPEED_MULTIPLIER = 0.7  # 蹲姿 = 70% 跑速
+POSTURE_PRONE_SPEED_MULTIPLIER = 0.3   # 趴姿 = 30% 跑速
+# 兼容旧名（消耗倍数，与 C 一致）
+POSTURE_CROUCH_MULTIPLIER = 1.8
+POSTURE_PRONE_MULTIPLIER = 3.0
 POSTURE_STAND_MULTIPLIER = 1.0  # 站立行走速度倍数（基准）
 
 # ==================== 游泳体力消耗参数 ====================
