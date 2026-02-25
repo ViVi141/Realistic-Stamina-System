@@ -771,14 +771,6 @@ modded class SCR_CharacterControllerComponent
         // 其中 M_encumbrance 是负重相对于身体重量的比例
         
         // 调试信息：速度计算（每5秒输出一次）
-        static int speedDebugCounter = 0;
-        speedDebugCounter++;
-        if (speedDebugCounter >= 25 && IsRssDebugEnabled()) // 每5秒输出一次
-        {
-            speedDebugCounter = 0;
-            PrintFormat("[RealisticSystem] 速度计算 / Speed Calculation: 当前速度=%1 m/s | Current Speed=%1 m/s",
-                Math.Round(currentSpeed * 10.0) / 10.0);
-        }
         
         // ==================== 性能优化：使用缓存的当前重量（模块化）====================
         // 使用缓存的当前重量（避免重复查找组件）
@@ -1094,31 +1086,12 @@ modded class SCR_CharacterControllerComponent
         // 已统一为 Pandolf 公式，不再使用 Sprint 倍数（保留参数兼容）
         float sprintMultiplier = 1.0;
         
-        // 调试信息：体力消耗计算参数（每5秒输出一次）
-        static int drainDebugCounter = 0;
-        drainDebugCounter++;
-        if (drainDebugCounter >= 25 && IsRssDebugEnabled()) // 每5秒输出一次
-        {
-            drainDebugCounter = 0;
-            string movementTypeDebug = "";
-            if (useSwimmingModel)
-                movementTypeDebug = "游泳 / Swimming";
-            else
-                movementTypeDebug = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-            // 使用独立占位符打印负重与总重，避免字符串拼接导致类型不兼容
-            PrintFormat("[RealisticSystem] 体力消耗参数 / Stamina Consumption Params: 类型=%1 | 速度=%2 m/s | 负重=%3kg | 总重=%4kg | 坡度=%5%% | 地形系数=%6 | 姿态=%7x | 热应激=%8x | 效率=%9",
-                movementTypeDebug,
-                Math.Round(currentSpeed * 10.0) / 10.0,
-                Math.Round(currentWeight * 10.0) / 10.0,
-                Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0,
-                Math.Round(gradePercentForConsumption * 10.0),
-                Math.Round(terrainFactorForConsumption * 100.0) / 100.0,
-                Math.Round(postureMultiplier * 100.0) / 100.0,
-                Math.Round(heatStressMultiplier * 100.0) / 100.0,
-                Math.Round(totalEfficiencyFactor * 100.0) / 100.0);
-        }
-        
-        float baseDrainRateByVelocityForModule = 0.0; // 用于模块计算的基础消耗率
+        // [修复 v2.16.0] 初始化为预计算的基础消耗率，传入 CalculateStaminaConsumption。
+        // 原来初始化为 0.0，导致 CalculateStaminaConsumption 内部的 fallback（<= 0.0 分支）
+        // 总是触发，而该 fallback 路径会经过 AdjustEnergyForTemperature，
+        // 在单位不匹配的情况下将几瓦的温度额外开销直接加到 0.000x 的体力/tick 上，造成数值爆炸。
+        // 传入正确预计算值后，fallback 不会触发（若值 > 0），消除该问题。
+        float baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
         float totalDrainRate = 0.0;
         
         if (useSwimmingModel)
@@ -1152,22 +1125,9 @@ modded class SCR_CharacterControllerComponent
             float drainRateBeforeHeat = totalDrainRate;
             totalDrainRate = totalDrainRate * heatStressMultiplier;
             
-            // 调试信息：热应激影响
-            if (drainDebugCounter == 0 && heatStressMultiplier > 1.01 && IsRssDebugEnabled())
-            {
-                PrintFormat("[RealisticSystem] 热应激影响 / Heat Stress Effect: 消耗率 %1 → %2 (倍数: %3x) | Drain Rate %1 → %2 (Multiplier: %3x)",
-                    Math.Round(drainRateBeforeHeat * 1000000.0).ToString(),
-                    Math.Round(totalDrainRate * 1000000.0).ToString(),
-                    Math.Round(heatStressMultiplier * 100.0) / 100.0);
-            }
         }
         
         // 调试信息：最终体力消耗率
-        if (drainDebugCounter == 0 && IsRssDebugEnabled())
-        {
-            PrintFormat("[RealisticSystem] 最终体力消耗率 / Final Stamina Drain Rate: %1/0.2s | %1/0.2s",
-                Math.Round(totalDrainRate * 1000000.0) / 1000000.0);
-        }
         
         // 如果模块计算的基础消耗率为0，使用本地计算的baseDrainRateByVelocity
         if (baseDrainRateByVelocityForModule == 0.0 && baseDrainRateByVelocity > 0.0)
@@ -1189,6 +1149,14 @@ modded class SCR_CharacterControllerComponent
         if (m_pStaminaComponent)
         {
             float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
+            // 额外调试：输出坡度、重量等当前帧输入
+            if (IsRssDebugEnabled())
+            {
+                PrintFormat("[FrameDebug] grade=%1%% weight=%2kg totWeight=%3kg", 
+                    Math.Round(gradePercentForConsumption * 100.0) / 100.0,
+                    Math.Round(currentWeight * 10.0) / 10.0,
+                    Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0);
+            }
             float newTargetStamina = StaminaUpdateCoordinator.UpdateStaminaValue(
                 m_pStaminaComponent,
                 staminaPercent,

@@ -32,6 +32,8 @@
     "posture_prone_multiplier": 2.4275375511179607,
     "jump_height_guess": 0.9269558612813429,
     "jump_horizontal_speed_guess": 1.2040137187894302,
+    "jump_efficiency": 0.22,
+    "climb_iso_efficiency": 0.12,
     "slope_uphill_coeff": 0.06558107122238677,
     "slope_downhill_coeff": 0.03553536542700146,
     "swimming_base_power": 21.2584666605061,

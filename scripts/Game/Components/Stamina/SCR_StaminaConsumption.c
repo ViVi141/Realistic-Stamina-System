@@ -102,8 +102,10 @@ class StaminaConsumptionCalculator
 
         // ==================== 修复：调用公共静态方法计算基础消耗率 ====================
         // 如果调用方已经计算好了基线（例如 PlayerBase），我们应使用该值以确保一致性；否则自己计算并确保体重包含身体质量
+        bool usedFallback = false;
         if (baseDrainRateByVelocity <= 0.0)
         {
+            usedFallback = true;
             float weight_for_base = currentWeight + StaminaConstants.CHARACTER_WEIGHT; // 装备+湿重 + 人体
             baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateLandBaseDrainRate(
                 currentSpeed,
@@ -117,6 +119,8 @@ class StaminaConsumptionCalculator
         }
 
         // 在应用姿态之前，使用环境因子对机械能耗做温度/风速补偿
+        // [修复 v2.16.0] AdjustEnergyForTemperature 现已正确将额外 Watts 转换为体力/tick 单位
+        float beforeTempAdj = baseDrainRateByVelocity;
         if (environmentFactor && baseDrainRateByVelocity > 0.0)
         {
             baseDrainRateByVelocity = environmentFactor.AdjustEnergyForTemperature(baseDrainRateByVelocity);
@@ -124,6 +128,19 @@ class StaminaConsumptionCalculator
 
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
+        // debug: log base drain before posture
+        if (StaminaConstants.IsDebugEnabled())
+        {
+            int fbFlag = 0;
+            if (usedFallback) fbFlag = 1;
+            PrintFormat("[ConsCalc] fb=%1 baseDrain=%2 tempAdj=%3 weight=%4 speed=%5 grade=%6",
+                fbFlag,
+                Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
+                Math.Round((baseDrainRateByVelocity - beforeTempAdj) * 1000000.0) / 1000000.0,
+                Math.Round(currentWeight * 10.0) / 10.0,
+                Math.Round(currentSpeed * 1000.0) / 1000.0,
+                Math.Round(gradePercent * 100.0) / 100.0);
+        }
         
         // 应用姿态修正（只在消耗时应用）
         if (baseDrainRateByVelocity > 0.0)
@@ -167,6 +184,13 @@ class StaminaConsumptionCalculator
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
         baseDrainRateByVelocity = originalBaseDrainRate;
+        // debug: verify out parameter value (total drain before posture/efficiency)
+        if (StaminaConstants.IsDebugEnabled())
+        {
+            PrintFormat("[ConsCalc] outBase=%1 total=%2",
+                Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
+                Math.Round(totalDrainRate * 1000.0) / 1000.0);
+        }
         
         return totalDrainRate;
     }

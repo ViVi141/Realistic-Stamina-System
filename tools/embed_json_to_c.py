@@ -56,6 +56,11 @@ class JsonToCEmbedder:
             'jump_consecutive_penalty': 'jump_consecutive_penalty',
             'jump_height_guess': 'jump_height_guess',                      # [SOFT][OPTIMIZE]
             'jump_horizontal_speed_guess': 'jump_horizontal_speed_guess',  # [SOFT][OPTIMIZE]
+            # [HARD] jump_efficiency 和 climb_iso_efficiency 是 Margaria 1963 生理学常数，不参与优化；
+            # 必须写入是因为 [Attribute defvalue] 仅 Workbench 编辑器生效，
+            # 代码 new SCR_RSS_Params() 不触发 defvalue，不显式赋值则运行时为 0.0。
+            'jump_efficiency': 'jump_efficiency',                          # [HARD] 0.22 fixed
+            'climb_iso_efficiency': 'climb_iso_efficiency',                # [HARD] 0.12 fixed
             'slope_uphill_coeff': 'slope_uphill_coeff',
             'slope_downhill_coeff': 'slope_downhill_coeff',
             'swimming_base_power': 'swimming_base_power',

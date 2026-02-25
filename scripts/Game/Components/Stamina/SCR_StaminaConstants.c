@@ -501,8 +501,8 @@ class StaminaConstants
     // ==================== 姿态交互修正参数 ====================
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
-    static const float POSTURE_CROUCH_MULTIPLIER = 1.8; // 蹲姿行走消耗倍数（1.6-2.0倍，取1.8）
-    static const float POSTURE_PRONE_MULTIPLIER = 3.0; // 匍匐爬行消耗倍数（与中速跑步相当）
+    // [REMOVED] POSTURE_CROUCH_MULTIPLIER / POSTURE_PRONE_MULTIPLIER 已由 GetPostureCrouchMultiplier()
+    // / GetPostureProneMultiplier() 替代，从配置管理器动态读取，static const 版本废弃删除。
     static const float POSTURE_STAND_MULTIPLIER = 1.0; // 站立行走消耗倍数（基准）
     
     // ==================== 游泳体力消耗参数 ====================
@@ -622,8 +622,9 @@ class StaminaConstants
     // ==================== 配置系统桥接方法 ====================
     
     // 获取能量到体力转换系数（从配置管理器）
-    // 修复：确保不低于最小值，避免优化器输出过小导致体力不消耗
-    static const float ENERGY_TO_STAMINA_COEFF_MIN = 0.000001;  // 1e-06，校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
+    // [修复 v2.16.0] 降低最小值至 1e-8：优化器产出约 8.9e-7，此前 1e-6 的截断导致游戏实际消耗比
+    // 优化器模拟值高 +12%（1e-6 / 8.9e-7 ≈ 1.12）。温度单位 bug 修复后此保护不再必要。
+    static const float ENERGY_TO_STAMINA_COEFF_MIN = 0.00000001;  // 1e-08，仅防止零值或负值
     static float GetEnergyToStaminaCoeff()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -881,6 +882,35 @@ class StaminaConstants
         return 0.6; // 默认值
     }
 
+    // 获取最低体力阈值（从配置管理器）
+    // [修复 v2.16.0] 此前为硬编码 static const 0.2，JSON 配置值被完全忽略
+    static float GetMinRecoveryStaminaThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return Math.Clamp(params.min_recovery_stamina_threshold, 0.0, 0.5);
+        }
+        return MIN_RECOVERY_STAMINA_THRESHOLD; // 回退到硬编码默认值 0.2
+    }
+
+    // 获取最低体力时所需静止时间（从配置管理器）
+    // [修复 v2.16.0] 此前为硬编码 static const 3.0s，JSON 配置值（6.98s~16.44s）被完全忽略，
+    // 导致游戏恢复门控比优化器预期宽松 2~5 倍。
+    static float GetMinRecoveryRestTimeSeconds()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return Math.Max(params.min_recovery_rest_time_seconds, 0.0);
+        }
+        return MIN_RECOVERY_REST_TIME_SECONDS; // 回退到硬编码默认值 3.0s
+    }
+
     // ==================== Sprint参数配置方法 ====================
 
     // 获取Sprint速度阈值（从配置管理器）
@@ -949,10 +979,14 @@ class StaminaConstants
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
-            if (params)
-                return params.jump_efficiency;
+            // [修复 v2.17.0] params.jump_efficiency 若为0（未经 embed 写入时的运行时默认值），
+            // [Attribute defvalue] 仅 Workbench 编辑器生效，代码 new SCR_RSS_Params() 不触发，
+            // 导致 eta=0 -> Math.Max(0,0.01)=0.01 -> 消耗×22 -> 触发15%上限。
+            // 生理学约束 Margaria 1963: 20-25%；低于 0.15 视为未初始化，回退 HARD 默认值。
+            if (params && params.jump_efficiency >= 0.15)
+                return Math.Clamp(params.jump_efficiency, 0.15, 0.30);
         }
-        return 0.22; // default 22%
+        return JUMP_MUSCLE_EFFICIENCY; // [HARD fallback] 0.22
     }
 
     // 跳跃重心抬升高度猜测
@@ -1272,10 +1306,12 @@ class StaminaConstants
     static const float STANCE_FATIGUE_ACCUMULATION = 1.0; // 每次姿态转换增加 1.0 疲劳值
     
     // 疲劳堆积衰减速率（每秒）
-    static const float STANCE_FATIGUE_DECAY = 0.3; // 每秒衰减 0.3 疲劳值，降低衰减速率以延长疲劳影响时间
+    // [v2.17.0] 0.3→0.5：加快衰减，约2秒内恢复到接近0，减少惩罚持续时间
+    static const float STANCE_FATIGUE_DECAY = 0.5; // 每秒衰减 0.5 疲劳值
     
     // 疲劳堆积最大值（防止无限累积）
-    static const float STANCE_FATIGUE_MAX = 10.0; // 最大疲劳堆积值（10.0）
+    // [v2.17.0] 10.0→3.0：稳态连续切换上限 ×4，35kg 趴→站最差约 8.3%，避免无限叠加
+    static const float STANCE_FATIGUE_MAX = 3.0; // 最大疲劳堆积值
     
     // ==================== 负重因子（线性化）====================
     // v2.0 优化：将原来的 1.5 次幂改为线性，避免负重影响过快

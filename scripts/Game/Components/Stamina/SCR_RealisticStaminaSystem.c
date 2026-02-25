@@ -451,11 +451,13 @@ class RealisticStaminaSpeedSystem
         
         // ==================== 深度生理压制：最低体力阈值限制 ====================
         // 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
-        // 数学实现：体力低于20%时，必须处于静止状态10秒后才允许开始回血
+        // [修复 v2.16.0] 改用动态 getter，确保 JSON 配置值实际生效
         float restDurationSeconds = restDurationMinutes * 60.0;
-        if (staminaPercent < MIN_RECOVERY_STAMINA_THRESHOLD && restDurationSeconds < MIN_RECOVERY_REST_TIME_SECONDS)
+        float minStaminaThreshold = StaminaConstants.GetMinRecoveryStaminaThreshold();
+        float minRestSeconds = StaminaConstants.GetMinRecoveryRestTimeSeconds();
+        if (staminaPercent < minStaminaThreshold && restDurationSeconds < minRestSeconds)
         {
-            return 0.0; // 体力低于20%且休息时间不足10秒时，不恢复
+            return 0.0; // 体力低于阈值且休息时间不足时，不恢复
         }
         
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
@@ -963,11 +965,20 @@ class RealisticStaminaSpeedSystem
         // 其中 E 的单位是 Watts，M 是总重量（kg）
         float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor * REFERENCE_WEIGHT;
         
+        // debug: log intermediates when debug enabled
+        if (StaminaConstants.IsDebugEnabled())
+        {
+        }
+        
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
         // 从0.0001降低到0.000015，减少约85%的体力消耗速度
         float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        // clamp coefficient to sane range (avoid config typo)
+        energyToStaminaCoeff = Math.Clamp(energyToStaminaCoeff, 0.0, 0.1);
         float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
+        
+        // debug: log coefficient and drain
         
         // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
         // 只防止负数，不限制上限

@@ -134,11 +134,12 @@ class SpeedCalculator
     }
     
     // 获取坡度角度（修复了背对坡倒车不消耗体力的漏洞）
-    // 注意：引擎接口返回的是斜率比 vertical/horizontal，而非角度。
-    //       例如 0.15 表示 15% 坡度。要转换为角度请使用 atan()
+    // 此方法直接返回坡度角度，单位为度。
+    // 例如 28.6 表示坡度 28.6°。如果需要斜率比（rise/run），请使用 tan(angle * DEG2RAD)。
+    // 引擎接口名称有时会混淆，之前错误地认为其返回斜率比，导致 Debug 输出异常。
     // @param controller 角色控制器组件
     // @param environmentFactor 环境因子组件（可选，用于室内检测)
-    // @return 坡度斜率（vertical/horizontal）；后续乘以100得到百分比
+    // @return 坡度角度（度）
     static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null)
     {
         // 检查是否在室内，如果是则返回0坡度
@@ -179,14 +180,18 @@ class SpeedCalculator
                 }
             }
         }
+        // clamp to physically plausible range to guard against engine glitches
+        slopeAngleDegrees = Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
         return slopeAngleDegrees;
     }
     
     // 计算坡度百分比（考虑攀爬和跳跃状态）
+    // 返回值中的 gradePercent 为坡度的百分比（rise/run × 100）。
+    // 注意：原始角度由 GetSlopeAngle 返回（度），需要通过 tan() 转换。
     // @param controller 角色控制器组件
     // @param currentSpeed 当前速度（m/s）
     // @param jumpVaultDetector 跳跃检测器（可选）
-    // @param slopeAngleDegrees 坡度角度（输入，通常为0.0）
+    // @param slopeAngleDegrees 坡度角度（输入，通常为0.0；输出会被替换）
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @return 坡度计算结果（包含坡度百分比和角度）
     static GradeCalculationResult CalculateGradePercent(
@@ -215,12 +220,22 @@ class SpeedCalculator
         // 只在非攀爬、非跳跃状态下获取坡度
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
-            // 引擎输出始终为斜率比（vertical/horizontal），无需角度转换。
-            // 注意：此处 rawSlope 已是比值，可直接乘100获得百分比。
-            float rawSlope = GetSlopeAngle(controller, environmentFactor);
-            result.gradePercent = rawSlope * 100.0;
+            // 获取坡度角度并转换为坡度百分比
+            float rawAngleDeg = GetSlopeAngle(controller, environmentFactor);
+            result.slopeAngleDegrees = rawAngleDeg;
+            // 将角度转换为斜率比：tan(angle_rad)
+            float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
+            // Clamp ratio to reasonable range (-100%..100%) to avoid terrain/measurement glitches
+            if (slopeRatio < -1.0 || slopeRatio > 1.0)
+            {
+                // log warning once per debug cycle
+                if (StaminaConstants.IsDebugEnabled())
+                slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
+            }
+            result.gradePercent = slopeRatio * 100.0;
             if (StaminaConstants.IsDebugEnabled())
-                PrintFormat("[SpeedCalc] 斜率比输出: %1 -> %2%%", rawSlope, result.gradePercent);
+            {
+            }
         }
         
         return result;

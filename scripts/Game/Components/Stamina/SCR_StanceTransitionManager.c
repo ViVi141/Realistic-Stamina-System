@@ -137,6 +137,8 @@ class StanceTransitionManager
         
         // 计算最终消耗：基础 × 负重 × (1 + 疲劳堆积)
         float finalCost = baseCost * weightMultiplier * (1.0 + m_fStanceFatigue);
+        // [v2.17.0] 单次姿态切换上限 5%，避免重装+高疲劳堆积时出现离谱消耗
+        finalCost = Math.Min(finalCost, 0.05);
         
         // 调试输出（仅在客户端）
         if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())

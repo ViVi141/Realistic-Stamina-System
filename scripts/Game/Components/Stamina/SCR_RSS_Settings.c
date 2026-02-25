@@ -462,6 +462,8 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.posture_prone_multiplier = 2.627300856244837;
 	m_EliteStandard.jump_height_guess = 0.82159292394888;
 	m_EliteStandard.jump_horizontal_speed_guess = 0.1905843980365115;
+	m_EliteStandard.jump_efficiency = 0.22;
+	m_EliteStandard.climb_iso_efficiency = 0.12;
 	m_EliteStandard.slope_uphill_coeff = 0.06415495161115242;
 	m_EliteStandard.slope_downhill_coeff = 0.03420290075193007;
 	m_EliteStandard.swimming_base_power = 17.088370204519837;
@@ -517,6 +519,8 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.posture_prone_multiplier = 3.787102306341789;
 	m_StandardMilsim.jump_height_guess = 0.39023180955144926;
 	m_StandardMilsim.jump_horizontal_speed_guess = 1.0799952039411693;
+	m_StandardMilsim.jump_efficiency = 0.22;
+	m_StandardMilsim.climb_iso_efficiency = 0.12;
 	m_StandardMilsim.slope_uphill_coeff = 0.06404662478452412;
 	m_StandardMilsim.slope_downhill_coeff = 0.03246275707495651;
 	m_StandardMilsim.swimming_base_power = 18.56067299119145;
@@ -572,6 +576,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.posture_prone_multiplier = 2.4275375511179607;
 	m_TacticalAction.jump_height_guess = 0.9269558612813429;
 	m_TacticalAction.jump_horizontal_speed_guess = 1.2040137187894302;
+	m_TacticalAction.jump_efficiency = 0.22;
+	m_TacticalAction.climb_iso_efficiency = 0.12;
 	m_TacticalAction.slope_uphill_coeff = 0.06558107122238677;
 	m_TacticalAction.slope_downhill_coeff = 0.03553536542700146;
 	m_TacticalAction.swimming_base_power = 21.2584666605061;
@@ -629,6 +635,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.sprint_speed_boost = 0.3;
         m_Custom.posture_crouch_multiplier = 2.0;
         m_Custom.posture_prone_multiplier = 2.5;
+        m_Custom.jump_efficiency = 0.22; // [HARD] Margaria 1963
+        m_Custom.climb_iso_efficiency = 0.12; // [HARD] Margaria 1963
         m_Custom.slope_uphill_coeff = 0.08;
         m_Custom.slope_downhill_coeff = 0.03;
         m_Custom.swimming_base_power = 25.0;

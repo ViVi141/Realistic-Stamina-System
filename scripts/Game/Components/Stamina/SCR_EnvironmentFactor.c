@@ -2244,21 +2244,28 @@ class EnvironmentFactor
         // 1. 体感温度
         float T_eff = T - 1.35 * Math.Sqrt(wind);
 
-        // 2. 热调节额外消耗
-        float extra = 0.0;
+        // 2. 热调节额外消耗（单位：Watts）
+        float extra_watts = 0.0;
         const float T_low = 18.0;
         const float T_high = 27.0;
         if (T_eff < T_low)
         {
             float dt = T_low - T_eff;
-            extra = 0.15 * (dt * dt);
+            extra_watts = 0.15 * (dt * dt);
         }
         else if (T_eff > T_high)
         {
-            extra = 2.0 * (T_eff - T_high);
+            extra_watts = 2.0 * (T_eff - T_high);
         }
 
-        return basePower + extra;
+        // [修复 v2.16.0] 单位转换：extra 是瓦特（Watts），而 basePower 是体力/tick 单位。
+        // 必须将额外瓦特数转换为体力/tick，否则会直接把几瓦的数值加到 0.000xxx 的体力/tick 上，
+        // 导致 baseDrain 从 0.000245 暴增到 3.637，造成瞬间耗尽体力。
+        // 转换：extra_watts × energyToStaminaCoeff（/W → /s）× 0.2（/s → /tick）
+        float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float extra_per_tick = extra_watts * coeff * 0.2;
+
+        return basePower + extra_per_tick;
     }
     
     // 计算冷应激惩罚
