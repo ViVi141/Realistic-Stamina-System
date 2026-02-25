@@ -1069,6 +1069,22 @@ class StaminaConstants
         return 0.15; // 默认值（最大15%恢复惩罚）
     }
 
+    // 获取降雨单独触发的湿重上限（从配置管理器）
+    // [NOTE] 降雨湿重上限应低于游泳湿重（降雨无法像全身浸泡那样快速浸透装备）
+    // 现实参考：军事BDU+战术背心在持续暴雨下约吸水 3-5 kg；NATO研究全套装备游泳约 5.7 kg
+    // 因此降雨单独上限设 4-5 kg，游泳可达 10 kg，组合池上限仍为 10 kg
+    static float GetEnvRainWeightMax()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.env_rain_weight_max >= 1.0)
+                return params.env_rain_weight_max;
+        }
+        return 5.0; // 硬编码回退值（暴雨下约 5 kg，保守估计）
+    }
+
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {

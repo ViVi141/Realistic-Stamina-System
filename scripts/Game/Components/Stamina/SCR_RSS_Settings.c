@@ -472,7 +472,7 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.swimming_dynamic_power_efficiency = 1.9493513167295462;
 	m_EliteStandard.swimming_energy_to_stamina_coeff = 5.4171582501299982e-05;
 	m_EliteStandard.env_heat_stress_max_multiplier = 1.4493727173773445;
-	m_EliteStandard.env_rain_weight_max = 8.577584649127463;
+	m_EliteStandard.env_rain_weight_max = 4.5; // [v2.17.1] 降雨单独上限：军事BDU+战术背心持续暴雨约3-5kg
 	m_EliteStandard.env_wind_resistance_coeff = 0.058562173226218296;
 	m_EliteStandard.env_mud_penalty_max = 0.3585225454846931;
 	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.018223333118004736;
@@ -529,7 +529,7 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.swimming_dynamic_power_efficiency = 2.1392018293899597;
 	m_StandardMilsim.swimming_energy_to_stamina_coeff = 4.4713650691517700e-05;
 	m_StandardMilsim.env_heat_stress_max_multiplier = 1.4854641132448616;
-	m_StandardMilsim.env_rain_weight_max = 9.494712138242996;
+	m_StandardMilsim.env_rain_weight_max = 5.0; // [v2.17.1] 降雨单独上限：平衡预设
 	m_StandardMilsim.env_wind_resistance_coeff = 0.0350720719650704;
 	m_StandardMilsim.env_mud_penalty_max = 0.4733191377191007;
 	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.02093575254414298;
@@ -586,7 +586,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.swimming_dynamic_power_efficiency = 2.3597287835022325;
 	m_TacticalAction.swimming_energy_to_stamina_coeff = 5.4003765185881066e-05;
 	m_TacticalAction.env_heat_stress_max_multiplier = 1.4190959637876548;
-	m_TacticalAction.env_rain_weight_max = 8.438274135593856;
+	m_TacticalAction.env_rain_weight_max = 4.0; // [v2.17.1] 降雨单独上限：可玩性预设（影响最小）
 	m_TacticalAction.env_wind_resistance_coeff = 0.03364264728328724;
 	m_TacticalAction.env_mud_penalty_max = 0.3947839521822384;
 	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.01693700292785702;
@@ -645,7 +645,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.swimming_dynamic_power_efficiency = 2.2;
         m_Custom.swimming_energy_to_stamina_coeff = 5e-05;
         m_Custom.env_heat_stress_max_multiplier = 1.3;
-        m_Custom.env_rain_weight_max = 7.0;
+        m_Custom.env_rain_weight_max = 5.0; // [v2.17.1] 降雨单独上限：自定义预设默认值
         m_Custom.env_wind_resistance_coeff = 0.05;
         m_Custom.env_mud_penalty_max = 0.45;
         m_Custom.env_temperature_heat_penalty_coeff = 0.02;

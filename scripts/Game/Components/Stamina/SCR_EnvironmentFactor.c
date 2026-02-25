@@ -2129,11 +2129,11 @@ class EnvironmentFactor
             float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
                                      Math.Pow(m_fCachedRainIntensity, StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
             
-            // 增加湿重
+            // 增加湿重（上限使用 GetEnvRainWeightMax()，降雨单独上限低于组合池上限）
             m_fCachedRainWeight = Math.Clamp(
                 m_fCachedRainWeight + accumulationRate * deltaTime,
                 0.0,
-                StaminaConstants.ENV_MAX_TOTAL_WET_WEIGHT
+                StaminaConstants.GetEnvRainWeightMax()
             );
         }
         else

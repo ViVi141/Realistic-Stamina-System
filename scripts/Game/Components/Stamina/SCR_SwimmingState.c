@@ -93,11 +93,11 @@ class SwimmingStateManager
             m_fSwimDuration = currentTime - m_fSwimStartTime;
             
             // 非线性增长：使用平方根函数，让湿重增长逐渐变慢
-            // 最大湿重：10kg（与降雨湿重共用）
-            // 增长公式：wetWeight = 10.0 * sqrt(duration / 60.0)
-            // 60秒时达到最大值10kg
+            // 最大湿重：WET_WEIGHT_MAX（10kg，与降雨湿重共用组合池）
+            // 增长公式：wetWeight = WET_WEIGHT_MAX * sqrt(duration / 60.0)
+            // 60秒时达到最大值 WET_WEIGHT_MAX kg
             float swimProgress = Math.Clamp(m_fSwimDuration / 60.0, 0.0, 1.0);
-            float swimWetWeight = 10.0 * Math.Sqrt(swimProgress);
+            float swimWetWeight = StaminaConstants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
             
             result.wetWeightStartTime = -1.0;
             result.currentWetWeight = swimWetWeight;
@@ -125,7 +125,7 @@ class SwimmingStateManager
             {
                 // 湿重逐渐减少（线性衰减）
                 float wetWeightRatio = 1.0 - (wetWeightElapsed / StaminaConstants.WET_WEIGHT_DURATION);
-                result.currentWetWeight = 10.0 * wetWeightRatio;
+                result.currentWetWeight = StaminaConstants.WET_WEIGHT_MAX * wetWeightRatio;
             }
         }
         

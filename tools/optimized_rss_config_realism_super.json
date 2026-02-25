@@ -42,7 +42,7 @@
     "swimming_dynamic_power_efficiency": 1.9493513167295462,
     "swimming_energy_to_stamina_coeff": 5.417158250129998e-05,
     "env_heat_stress_max_multiplier": 1.4493727173773445,
-    "env_rain_weight_max": 8.577584649127463,
+    "env_rain_weight_max": 4.5,
     "env_wind_resistance_coeff": 0.058562173226218296,
     "env_mud_penalty_max": 0.3585225454846931,
     "env_temperature_heat_penalty_coeff": 0.018223333118004736,
