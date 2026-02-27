@@ -684,6 +684,28 @@ File location: SCR_RealisticStaminaSystem.c L1110-L1131
 
 ---
 
+### 3.16 Slope-Speed Model (Tobler's Hiking Function)
+
+Slope's effect on **target speed** uses Tobler's Hiking Function (1993) for slope-speed negative feedback: uphill reduces target speed to maintain cardio load.
+
+**Formula:**
+```
+W(km/h) = 6 · e^(-3.5 · |S + 0.05|)
+toblerMultiplier = W / TOBLER_W_AT_FLAT_KMH   # flat (S=0) = 1.0
+slopeAdjustedTargetSpeed = baseTargetSpeed × max(toblerMultiplier, 0.15)
+```
+
+Where `S = tan(θ)`, θ = slope angle (degrees); `TOBLER_W_AT_FLAT_KMH = 5.039` (6·e^(-0.175)).
+
+**Design notes:**
+- **Formula shape**: Preserves Tobler curve—uphill and steep downhill both reduce speed (physiology-based)
+- **Normalization**: Flat (S=0) = 1.0 so 0 kg flat Sprint reaches engine max 5.2 m/s; Tobler peak (6 km/h) would give flat ≈ 84%
+- **Steep slope floor**: Minimum multiplier 0.15 to avoid extreme slopes becoming too slow
+
+File location: SCR_RealisticStaminaSystem.c - `CalculateSlopeAdjustedTargetSpeed`
+
+---
+
 ## 4. Value Categories
 
 ### 4.1 Hardcoded Constants

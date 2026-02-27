@@ -15,12 +15,13 @@ from typing import List, Dict, Tuple, Optional
 import random
 
 # Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 一致
+# 公式形状保留（上坡/陡下坡减速），归一化以平地=1.0，使 0 kg 平地下达引擎最大 5.2 m/s
 
 
 def tobler_speed_multiplier(angle_deg: float, w_max_kmh: float = 6.0,
                             exp_coeff: float = 3.5, s_offset: float = 0.05,
                             min_mult: float = 0.15) -> float:
-    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]。"""
+    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]。以平地=1.0 归一化，与 C 端一致。"""
     s = math.tan(math.radians(angle_deg))
     w_kmh = w_max_kmh * math.exp(-exp_coeff * abs(s + s_offset))
     flat = w_max_kmh * math.exp(-exp_coeff * s_offset)
@@ -96,6 +97,14 @@ class RSSConstants:
 
     SPRINT_VELOCITY_THRESHOLD = 5.2
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] C 端已统一公式，Python twin 不应用此倍数
+    TARGET_RUN_SPEED = 3.7
+    TARGET_RUN_SPEED_MULTIPLIER = 3.7 / 5.2  # 0.7115
+    SMOOTH_TRANSITION_START = 0.25
+    SMOOTH_TRANSITION_END = 0.05
+    MIN_LIMP_SPEED_MULTIPLIER = 1.0 / 5.2  # 1.0 m/s
+    EXHAUSTION_THRESHOLD = 0.0
+    SPRINT_ENABLE_THRESHOLD = 0.20
+    SPRINT_SPEED_BOOST = 0.30  # 从配置获取，默认 0.30
 
     FATIGUE_START_TIME_MINUTES = 5.0
     FATIGUE_ACCUMULATION_COEFF = 0.015
@@ -535,6 +544,130 @@ class RSSDigitalTwin:
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)
+
+    # -------------------------------------------------------------------------
+    # 闭环仿真：体力→速度→消耗，与 C 端 UpdateSpeedBasedOnStamina 一致
+    # -------------------------------------------------------------------------
+
+    def calculate_speed_multiplier_by_stamina(self, stamina_percent: float) -> float:
+        """与 C CalculateSpeedMultiplierByStamina 一致。"""
+        stamina_percent = np.clip(float(stamina_percent), 0.0, 1.0)
+        start = getattr(self.constants, 'SMOOTH_TRANSITION_START', 0.25)
+        end = getattr(self.constants, 'SMOOTH_TRANSITION_END', 0.05)
+        target_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.7 / 5.2)
+        min_limp = getattr(self.constants, 'MIN_LIMP_SPEED_MULTIPLIER', 1.0 / 5.2)
+        if stamina_percent >= start:
+            return target_mult
+        if stamina_percent >= end:
+            t = (stamina_percent - end) / (start - end)
+            t = np.clip(t, 0.0, 1.0)
+            smooth_t = t * t * (3.0 - 2.0 * t)
+            return min_limp + (target_mult - min_limp) * smooth_t
+        collapse = stamina_percent / end
+        base = min_limp * collapse
+        return max(base, min_limp * 0.8)
+
+    def calculate_actual_speed(
+        self,
+        stamina_percent: float,
+        current_weight: float,
+        movement_phase: int,
+        last_speed: float,
+    ) -> float:
+        """与 C CalculateFinalSpeedMultiplier 一致，返回 m/s。平地，无坡度。"""
+        c = self.constants
+        game_max = getattr(c, 'GAME_MAX_SPEED', 5.2)
+        bw = getattr(c, 'CHARACTER_WEIGHT', 90.0)
+        base_w = getattr(c, 'BASE_WEIGHT', 1.36)
+        coeff = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
+        exp = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_EXPONENT', 1.5)
+        max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+        sprint_boost = getattr(c, 'SPRINT_SPEED_BOOST', 0.30)
+        exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
+        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.20)
+
+        phase = movement_phase
+        if exhausted or not can_sprint:
+            if phase == MovementType.SPRINT:
+                phase = MovementType.RUN
+
+        run_base = self.calculate_speed_multiplier_by_stamina(stamina_percent)
+        slope_mult = 1.0
+        scaled_run = run_base * slope_mult
+
+        eff_weight = max(0.0, current_weight - bw - base_w)
+        body_mass_pct = eff_weight / bw if bw > 0 else 0.0
+        base_penalty = coeff * (body_mass_pct ** exp)
+        base_penalty = np.clip(base_penalty, 0.0, max_pen)
+        speed_ratio = np.clip(last_speed / game_max, 0.0, 1.0)
+        enc_penalty = base_penalty * (1.0 + speed_ratio)
+        if phase == MovementType.SPRINT:
+            enc_penalty *= 1.5
+        enc_penalty = np.clip(enc_penalty, 0.0, max_pen)
+
+        if phase == MovementType.SPRINT:
+            mult = (scaled_run * (1.0 + sprint_boost)) * (1.0 - enc_penalty)
+            mult = np.clip(mult, 0.15, 1.0)
+        elif phase == MovementType.RUN:
+            mult = scaled_run * (1.0 - enc_penalty)
+            mult = np.clip(mult, 0.15, 1.0)
+        elif phase == MovementType.WALK:
+            walk_base = self.calculate_speed_multiplier_by_stamina(stamina_percent)
+            mult = (walk_base * 0.8) * (1.0 - enc_penalty)
+            mult = np.clip(mult, 0.2, 0.9)
+        else:
+            return 0.0
+
+        if phase in (MovementType.WALK, MovementType.RUN, MovementType.SPRINT) and last_speed < 0.5:
+            mult = max(mult, 0.5)
+
+        return float(game_max * mult)
+
+    def simulate_closed_loop(
+        self,
+        duration_s: float,
+        load_kg: float,
+        movement_intent: int,
+        grade_percent: float = 0.0,
+        terrain_factor: float = 1.0,
+        enable_randomness: bool = False,
+    ) -> Dict:
+        """闭环仿真：每 tick 根据当前体力计算实际速度，再计算消耗。"""
+        self.reset()
+        current_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0) + load_kg
+        stance = Stance.STAND
+        dt = 0.2
+        current_time = 0.0
+        last_speed = 0.0
+
+        steps = int(duration_s / dt)
+        for _ in range(steps):
+            actual_speed = self.calculate_actual_speed(
+                self.stamina, current_weight, movement_intent, last_speed
+            )
+            exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
+            can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.20)
+            effective_phase = movement_intent
+            if (exhausted or not can_sprint) and movement_intent == MovementType.SPRINT:
+                effective_phase = MovementType.RUN
+            self.step(
+                actual_speed,
+                current_weight,
+                grade_percent,
+                terrain_factor,
+                stance,
+                effective_phase,
+                current_time,
+                enable_randomness,
+            )
+            last_speed = actual_speed
+            current_time += dt
+
+        return {
+            'stamina_history': list(self.stamina_history),
+            'time_history': list(self.time_history),
+            'speed_history': list(self.speed_history),
+        }
 
     def simulate_scenario(self, speed_profile: List[Tuple[float, float]], current_weight: float,
                           grade_percent: float, terrain_factor: float, stance: int,

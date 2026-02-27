@@ -10,12 +10,14 @@
 
 ### 🔁 变更
 
-- **坡度-速度模型改用托布勒徒步函数** - 使用 Tobler's Hiking Function (1993)：W = 6·e^(-3.5·|S+0.05|)；最大速度出现在约 -3° 到 -5° 小下坡，上坡和过陡下坡均会快速衰减（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+- **坡度-速度模型改用托布勒徒步函数** - 使用 Tobler's Hiking Function (1993)：W = 6·e^(-3.5·|S+0.05|)；公式形状保留（上坡/陡下坡减速），归一化基准为平地 (S=0)，使 0 kg 平地下达到引擎最大速度 5.2 m/s（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
 - **坡度速度 5 秒平滑过渡** - 新增 SlopeSpeedTransition 模块，坡度变化时速度在 5 秒内平滑过渡，避免从平地冲上陡坡时瞬间从 3 m/s 骤降到 1 m/s 的"被胶水粘住"感（[SCR_SlopeSpeedTransition.c](scripts/Game/Components/Stamina/SCR_SlopeSpeedTransition.c)）
 - **优化器与 Tobler 同步** - `stamina_constants.py` 新增 Tobler 常量和 `tobler_speed_multiplier()`；`rss_digital_twin_fix.py` 新增 `tobler_speed_multiplier()` 和 `SLOPE_UPHILL_COEFF`/`SLOPE_DOWNHILL_COEFF` 常量；`rss_super_pipeline.py` 将 `slope_uphill_coeff`/`slope_downhill_coeff` 固定为 0.08/0.03（C 端 `CalculateSlopeStaminaDrainMultiplier` 未被调用，坡度消耗由 Pandolf grade 承担）；JSON 预设与 C 端预设已统一为固定值
 
 ### 🐞 修复
 
+- **坡度速度重复缩放** - 修复 `CalculateFinalSpeedMultiplier` 对已由 `UpdateSpeed` 完成坡度缩放的 `runBaseSpeedMultiplier` 再次应用 Tobler 缩放，导致平地速度被双重压低的 Bug；`runBaseSpeedMultiplier` 现直接使用，不再重复缩放（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)）
+- **Tobler 归一化基准** - 将 Tobler 坡度速度乘数归一化基准由 6 km/h（Tobler 峰值）改为平地 5.04 km/h，使平地 = 1.0、0 kg Sprint 可达到引擎最大速度 5.2 m/s；公式形状保留（上坡/陡下坡减速）（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
 - **室内坡度影响速度错误应用** - 修复在室内时仍错误应用坡度影响速度的问题；新增 `IsIndoorForEntity(owner)` 方法，使用传入实体进行室内检测，避免服务器处理远程玩家 RPC 时 `m_pCachedOwner` 未更新导致的室内误判；`IsIndoor`/`IsIndoorForEntity` 现会检查 `IsIndoorDetectionEnabled` 配置（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)、[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_StaminaConsumption.c](scripts/Game/Components/Stamina/SCR_StaminaConsumption.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）
 
 ---

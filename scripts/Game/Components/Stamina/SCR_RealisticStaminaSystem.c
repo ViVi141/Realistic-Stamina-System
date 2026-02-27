@@ -100,6 +100,8 @@ class RealisticStaminaSpeedSystem
     static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = StaminaConstants.SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
     static const float SPRINT_DRAIN_PER_TICK = StaminaConstants.SPRINT_DRAIN_PER_TICK;
     static const float GRADE_DOWNHILL_COEFF = StaminaConstants.GRADE_DOWNHILL_COEFF;
+    // Tobler 平地参考值：W(0)=6·e^(-0.175)≈5.039 km/h，用于坡度速度归一化使平地=1.0
+    static const float TOBLER_W_AT_FLAT_KMH = 5.039;
     
     // ==================== 数学工具函数 ====================
     // 注意：Pow() 函数已移至 SCR_StaminaHelpers.c 模块
@@ -1000,6 +1002,10 @@ class RealisticStaminaSpeedSystem
     // 公式：W = 6 · e^(-3.5 · |S + 0.05|)，其中 W 为步行速度 (km/h)，S 为坡度 (tan θ)
     // 特点：最大速度出现在约 -3° 到 -5° 的小下坡上（约 6 km/h），上坡或过陡下坡都会快速衰减
     //
+    // 归一化：以平地 (S=0) 为 1.0，使 0 kg 平地下能达到引擎最大速度 (5.2 m/s)。
+    // 早期开发已验证引擎最大速度为 5.2 m/s；此前用 6 km/h 归一化导致平地仅 ~84%。
+    // 平地参考值：W(0) = 6·e^(-0.175) ≈ 5.04 km/h
+    //
     // @param baseTargetSpeed 基础目标速度（m/s），例如 3.7 m/s
     // @param slopeAngleDegrees 坡度角度（度），正数=上坡，负数=下坡
     // @return 坡度自适应后的目标速度（m/s）
@@ -1011,12 +1017,11 @@ class RealisticStaminaSpeedSystem
         S = Math.Clamp(S, -1.0, 1.0);
 
         // Tobler: W(km/h) = 6 · e^(-3.5 · |S + 0.05|)
-        // 最大速度在 S = -0.05 时（约 -2.86°），W_max = 6 km/h
         float exponent = -3.5 * Math.AbsFloat(S + 0.05);
         float W_kmh = 6.0 * Math.Pow(2.718281828, exponent);
 
-        // 归一化为相对于 Tobler 最大速度的乘数（6 km/h 时乘数为 1.0）
-        float toblerMultiplier = W_kmh / 6.0;
+        // 以平地 (S=0) 为 1.0，使平地下满速（引擎 5.2 m/s）
+        float toblerMultiplier = W_kmh / TOBLER_W_AT_FLAT_KMH;
         // 设置下限，避免陡坡时速度过慢
         toblerMultiplier = Math.Max(toblerMultiplier, 0.15);
 

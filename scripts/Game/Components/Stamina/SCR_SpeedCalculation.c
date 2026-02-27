@@ -75,16 +75,9 @@ class SpeedCalculator
             }
         }
         
-        // 计算坡度自适应目标速度倍数
-        float slopeAdjustedTargetSpeed = CalculateSlopeAdjustedTargetSpeed(
-            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED,
-            0.0 // 坡度角度在调用处获取
-        );
-        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-        
-        // 将速度从基础目标速度（3.7 m/s）缩放到坡度自适应速度
-        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
-        float scaledRunSpeed = runBaseSpeedMultiplier * speedScaleFactor;
+        // runBaseSpeedMultiplier 已由调用方（UpdateSpeed / CalculateFinalSpeedMultiplierFromInputs）
+        // 按坡度完成缩放，此处无需再次应用坡度，直接使用
+        float scaledRunSpeed = runBaseSpeedMultiplier;
         
         float finalSpeedMultiplier = 0.0;
 

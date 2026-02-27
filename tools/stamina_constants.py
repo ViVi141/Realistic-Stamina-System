@@ -148,8 +148,9 @@ SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.10  # 速度×负重×坡度交互
 
 # ==================== [HARD] 托布勒徒步函数 (Tobler's Hiking Function, 1993) ====================
 # 坡度对速度的影响：W = 6·e^(-3.5·|S+0.05|)，与 C 端 SCR_RealisticStaminaSystem 一致
-# 最大速度出现在约 -3° 到 -5° 小下坡，上坡和过陡下坡均会快速衰减
-TOBLER_W_MAX_KMH = 6.0   # Tobler 最大步行速度 (km/h)
+# 公式形状：上坡和陡下坡均会快速衰减；归一化以平地 (S=0) 为 1.0，使 0 kg 平地下达 5.2 m/s
+TOBLER_W_MAX_KMH = 6.0   # Tobler 公式系数 (km/h)
+TOBLER_W_AT_FLAT_KMH = 5.039  # 平地参考值 6·e^(-0.175)，归一化使平地=1.0
 TOBLER_EXP_COEFF = 3.5   # 指数系数
 TOBLER_S_OFFSET = 0.05   # 坡度偏移（最优下坡约 -2.86°）
 TOBLER_MIN_MULTIPLIER = 0.15  # 陡坡时速度乘数下限
@@ -159,11 +160,10 @@ SLOPE_SPEED_TRANSITION_DURATION = 5.0  # 秒
 
 
 def tobler_speed_multiplier(angle_deg: float) -> float:
-    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]，与 C 端一致。"""
+    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]。以平地=1.0 归一化，与 C 端一致。"""
     s = math.tan(math.radians(angle_deg))
     w_kmh = TOBLER_W_MAX_KMH * math.exp(-TOBLER_EXP_COEFF * abs(s + TOBLER_S_OFFSET))
-    flat = TOBLER_W_MAX_KMH * math.exp(-TOBLER_EXP_COEFF * TOBLER_S_OFFSET)
-    mult = w_kmh / flat if flat > 0 else TOBLER_MIN_MULTIPLIER
+    mult = w_kmh / TOBLER_W_AT_FLAT_KMH if TOBLER_W_AT_FLAT_KMH > 0 else TOBLER_MIN_MULTIPLIER
     return max(TOBLER_MIN_MULTIPLIER, min(1.0, mult))
 
 # ==================== 坡度修正系数（基于坡度百分比）====================
