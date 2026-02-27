@@ -1088,11 +1088,6 @@ class StaminaConstants
     // 获取调试状态的快捷静态方法
     static bool IsDebugEnabled()
     {
-        // 工作台模式下强制开启以便开发
-        #ifdef WORKBENCH
-            return true;
-        #endif
-        
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
             return settings.m_bDebugLogEnabled;
@@ -1110,14 +1105,66 @@ class StaminaConstants
         return false;
     }
     
-    // 获取调试信息刷新频率
+    // 获取调试信息刷新频率（默认 1 秒，统一波次输出）
     static int GetDebugUpdateInterval()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
             return settings.m_iDebugUpdateInterval;
         
-        return 5000; // 默认5秒
+        return 1000; // 默认 1 秒
+    }
+
+    // ==================== 统一调试批次（每秒一波次）====================
+    protected static float s_fNextDebugBatchTime = 0.0;
+    protected static bool s_bDebugBatchActive = false;
+    protected static ref array<string> s_aDebugBatchLines = null;
+
+    // 启动本秒的调试批次，返回是否应输出（每秒一次）
+    static bool StartDebugBatch()
+    {
+        if (!IsDebugEnabled())
+            return false;
+        World world = GetGame().GetWorld();
+        if (!world)
+            return false;
+        float t = world.GetWorldTime() / 1000.0;
+        float interval = GetDebugUpdateInterval() / 1000.0;
+        if (interval <= 0.0)
+            interval = 1.0;
+        if (t < s_fNextDebugBatchTime)
+            return false;
+        s_fNextDebugBatchTime = t + interval;
+        s_bDebugBatchActive = true;
+        if (!s_aDebugBatchLines)
+            s_aDebugBatchLines = new array<string>();
+        s_aDebugBatchLines.Clear();
+        return true;
+    }
+
+    // 添加一行到当前批次（需先调用 StartDebugBatch 启动批次）
+    static void AddDebugBatchLine(string line)
+    {
+        if (!s_bDebugBatchActive || !s_aDebugBatchLines)
+            return;
+        s_aDebugBatchLines.Insert(line);
+    }
+
+    // 当前是否处于调试批次窗口内
+    static bool IsDebugBatchActive()
+    {
+        return s_bDebugBatchActive;
+    }
+
+    // 在帧末刷新批次：输出所有累积行并清空
+    static void FlushDebugBatch()
+    {
+        if (!s_bDebugBatchActive || !s_aDebugBatchLines || s_aDebugBatchLines.Count() == 0)
+            return;
+        s_bDebugBatchActive = false;
+        for (int i = 0; i < s_aDebugBatchLines.Count(); i++)
+            Print(s_aDebugBatchLines.Get(i));
+        s_aDebugBatchLines.Clear();
     }
 
     // 统一调试日志节流（基于 DebugUpdateInterval）

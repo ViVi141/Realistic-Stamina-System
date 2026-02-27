@@ -348,16 +348,9 @@ class DebugDisplay
         // 获取配置实例
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         
-        // 如果开关没开，直接退出，性能消耗极低
         if (!settings || !settings.m_bDebugLogEnabled)
             return;
         
-        // 检查时间间隔
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        if (currentTime < m_fNextDebugLogTime)
-            return;
-        
-        // 只对本地控制的玩家输出
         if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         
@@ -376,7 +369,7 @@ class DebugDisplay
         // 获取姿态转换信息
         string stanceTransitionInfo = FormatStanceTransitionInfo(params.stanceTransitionManager);
         
-        // 构建并输出调试消息
+        // 构建并加入统一批次（由 StaminaConstants 管理定时）
         string debugMessage = BuildDebugMessage(
             params.movementTypeStr,
             params.staminaPercent,
@@ -390,10 +383,7 @@ class DebugDisplay
             terrainInfo,
             stanceTransitionInfo);
         
-        Print(debugMessage + envInfo);
-        
-        // 更新下次日志时间
-        m_fNextDebugLogTime = currentTime + (settings.m_iDebugUpdateInterval / 1000.0);
+        StaminaConstants.AddDebugBatchLine(debugMessage + envInfo);
     }
     
     // 输出状态信息（每秒一次）

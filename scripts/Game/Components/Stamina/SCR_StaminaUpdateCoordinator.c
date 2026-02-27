@@ -516,39 +516,41 @@ class StaminaUpdateCoordinator
         float tickScale = Math.Clamp(timeDeltaSeconds / 0.2, 0.01, 2.0);
         float netChange = (recoveryRate - finalDrainRate) * tickScale;
         
-        // 调试信息：每帧输出所有计算公式数值及输入参数
-        if (StaminaConstants.IsDebugEnabled())
+        // 调试信息：加入统一批次（每秒一波次）
+        if (StaminaConstants.IsDebugBatchActive())
         {
-            PrintFormat("[StaminaDebug] speed=%1 heat=%2 base=%3 baseMod=%4 total=%5 epoc=%6",
+            string line1 = string.Format("[StaminaDebug] speed=%1 heat=%2 base=%3 baseMod=%4 total=%5 epoc=%6",
                 Math.Round(currentSpeed * 1000.0) / 1000.0,
                 Math.Round(heatStressMultiplier * 1000.0) / 1000.0,
                 Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
                 Math.Round(baseDrainRateByVelocityForModule * 1000.0) / 1000.0,
                 Math.Round(totalDrainRate * 1000.0) / 1000.0,
                 Math.Round(epocDrainRate * 1000.0) / 1000.0);
-            PrintFormat("[StaminaDebug] perc=%1 rec=%2 drain=%3 tick=%4 net=%5 new=%6",
+            StaminaConstants.AddDebugBatchLine(line1);
+            string line2 = string.Format("[StaminaDebug] perc=%1 rec=%2 drain=%3 tick=%4 net=%5 new=%6",
                 Math.Round(staminaPercent * 1000.0) / 1000.0,
                 Math.Round(recoveryRate * 1000.0) / 1000.0,
                 Math.Round(finalDrainRate * 1000.0) / 1000.0,
                 Math.Round(tickScale * 1000.0) / 1000.0,
                 Math.Round(netChange * 1000.0) / 1000.0,
                 Math.Round((staminaPercent+netChange) * 1000.0) / 1000.0);
+            StaminaConstants.AddDebugBatchLine(line2);
         }
         
         // 更新目标体力值
         newTargetStamina = staminaPercent + netChange;
         
-        // ==================== 调试信息 ====================
-        static float nextMetabolismLogTime = 0.0;
-        if (StaminaConstants.ShouldLog(nextMetabolismLogTime))
+        // 代谢净值：加入统一批次
+        if (StaminaConstants.IsDebugBatchActive())
         {
-            PrintFormat("[RealisticSystem] 代谢净值 / Metabolism Net Change: %1%% → %2%% (恢复率: %3/0.2s, 消耗率: %4/0.2s, 净值×%.2f: %5) | %1%% → %2%%",
+            string metaLine = string.Format("[RealisticSystem] 代谢净值 / Metabolism: %1%% → %2%% (rec=%3 drain=%4 tick=%5 net=%6)",
                 Math.Round(staminaPercent * 100.0).ToString(),
                 Math.Round(newTargetStamina * 100.0).ToString(),
                 Math.Round(recoveryRate * 1000000.0) / 1000000.0,
                 Math.Round(finalDrainRate * 1000000.0) / 1000000.0,
                 tickScale,
                 Math.Round(netChange * 1000000.0) / 1000000.0);
+            StaminaConstants.AddDebugBatchLine(metaLine);
         }
         
         // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================

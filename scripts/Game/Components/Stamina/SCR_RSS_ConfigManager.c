@@ -23,6 +23,7 @@ class SCR_RSS_ConfigManager
     
     // 默认值与合理范围常量（便于维护）
     protected static const int DEFAULT_UPDATE_INTERVAL_MS = 5000;    // 检测/日志更新间隔
+    protected static const int DEFAULT_DEBUG_BATCH_INTERVAL_MS = 1000; // 调试批次间隔（1 秒）
     protected static const int MAX_UPDATE_INTERVAL_MS = 60000;       // 最大间隔 60 秒
     protected static const float DEFAULT_HINT_DURATION = 2.0;        // Hint 显示时长（秒）
     protected static const float STAMINA_MULT_MIN = 0.1;             // 体力倍率下限
@@ -52,14 +53,15 @@ class SCR_RSS_ConfigManager
         m_Settings = new SCR_RSS_Settings();
         m_Settings.m_sSelectedPreset = "EliteStandard";
         m_Settings.InitPresets(true);
-        // Workbench: force enable debug and HUD for easy verification in the editor
+        // Workbench: debug 开启，统一波次每秒输出
         m_Settings.m_bDebugLogEnabled = true;
         m_Settings.m_bHintDisplayEnabled = true;
+        m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug/HUD forced ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON.");
         return;
         #endif
 
@@ -74,7 +76,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
             m_Settings.m_bDebugLogEnabled = false;
-            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
             m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fStaminaDrainMultiplier = 1.0;
@@ -203,7 +205,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
             m_Settings.m_bDebugLogEnabled = false;
-            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
             m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fStaminaDrainMultiplier = 1.0;
@@ -376,7 +378,7 @@ class SCR_RSS_ConfigManager
         }
         if (m_Settings.m_iDebugUpdateInterval <= 0)
         {
-            m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
             needsSave = true;
         }
         if (m_Settings.m_iTerrainUpdateInterval <= 0)
@@ -612,7 +614,7 @@ class SCR_RSS_ConfigManager
         m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
         m_Settings.m_bDebugLogEnabled = false;
-        m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
@@ -941,7 +943,7 @@ class SCR_RSS_ConfigManager
         m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
         m_Settings.m_bDebugLogEnabled = false;
-        m_Settings.m_iDebugUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;

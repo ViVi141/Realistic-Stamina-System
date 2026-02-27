@@ -669,7 +669,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Workbench auto-on. | 调试：控制台输出详细日志，工作台模式自动开启")]
     bool m_bDebugLogEnabled;
     
-    [Attribute("5000", UIWidgets.EditBox, "Debug log interval (ms). Range: 1000-60000. | 调试日志间隔（毫秒），范围 1-60 秒")]
+    [Attribute("1000", UIWidgets.EditBox, "Debug batch interval (ms). Unified output per second. | 调试批次间隔（毫秒），统一波次每秒")]
     int m_iDebugUpdateInterval;
     
     [Attribute("false", UIWidgets.CheckBox, "Verbose: Log all calculation details. | 详细模式：输出完整计算过程")]

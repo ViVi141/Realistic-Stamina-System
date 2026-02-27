@@ -1183,18 +1183,23 @@ modded class SCR_CharacterControllerComponent
                 currentWorldTime);
         }
         
+        // ==================== 统一调试批次：每秒启动一次 ====================
+        if (owner == SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled() && IsPlayerControlled())
+            StaminaConstants.StartDebugBatch();
+        
         // ==================== 完全控制体力值（基于医学模型）====================
         // 模块化：使用 StaminaUpdateCoordinator 协调体力更新
         if (m_pStaminaComponent)
         {
             float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
-            // 额外调试：输出坡度、重量等当前帧输入
-            if (IsRssDebugEnabled())
+            // FrameDebug：加入统一批次
+            if (StaminaConstants.IsDebugBatchActive())
             {
-                PrintFormat("[FrameDebug] grade=%1%% weight=%2kg totWeight=%3kg", 
+                string frameLine = string.Format("[FrameDebug] grade=%1%% weight=%2kg totWeight=%3kg",
                     Math.Round(gradePercentForConsumption * 100.0) / 100.0,
                     Math.Round(currentWeight * 10.0) / 10.0,
                     Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0);
+                StaminaConstants.AddDebugBatchLine(frameLine);
             }
             float newTargetStamina = StaminaUpdateCoordinator.UpdateStaminaValue(
                 m_pStaminaComponent,
@@ -1220,13 +1225,16 @@ modded class SCR_CharacterControllerComponent
             // 注意：由于监控频率很高，这里可能不需要立即验证
             // 但保留此检查作为双重保险
             float verifyStamina = m_pStaminaComponent.GetStamina();
-            if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005 && IsRssDebugEnabled()) // 如果偏差超过0.5%（降低阈值，更敏感）
+            if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005) // 偏差超过0.5%
             {
-                // 检测到原生系统干扰，强制纠正
-                PrintFormat("[RealisticSystem] 检测到原生系统干扰 / Native System Interference Detected: 目标=%1%% | 实际=%2%% | 偏差=%3%% | Target=%1%% | Actual=%2%% | Diff=%3%%",
-                    Math.Round(newTargetStamina * 100.0).ToString(),
-                    Math.Round(verifyStamina * 100.0).ToString(),
-                    Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
+                if (StaminaConstants.IsDebugBatchActive())
+                {
+                    string intLine = string.Format("[RealisticSystem] 原生干扰 / Native Interference: 目标=%1%% 实际=%2%% 偏差=%3%%",
+                        Math.Round(newTargetStamina * 100.0).ToString(),
+                        Math.Round(verifyStamina * 100.0).ToString(),
+                        Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
+                    StaminaConstants.AddDebugBatchLine(intLine);
+                }
                 m_pStaminaComponent.SetTargetStamina(newTargetStamina);
             }
             
@@ -1251,58 +1259,50 @@ modded class SCR_CharacterControllerComponent
         // 定期同步服务器配置
         UpdateServerConfigSync();
         
-        // ==================== 调试输出（模块化）====================
-        // 每5秒输出一次完整调试信息，避免过多日志，仅在客户端
-        if (owner == SCR_PlayerController.GetLocalControlledEntity())
+        // ==================== 调试输出（统一波次每秒）====================
+        if (owner == SCR_PlayerController.GetLocalControlledEntity() && StaminaConstants.IsDebugBatchActive())
         {
-            static int debugCounter = 0;
-            debugCounter++;
-            if (debugCounter >= 25 && IsRssDebugEnabled() && IsPlayerControlled()) // 200ms * 25 = 5秒，仅玩家
+            // 获取负重信息用于调试
+            float combatEncumbrancePercent = 0.0;
+            float debugCurrentWeight = 0.0;
+            
+            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
             {
-                debugCounter = 0;
-                
-                // 获取负重信息用于调试
-                float combatEncumbrancePercent = 0.0;
-                float debugCurrentWeight = 0.0;
-                
-                // 使用EncumbranceCache中的准确总重量（已通过GetTotalWeightOfAllStorages()计算）
-                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                {
-                    debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
-                    combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
-                }
-                
-                // 获取移动类型字符串（模块化）
-                string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-                
-                // 输出完整调试信息（模块化）
-                DebugInfoParams debugParams = new DebugInfoParams();
-                debugParams.owner = owner;
-                debugParams.movementTypeStr = movementTypeStr;
-                debugParams.staminaPercent = staminaPercent;
-                debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
-                debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
-                debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
-                debugParams.gradePercent = gradePercent;
-                debugParams.slopeAngleDegrees = slopeAngleDegrees;
-                debugParams.isSprinting = isSprinting;
-                debugParams.currentMovementPhase = currentMovementPhase;
-                debugParams.debugCurrentWeight = debugCurrentWeight;
-                debugParams.combatEncumbrancePercent = combatEncumbrancePercent;
-                debugParams.terrainDetector = m_pTerrainDetector;
-                debugParams.environmentFactor = m_pEnvironmentFactor;
-                debugParams.heatStressMultiplier = heatStressMultiplier;
-                debugParams.rainWeight = rainWeight;
-                debugParams.swimmingWetWeight = m_fCurrentWetWeight;
-                debugParams.currentSpeed = currentSpeed;
-                debugParams.isSwimming = isSwimming;
-                debugParams.stanceTransitionManager = m_pStanceTransitionManager;
-                DebugDisplay.OutputDebugInfo(debugParams);
-                
-                // 输出屏幕 Hint 信息（独立于控制台日志）
-                DebugDisplay.OutputHintInfo(debugParams);
+                debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
+                combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
             }
+            
+            string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+            
+            DebugInfoParams debugParams = new DebugInfoParams();
+            debugParams.owner = owner;
+            debugParams.movementTypeStr = movementTypeStr;
+            debugParams.staminaPercent = staminaPercent;
+            debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
+            debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
+            debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
+            debugParams.gradePercent = gradePercent;
+            debugParams.slopeAngleDegrees = slopeAngleDegrees;
+            debugParams.isSprinting = isSprinting;
+            debugParams.currentMovementPhase = currentMovementPhase;
+            debugParams.debugCurrentWeight = debugCurrentWeight;
+            debugParams.combatEncumbrancePercent = combatEncumbrancePercent;
+            debugParams.terrainDetector = m_pTerrainDetector;
+            debugParams.environmentFactor = m_pEnvironmentFactor;
+            debugParams.heatStressMultiplier = heatStressMultiplier;
+            debugParams.rainWeight = rainWeight;
+            debugParams.swimmingWetWeight = m_fCurrentWetWeight;
+            debugParams.currentSpeed = currentSpeed;
+            debugParams.isSwimming = isSwimming;
+            debugParams.stanceTransitionManager = m_pStanceTransitionManager;
+            DebugDisplay.OutputDebugInfo(debugParams);
+            
+            // 输出屏幕 Hint 信息（与批次同步）
+            DebugDisplay.OutputHintInfo(debugParams);
         }
+        
+        // 刷新调试批次（输出所有累积行）
+        StaminaConstants.FlushDebugBatch();
         
         // 继续更新
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
