@@ -689,7 +689,11 @@ modded class SCR_CharacterControllerComponent
                     
                     // 使用 GetWorldTime 计算实际流逝时间，不依赖预期间隔
                     float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                    float timeDeltaSec = (m_fLastStaminaUpdateTime >= 0.0) ? (currentWorldTime - m_fLastStaminaUpdateTime) : (GetSpeedUpdateIntervalMs() / 1000.0);
+                    float timeDeltaSec;
+                    if (m_fLastStaminaUpdateTime >= 0.0)
+                        timeDeltaSec = currentWorldTime - m_fLastStaminaUpdateTime;
+                    else
+                        timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
                     timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5); // 防止时间跳跃异常
                     float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
                     float newStamina = Math.Clamp(currentStamina + recoveryRate * tickScale, 0.0, 1.0);
@@ -866,7 +870,11 @@ modded class SCR_CharacterControllerComponent
         float currentTime = currentTimeForExercise;
         
         // 体力更新用实际时间差（GetWorldTime），不依赖预期间隔
-        float timeDeltaSec = (m_fLastStaminaUpdateTime >= 0.0) ? (currentTime - m_fLastStaminaUpdateTime) : (GetSpeedUpdateIntervalMs() / 1000.0);
+        float timeDeltaSec;
+        if (m_fLastStaminaUpdateTime >= 0.0)
+            timeDeltaSec = currentTime - m_fLastStaminaUpdateTime;
+        else
+            timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
         timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
         
         // 如果游泳状态变化，重置调试标志
