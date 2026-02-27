@@ -417,6 +417,15 @@ class StaminaConstants
     // [SOFT] 连续跳跃惩罚系数：每次连续跳跃额外增加50%消耗（模拟乳酸堆积）
     static const float JUMP_CONSECUTIVE_PENALTY = 0.5;
     
+    // [SOFT] 跳跃冷却时间（秒）：使用 GetWorldTime 时间戳判定，不依赖更新频率
+    static const float JUMP_COOLDOWN_SEC = 2.0;
+    
+    // [SOFT] 翻越冷却时间（秒）：使用 GetWorldTime 时间戳判定，不依赖更新频率
+    static const float VAULT_COOLDOWN_SEC = 5.0;
+    
+    // [SOFT] 持续攀爬额外消耗间隔（秒）：每隔此时间追加一次消耗
+    static const float VAULT_CONTINUOUS_CLIMB_INTERVAL_SEC = 1.0;
+    
     // [HARD] 跳跃检测垂直速度阈值（由游戏引擎物理参数决定，不可随意修改）
     static const float JUMP_VERTICAL_VELOCITY_THRESHOLD = 2.0; // m/s
     

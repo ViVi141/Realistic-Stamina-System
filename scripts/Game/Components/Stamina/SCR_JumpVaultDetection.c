@@ -7,7 +7,7 @@ class JumpVaultDetector
     // ==================== 状态变量 ====================
     // 跳跃相关
     protected bool m_bJumpInputTriggered = false; // 跳跃输入是否被触发（由动作监听器设置）
-    protected int m_iJumpCooldownFrames = 0; // 跳跃冷却帧数（防止重复触发，2秒冷却）
+    protected float m_fLastJumpTime = -999.0; // 上次跳跃时间（秒，GetWorldTime），用于时间冷却
     protected ECharacterStance m_eLastStance; // 上一帧姿态（用于判断是否从趴/蹲姿跳跃）
     
     // 连续跳跃惩罚（无氧欠债）机制
@@ -16,8 +16,8 @@ class JumpVaultDetector
     
     // 翻越相关
     protected bool m_bIsVaulting = false; // 是否正在翻越/攀爬
-    protected int m_iVaultingFrameCount = 0; // 翻越状态持续帧数
-    protected int m_iVaultCooldownFrames = 0; // 翻越冷却帧数（防止重复触发）
+    protected float m_fLastVaultTime = -999.0; // 上次翻越起始时间（秒），用于时间冷却
+    protected float m_fLastContinuousClimbTime = -999.0; // 上次持续攀爬消耗时间（秒），用于 1 秒间隔
     
     // ==================== 公共方法 ====================
     
@@ -25,13 +25,13 @@ class JumpVaultDetector
     void Initialize()
     {
         m_bJumpInputTriggered = false;
-        m_iJumpCooldownFrames = 0;
+        m_fLastJumpTime = -999.0;
         m_eLastStance = ECharacterStance.STAND;
         m_iRecentJumpCount = 0;
         m_fJumpTimer = 0.0;
         m_bIsVaulting = false;
-        m_iVaultingFrameCount = 0;
-        m_iVaultCooldownFrames = 0;
+        m_fLastVaultTime = -999.0;
+        m_fLastContinuousClimbTime = -999.0;
     }
     
     // 设置跳跃输入标志（由动作监听器调用）
@@ -93,8 +93,9 @@ class JumpVaultDetector
                 return 0.0;
             }
             
-            // 跳跃冷却检查：2秒冷却时间（10个更新周期）
-            if (m_iJumpCooldownFrames > 0)
+            // 跳跃冷却检查：使用 GetWorldTime 时间戳，不依赖更新频率
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (currentTime - m_fLastJumpTime < StaminaConstants.JUMP_COOLDOWN_SEC)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
@@ -112,7 +113,6 @@ class JumpVaultDetector
                 return 0.0;
             }
             {
-                float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
                 
                 // 连续跳跃惩罚（无氧欠债）：检测是否在2秒内连续跳跃
                 if (currentTime - m_fJumpTimer < RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_WINDOW)
@@ -154,8 +154,8 @@ class JumpVaultDetector
                 float consecutiveMultiplier = 1.0 + (m_iRecentJumpCount - 1) * RealisticStaminaSpeedSystem.JUMP_CONSECUTIVE_PENALTY;
                 finalJumpCost *= consecutiveMultiplier;
                 
-                // 设置2秒冷却（10个更新周期）
-                m_iJumpCooldownFrames = 10;
+                // 设置冷却时间戳（使用 GetWorldTime，不依赖更新频率）
+                m_fLastJumpTime = currentTime;
                 
                 // UI交互：更新Exhaustion信号
                 if (signalsManager && exhaustionSignal != -1)
@@ -209,14 +209,14 @@ class JumpVaultDetector
         if (!owner || !controller)
             return 0.0;
         
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         bool isClimbing = controller.IsClimbing();
         float totalCost = 0.0;
         
         if (isClimbing)
         {
-            // 翻越冷却检查：防止在短时间内重复触发初始消耗
-            // 冷却时间：5秒（25个更新周期）
-            if (m_iVaultCooldownFrames > 0)
+            // 翻越冷却检查：仅在新开始翻越时生效，使用 GetWorldTime 时间戳
+            if (!m_bIsVaulting && m_fLastVaultTime >= 0.0 && (currentTime - m_fLastVaultTime) < StaminaConstants.VAULT_COOLDOWN_SEC)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
                 if (StaminaConstants.IsVerboseLoggingEnabled())
@@ -224,7 +224,7 @@ class JumpVaultDetector
                 return 0.0;
             }
             
-            if (!m_bIsVaulting && m_iVaultCooldownFrames == 0)
+            if (!m_bIsVaulting)
             {
                 // 翻越起始消耗（使用动态负重倍率）
                 float currentTotalWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
@@ -253,8 +253,8 @@ class JumpVaultDetector
                 
                 totalCost = vaultCost;
                 m_bIsVaulting = true;
-                m_iVaultingFrameCount = 0;
-                m_iVaultCooldownFrames = 25; // 5秒冷却
+                m_fLastVaultTime = currentTime;
+                m_fLastContinuousClimbTime = currentTime;
                 
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
@@ -265,9 +265,8 @@ class JumpVaultDetector
             }
             else
             {
-                // 持续攀爬消耗（每秒1%）
-                m_iVaultingFrameCount++;
-                if (m_iVaultingFrameCount >= 5) // 每1秒（5个更新周期）额外消耗
+                // 持续攀爬消耗：使用 GetWorldTime，每隔 VAULT_CONTINUOUS_CLIMB_INTERVAL_SEC 秒额外消耗
+                if (currentTime - m_fLastContinuousClimbTime >= StaminaConstants.VAULT_CONTINUOUS_CLIMB_INTERVAL_SEC)
                 {
                     float currentTotalWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
                     if (encumbranceCacheValid)
@@ -292,7 +291,7 @@ class JumpVaultDetector
                     continuousClimbCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
                         currentTotalWeight, vertSpeed, limbForce, eta_iso);
                     totalCost = continuousClimbCost;
-                    m_iVaultingFrameCount = 0;
+                    m_fLastContinuousClimbTime = currentTime;
                 }
             }
         }
@@ -302,21 +301,15 @@ class JumpVaultDetector
             if (m_bIsVaulting)
             {
                 m_bIsVaulting = false;
-                m_iVaultingFrameCount = 0;
             }
         }
         
         return totalCost;
     }
     
-    // 更新冷却时间（每0.2秒调用一次）
+    // 更新冷却时间（已改为时间戳判定，此方法保留为空以兼容调用方）
     void UpdateCooldowns()
     {
-        if (m_iVaultCooldownFrames > 0)
-            m_iVaultCooldownFrames--;
-        
-        if (m_iJumpCooldownFrames > 0)
-            m_iJumpCooldownFrames--;
     }
     
     // 获取是否正在翻越
@@ -325,10 +318,11 @@ class JumpVaultDetector
         return m_bIsVaulting;
     }
     
-    // 检查是否在跳跃冷却中
+    // 检查是否在跳跃冷却中（使用 GetWorldTime 时间戳判定）
     bool IsJumpOnCooldown()
     {
-        return m_iJumpCooldownFrames > 0;
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        return (currentTime - m_fLastJumpTime) < StaminaConstants.JUMP_COOLDOWN_SEC;
     }
     
     // 获取姿态名称（用于调试输出）

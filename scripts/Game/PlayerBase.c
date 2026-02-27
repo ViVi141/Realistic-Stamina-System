@@ -17,6 +17,7 @@ modded class SCR_CharacterControllerComponent
     // 状态信息缓存
     protected float m_fLastStaminaPercent = 1.0;
     protected float m_fLastSpeedMultiplier = 1.0;
+    protected float m_fLastStaminaUpdateTime = -1.0; // 上次体力更新时间（秒，GetWorldTime），用于按时间计算 timeDelta
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
     
     // 网络同步相关
@@ -686,11 +687,14 @@ modded class SCR_CharacterControllerComponent
                         m_pEnvironmentFactor, // v2.15.0：传递环境因子模块
                         0.0); // 载具中视为静止，currentSpeed为0.0
                     
-                    // 更新体力值（恢复率按每0.2s设计，需按实际间隔缩放）
-                    float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
+                    // 使用 GetWorldTime 计算实际流逝时间，不依赖预期间隔
+                    float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                    float timeDeltaSec = (m_fLastStaminaUpdateTime >= 0.0) ? (currentWorldTime - m_fLastStaminaUpdateTime) : (GetSpeedUpdateIntervalMs() / 1000.0);
+                    timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5); // 防止时间跳跃异常
                     float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
                     float newStamina = Math.Clamp(currentStamina + recoveryRate * tickScale, 0.0, 1.0);
                     m_pStaminaComponent.SetTargetStamina(newStamina);
+                    m_fLastStaminaUpdateTime = currentWorldTime;
                     
                     // 调试信息：载具中体力恢复
                     if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
@@ -861,6 +865,10 @@ modded class SCR_CharacterControllerComponent
         // 与旧逻辑保持一致：使用秒单位的 currentTime（供湿重/环境因子等模块使用）
         float currentTime = currentTimeForExercise;
         
+        // 体力更新用实际时间差（GetWorldTime），不依赖预期间隔
+        float timeDeltaSec = (m_fLastStaminaUpdateTime >= 0.0) ? (currentTime - m_fLastStaminaUpdateTime) : (GetSpeedUpdateIntervalMs() / 1000.0);
+        timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
+        
         // 如果游泳状态变化，重置调试标志
         if (isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
@@ -976,12 +984,10 @@ modded class SCR_CharacterControllerComponent
             }
             staminaPercent = staminaPercent - vaultCost;
             
-            // 更新冷却时间（每0.2秒调用一次）
+            // 更新冷却时间（已改为时间戳判定，保留调用以兼容）
             m_pJumpVaultDetector.UpdateCooldowns();
             
             // ==================== 姿态转换处理（模块化）====================
-            // 更新疲劳堆积：使用与速度更新相同的实际时间间隔，而不是硬编码0.2秒
-            float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
             m_pStanceTransitionManager.UpdateFatigue(timeDeltaSec);
             
             // 处理姿态转换的体力消耗（基于乳酸堆积模型）
@@ -1189,9 +1195,9 @@ modded class SCR_CharacterControllerComponent
         
         // ==================== 完全控制体力值（基于医学模型）====================
         // 模块化：使用 StaminaUpdateCoordinator 协调体力更新
+        // timeDeltaSec 已在上面计算（基于 GetWorldTime 实际流逝时间）
         if (m_pStaminaComponent)
         {
-            float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
             float newTargetStamina = StaminaUpdateCoordinator.UpdateStaminaValue(
                 m_pStaminaComponent,
                 staminaPercent,
@@ -1211,6 +1217,7 @@ modded class SCR_CharacterControllerComponent
             
             // 设置目标体力值（这会自动应用到体力组件）
             m_pStaminaComponent.SetTargetStamina(newTargetStamina);
+            m_fLastStaminaUpdateTime = currentTime;
             
             // 立即验证体力值是否被正确设置（检测原生系统干扰）
             // 注意：由于监控频率很高，这里可能不需要立即验证
