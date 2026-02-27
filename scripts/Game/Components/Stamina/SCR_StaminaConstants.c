@@ -590,7 +590,10 @@ class StaminaConstants
     // 降雨强度相关常量
     static const float ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE = 0.5; // kg/秒，基础湿重增加速率
     static const float ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT = 1.5; // 降雨强度指数（非线性增长）
-    static const float ENV_RAIN_INTENSITY_THRESHOLD = 0.01; // 降雨强度阈值（低于此值不计算湿重）
+    static const float ENV_RAIN_INTENSITY_THRESHOLD = 0.01; // 原始阈值（仅用于 API 回退逻辑）
+    // 引擎降雨特效阈值：GetRainIntensity() 在 0.1 左右时通常不显示下雨粒子，只有 >= 此值才视为"真下雨"
+    // 参考：drizzle/light=0.2, rain=0.5, storm=0.9；0.1 多为 overcast/潮湿，无可见雨滴
+    static const float ENV_RAIN_VISUAL_EFFECT_THRESHOLD = 0.15;
     static const float ENV_RAIN_INTENSITY_HEAVY_THRESHOLD = 0.8; // 暴雨阈值（呼吸阻力触发）
     static const float ENV_RAIN_INTENSITY_BREATHING_PENALTY = 0.05; // 暴雨时的无氧代谢增加比例
     

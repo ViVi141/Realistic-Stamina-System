@@ -1762,12 +1762,12 @@ class EnvironmentFactor
         ApplySettings();
     }
     
-    // 检查是否正在下雨（用于调试）
-// 判断是否正在下雨（基于降雨强度）
-    // @return true表示正在下雨，false表示未下雨
+    // 检查是否正在下雨（与引擎下雨粒子特效对齐）
+    // 引擎在 rain<0.15 时通常不显示雨滴，0.1 多为阴天/潮湿无可见雨
+    // @return true表示正在下雨（有可见雨效），false表示未下雨
     bool IsRaining()
     {
-        return m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD;
+        return m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
     }
     
     // ==================== 高级环境因子计算方法（v2.14.0）====================
@@ -2085,8 +2085,8 @@ class EnvironmentFactor
         // 检查是否在室内（室内不受降雨影响）
         bool isIndoor = IsUnderCover(m_pCachedOwner);
         
-        // 检查是否在室外且正在下雨（超过阈值）
-        bool isOutdoorAndRaining = !isIndoor && m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD;
+        // 检查是否在室外且正在下雨（需超过引擎下雨特效阈值，否则 0.1 等值无可见雨）
+        bool isOutdoorAndRaining = !isIndoor && m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
         
         if (isOutdoorAndRaining)
         {
