@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v2.14.0
+// Realistic Stamina System (RSS) - v3.13.2
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -11,7 +11,8 @@ modded class SCR_CharacterControllerComponent
     protected const int SPEED_SAMPLE_INTERVAL_MS = 1000; // 每秒采集一次速度样本
     
     // 速度更新相关
-    protected const int SPEED_UPDATE_INTERVAL_MS = 50; // 每0.05秒更新一次速度
+    protected const int SPEED_UPDATE_INTERVAL_MS = 50; // 每0.05秒更新一次速度（玩家）
+    protected const int SPEED_UPDATE_INTERVAL_AI_MS = 100; // AI 每 0.1 秒更新一次（性能优化）
     
     // 状态信息缓存
     protected float m_fLastStaminaPercent = 1.0;
@@ -597,7 +598,31 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
-    // 根据体力更新速度（每0.2秒调用一次）
+    // 判断当前角色是否应参与体力系统更新
+    // 玩家：仅本地控制实体；AI：仅服务器端
+    protected bool ShouldProcessStaminaUpdate()
+    {
+        IEntity owner = GetOwner();
+        if (!owner)
+            return false;
+        // 本地控制的玩家
+        if (owner == SCR_PlayerController.GetLocalControlledEntity())
+            return true;
+        // 服务器端的 AI（非玩家控制）
+        if (Replication.IsServer() && !IsPlayerControlled())
+            return true;
+        return false;
+    }
+
+    // 获取当前角色的速度更新间隔（玩家 50ms，AI 100ms）
+    protected int GetSpeedUpdateIntervalMs()
+    {
+        if (IsPlayerControlled())
+            return SPEED_UPDATE_INTERVAL_MS;
+        return SPEED_UPDATE_INTERVAL_AI_MS;
+    }
+
+    // 根据体力更新速度（玩家每 50ms，AI 每 100ms）
     void UpdateSpeedBasedOnStamina()
     {
         IEntity owner = GetOwner();
@@ -607,10 +632,12 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         
-        // 只对本地控制的玩家处理
-        if (owner != SCR_PlayerController.GetLocalControlledEntity())
+        int intervalMs = GetSpeedUpdateIntervalMs();
+
+        // 仅对本地玩家或服务器端 AI 处理
+        if (!ShouldProcessStaminaUpdate())
         {
-            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, intervalMs, false);
             return;
         }
         
@@ -677,7 +704,7 @@ modded class SCR_CharacterControllerComponent
             }
             
             // 继续调度下一次更新，但不进行速度更新和体力消耗计算
-            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
             return;
         }
         
@@ -792,7 +819,8 @@ modded class SCR_CharacterControllerComponent
         }
 
         // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
-        if (m_pNetworkSyncManager)
+        // AI 无网络同步，直接应用本地计算结果
+        if (IsPlayerControlled() && m_pNetworkSyncManager)
         {
             float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
@@ -816,6 +844,11 @@ modded class SCR_CharacterControllerComponent
             {
                 OverrideMaxSpeed(finalSpeedMultiplier);
             }
+        }
+        else
+        {
+            // AI 或非网络实体：直接应用
+            OverrideMaxSpeed(finalSpeedMultiplier);
         }
         
         // ==================== 检测游泳状态（游泳体力管理）====================
@@ -1224,7 +1257,7 @@ modded class SCR_CharacterControllerComponent
         {
             static int debugCounter = 0;
             debugCounter++;
-            if (debugCounter >= 25 && IsRssDebugEnabled()) // 200ms * 25 = 5秒
+            if (debugCounter >= 25 && IsRssDebugEnabled() && IsPlayerControlled()) // 200ms * 25 = 5秒，仅玩家
             {
                 debugCounter = 0;
                 
@@ -1272,10 +1305,10 @@ modded class SCR_CharacterControllerComponent
         }
         
         // 继续更新
-        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
     }
     
-    // 采集速度样本（每秒一次）
+    // 采集速度样本（每秒一次，仅玩家）
     void CollectSpeedSample()
     {
         IEntity owner = GetOwner();

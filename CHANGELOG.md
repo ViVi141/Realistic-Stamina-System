@@ -6,6 +6,14 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.13.2] - 2026-02-27
+
+### ✅ 新增
+
+- **AI 完全使用体力系统** - 服务器端 AI 现与玩家共享同一套体力逻辑：体力消耗（Pandolf 模型、负重、坡度、地形）、恢复、速度限制（OverrideMaxSpeed）、精疲力尽跛行等；AI 更新间隔为 100ms（玩家 50ms）以兼顾性能（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+
+---
+
 ## [3.13.1] - 2026-02-27
 
 ### 🔁 变更
