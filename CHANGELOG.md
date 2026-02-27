@@ -12,6 +12,7 @@
 
 - **坡度-速度模型改用托布勒徒步函数** - 使用 Tobler's Hiking Function (1993)：W = 6·e^(-3.5·|S+0.05|)；最大速度出现在约 -3° 到 -5° 小下坡，上坡和过陡下坡均会快速衰减（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
 - **坡度速度 5 秒平滑过渡** - 新增 SlopeSpeedTransition 模块，坡度变化时速度在 5 秒内平滑过渡，避免从平地冲上陡坡时瞬间从 3 m/s 骤降到 1 m/s 的"被胶水粘住"感（[SCR_SlopeSpeedTransition.c](scripts/Game/Components/Stamina/SCR_SlopeSpeedTransition.c)）
+- **优化器与 Tobler 同步** - `stamina_constants.py` 新增 Tobler 常量和 `tobler_speed_multiplier()`；`rss_digital_twin_fix.py` 新增 `tobler_speed_multiplier()` 和 `SLOPE_UPHILL_COEFF`/`SLOPE_DOWNHILL_COEFF` 常量；`rss_super_pipeline.py` 将 `slope_uphill_coeff`/`slope_downhill_coeff` 固定为 0.08/0.03（C 端 `CalculateSlopeStaminaDrainMultiplier` 未被调用，坡度消耗由 Pandolf grade 承担）；JSON 预设与 C 端预设已统一为固定值
 
 ### 🐞 修复
 

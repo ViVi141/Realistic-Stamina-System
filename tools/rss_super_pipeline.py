@@ -480,13 +480,10 @@ class RSSSuperPipeline:
         jump_height_guess = trial.suggest_float('jump_height_guess', 0.3, 1.0)              # [SOFT][OPTIMIZE]
         jump_horizontal_speed_guess = trial.suggest_float('jump_horizontal_speed_guess', 0.0, 1.5)  # [SOFT][OPTIMIZE]
         
-        # 坡度系统参数
-        slope_uphill_coeff = trial.suggest_float(
-            'slope_uphill_coeff', 0.06, 0.10
-        )
-        slope_downhill_coeff = trial.suggest_float(
-            'slope_downhill_coeff', 0.02, 0.04
-        )
+        # 坡度系统参数 [DEPRECATED] C 端 CalculateSlopeStaminaDrainMultiplier 未被调用，
+        # 坡度消耗已由 Pandolf 公式的 grade_percent 承担；固定值以兼容 JSON/embed
+        slope_uphill_coeff = 0.08   # [HARD] 与 StaminaConstants.SLOPE_UPHILL_COEFF 一致
+        slope_downhill_coeff = 0.03  # [HARD] 与 StaminaConstants.SLOPE_DOWNHILL_COEFF 一致
         
         # 游泳系统参数
         swimming_base_power = trial.suggest_float(
@@ -2004,9 +2001,14 @@ class RSSSuperPipeline:
                 print(f"  空模板已导出：{output_file}")
             return
 
+        # [HARD] 坡度系数固定值，用于确保导出 JSON 包含（C 端 CalculateSlopeStaminaDrainMultiplier 未调用）
+        FIXED_SLOPE_PARAMS = {'slope_uphill_coeff': 0.08, 'slope_downhill_coeff': 0.03}
+
         for preset_name, config in archetypes.items():
             output_file = output_path / preset_mapping[preset_name]
-            
+            params = dict(config['params'])
+            params.update(FIXED_SLOPE_PARAMS)  # 覆盖或补充坡度参数
+
             config_dict = {
                 "version": "3.0.0",
                 "description": f"RSS 增强型优化配置（NSGA-II）- {preset_name}",
@@ -2015,7 +2017,7 @@ class RSSSuperPipeline:
                     "playability_burden": config['playability_burden'],
                     "stability_risk": config['stability_risk']
                 },
-                "parameters": config['params']
+                "parameters": params
             }
             
             with open(output_file, 'w', encoding='utf-8') as f:

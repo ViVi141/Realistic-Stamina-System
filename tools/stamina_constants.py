@@ -4,6 +4,7 @@
 Realistic Stamina System (RSS) - 统一常量定义
 所有Python脚本共享的常量定义，与C代码中的StaminaConstants完全同步
 """
+import math
 
 # ==================== 游戏配置常量 ====================
 GAME_MAX_SPEED = 5.2  # m/s，游戏最大速度
@@ -136,12 +137,34 @@ GIVONI_CONSTANT = 0.8          # [LEGACY unused] W/kg·m²/s²，C 端一致
 GIVONI_VELOCITY_EXPONENT = 2.2  # [LEGACY unused] 速度指数
 
 # ==================== 坡度影响参数 ====================
-SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗）
+# 注意：坡度对速度的影响已改用托布勒徒步函数 (Tobler 1993)，见下方 TOBLER_* 常量。
+# 以下 SLOPE_* 用于体力消耗（CalculateSlopeStaminaDrainMultiplier），C 端为硬编码，优化器使用固定值。
+SLOPE_UPHILL_COEFF = 0.08  # 上坡影响系数（每度增加8%消耗），与 C 端 StaminaConstants 一致
 SLOPE_DOWNHILL_COEFF = 0.03  # 下坡影响系数（每度减少3%消耗）
 SLOPE_MAX_MULTIPLIER = 2.0  # 最大坡度影响倍数（上坡）
 SLOPE_MIN_MULTIPLIER = 0.7  # 最小坡度影响倍数（下坡）
 ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.15  # 负重×坡度交互系数
 SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.10  # 速度×负重×坡度交互系数
+
+# ==================== [HARD] 托布勒徒步函数 (Tobler's Hiking Function, 1993) ====================
+# 坡度对速度的影响：W = 6·e^(-3.5·|S+0.05|)，与 C 端 SCR_RealisticStaminaSystem 一致
+# 最大速度出现在约 -3° 到 -5° 小下坡，上坡和过陡下坡均会快速衰减
+TOBLER_W_MAX_KMH = 6.0   # Tobler 最大步行速度 (km/h)
+TOBLER_EXP_COEFF = 3.5   # 指数系数
+TOBLER_S_OFFSET = 0.05   # 坡度偏移（最优下坡约 -2.86°）
+TOBLER_MIN_MULTIPLIER = 0.15  # 陡坡时速度乘数下限
+
+# 坡度速度 5 秒平滑过渡（与 C 端 SlopeSpeedTransition 一致）
+SLOPE_SPEED_TRANSITION_DURATION = 5.0  # 秒
+
+
+def tobler_speed_multiplier(angle_deg: float) -> float:
+    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]，与 C 端一致。"""
+    s = math.tan(math.radians(angle_deg))
+    w_kmh = TOBLER_W_MAX_KMH * math.exp(-TOBLER_EXP_COEFF * abs(s + TOBLER_S_OFFSET))
+    flat = TOBLER_W_MAX_KMH * math.exp(-TOBLER_EXP_COEFF * TOBLER_S_OFFSET)
+    mult = w_kmh / flat if flat > 0 else TOBLER_MIN_MULTIPLIER
+    return max(TOBLER_MIN_MULTIPLIER, min(1.0, mult))
 
 # ==================== 坡度修正系数（基于坡度百分比）====================
 GRADE_UPHILL_COEFF = 0.12  # 每1%上坡增加12%消耗

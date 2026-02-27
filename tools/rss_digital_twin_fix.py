@@ -9,9 +9,23 @@ SCR_StaminaRecovery.c、SCR_StaminaUpdateCoordinator.c、SCR_EncumbranceCache.c 
 """
 
 import numpy as np
+import math
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import random
+
+# Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 一致
+
+
+def tobler_speed_multiplier(angle_deg: float, w_max_kmh: float = 6.0,
+                            exp_coeff: float = 3.5, s_offset: float = 0.05,
+                            min_mult: float = 0.15) -> float:
+    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]。"""
+    s = math.tan(math.radians(angle_deg))
+    w_kmh = w_max_kmh * math.exp(-exp_coeff * abs(s + s_offset))
+    flat = w_max_kmh * math.exp(-exp_coeff * s_offset)
+    mult = w_kmh / flat if flat > 0 else min_mult
+    return max(min_mult, min(1.0, mult))
 
 
 # =============================================================================
@@ -114,6 +128,10 @@ class RSSConstants:
     ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02
     ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = 0.05
     ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15
+
+    # [DEPRECATED] C 端 CalculateSlopeStaminaDrainMultiplier 未被调用，坡度由 Pandolf grade 承担
+    SLOPE_UPHILL_COEFF = 0.08
+    SLOPE_DOWNHILL_COEFF = 0.03
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
