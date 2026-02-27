@@ -54,9 +54,14 @@ class StaminaConsumptionCalculator
             coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
 
             // 检查是否在室内，如果是则忽略坡度影响
-            if (environmentFactor.IsIndoor())
+            // 使用 IsIndoorForEntity(owner) 确保服务器/多实体场景下正确检测（m_pCachedOwner 可能未更新）
+            if (owner && environmentFactor.IsIndoorForEntity(owner))
             {
                 gradePercent = 0.0; // 室内时坡度为0
+            }
+            else if (!owner && environmentFactor.IsIndoor())
+            {
+                gradePercent = 0.0; // 无 owner 时回退到 IsIndoor()
             }
         }
         

@@ -6,6 +6,19 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.13.1] - 2026-02-27
+
+### 🔁 变更
+
+- **坡度-速度模型改用托布勒徒步函数** - 使用 Tobler's Hiking Function (1993)：W = 6·e^(-3.5·|S+0.05|)；最大速度出现在约 -3° 到 -5° 小下坡，上坡和过陡下坡均会快速衰减（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+- **坡度速度 5 秒平滑过渡** - 新增 SlopeSpeedTransition 模块，坡度变化时速度在 5 秒内平滑过渡，避免从平地冲上陡坡时瞬间从 3 m/s 骤降到 1 m/s 的"被胶水粘住"感（[SCR_SlopeSpeedTransition.c](scripts/Game/Components/Stamina/SCR_SlopeSpeedTransition.c)）
+
+### 🐞 修复
+
+- **室内坡度影响速度错误应用** - 修复在室内时仍错误应用坡度影响速度的问题；新增 `IsIndoorForEntity(owner)` 方法，使用传入实体进行室内检测，避免服务器处理远程玩家 RPC 时 `m_pCachedOwner` 未更新导致的室内误判；`IsIndoor`/`IsIndoorForEntity` 现会检查 `IsIndoorDetectionEnabled` 配置（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)、[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_StaminaConsumption.c](scripts/Game/Components/Stamina/SCR_StaminaConsumption.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）
+
+---
+
 ## [3.13.0] - 2026-02-26
 
 ### ✅ 新增

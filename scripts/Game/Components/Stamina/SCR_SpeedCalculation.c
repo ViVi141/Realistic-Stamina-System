@@ -143,9 +143,12 @@ class SpeedCalculator
     static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null)
     {
         // 检查是否在室内，如果是则返回0坡度
-        if (environmentFactor && environmentFactor.IsIndoor())
+        // 使用 IsIndoorForEntity(owner) 而非 IsIndoor()，避免服务器处理远程玩家 RPC 时 m_pCachedOwner 未更新导致的室内误判
+        if (environmentFactor && controller)
         {
-            return 0.0;
+            IEntity ownerForCheck = controller.GetOwner();
+            if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
+                return 0.0;
         }
         
         float slopeAngleDegrees = 0.0;
@@ -206,9 +209,12 @@ class SpeedCalculator
         result.slopeAngleDegrees = slopeAngleDegrees;
         
         // 检查是否在室内，如果是则返回0坡度
-        if (environmentFactor && environmentFactor.IsIndoor())
+        // 使用 IsIndoorForEntity(owner) 确保服务器 RPC 路径下也能正确检测（m_pCachedOwner 可能未更新）
+        if (environmentFactor && controller)
         {
-            return result;
+            IEntity ownerForCheck = controller.GetOwner();
+            if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
+                return result;
         }
         
         // 检查是否在攀爬或跳跃状态

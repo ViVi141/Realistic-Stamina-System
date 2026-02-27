@@ -1763,7 +1763,20 @@ class EnvironmentFactor
     // @return true表示在室内（有遮挡），false表示在室外（无遮挡）
     bool IsIndoor()
     {
+        if (!StaminaConstants.IsIndoorDetectionEnabled())
+            return false; // 室内检测已关闭，一律视为室外
         return IsUnderCover(m_pCachedOwner);
+    }
+
+    // 检查指定实体是否在室内（用于坡度/速度计算，避免依赖可能未更新的 m_pCachedOwner）
+    // 在服务器处理远程玩家 RPC 时，m_pCachedOwner 可能未更新，应使用此方法传入当前实体
+    // @param owner 要检测的角色实体
+    // @return true表示在室内，false表示在室外
+    bool IsIndoorForEntity(IEntity owner)
+    {
+        if (!StaminaConstants.IsIndoorDetectionEnabled())
+            return false; // 室内检测已关闭，一律视为室外（坡度照常应用）
+        return IsUnderCover(owner);
     }
 
     // 应用来自 `SCR_RSS_Settings` 的配置到模型（可在初始化时调用）

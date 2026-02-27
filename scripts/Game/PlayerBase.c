@@ -30,6 +30,7 @@ modded class SCR_CharacterControllerComponent
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
     protected ref CollapseTransition m_pCollapseTransition;
+    protected ref SlopeSpeedTransition m_pSlopeSpeedTransition;
     
     // ==================== 运动持续时间跟踪模块 ====================
     // 模块化拆分：使用独立的 ExerciseTracker 类管理运动/休息时间跟踪
@@ -147,6 +148,10 @@ modded class SCR_CharacterControllerComponent
         m_pCollapseTransition = new CollapseTransition();
         if (m_pCollapseTransition)
             m_pCollapseTransition.Initialize();
+
+        m_pSlopeSpeedTransition = new SlopeSpeedTransition();
+        if (m_pSlopeSpeedTransition)
+            m_pSlopeSpeedTransition.Initialize();
         
         // 初始化地形检测模块
         m_pTerrainDetector = new TerrainDetector();
@@ -748,7 +753,8 @@ modded class SCR_CharacterControllerComponent
             encumbranceSpeedPenalty,
             m_pCollapseTransition,
             currentSpeed,
-            m_pEnvironmentFactor);
+            m_pEnvironmentFactor,
+            m_pSlopeSpeedTransition);
         
         // 获取基础速度倍数（用于调试显示）
         float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);

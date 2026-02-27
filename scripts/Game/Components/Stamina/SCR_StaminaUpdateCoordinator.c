@@ -116,6 +116,7 @@ class StaminaUpdateCoordinator
     // @param collapseTransition "撞墙"阻尼过渡模块
     // @param currentSpeed 当前速度 (m/s)
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
+    // @param slopeSpeedTransition 坡度速度过渡模块（可选，用于 5 秒平滑，避免骤降感）
     // @return 最终速度倍数
     // 新增：基于输入计算最终速度倍数（供服务器权威使用）
     static float CalculateFinalSpeedMultiplierFromInputs(
@@ -169,7 +170,8 @@ class StaminaUpdateCoordinator
         float encumbranceSpeedPenalty,
         CollapseTransition collapseTransition,
         float currentSpeed = 0.0,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        SlopeSpeedTransition slopeSpeedTransition = null)
     {
         if (!controller)
             return 1.0;
@@ -205,6 +207,9 @@ class StaminaUpdateCoordinator
             RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
         float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
         float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        // 坡度变化时 5 秒平滑过渡，避免 3 m/s→1 m/s 瞬间骤降的"胶水感"
+        if (slopeSpeedTransition)
+            speedScaleFactor = slopeSpeedTransition.UpdateAndGet(currentWorldTime, speedScaleFactor);
         runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
         
         // 计算最终速度倍数
@@ -345,9 +350,14 @@ class StaminaUpdateCoordinator
                 coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
 
                 // 检查是否在室内，如果是则忽略坡度影响
-                if (environmentFactor.IsIndoor())
+                // 使用 IsIndoorForEntity(owner) 确保服务器 RPC 路径下正确检测（m_pCachedOwner 可能未更新）
+                if (owner && environmentFactor.IsIndoorForEntity(owner))
                 {
                     gradePercent = 0.0; // 室内时坡度为0
+                }
+                else if (!owner && environmentFactor.IsIndoor())
+                {
+                    gradePercent = 0.0; // 无 owner 时回退到 IsIndoor()
                 }
             }
 

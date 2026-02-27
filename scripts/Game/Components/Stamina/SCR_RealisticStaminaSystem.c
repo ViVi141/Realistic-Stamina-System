@@ -996,23 +996,31 @@ class RealisticStaminaSpeedSystem
     // 从而换取更持久的续航。这样玩家在Everon爬小缓坡时，会感觉到角色稍微"沉"了一点点，
     // 但体力掉速依然平稳。
     //
-    // @param baseTargetSpeed 基础目标速度（m/s），例如3.7 m/s
+    // 使用托布勒徒步函数 (Tobler's Hiking Function, 1993)
+    // 公式：W = 6 · e^(-3.5 · |S + 0.05|)，其中 W 为步行速度 (km/h)，S 为坡度 (tan θ)
+    // 特点：最大速度出现在约 -3° 到 -5° 的小下坡上（约 6 km/h），上坡或过陡下坡都会快速衰减
+    //
+    // @param baseTargetSpeed 基础目标速度（m/s），例如 3.7 m/s
     // @param slopeAngleDegrees 坡度角度（度），正数=上坡，负数=下坡
     // @return 坡度自适应后的目标速度（m/s）
     static float CalculateSlopeAdjustedTargetSpeed(float baseTargetSpeed, float slopeAngleDegrees)
     {
-        if (slopeAngleDegrees <= 0.0)
-        {
-            // 下坡或平地：不主动减速
-            return baseTargetSpeed;
-        }
-        
-        // 爬坡自适应：每增加1度坡度，目标速度自动下降2.5%
-        // 这样10度坡时，速度会降到约 3.7 × 0.75 = 2.775 m/s，虽然慢了，但体力能多撑一倍时间
-        // 适应因子：1.0 - (slopeAngle × 0.025)，最小不低于0.6（即最多降低40%速度）
-        float adaptationFactor = Math.Max(0.6, 1.0 - (slopeAngleDegrees * 0.025));
-        
-        return baseTargetSpeed * adaptationFactor;
+        // 坡度 S = tan(θ)，即垂直位移/水平位移（rise/run）
+        float S = Math.Tan(slopeAngleDegrees * Math.DEG2RAD);
+        // 限制 S 范围，避免极端角度导致数值异常
+        S = Math.Clamp(S, -1.0, 1.0);
+
+        // Tobler: W(km/h) = 6 · e^(-3.5 · |S + 0.05|)
+        // 最大速度在 S = -0.05 时（约 -2.86°），W_max = 6 km/h
+        float exponent = -3.5 * Math.AbsFloat(S + 0.05);
+        float W_kmh = 6.0 * Math.Pow(2.718281828, exponent);
+
+        // 归一化为相对于 Tobler 最大速度的乘数（6 km/h 时乘数为 1.0）
+        float toblerMultiplier = W_kmh / 6.0;
+        // 设置下限，避免陡坡时速度过慢
+        toblerMultiplier = Math.Max(toblerMultiplier, 0.15);
+
+        return baseTargetSpeed * toblerMultiplier;
     }
     
     // 检查是否精疲力尽
