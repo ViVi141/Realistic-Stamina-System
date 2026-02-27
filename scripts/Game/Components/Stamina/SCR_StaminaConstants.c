@@ -1136,6 +1136,8 @@ class StaminaConstants
             return false;
         s_fNextDebugBatchTime = t + interval;
         s_bDebugBatchActive = true;
+        s_bTempStepAddedThisBatch = false;
+        s_bEngineTODAddedThisBatch = false;
         if (!s_aDebugBatchLines)
             s_aDebugBatchLines = new array<string>();
         s_aDebugBatchLines.Clear();
@@ -1150,11 +1152,32 @@ class StaminaConstants
         s_aDebugBatchLines.Insert(line);
     }
 
+    // 每批次仅添加一次（用于 TempStep、EngineTOD 等可能被多次调用的输出）
+    protected static bool s_bTempStepAddedThisBatch = false;
+    protected static bool s_bEngineTODAddedThisBatch = false;
+
+    static void AddDebugBatchLineOnce(string tag, string line)
+    {
+        if (!s_bDebugBatchActive || !s_aDebugBatchLines)
+            return;
+        if (tag == "TempStep" && s_bTempStepAddedThisBatch)
+            return;
+        if (tag == "EngineTOD" && s_bEngineTODAddedThisBatch)
+            return;
+        s_aDebugBatchLines.Insert(line);
+        if (tag == "TempStep")
+            s_bTempStepAddedThisBatch = true;
+        if (tag == "EngineTOD")
+            s_bEngineTODAddedThisBatch = true;
+    }
+
     // 当前是否处于调试批次窗口内
     static bool IsDebugBatchActive()
     {
         return s_bDebugBatchActive;
     }
+
+    protected static float s_fLastBatchFlushTime = -999.0;
 
     // 在帧末刷新批次：输出所有累积行并清空
     static void FlushDebugBatch()
@@ -1162,9 +1185,22 @@ class StaminaConstants
         if (!s_bDebugBatchActive || !s_aDebugBatchLines || s_aDebugBatchLines.Count() == 0)
             return;
         s_bDebugBatchActive = false;
+        World world = GetGame().GetWorld();
+        if (world)
+            s_fLastBatchFlushTime = world.GetWorldTime() / 1000.0;
         for (int i = 0; i < s_aDebugBatchLines.Count(); i++)
             Print(s_aDebugBatchLines.Get(i));
         s_aDebugBatchLines.Clear();
+    }
+
+    // 本轮秒内是否刚刷新过批次（用于避免 status 重复）
+    static bool WasBatchJustFlushed()
+    {
+        World world = GetGame().GetWorld();
+        if (!world)
+            return false;
+        float t = world.GetWorldTime() / 1000.0;
+        return (t - s_fLastBatchFlushTime) < 0.5;
     }
 
     // 统一调试日志节流（基于 DebugUpdateInterval）

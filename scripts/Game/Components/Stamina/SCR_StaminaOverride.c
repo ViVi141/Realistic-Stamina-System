@@ -54,7 +54,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             if (interceptCounter >= 5)
             {
                 float currentStamina = GetStamina();
-                PrintFormat("[StaminaOverride] 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
+                PrintFormat("[RSS] Override 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
                     Math.Round(pDrain * 100.0).ToString(),
                     Math.Round(currentStamina * 100.0).ToString(),
                     Math.Round(m_fTargetStamina * 100.0).ToString());
@@ -159,7 +159,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
                 warningCounter++;
                 if (Math.AbsFloat(deviation) > 0.005 && warningCounter >= 10) // 每10次输出一次
                 {
-                    PrintFormat("[StaminaOverride] 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
+                    PrintFormat("[RSS] Override 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
                         Math.Round(currentStamina * 100.0).ToString(),
                         Math.Round(m_fTargetStamina * 100.0).ToString(),
                         Math.Round(deviation * 100.0).ToString());

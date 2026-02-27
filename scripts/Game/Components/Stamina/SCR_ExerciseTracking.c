@@ -62,7 +62,7 @@ class ExerciseTracker
             static float nextIdleLogTime = 0.0;
             if (StaminaConstants.ShouldVerboseLog(nextIdleLogTime))
             {
-                PrintFormat("[ExerciseTracker] 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
+                PrintFormat("[RSS] ExerciseTracker 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
                     Math.Round(idleDuration * 10.0) / 10.0,
                     isIdle,
                     Math.Round(m_fRestDurationMinutes * 10.0) / 10.0);
@@ -77,7 +77,7 @@ class ExerciseTracker
                 static float nextRestLogTime = 0.0;
                 if (StaminaConstants.ShouldVerboseLog(nextRestLogTime))
                 {
-                    PrintFormat("[ExerciseTracker] 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
+                    PrintFormat("[RSS] ExerciseTracker 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
                         Math.Round(restTimeDelta * 10.0) / 10.0,
                         m_bWasMoving);
                 }
@@ -107,7 +107,7 @@ class ExerciseTracker
                     // 时间跳跃异常：重置更新时间，但不累积休息时间
                     if (StaminaConstants.IsDebugEnabled())
                     {
-                        PrintFormat("[ExerciseTracker] 时间跳跃异常 / Time Jump: restTimeDelta=%1s, 重置更新时间 | restTimeDelta=%1s, Resetting update time",
+                        PrintFormat("[RSS] ExerciseTracker 时间跳跃异常 / Time Jump: restTimeDelta=%1s, 重置更新时间 | restTimeDelta=%1s, Resetting update time",
                             Math.Round(restTimeDelta * 10.0) / 10.0);
                     }
                 }

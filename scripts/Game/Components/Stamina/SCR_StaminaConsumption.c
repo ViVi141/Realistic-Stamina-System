@@ -133,18 +133,18 @@ class StaminaConsumptionCalculator
 
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
-        // debug: log base drain before posture
-        if (StaminaConstants.IsDebugEnabled())
+        if (StaminaConstants.IsDebugBatchActive())
         {
             int fbFlag = 0;
             if (usedFallback) fbFlag = 1;
-            PrintFormat("[ConsCalc] fb=%1 baseDrain=%2 tempAdj=%3 weight=%4 speed=%5 grade=%6",
+            string line1 = string.Format("[RSS] ConsCalc: fb=%1 baseDrain=%2 tempAdj=%3 weight=%4 speed=%5 grade=%6",
                 fbFlag,
                 Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
                 Math.Round((baseDrainRateByVelocity - beforeTempAdj) * 1000000.0) / 1000000.0,
                 Math.Round(currentWeight * 10.0) / 10.0,
                 Math.Round(currentSpeed * 1000.0) / 1000.0,
                 Math.Round(gradePercent * 100.0) / 100.0);
+            StaminaConstants.AddDebugBatchLine(line1);
         }
         
         // 应用姿态修正（只在消耗时应用）
@@ -189,12 +189,12 @@ class StaminaConsumptionCalculator
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
         baseDrainRateByVelocity = originalBaseDrainRate;
-        // debug: verify out parameter value (total drain before posture/efficiency)
-        if (StaminaConstants.IsDebugEnabled())
+        if (StaminaConstants.IsDebugBatchActive())
         {
-            PrintFormat("[ConsCalc] outBase=%1 total=%2",
+            string line2 = string.Format("[RSS] ConsCalc: outBase=%1 total=%2",
                 Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
                 Math.Round(totalDrainRate * 1000.0) / 1000.0);
+            StaminaConstants.AddDebugBatchLine(line2);
         }
         
         return totalDrainRate;

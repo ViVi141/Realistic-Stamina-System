@@ -129,7 +129,7 @@ class EnvironmentFactor
             if (StaminaConstants.ShouldLog(tmpLogInit))
             {
                 m_fNextLocationEstimateLogTime = tmpLogInit;
-                PrintFormat("[RSS-debug] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
+                PrintFormat("[RSS] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
             }
         }
         m_fSurfaceWetnessPenalty = 0.0;
@@ -194,7 +194,7 @@ class EnvironmentFactor
             // 合并少数字段为单个 Extras 字符串，使用 PrintFormat 并限制到 9 个占位符
             string extras = useEngineTempStr + " | " + useEngineTzStr + " | Lon=" + (Math.Round(m_fLongitude * 10.0) / 10.0) + " | TZOff=" + (Math.Round(m_fTimeZoneOffsetHours * 10.0) / 10.0);
 
-            PrintFormat("[RealisticSystem][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=%8 | Extras=%9",
+            PrintFormat("[RSS][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=%8 | Extras=%9",
                 overrideTemp,
                 Math.Round(tempMin * 10.0) / 10.0,
                 Math.Round(tempMax * 10.0) / 10.0,
@@ -220,7 +220,7 @@ class EnvironmentFactor
                     if (StaminaConstants.ShouldLog(tmpLocLog1))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog1;
-                        PrintFormat("[RealisticSystem][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
+                        PrintFormat("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
                     }
                 }
             }
@@ -236,7 +236,7 @@ class EnvironmentFactor
                     if (StaminaConstants.ShouldLog(tmpLocLog2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog2;
-                        PrintFormat("[RealisticSystem][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
+                        PrintFormat("[RSS][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
                             Math.Round(estLat * 10.0) / 10.0,
                             Math.Round(estLon * 10.0) / 10.0,
                             Math.Round(estConf * 100.0) / 100.0);
@@ -254,7 +254,7 @@ class EnvironmentFactor
                             if (StaminaConstants.ShouldLog(tmpLocLog3))
                             {
                                 m_fNextLocationEstimateLogTime = tmpLocLog3;
-                                PrintFormat("[RealisticSystem][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
+                                PrintFormat("[RSS][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
                                     Math.Round(refinedLat * 10.0) / 10.0,
                                     Math.Round(refinedLon * 10.0) / 10.0,
                                     Math.Round(refinedConf * 100.0) / 100.0);
@@ -312,7 +312,7 @@ class EnvironmentFactor
         if (StaminaConstants.ShouldLog(tmpLogTime))
         {
             m_fNextForceUpdateLogTime = tmpLogTime;
-            PrintFormat("[RealisticSystem] ForceUpdate: Pending recompute flagged");
+            PrintFormat("[RSS] ForceUpdate: Pending recompute flagged");
         }
     }
 
@@ -350,7 +350,7 @@ class EnvironmentFactor
                 if (StaminaConstants.ShouldLog(tmpLogU1))
                 {
                     m_fNextLocationEstimateLogTime = tmpLogU1;
-                    Print("[RSS-debug] weather mgr returned 0/0 coordinates, delaying");
+                    Print("[RSS] weather mgr returned 0/0 coordinates, delaying");
                 }
             }
             else
@@ -363,7 +363,7 @@ class EnvironmentFactor
                     if (StaminaConstants.ShouldLog(tmpLogU2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLogU2;
-                        PrintFormat("[RSS-debug] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
+                        PrintFormat("[RSS] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
                     }
                     once = true;
                 }
@@ -390,22 +390,12 @@ class EnvironmentFactor
             bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
             bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
 
-            // 调试：每秒输出引擎天气数据（仅服务器且开启调试）
-            if (Replication.IsServer() && StaminaConstants.IsDebugEnabled())
+            if (Replication.IsServer() && StaminaConstants.IsDebugBatchActive())
             {
-                static float nextEngineLogTime = 0.0;
-                if (currentTime >= nextEngineLogTime)
-                {
-                    nextEngineLogTime = currentTime + 1.0; // 1秒间隔
-                    float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
-                    float engLon = m_pCachedWeatherManager.GetCurrentLongitude();
-                    float engTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
-	                    // 由于 PrintFormat 仅支持最多 9 个占位符，我们需要压缩字段
-                    string dateStr = y.ToString() + "/" + mo.ToString() + "/" + d.ToString();
-                    string extras = "lat=" + engLat + " lon=" + engLon + " tz=" + engTZ;
-                    PrintFormat("[RSS-debug] engine TOD=%1 rain=%2 wind=%3 ovTemp=%4 sr=%5 ss=%6 date=%7 extras=%8",
-                                currTOD, currRain, currWind, currOverrideTemp, sr, ss, dateStr, extras);
-                }
+                string dateStr = y.ToString() + "/" + mo.ToString() + "/" + d.ToString();
+                string line = string.Format("[RSS] 引擎天气: TOD=%1 雨=%2 风=%3 ovTemp=%4 日出=%5 日落=%6 日期=%7",
+                    currTOD, currRain, currWind, currOverrideTemp, sr, ss, dateStr);
+                StaminaConstants.AddDebugBatchLineOnce("EngineTOD", line);
             }
 
             // 若与缓存值出现显著差异，则触发强制更新（实时响应管理员操作）
@@ -524,7 +514,7 @@ class EnvironmentFactor
             if (StaminaConstants.ShouldLog(tmpLogTime2))
             {
                 m_fNextForceUpdateLogTime = tmpLogTime2;
-                PrintFormat("[RealisticSystem] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
+                PrintFormat("[RSS] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
             }
         }
 
@@ -532,7 +522,7 @@ class EnvironmentFactor
         static float nextEnvLogTime = 0.0;
         if (StaminaConstants.ShouldLog(nextEnvLogTime))
         {
-            PrintFormat("[RealisticSystem] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
+            PrintFormat("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
                 Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
@@ -855,7 +845,7 @@ class EnvironmentFactor
         if (StaminaConstants.ShouldLog(tmpLocationLog))
         {
             m_fNextLocationEstimateLogTime = tmpLocationLog;
-            PrintFormat("[RealisticSystem] EstimateLatLong: lat=%1 lon=%2 conf=%3 L=%4 sr=%5 ss=%6 n=%7",
+            PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3 L=%4 sr=%5 ss=%6 n=%7",
                 Math.Round(latDeg * 10.0) / 10.0,
                 Math.Round(lonDeg * 10.0) / 10.0,
                 Math.Round(conf * 100.0) / 100.0,
@@ -1012,7 +1002,7 @@ class EnvironmentFactor
         if (StaminaConstants.ShouldLog(tmpLocationLog2))
         {
             m_fNextLocationEstimateLogTime = tmpLocationLog2;
-            PrintFormat("[RealisticSystem] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3 bestErr=%4",
+            PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3 bestErr=%4",
                 Math.Round(bestLat * 10.0) / 10.0,
                 Math.Round(bestLon * 10.0) / 10.0,
                 Math.Round(conf * 100.0) / 100.0,
@@ -1161,7 +1151,7 @@ class EnvironmentFactor
         {
             if (hasSunrise && hasSunset)
             {
-                PrintFormat("[RealisticSystem][TempStep] Using engine sunrise/sunset: SR=%1, SS=%2, Moon=%3", sunRiseHour, sunSetHour, Math.Round(moonPhase01 * 100.0) / 100.0);
+                PrintFormat("[RSS][TempStep] Using engine sunrise/sunset: SR=%1, SS=%2, Moon=%3", sunRiseHour, sunSetHour, Math.Round(moonPhase01 * 100.0) / 100.0);
             }
         }
 
@@ -1220,52 +1210,15 @@ class EnvironmentFactor
         // 更新缓存与时间戳
         m_fCachedSurfaceTemperature = newT;
 
-        // 非详细调试输出：只要启用了 Debug（不需 Verbose）就会看到此日志
-        if (StaminaConstants.ShouldLog(m_fNextTempStepLogTime))
+        if (StaminaConstants.IsDebugBatchActive())
         {
-            PrintFormat("[RealisticSystem][TempStep] dt=%1s | SW=%2W/m2 | NewT=%3°C | Cloud=%4 | MixingH=%5m",
+            string line = string.Format("[RSS] 温度 TempStep: dt=%1s SW=%2W/m2 气温=%3°C 云=%4 MixH=%5m",
                 dt,
                 Math.Round(SW_down),
                 Math.Round(newT * 10.0) / 10.0,
                 Math.Round(cloudFactor * 100.0) / 100.0,
                 Math.Round(mixing_height_eff));
-        }
-
-        // 详细调试输出（需要 Verbose 打开）
-        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
-        {
-            PrintFormat("[RealisticSystem][TempStepVerbose] dt=%1s | SW=%2W/m2 | LW_down=%3W/m2 | Net=%4W/m2 | LE=%5 | NewT=%6°C | Cloud=%7",
-                dt,
-                Math.Round(SW_down),
-                Math.Round(LW_down),
-                Math.Round(Q_net),
-                Math.Round(LE),
-                Math.Round(newT * 10.0) / 10.0,
-                Math.Round(cloudFactor * 100.0) / 100.0);
-        }
-
-        // 非详细调试输出：只要启用了 Debug（不需 Verbose）就会看到此日志
-        if (StaminaConstants.ShouldLog(m_fNextTempStepLogTime))
-        {
-            PrintFormat("[RealisticSystem][TempStep] dt=%1s | SW=%2W/m2 | NewT=%3°C | Cloud=%4 | MixingH=%5m",
-                dt,
-                Math.Round(SW_down),
-                Math.Round(newT * 10.0) / 10.0,
-                Math.Round(cloudFactor * 100.0) / 100.0,
-                Math.Round(mixing_height_eff));
-        }
-
-        // 详细调试输出（需要 Verbose 打开）
-        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
-        {
-            PrintFormat("[RealisticSystem][TempStepVerbose] dt=%1s | SW=%2W/m2 | LW_down=%3W/m2 | Net=%4W/m2 | LE=%5 | NewT=%6°C | Cloud=%7",
-                dt,
-                Math.Round(SW_down),
-                Math.Round(LW_down),
-                Math.Round(Q_net),
-                Math.Round(LE),
-                Math.Round(newT * 10.0) / 10.0,
-                Math.Round(cloudFactor * 100.0) / 100.0);
+            StaminaConstants.AddDebugBatchLineOnce("TempStep", line);
         }
     }
 
@@ -1464,7 +1417,7 @@ class EnvironmentFactor
         
         int buildingCount = m_pCachedBuildings.Count();
         if (m_bIndoorDebug)
-            PrintFormat("[RealisticSystem][IndoorDetect] IsUnderCover: ownerPos=(%1,%2,%3) buildingCount=%4", ownerPos[0], ownerPos[1], ownerPos[2], buildingCount);
+            PrintFormat("[RSS][IndoorDetect] IsUnderCover: ownerPos=(%1,%2,%3) buildingCount=%4", ownerPos[0], ownerPos[1], ownerPos[2], buildingCount);
         if (buildingCount == 0)
             return false;
         
@@ -1493,7 +1446,7 @@ class EnvironmentFactor
             bool isInside = xInside && yInside && zInside;
 
             if (m_bIndoorDebug)
-                PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
+                PrintFormat("[RSS][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
                     checkedBuildings,
                     Math.Round(localPos[0] * 100.0) / 100.0,
                     Math.Round(localPos[1] * 100.0) / 100.0,
@@ -1512,7 +1465,7 @@ class EnvironmentFactor
                         hasRoofStr = "true";
                     else
                         hasRoofStr = "false";
-                    PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
+                    PrintFormat("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
                 }
                 // 如果射线检测也确认被覆盖，则进一步进行水平封闭检测以减少门廊/开放屋顶假阳性
                 if (hasRoof)
@@ -1525,7 +1478,7 @@ class EnvironmentFactor
                             enclosedStr = "true";
                         else
                             enclosedStr = "false";
-                        PrintFormat("[RealisticSystem][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
+                        PrintFormat("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
                     }
                     if (enclosed)
                         return true;
@@ -1536,7 +1489,7 @@ class EnvironmentFactor
         }
         
         if (m_bIndoorDebug)
-            PrintFormat("[RealisticSystem][IndoorDetect] No indoor building found after checking %1 buildings", checkedBuildings);
+            PrintFormat("[RSS][IndoorDetect] No indoor building found after checking %1 buildings", checkedBuildings);
         // 未找到既在建筑物内又有屋顶覆盖的情况
         return false;
     }
@@ -1564,7 +1517,7 @@ class EnvironmentFactor
         array<vector> samples = { vector.Zero, vector.Forward * SAMPLE_OFFSET, -vector.Forward * SAMPLE_OFFSET, vector.Right * SAMPLE_OFFSET, -vector.Right * SAMPLE_OFFSET };
 
         if (m_bIndoorDebug)
-            PrintFormat("[RealisticSystem][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
+            PrintFormat("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
                 basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, CHECK_HEIGHT, samples.Count());
 
         int idx = 0;
@@ -1593,22 +1546,22 @@ class EnvironmentFactor
                     surface = param.SurfaceProps.ToString();
                 else
                     surface = "null";
-                PrintFormat("[RealisticSystem][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
+                PrintFormat("[RSS][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
                     idx, start[0], start[1], start[2], end[0], end[1], end[2], param.TraceEnt, param.ColliderName);
-                PrintFormat("[RealisticSystem][IndoorDetect]   Surface=%1", surface);
+                PrintFormat("[RSS][IndoorDetect]   Surface=%1", surface);
             }
 
             // 如果任一采样点没有命中任何遮挡物，则不能确认为室内
             if (!hit)
             {
                 if (m_bIndoorDebug)
-                    PrintFormat("[RealisticSystem][IndoorDetect] Sample %1 missed -> not indoor", idx);
+                    PrintFormat("[RSS][IndoorDetect] Sample %1 missed -> not indoor", idx);
                 return false;
             }
         }
 
         if (m_bIndoorDebug)
-            PrintFormat("[RealisticSystem][IndoorDetect] All samples hit -> indoor");
+            PrintFormat("[RSS][IndoorDetect] All samples hit -> indoor");
 
         // 所有采样点都命中遮挡物 → 确认为室内
         return true;
@@ -1676,13 +1629,13 @@ class EnvironmentFactor
                     hitStr = "true";
                 else
                     hitStr = "false";
-                PrintFormat("[RealisticSystem][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr);
+                PrintFormat("[RSS][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr);
             }
         }
 
         float ratio = (hits / (float)SAMPLES);
         if (m_bIndoorDebug)
-            PrintFormat("[RealisticSystem][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0);
+            PrintFormat("[RSS][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0);
 
         return (ratio >= HIT_RATIO);
     }
@@ -1926,7 +1879,7 @@ class EnvironmentFactor
         static float nextAdvancedEnvLogTime = 0.0;
         if (StaminaConstants.ShouldVerboseLog(nextAdvancedEnvLogTime))
         {
-            PrintFormat("[RealisticSystem] 高级环境因子 / Advanced Environment Factors:");
+            PrintFormat("[RSS] 高级环境因子 / Advanced Environment Factors:");
             PrintFormat("  降雨强度 / Rain Intensity: %1 (%2%%)", 
                 Math.Round(m_fCachedRainIntensity * 100.0) / 100.0,
                 Math.Round(m_fCachedRainIntensity * 100.0).ToString());

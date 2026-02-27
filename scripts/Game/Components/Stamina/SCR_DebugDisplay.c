@@ -171,7 +171,7 @@ class DebugDisplay
         string stanceTransitionInfo)
     {
         string debugMessage = string.Format(
-            "[RealisticSystem] 调试 / Debug: 类型=%1 | 体力=%2%% | 基础速度倍数=%3 | 负重惩罚=%4 | 最终速度倍数=%5 | 坡度=%6%%%7", 
+            "[RSS] 类型=%1 体力=%2%% 速度倍=%3 负重惩罚=%4 最终倍=%5 坡度=%6%%%7", 
             movementTypeStr,
             Math.Round(staminaPercent * 100.0).ToString(),
             baseSpeedMultiplier.ToString(),
@@ -370,6 +370,7 @@ class DebugDisplay
         string stanceTransitionInfo = FormatStanceTransitionInfo(params.stanceTransitionManager);
         
         // 构建并加入统一批次（由 StaminaConstants 管理定时）
+        // 统一 [RSS] 前缀，单行整合
         string debugMessage = BuildDebugMessage(
             params.movementTypeStr,
             params.staminaPercent,
@@ -413,13 +414,13 @@ class DebugDisplay
         if (!settings || !settings.m_bDebugLogEnabled)
             return;
         
-        // 检查时间间隔
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        if (currentTime < m_fNextStatusLogTime)
-            return;
-        
-        // 只对本地控制的玩家输出
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
+            return;
+        // 若本秒内已有批次输出，跳过避免重复
+        if (StaminaConstants.WasBatchJustFlushed())
+            return;
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (currentTime < m_fNextStatusLogTime)
             return;
         
         // 格式化移动类型
@@ -427,9 +428,8 @@ class DebugDisplay
         if (isSwimming)
             movementTypeStr = "Swim";
         
-        // 构建状态消息（中英双语）
         string statusMessage = string.Format(
-            "[状态 / Status] 速度: %1 m/s | 体力: %2%% | 速度倍数: %3x | 类型: %4 | Speed: %1 m/s | Stamina: %2%% | Speed Multiplier: %3x | Type: %4",
+            "[RSS] 状态: 速度%1m/s 体力%2%% 倍率%3x 类型%4",
             Math.Round(lastSecondSpeed * 10.0) / 10.0,
             Math.Round(lastStaminaPercent * 100.0),
             Math.Round(lastSpeedMultiplier * 100.0) / 100.0,

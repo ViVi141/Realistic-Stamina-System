@@ -107,7 +107,7 @@ modded class SCR_CharacterControllerComponent
             if (IsRssDebugEnabled())
             {
                 float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
-                PrintFormat("[RealisticSystem] 初始 energie->stamina coeff = %1", coeff);
+                PrintFormat("[RSS] 初始 energie->stamina coeff = %1", coeff);
             }
         }
         
@@ -525,7 +525,7 @@ modded class SCR_CharacterControllerComponent
                 
                 // 调试输出
                 if (IsRssDebugEnabled())
-                    Print("[RealisticSystem] 跳跃动作监听器已添加 / Jump Action Listener Added");
+                    Print("[RSS] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
             
             // 初始化体力 HUD 显示（延迟初始化，确保 HUD 系统已加载）
@@ -571,7 +571,7 @@ modded class SCR_CharacterControllerComponent
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
             if (IsRssDebugEnabled())
-                Print("[RealisticSystem] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
+                Print("[RSS] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
         }
     }
     
@@ -594,7 +594,7 @@ modded class SCR_CharacterControllerComponent
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
             if (IsRssDebugEnabled())
-                Print("[RealisticSystem] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
+                Print("[RSS] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
         }
     }
     
@@ -659,7 +659,7 @@ modded class SCR_CharacterControllerComponent
                 if (m_pStaminaComponent && IsRssDebugEnabled())
                 {
                     float currentStamina = m_pStaminaComponent.GetTargetStamina();
-                    PrintFormat("[RealisticSystem] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%", 
+                    PrintFormat("[RSS] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%", 
                         Math.Round(currentStamina * 100.0).ToString());
                 }
             }
@@ -695,7 +695,7 @@ modded class SCR_CharacterControllerComponent
                     // 调试信息：载具中体力恢复
                     if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
                     {
-                        PrintFormat("[RealisticSystem] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s)",
+                        PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s)",
                             Math.Round(currentStamina * 100.0).ToString(),
                             Math.Round(newStamina * 100.0).ToString(),
                             recoveryRate.ToString());
@@ -743,7 +743,7 @@ modded class SCR_CharacterControllerComponent
             // 调试信息：精疲力尽状态
             if (!lastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RealisticSystem] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
+                Print("[RSS] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
                 lastExhaustedState = true;
             }
             
@@ -754,7 +754,7 @@ modded class SCR_CharacterControllerComponent
         {
             if (lastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RealisticSystem] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
+                Print("[RSS] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
                 lastExhaustedState = false;
             }
         }
@@ -950,7 +950,7 @@ modded class SCR_CharacterControllerComponent
             );
             if (jumpCost > 0.0 && IsRssDebugEnabled())
             {
-                PrintFormat("[RealisticSystem] 跳跃消耗 / Jump Cost: -%1%% | -%1%%", 
+                PrintFormat("[RSS] 跳跃消耗 / Jump Cost: -%1%% | -%1%%", 
                     Math.Round(jumpCost * 100.0 * 10.0) / 10.0);
             }
             staminaPercent = staminaPercent - jumpCost;
@@ -971,7 +971,7 @@ modded class SCR_CharacterControllerComponent
             );
             if (vaultCost > 0.0 && IsRssDebugEnabled())
             {
-                PrintFormat("[RealisticSystem] 翻越消耗 / Vault Cost: -%1%% | -%1%%", 
+                PrintFormat("[RSS] 翻越消耗 / Vault Cost: -%1%% | -%1%%", 
                     Math.Round(vaultCost * 100.0 * 10.0) / 10.0);
             }
             staminaPercent = staminaPercent - vaultCost;
@@ -1192,15 +1192,6 @@ modded class SCR_CharacterControllerComponent
         if (m_pStaminaComponent)
         {
             float timeDeltaSec = SPEED_UPDATE_INTERVAL_MS / 1000.0;
-            // FrameDebug：加入统一批次
-            if (StaminaConstants.IsDebugBatchActive())
-            {
-                string frameLine = string.Format("[FrameDebug] grade=%1%% weight=%2kg totWeight=%3kg",
-                    Math.Round(gradePercentForConsumption * 100.0) / 100.0,
-                    Math.Round(currentWeight * 10.0) / 10.0,
-                    Math.Round(totalWeightWithWetAndBody * 10.0) / 10.0);
-                StaminaConstants.AddDebugBatchLine(frameLine);
-            }
             float newTargetStamina = StaminaUpdateCoordinator.UpdateStaminaValue(
                 m_pStaminaComponent,
                 staminaPercent,
@@ -1229,7 +1220,7 @@ modded class SCR_CharacterControllerComponent
             {
                 if (StaminaConstants.IsDebugBatchActive())
                 {
-                    string intLine = string.Format("[RealisticSystem] 原生干扰 / Native Interference: 目标=%1%% 实际=%2%% 偏差=%3%%",
+                    string intLine = string.Format("[RSS] 原生干扰: 目标=%1%% 实际=%2%% 偏差=%3%%",
                         Math.Round(newTargetStamina * 100.0).ToString(),
                         Math.Round(verifyStamina * 100.0).ToString(),
                         Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
@@ -1553,7 +1544,7 @@ modded class SCR_CharacterControllerComponent
             if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime))
             {
                 if (IsRssDebugEnabled())
-                    PrintFormat("[RealisticSystem] Ignored too-frequent stamina report (time=%1)", currentTime);
+                    PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
                 return;
             }
 
@@ -1565,7 +1556,7 @@ modded class SCR_CharacterControllerComponent
             {
                 float lastReported = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
                 if (Math.AbsFloat(clampedStamina - lastReported) > 0.5 && IsRssDebugEnabled())
-                    PrintFormat("[RealisticSystem] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
+                    PrintFormat("[RSS] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
 
                 // 更新服务器端记录（用于后续检测和统计）
                 m_pNetworkSyncManager.UpdateReportedState(clampedStamina, weight);

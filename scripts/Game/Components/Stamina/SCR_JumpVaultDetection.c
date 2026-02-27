@@ -87,7 +87,7 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
+                    PrintFormat("[RSS] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
                 }
                 
                 return 0.0;
@@ -99,7 +99,7 @@ class JumpVaultDetector
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
                 if (StaminaConstants.IsVerboseLoggingEnabled())
-                    Print("[RealisticSystem] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
+                    Print("[RSS] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
                 m_eLastStance = currentStance;
                 return 0.0;
             }
@@ -176,7 +176,7 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
+                    PrintFormat("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
                         m_iRecentJumpCount.ToString(),
                         Math.Round(consecutiveMultiplier * 100.0) / 100.0);
@@ -220,7 +220,7 @@ class JumpVaultDetector
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
                 if (StaminaConstants.IsVerboseLoggingEnabled())
-                    Print("[RealisticSystem] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
+                    Print("[RSS] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
                 return 0.0;
             }
             
@@ -259,7 +259,7 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RealisticSystem] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
+                    PrintFormat("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
                         Math.Round(vaultCost * 100.0).ToString());
                 }
             }
