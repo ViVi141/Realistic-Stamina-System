@@ -20,6 +20,9 @@ class BaseDrainRateResult
 
 class StaminaUpdateCoordinator
 {
+    protected static ref SpeedCalculationResult s_pResultSpeedCalc;
+    protected static ref BaseDrainRateResult s_pResultBaseDrainRate;
+
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
     // @param currentSpeed 当前速度（m/s）
@@ -277,13 +280,14 @@ class StaminaUpdateCoordinator
         // 确保currentSpeed不超过物理上限
         currentSpeed = Math.Min(currentSpeed, 7.0);
         
-        SpeedCalculationResult result = new SpeedCalculationResult();
-        result.currentSpeed = currentSpeed;
-        result.lastPositionSample = currentPos;
-        result.hasLastPositionSample = true;
-        result.computedVelocity = velocity;
+        if (!s_pResultSpeedCalc)
+            s_pResultSpeedCalc = new SpeedCalculationResult();
+        s_pResultSpeedCalc.currentSpeed = currentSpeed;
+        s_pResultSpeedCalc.lastPositionSample = currentPos;
+        s_pResultSpeedCalc.hasLastPositionSample = true;
+        s_pResultSpeedCalc.computedVelocity = velocity;
         
-        return result;
+        return s_pResultSpeedCalc;
     }
     
     // ==================== 基础消耗率计算 ====================
@@ -387,10 +391,11 @@ class StaminaUpdateCoordinator
             // 因此不再需要对固定 Sprint 基线做特殊处理。
         }
         
-        BaseDrainRateResult result = new BaseDrainRateResult();
-        result.baseDrainRate = baseDrainRate;
-        result.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
-        return result;
+        if (!s_pResultBaseDrainRate)
+            s_pResultBaseDrainRate = new BaseDrainRateResult();
+        s_pResultBaseDrainRate.baseDrainRate = baseDrainRate;
+        s_pResultBaseDrainRate.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
+        return s_pResultBaseDrainRate;
     }
     
     // ==================== 体力更新协调 ====================

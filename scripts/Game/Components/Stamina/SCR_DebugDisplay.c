@@ -34,7 +34,9 @@ class DebugDisplay
     protected static float m_fNextStatusLogTime = 0.0; // 下次状态日志时间
     protected static float m_fNextHintTime = 0.0; // 下次 Hint 显示时间
     protected static string m_sLastStaminaStatus = ""; // 上次体力状态，用于检测状态变化
-    
+    protected static float m_fLastTerrainForceUpdateTime = 0.0; // 上次地形 ForceUpdate 时间（调试节流）
+    protected static const float TERRAIN_DEBUG_UPDATE_INTERVAL = 0.5; // 地形 ForceUpdate 节流间隔（秒）
+
     // ==================== 公共方法 ====================
     
     // 格式化移动类型字符串
@@ -131,8 +133,11 @@ class DebugDisplay
         if (!terrainDetector)
             return " | 地面密度: 未检测";
         
-        // 强制更新地形检测（用于调试显示）
-        terrainDetector.ForceUpdate(owner, currentTime);
+        if (currentTime - m_fLastTerrainForceUpdateTime >= TERRAIN_DEBUG_UPDATE_INTERVAL)
+        {
+            terrainDetector.ForceUpdate(owner, currentTime);
+            m_fLastTerrainForceUpdateTime = currentTime;
+        }
         
         float cachedDensity = terrainDetector.GetCachedTerrainDensity();
         if (cachedDensity >= 0.0)

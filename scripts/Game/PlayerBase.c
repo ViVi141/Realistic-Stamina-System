@@ -45,6 +45,7 @@ modded class SCR_CharacterControllerComponent
     // ==================== 负重缓存管理模块 ====================
     // 模块化拆分：使用独立的 EncumbranceCache 类管理负重缓存
     protected ref EncumbranceCache m_pEncumbranceCache;
+    protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存库存组件（EncumbranceCache 无效时的回退）
     
     
     // ==================== 疲劳积累系统模块 ====================
@@ -191,10 +192,11 @@ modded class SCR_CharacterControllerComponent
             if (character)
             {
                 SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
-                
+                m_pCachedInventoryComponent = inventoryComponent;
+
                 // 获取库存管理器组件引用
                 InventoryStorageManagerComponent inventoryManagerComponent = InventoryStorageManagerComponent.Cast(character.FindComponent(InventoryStorageManagerComponent));
-                
+
                 // 初始化负重缓存
                 m_pEncumbranceCache.Initialize(inventoryComponent);
             }
@@ -820,10 +822,10 @@ modded class SCR_CharacterControllerComponent
             currentWeight = m_pEncumbranceCache.GetCurrentWeight();
         else
         {
-            SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
-                owner.FindComponent(SCR_CharacterInventoryStorageComponent));
-            if (inventoryComponent)
-                currentWeight = inventoryComponent.GetTotalWeight();
+            if (!m_pCachedInventoryComponent)
+                m_pCachedInventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(owner.FindComponent(SCR_CharacterInventoryStorageComponent));
+            if (m_pCachedInventoryComponent)
+                currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
         }
 
         // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
@@ -907,10 +909,10 @@ modded class SCR_CharacterControllerComponent
         // ==================== 环境因子更新（模块化）====================
         // 每5秒更新一次环境因子（性能优化）
         // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算，传入游泳湿重用于总湿重计算
+        // 性能优化：复用前面已获取的 velocity，避免重复 GetVelocity()
         if (m_pEnvironmentFactor)
         {
-            vector currentVelocity = GetVelocity();
-            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, currentVelocity, terrainFactor, m_fCurrentWetWeight);
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, velocity, terrainFactor, m_fCurrentWetWeight);
         }
         
         // 获取热应激倍数（影响体力消耗和恢复）
@@ -1097,7 +1099,7 @@ modded class SCR_CharacterControllerComponent
         // ==================== 基础消耗率计算（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 计算基础消耗率
         // 修复：传递环境因子参数，使基础消耗率计算支持环境因子
-        vector currentVelocity = GetVelocity();
+        // 性能优化：复用前面已获取的 velocity，避免重复 GetVelocity()
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
@@ -1105,7 +1107,7 @@ modded class SCR_CharacterControllerComponent
             totalWeightWithWetAndBody,
             gradePercent,
             terrainFactor,
-            currentVelocity,
+            velocity,
             m_bSwimmingVelocityDebugPrinted,
             owner,
             m_pEnvironmentFactor, // v2.14.0修复：传递环境因子

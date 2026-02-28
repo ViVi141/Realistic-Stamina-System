@@ -12,6 +12,7 @@ class TerrainDetector
     protected const float TERRAIN_CHECK_INTERVAL = 0.5; // 地形检测间隔（秒，移动时）
     protected const float TERRAIN_CHECK_INTERVAL_IDLE = 2.0; // 地形检测间隔（秒，静止时，优化性能）
     protected const float IDLE_THRESHOLD_TIME = 1.0; // 静止判定阈值（秒，超过此时间视为静止）
+    protected ref TraceParam m_pTraceParamGround; // 复用的 TraceParam（GetTerrainDensity）
     
     // ==================== 公共方法 ====================
     
@@ -98,22 +99,24 @@ class TerrainDetector
         if (!owner)
             return -1.0;
         
+        if (!m_pTraceParamGround)
+            m_pTraceParamGround = new TraceParam();
+
         // 执行射线追踪检测地面
-        TraceParam paramGround = new TraceParam();
-        paramGround.Start = owner.GetOrigin() + (vector.Up * 0.1); // 角色位置上方 0.1 米
-        paramGround.End = paramGround.Start - (vector.Up * 0.5); // 向下追踪 0.5 米
-        paramGround.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
-        paramGround.Exclude = owner;
+        m_pTraceParamGround.Start = owner.GetOrigin() + (vector.Up * 0.1); // 角色位置上方 0.1 米
+        m_pTraceParamGround.End = m_pTraceParamGround.Start - (vector.Up * 0.5); // 向下追踪 0.5 米
+        m_pTraceParamGround.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+        m_pTraceParamGround.Exclude = owner;
         // 优化：使用更合适的物理层以确保稳定获取地面材质
         // 建议：EPhysicsLayerPresets.Character 或 EPhysicsLayerPresets.Static 可能更稳定
         // 如果 Projectile 层在某些情况下无法命中地面，可以尝试其他层
-        paramGround.LayerMask = EPhysicsLayerPresets.Projectile; // 当前使用 Projectile（与官方示例一致）
+        m_pTraceParamGround.LayerMask = EPhysicsLayerPresets.Projectile; // 当前使用 Projectile（与官方示例一致）
         
         // 执行追踪
-        owner.GetWorld().TraceMove(paramGround, FilterTerrainCallback);
+        owner.GetWorld().TraceMove(m_pTraceParamGround, FilterTerrainCallback);
         
         // 获取表面材质
-        GameMaterial material = paramGround.SurfaceProps;
+        GameMaterial material = m_pTraceParamGround.SurfaceProps;
         if (!material)
             return -1.0;
         

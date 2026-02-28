@@ -11,7 +11,10 @@ class EncumbranceCache
     protected float m_fCachedEncumbranceStaminaDrainMultiplier = 1.0; // 缓存的体力消耗倍数
     protected bool m_bEncumbranceCacheValid = false; // 缓存是否有效
     protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存的库存组件引用
-    
+    protected SCR_InventoryStorageManagerComponent m_pCachedInventoryManager; // 缓存的库存管理器组件（避免每 tick FindComponent）
+    protected float m_fLastCheckTime = 0.0; // 上次检查时间（秒）
+    protected const float ENCUMBRANCE_CHECK_INTERVAL = 0.2; // 轮询间隔（秒），结合事件驱动减少 GetTotalWeightOfAllStorages 调用
+
     // ==================== 公共方法 ====================
     
     // 初始化缓存
@@ -24,7 +27,8 @@ class EncumbranceCache
         m_fCachedEncumbranceStaminaDrainMultiplier = 1.0;
         m_bEncumbranceCacheValid = false;
         m_pCachedInventoryComponent = inventoryComponent;
-        
+        m_pCachedInventoryManager = null;
+
         // 如果提供了库存组件，初始化时计算一次负重
         if (m_pCachedInventoryComponent)
             UpdateCache();
@@ -35,6 +39,7 @@ class EncumbranceCache
     void SetInventoryComponent(SCR_CharacterInventoryStorageComponent inventoryComponent)
     {
         m_pCachedInventoryComponent = inventoryComponent;
+        m_pCachedInventoryManager = null; // 重置，下次 UpdateCache 时重新查找
         if (m_pCachedInventoryComponent)
             UpdateCache();
         else
@@ -63,11 +68,12 @@ class EncumbranceCache
         }
         
         // 使用 SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages() 方法（唯一方式）
-        SCR_InventoryStorageManagerComponent inventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
-        if (inventoryManager)
+        if (!m_pCachedInventoryManager)
+            m_pCachedInventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
+        if (m_pCachedInventoryManager)
         {
             // 使用官方推荐的 GetTotalWeightOfAllStorages() 方法，确保计算所有存储的重量
-            currentWeight = inventoryManager.GetTotalWeightOfAllStorages();
+            currentWeight = m_pCachedInventoryManager.GetTotalWeightOfAllStorages();
         }
         else
         {
@@ -109,10 +115,16 @@ class EncumbranceCache
     
     // 检查并更新缓存（仅在变化时更新）
     // 在 UpdateSpeedBasedOnStamina 中调用，检查负重是否变化
+    // 性能优化：按 ENCUMBRANCE_CHECK_INTERVAL 节流，减少 GetTotalWeightOfAllStorages 调用频率
     void CheckAndUpdate()
     {
         if (!m_pCachedInventoryComponent)
             return;
+
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (m_bEncumbranceCacheValid && (currentTime - m_fLastCheckTime < ENCUMBRANCE_CHECK_INTERVAL))
+            return;
+        m_fLastCheckTime = currentTime;
         
         float currentWeight = 0.0;
         
@@ -120,12 +132,11 @@ class EncumbranceCache
         IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
         if (ownerEntity)
         {
-            // 尝试使用 SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages() 方法（推荐方式）
-            SCR_InventoryStorageManagerComponent inventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
-            if (inventoryManager)
+            if (!m_pCachedInventoryManager)
+                m_pCachedInventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
+            if (m_pCachedInventoryManager)
             {
-                // 使用官方推荐的 GetTotalWeightOfAllStorages() 方法，确保计算所有存储的重量
-                currentWeight = inventoryManager.GetTotalWeightOfAllStorages();
+                currentWeight = m_pCachedInventoryManager.GetTotalWeightOfAllStorages();
             }
             else
             {

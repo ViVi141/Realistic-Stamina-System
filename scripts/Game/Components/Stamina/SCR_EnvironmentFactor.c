@@ -47,6 +47,8 @@ class EnvironmentFactor
     protected const float INDOOR_CHECK_INTERVAL = 1.0; // 室内检测间隔（秒）
     protected bool m_bCachedIndoorState = false; // 缓存的室内状态
     protected ref array<IEntity> m_pCachedBuildings; // 缓存的建筑物列表（用于回调）
+    protected ref TraceParam m_pTraceParamRoof; // 复用的 TraceParam（RaycastHasRoof）
+    protected ref TraceParam m_pTraceParamEnclosed; // 复用的 TraceParam（IsHorizontallyEnclosed）
     protected float m_fSurfaceWetnessPenalty = 0.0; // 地表湿度惩罚
 
     // 调试开关：启用后输出室内检测的详细日志
@@ -373,6 +375,13 @@ class EnvironmentFactor
         // 更新缓存的角色实体引用（用于室内检测）
         if (owner)
             m_pCachedOwner = owner;
+
+        // 按 INDOOR_CHECK_INTERVAL 更新室内状态缓存（性能优化：避免每 tick 多次 IsUnderCover）
+        if (StaminaConstants.IsIndoorDetectionEnabled() && m_pCachedOwner && (currentTime - m_fLastIndoorCheckTime >= INDOOR_CHECK_INTERVAL))
+        {
+            m_bCachedIndoorState = IsUnderCover(m_pCachedOwner);
+            m_fLastIndoorCheckTime = currentTime;
+        }
         
         // 检查是否需要更新（每 m_fLastEnvironmentCheckTime 秒更新一次），但对管理员的即时修改要实时响应
         bool forceUpdate = false;
@@ -1520,6 +1529,9 @@ class EnvironmentFactor
             PrintFormat("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
                 basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, CHECK_HEIGHT, samples.Count());
 
+        if (!m_pTraceParamRoof)
+            m_pTraceParamRoof = new TraceParam();
+
         int idx = 0;
         foreach (vector off : samples)
         {
@@ -1527,27 +1539,26 @@ class EnvironmentFactor
             vector start = basePos + vector.Up * HEAD_HEIGHT + off;
             vector end = start + vector.Up * CHECK_HEIGHT;
 
-            TraceParam param = new TraceParam();
-            param.Start = start;
-            param.End = end;
-            param.Flags = TraceFlags.ENTS;
-            param.Include = building;
-            param.Exclude = owner;
-            param.LayerMask = EPhysicsLayerDefs.Projectile;
+            m_pTraceParamRoof.Start = start;
+            m_pTraceParamRoof.End = end;
+            m_pTraceParamRoof.Flags = TraceFlags.ENTS;
+            m_pTraceParamRoof.Include = building;
+            m_pTraceParamRoof.Exclude = owner;
+            m_pTraceParamRoof.LayerMask = EPhysicsLayerDefs.Projectile;
 
-            world.TraceMove(param, null);
+            world.TraceMove(m_pTraceParamRoof, null);
 
-            bool hit = (param.TraceEnt != null);
+            bool hit = (m_pTraceParamRoof.TraceEnt != null);
 
             if (m_bIndoorDebug)
             {
                 string surface;
-                if (param.SurfaceProps)
-                    surface = param.SurfaceProps.ToString();
+                if (m_pTraceParamRoof.SurfaceProps)
+                    surface = m_pTraceParamRoof.SurfaceProps.ToString();
                 else
                     surface = "null";
                 PrintFormat("[RSS][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
-                    idx, start[0], start[1], start[2], end[0], end[1], end[2], param.TraceEnt, param.ColliderName);
+                    idx, start[0], start[1], start[2], end[0], end[1], end[2], m_pTraceParamRoof.TraceEnt, m_pTraceParamRoof.ColliderName);
                 PrintFormat("[RSS][IndoorDetect]   Surface=%1", surface);
             }
 
@@ -1600,6 +1611,9 @@ class EnvironmentFactor
 
         int hits = 0;
 
+        if (!m_pTraceParamEnclosed)
+            m_pTraceParamEnclosed = new TraceParam();
+
         for (int i = 0; i < SAMPLES; i++)
         {
             float angle = (360.0 / SAMPLES) * i;
@@ -1610,16 +1624,15 @@ class EnvironmentFactor
             vector start = basePos + vector.Up * HEAD_HEIGHT;
             vector end = start + dir * DIST;
 
-            TraceParam param = new TraceParam();
-            param.Start = start;
-            param.End = end;
-            param.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
-            param.Exclude = owner;
-            param.LayerMask = EPhysicsLayerPresets.Projectile;
+            m_pTraceParamEnclosed.Start = start;
+            m_pTraceParamEnclosed.End = end;
+            m_pTraceParamEnclosed.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
+            m_pTraceParamEnclosed.Exclude = owner;
+            m_pTraceParamEnclosed.LayerMask = EPhysicsLayerPresets.Projectile;
 
-            world.TraceMove(param, null);
+            world.TraceMove(m_pTraceParamEnclosed, null);
 
-            bool hit = (param.TraceEnt != null) || (param.SurfaceProps != null) || (param.ColliderName != string.Empty);
+            bool hit = (m_pTraceParamEnclosed.TraceEnt != null) || (m_pTraceParamEnclosed.SurfaceProps != null) || (m_pTraceParamEnclosed.ColliderName != string.Empty);
             if (hit) hits++;
 
             if (m_bIndoorDebug)
@@ -1713,22 +1726,38 @@ class EnvironmentFactor
     }
     
     // 检查是否在室内（用于调试）
+    // 使用 m_bCachedIndoorState 缓存，按 INDOOR_CHECK_INTERVAL 更新
     // @return true表示在室内（有遮挡），false表示在室外（无遮挡）
     bool IsIndoor()
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
             return false; // 室内检测已关闭，一律视为室外
+        if (m_pCachedOwner)
+        {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
+                return m_bCachedIndoorState;
+        }
         return IsUnderCover(m_pCachedOwner);
     }
 
     // 检查指定实体是否在室内（用于坡度/速度计算，避免依赖可能未更新的 m_pCachedOwner）
     // 在服务器处理远程玩家 RPC 时，m_pCachedOwner 可能未更新，应使用此方法传入当前实体
+    // 本地玩家使用缓存；远程玩家直接调用 IsUnderCover（数量有限，影响可控）
     // @param owner 要检测的角色实体
     // @return true表示在室内，false表示在室外
     bool IsIndoorForEntity(IEntity owner)
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
             return false; // 室内检测已关闭，一律视为室外（坡度照常应用）
+        if (!owner)
+            return false;
+        if (owner == m_pCachedOwner)
+        {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
+                return m_bCachedIndoorState;
+        }
         return IsUnderCover(owner);
     }
 

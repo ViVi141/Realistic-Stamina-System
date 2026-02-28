@@ -11,6 +11,8 @@ class WetWeightUpdateResult
 
 class SwimmingStateManager
 {
+    protected static ref WetWeightUpdateResult s_pResultWetWeight;
+
     // ==================== 游泳状态追踪 ====================
     
     protected static float m_fSwimStartTime = -1.0; // 游泳开始时间（秒）
@@ -75,9 +77,10 @@ class SwimmingStateManager
         }
         
         // 更新湿重
-        WetWeightUpdateResult result = new WetWeightUpdateResult();
-        result.wetWeightStartTime = wetWeightStartTime;
-        result.currentWetWeight = currentWetWeight;
+        if (!s_pResultWetWeight)
+            s_pResultWetWeight = new WetWeightUpdateResult();
+        s_pResultWetWeight.wetWeightStartTime = wetWeightStartTime;
+        s_pResultWetWeight.currentWetWeight = currentWetWeight;
         
         if (isSwimming)
         {
@@ -99,37 +102,37 @@ class SwimmingStateManager
             float swimProgress = Math.Clamp(m_fSwimDuration / 60.0, 0.0, 1.0);
             float swimWetWeight = StaminaConstants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
             
-            result.wetWeightStartTime = -1.0;
-            result.currentWetWeight = swimWetWeight;
+            s_pResultWetWeight.wetWeightStartTime = -1.0;
+            s_pResultWetWeight.currentWetWeight = swimWetWeight;
         }
         else if (wasSwimming && !isSwimming)
         {
             // 刚从水中上岸：启动湿重计时器
-            result.wetWeightStartTime = currentTime;
+            s_pResultWetWeight.wetWeightStartTime = currentTime;
             // 湿重保持不变（已经在游泳时设置了）
             // 重置游泳时间
             m_fSwimStartTime = -1.0;
             m_fSwimDuration = 0.0;
         }
-        else if (result.wetWeightStartTime > 0.0)
+        else if (s_pResultWetWeight.wetWeightStartTime > 0.0)
         {
             // 检查湿重是否过期（30秒）
-            float wetWeightElapsed = currentTime - result.wetWeightStartTime;
+            float wetWeightElapsed = currentTime - s_pResultWetWeight.wetWeightStartTime;
             if (wetWeightElapsed >= StaminaConstants.WET_WEIGHT_DURATION)
             {
                 // 湿重过期：清除湿重
-                result.wetWeightStartTime = -1.0;
-                result.currentWetWeight = 0.0;
+                s_pResultWetWeight.wetWeightStartTime = -1.0;
+                s_pResultWetWeight.currentWetWeight = 0.0;
             }
             else
             {
                 // 湿重逐渐减少（线性衰减）
                 float wetWeightRatio = 1.0 - (wetWeightElapsed / StaminaConstants.WET_WEIGHT_DURATION);
-                result.currentWetWeight = StaminaConstants.WET_WEIGHT_MAX * wetWeightRatio;
+                s_pResultWetWeight.currentWetWeight = StaminaConstants.WET_WEIGHT_MAX * wetWeightRatio;
             }
         }
         
-        return result;
+        return s_pResultWetWeight;
     }
     
     // ==================== 总湿重计算 ====================

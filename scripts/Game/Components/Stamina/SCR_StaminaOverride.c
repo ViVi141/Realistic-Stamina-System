@@ -14,6 +14,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     
     // 主动监控标志（控制是否继续监控）
     protected bool m_bIsMonitoring = false;
+
+    // 监控间隔（毫秒）。16=60Hz 与服务器同步，50/100 可降低 CPU 占用
+    protected const int STAMINA_MONITOR_INTERVAL_MS = 50;
     
     // 标记：是否是我们自己的调用（避免循环）
     protected bool m_bIsOurOwnCall = false;
@@ -107,10 +110,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 设置监控标志
         m_bIsMonitoring = true;
         
-        // 启动监控循环（高频检查，确保完全覆盖原生系统）
-        // 使用16ms间隔，匹配60Hz服务器的仿真周期
-        // 这个频率既能及时拦截原生系统，又不会造成性能负担
-        GetGame().GetCallqueue().CallLater(MonitorStamina, 16, false);
+        // 启动监控循环（检查原生系统干扰并纠正）
+        // STAMINA_MONITOR_INTERVAL_MS：50ms 平衡性能与同步；16ms 可匹配 60Hz 服务器
+        GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
     
     // 停止主动监控
@@ -172,9 +174,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             CorrectStaminaToTarget();
         }
         
-        // 继续下一次监控（每16ms，60Hz频率）
-        // 这个频率既能及时拦截原生系统，又不会造成性能负担
-        GetGame().GetCallqueue().CallLater(MonitorStamina, 16, false);
+        GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
     
     // 设置目标体力值（由我们的自定义系统调用）

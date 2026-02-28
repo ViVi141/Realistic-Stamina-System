@@ -11,6 +11,8 @@ class GradeCalculationResult
 
 class SpeedCalculator
 {
+    protected static ref GradeCalculationResult s_pResultGrade;
+
     // ==================== 公共方法 ====================
     
     // 计算基础速度倍数（根据体力百分比）
@@ -197,9 +199,10 @@ class SpeedCalculator
         float slopeAngleDegrees,
         EnvironmentFactor environmentFactor = null)
     {
-        GradeCalculationResult result = new GradeCalculationResult();
-        result.gradePercent = 0.0;
-        result.slopeAngleDegrees = slopeAngleDegrees;
+        if (!s_pResultGrade)
+            s_pResultGrade = new GradeCalculationResult();
+        s_pResultGrade.gradePercent = 0.0;
+        s_pResultGrade.slopeAngleDegrees = slopeAngleDegrees;
         
         // 检查是否在室内，如果是则返回0坡度
         // 使用 IsIndoorForEntity(owner) 确保服务器 RPC 路径下也能正确检测（m_pCachedOwner 可能未更新）
@@ -207,7 +210,7 @@ class SpeedCalculator
         {
             IEntity ownerForCheck = controller.GetOwner();
             if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
-                return result;
+                return s_pResultGrade;
         }
         
         // 检查是否在攀爬或跳跃状态
@@ -221,7 +224,7 @@ class SpeedCalculator
         {
             // 获取坡度角度并转换为坡度百分比
             float rawAngleDeg = GetSlopeAngle(controller, environmentFactor);
-            result.slopeAngleDegrees = rawAngleDeg;
+            s_pResultGrade.slopeAngleDegrees = rawAngleDeg;
             // 将角度转换为斜率比：tan(angle_rad)
             float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
             // Clamp ratio to reasonable range (-100%..100%) to avoid terrain/measurement glitches
@@ -231,12 +234,12 @@ class SpeedCalculator
                 if (StaminaConstants.IsDebugEnabled())
                 slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             }
-            result.gradePercent = slopeRatio * 100.0;
+            s_pResultGrade.gradePercent = slopeRatio * 100.0;
             if (StaminaConstants.IsDebugEnabled())
             {
             }
         }
         
-        return result;
+        return s_pResultGrade;
     }
 }
