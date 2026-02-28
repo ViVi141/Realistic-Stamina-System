@@ -6,6 +6,42 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.14.0] - 2026-02-28
+
+### ✅ 新增
+
+- **完全整合 AI 与玩家的体力系统** - 服务器端 AI 与玩家共享同一套体力逻辑：体力消耗（Pandolf 模型、负重、坡度、地形）、恢复、速度限制（OverrideMaxSpeed）、精疲力尽跛行等；AI 更新间隔为 100ms（玩家 50ms）以兼顾性能（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+
+### ⚡ 性能优化
+
+- **室内检测缓存** - 利用 `m_bCachedIndoorState` 和 `INDOOR_CHECK_INTERVAL`（1 秒），避免每 tick 多次完整 `IsUnderCover`；本地玩家使用缓存，远程玩家仍直接检测（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **TraceParam 与 array 复用** - `RaycastHasRoof`、`IsHorizontallyEnclosed` 使用成员 `TraceParam` 复用；`GetTerrainDensity` 复用 `m_pTraceParamGround`；`m_pCachedBuildings` 仅在 null 时 new，否则 Clear（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)、[SCR_TerrainDetection.c](scripts/Game/Components/Stamina/SCR_TerrainDetection.c)）
+- **结果结构体复用** - `SpeedCalculationResult`、`BaseDrainRateResult`、`GradeCalculationResult`、`WetWeightUpdateResult` 改为静态成员复用，减少堆分配（[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_SwimmingState.c](scripts/Game/Components/Stamina/SCR_SwimmingState.c)）
+- **GetVelocity 与 FindComponent 缓存** - `UpdateSpeedBasedOnStamina` 中复用 `velocity`，避免重复 `GetVelocity()`；新增 `m_pCachedInventoryComponent` 与 `m_pCachedInventoryManager` 缓存（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_EncumbranceCache.c](scripts/Game/Components/Stamina/SCR_EncumbranceCache.c)）
+- **MonitorStamina 间隔可配置** - 新增 `STAMINA_MONITOR_INTERVAL_MS = 50`，平衡性能与原生系统拦截；可调回 16ms 匹配 60Hz 服务器（[SCR_StaminaOverride.c](scripts/Game/Components/Stamina/SCR_StaminaOverride.c)）
+- **EncumbranceCache 降频** - 新增 `ENCUMBRANCE_CHECK_INTERVAL = 0.2` 秒，减少 `GetTotalWeightOfAllStorages` 调用频率（[SCR_EncumbranceCache.c](scripts/Game/Components/Stamina/SCR_EncumbranceCache.c)）
+- **调试模式地形 ForceUpdate 节流** - `FormatTerrainInfo` 中 `ForceUpdate` 每 0.5 秒调用一次，降低调试开销（[SCR_DebugDisplay.c](scripts/Game/Components/Stamina/SCR_DebugDisplay.c)）
+
+### 🔁 变更
+
+- **体力系统与环境因子管理优化** - 优化体力系统与环境因子的协作逻辑，提升整体运行效率
+- **时间计算逻辑优化** - 改进体力系统的时间管理与冷却逻辑，修正时间步进与累计计算
+- **调试功能与日志输出增强** - 增强调试功能与体力系统日志输出，统一调试信息前缀与输出格式
+- **降雨强度阈值** - 更新降雨强度阈值与相关注释
+
+### 🔸 包含的提交（3.14.0，自 2201d95b 至 HEAD，含 2201d95b）
+
+- 211059f chore: bump version to 3.14.0
+- d7e27c0 feat: 优化体力系统与环境因子管理
+- 0a4b15e refactor: 优化体力系统时间计算逻辑
+- c852b1c feat: 改进体力系统的时间管理与冷却逻辑
+- 0e0783c refactor: 更新降雨强度阈值与相关注释
+- 30e5080 refactor: 统一调试信息前缀与输出格式
+- cd68714 feat: 增强调试功能与体力系统日志输出
+- 2201d95 feat: 完全整合AI与玩家的体力系统
+
+---
+
 ## [3.13.2] - 2026-02-27
 
 ### ✅ 新增
