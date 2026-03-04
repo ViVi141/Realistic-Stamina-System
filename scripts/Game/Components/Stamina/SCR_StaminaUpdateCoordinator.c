@@ -122,6 +122,7 @@ class StaminaUpdateCoordinator
     // @param slopeSpeedTransition 坡度速度过渡模块（可选，用于 5 秒平滑，避免骤降感）
     // @return 最终速度倍数
     // 新增：基于输入计算最终速度倍数（供服务器权威使用）
+    // @param sprintStartTime 本次冲刺开始时间（秒），-1 表示未在冲刺；服务器端由 controller.GetSprintStartTime() 传入
     static float CalculateFinalSpeedMultiplierFromInputs(
         float staminaPercent,
         float encumbranceSpeedPenalty,
@@ -130,7 +131,8 @@ class StaminaUpdateCoordinator
         bool isExhausted,
         bool canSprint,
         float currentSpeed,
-        float slopeAngleDegrees)
+        float slopeAngleDegrees,
+        float sprintStartTime = -1.0)
     {
         // 与 UpdateSpeed 中相同的决策逻辑，但使用传入参数（无 controller）
         if (isExhausted || !canSprint)
@@ -162,7 +164,9 @@ class StaminaUpdateCoordinator
             isExhausted,
             canSprint,
             staminaPercent,
-            currentSpeed);
+            currentSpeed,
+            currentWorldTime,
+            sprintStartTime);
 
         return finalSpeedMultiplier;
     }
@@ -178,6 +182,13 @@ class StaminaUpdateCoordinator
     {
         if (!controller)
             return 1.0;
+        
+        // 室内楼梯：室内且原始坡度>0 时减轻负重对速度的惩罚（不改变室内0坡度逻辑）
+        float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller);
+        IEntity ownerForStairs = controller.GetOwner();
+        bool isIndoorStairs = (environmentFactor && ownerForStairs && environmentFactor.IsIndoorForEntity(ownerForStairs) && rawSlopeAngle > 0.0);
+        if (isIndoorStairs)
+            encumbranceSpeedPenalty = encumbranceSpeedPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
         
         // 检查是否可以Sprint
         bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
@@ -215,6 +226,9 @@ class StaminaUpdateCoordinator
             speedScaleFactor = slopeSpeedTransition.UpdateAndGet(currentWorldTime, speedScaleFactor);
         runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
         
+        // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
+        float sprintStartTime = controller.GetSprintStartTime();
+        
         // 计算最终速度倍数
         float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
             runBaseSpeedMultiplier,
@@ -224,7 +238,9 @@ class StaminaUpdateCoordinator
             isExhausted,
             canSprint,
             staminaPercent,
-            currentSpeed);
+            currentSpeed,
+            currentWorldTime,
+            sprintStartTime);
         
         // 应用速度倍数
         controller.OverrideMaxSpeed(finalSpeedMultiplier);

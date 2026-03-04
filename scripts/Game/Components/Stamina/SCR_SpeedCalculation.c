@@ -56,6 +56,8 @@ class SpeedCalculator
     // @param canSprint 是否可以Sprint
     // @param staminaPercent 当前体力百分比
     // @param currentSpeed 当前速度 (m/s)
+    // @param currentWorldTime 当前世界时间（秒），用于战术冲刺爆发期判断，-1 表示不参与
+    // @param sprintStartTime 本次冲刺开始时间（秒），-1 表示未在冲刺
     // @return 最终速度倍数
     static float CalculateFinalSpeedMultiplier(
         float runBaseSpeedMultiplier,
@@ -65,7 +67,9 @@ class SpeedCalculator
         bool isExhausted,
         bool canSprint,
         float staminaPercent,
-        float currentSpeed = 0.0)
+        float currentSpeed = 0.0,
+        float currentWorldTime = -1.0,
+        float sprintStartTime = -1.0)
     {
         // 如果精疲力尽，禁用Sprint
         if (isExhausted || !canSprint)
@@ -90,6 +94,27 @@ class SpeedCalculator
             encumbrancePenalty = encumbrancePenalty * 1.5;
         float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
+        
+        // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
+        if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
+        {
+            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
+            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float elapsed = currentWorldTime - sprintStartTime;
+            if (burstDuration > 0.0 && elapsed <= burstDuration)
+            {
+                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                encumbrancePenalty = encumbrancePenalty * burstFactor;
+            }
+            else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
+            {
+                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float t = (elapsed - burstDuration) / bufferDuration;
+                t = Math.Clamp(t, 0.0, 1.0);
+                float blendFactor = burstFactor + (1.0 - burstFactor) * t;
+                encumbrancePenalty = encumbrancePenalty * blendFactor;
+            }
+        }
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
@@ -126,6 +151,37 @@ class SpeedCalculator
         }
         
         return finalSpeedMultiplier;
+    }
+    
+    // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
+    // @param controller 角色控制器组件
+    // @return 坡度角度（度）
+    static float GetRawSlopeAngle(SCR_CharacterControllerComponent controller)
+    {
+        if (!controller)
+            return 0.0;
+        float slopeAngleDegrees = 0.0;
+        CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
+        if (animComponent)
+        {
+            CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
+            if (handler)
+            {
+                CharacterCommandMove moveCmd = handler.GetCommandMove();
+                if (moveCmd)
+                {
+                    slopeAngleDegrees = moveCmd.GetMovementSlopeAngle();
+                    float inputAngle = 0.0;
+                    if (moveCmd.GetCurrentInputAngle(inputAngle))
+                    {
+                        if (Math.AbsFloat(inputAngle) > 90.0)
+                            slopeAngleDegrees = -slopeAngleDegrees;
+                    }
+                }
+            }
+        }
+        slopeAngleDegrees = Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
+        return slopeAngleDegrees;
     }
     
     // 获取坡度角度（修复了背对坡倒车不消耗体力的漏洞）

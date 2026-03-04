@@ -88,6 +88,11 @@ modded class SCR_CharacterControllerComponent
     // ==================== 游泳状态缓存（用于调试显示）====================
     protected CompartmentAccessComponent m_pCompartmentAccess;
     protected CharacterAnimationComponent m_pAnimComponent;
+
+    // ==================== 战术冲刺爆发（短时全速）====================
+    protected float m_fSprintStartTime = -1.0;       // 本次冲刺开始时间（世界时间秒），-1 表示未在爆发/已进入平稳期
+    protected bool m_bLastWasSprinting = false;       // 上一帧是否处于 Sprint 状态，用于检测进入/离开冲刺
+    protected float m_fSprintCooldownUntil = -1.0;    // 冷却结束时间（世界时间秒），此时间前再次冲刺不触发爆发，直接平稳期
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -625,6 +630,12 @@ modded class SCR_CharacterControllerComponent
         return SPEED_UPDATE_INTERVAL_AI_MS;
     }
 
+    // 获取本次冲刺开始时间（世界时间秒）；供战术冲刺爆发期判断使用
+    float GetSprintStartTime()
+    {
+        return m_fSprintStartTime;
+    }
+
     // 根据体力更新速度（玩家每 50ms，AI 每 100ms）
     void UpdateSpeedBasedOnStamina()
     {
@@ -781,6 +792,33 @@ modded class SCR_CharacterControllerComponent
         
         // 确保currentSpeed不超过物理上限
         currentSpeed = Math.Min(currentSpeed, 7.0);
+        
+        // ==================== 战术冲刺爆发与冷却 ====================
+        float currentTimeSprint = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        bool isSprintingNow = IsSprinting();
+        int phaseNow = GetCurrentMovementPhase();
+        bool isSprintActive = isSprintingNow || (phaseNow == 3);
+        if (isSprintActive && !m_bLastWasSprinting)
+        {
+            if (currentTimeSprint >= m_fSprintCooldownUntil)
+                m_fSprintStartTime = currentTimeSprint;
+        }
+        else if (m_bLastWasSprinting && !isSprintActive)
+        {
+            m_fSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+        }
+        if (isSprintActive && m_fSprintStartTime >= 0.0)
+        {
+            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
+            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float elapsed = currentTimeSprint - m_fSprintStartTime;
+            if (burstDuration > 0.0 && bufferDuration >= 0.0 && elapsed >= burstDuration + bufferDuration)
+            {
+                m_fSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+                m_fSprintStartTime = -1.0;
+            }
+        }
+        m_bLastWasSprinting = isSprintActive;
         
         // ==================== 速度计算和更新（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 更新速度
@@ -1617,7 +1655,14 @@ modded class SCR_CharacterControllerComponent
             // 获取坡度角度（服务器端计算）
             float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor);
 
-            // 使用权威计算函数生成最终速度倍数
+            // 室内楼梯：与 UpdateSpeed 一致，减轻负重对速度的惩罚
+            float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this);
+            IEntity ownerEnt = GetOwner();
+            bool isIndoorStairsServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.IsIndoorForEntity(ownerEnt) && rawSlopeServer > 0.0);
+            if (isIndoorStairsServer)
+                encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
+
+            // 使用权威计算函数生成最终速度倍数（传入冲刺开始时间以保持战术爆发期一致）
             float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
                 clampedStamina,
                 encPenalty,
@@ -1626,7 +1671,8 @@ modded class SCR_CharacterControllerComponent
                 isExhausted,
                 canSprint,
                 currentSpeed,
-                slopeAngleDegrees);
+                slopeAngleDegrees,
+                GetSprintStartTime());
 
             validated = Math.Clamp(validated, 0.15, 1.0);
 

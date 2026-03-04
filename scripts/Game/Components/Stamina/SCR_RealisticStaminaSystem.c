@@ -857,11 +857,10 @@ class RealisticStaminaSpeedSystem
             
             if (absGradePercent <= 15.0)
             {
-                // 缓坡（0% 到 -15%）：减少消耗
-                // 每1%减少3%消耗
+                // 缓坡（0% 到 -15%）：减少消耗（玩家反馈：下坡更省力）
                 kGrade = 1.0 + (gradePercent * GRADE_DOWNHILL_COEFF);
-                // 限制下坡修正，避免消耗变为负数
-                kGrade = Math.Max(kGrade, 0.5); // 最多减少50%消耗
+                // 限制下坡修正，允许最多减少60%消耗（原50%放宽至40%下限）
+                kGrade = Math.Max(kGrade, 0.4);
             }
             else
             {
@@ -1024,6 +1023,21 @@ class RealisticStaminaSpeedSystem
         float toblerMultiplier = W_kmh / TOBLER_W_AT_FLAT_KMH;
         // 设置下限，避免陡坡时速度过慢
         toblerMultiplier = Math.Max(toblerMultiplier, 0.15);
+
+        // 玩家反馈：上坡再快一点、下坡更快（重力主导）
+        if (slopeAngleDegrees > 0.0)
+        {
+            toblerMultiplier = toblerMultiplier * StaminaConstants.UPHILL_SPEED_BOOST;
+        }
+        else if (slopeAngleDegrees < 0.0)
+        {
+            toblerMultiplier = toblerMultiplier * StaminaConstants.DOWNHILL_SPEED_BOOST;
+            toblerMultiplier = Math.Min(toblerMultiplier, StaminaConstants.DOWNHILL_SPEED_MAX_MULTIPLIER);
+        }
+
+        // 坡度对速度的限制再减少 30%：倍率向 1.0 拉近 30%，使上坡更快、下坡增益略收
+        toblerMultiplier = 1.0 + 0.7 * (toblerMultiplier - 1.0);
+        toblerMultiplier = Math.Clamp(toblerMultiplier, 0.15, StaminaConstants.DOWNHILL_SPEED_MAX_MULTIPLIER);
 
         return baseTargetSpeed * toblerMultiplier;
     }

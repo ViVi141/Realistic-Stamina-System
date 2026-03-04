@@ -13,6 +13,8 @@ class SlopeSpeedTransition
     // ==================== 常量 ====================
     protected const float TRANSITION_DURATION = 5.0;   // 过渡持续时间（秒）
     protected const float CHANGE_THRESHOLD = 0.02;     // 变化阈值，低于此值不触发过渡
+    // 立即提速阈值：仅当目标比当前平滑值高出至少此量时才取消平滑、立即提速，避免上坡中细微缓坡造成频繁加速
+    protected const float SNAP_UP_THRESHOLD = 0.08;
 
     // ==================== 公共方法 ====================
 
@@ -32,6 +34,16 @@ class SlopeSpeedTransition
     float UpdateAndGet(float currentTime, float targetScaleFactor)
     {
         targetScaleFactor = Math.Clamp(targetScaleFactor, 0.15, 1.0);
+
+        // 仅当目标速度比当前平滑值「明显」更大（如从陡坡到平地，差值 ≥ SNAP_UP_THRESHOLD）时才取消平滑、立即提速，避免上坡中细微缓坡造成频繁加速
+        float gain = targetScaleFactor - m_fCurrentSmoothedScale;
+        if (gain >= SNAP_UP_THRESHOLD)
+        {
+            m_fCurrentSmoothedScale = targetScaleFactor;
+            m_fTransitionTargetValue = targetScaleFactor;
+            m_fTransitionStartTime = -1.0;
+            return m_fCurrentSmoothedScale;
+        }
 
         // 目标与当前过渡目标差异较大时，重新开始过渡
         bool targetChangedSignificantly = Math.AbsFloat(targetScaleFactor - m_fTransitionTargetValue) >= CHANGE_THRESHOLD;

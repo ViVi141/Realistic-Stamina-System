@@ -450,6 +450,17 @@ class StaminaConstants
     static const float SPRINT_SPEED_BOOST              = 0.30; // [SOFT fallback] Sprint速度比Run快30%
     static const float SPRINT_MAX_SPEED_MULTIPLIER     = 1.0;  // [HARD] 100%游戏最大速度上限
     static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5;  // [SOFT fallback] Sprint消耗是Run的3.5×
+    // 战术冲刺爆发时长：Sprint 前 N 秒内减轻负重对速度的惩罚，实现短时全速爆发体感
+    static const float TACTICAL_SPRINT_BURST_DURATION = 8.0;   // 秒
+    static const float TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0; // 爆发结束后 5 秒缓冲区，负重惩罚从爆发系数线性过渡到 1.0，再进入平稳期
+    static const float TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 0.2; // 爆发期内负重惩罚乘数（0.2 = 明显拉开与平稳期差距，29kg 下爆发更快）
+    static const float TACTICAL_SPRINT_COOLDOWN = 15.0;        // 爆发+缓冲区结束或松开冲刺后冷却秒数，期间再次冲刺直接进入平稳期，防止利用机制
+    // 室内楼梯：室内且原始坡度>0 时减轻负重对速度的惩罚（楼梯判定仅用于此，不改变室内0坡度逻辑）
+    static const float INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR = 0.4; // 楼梯上负重速度惩罚乘数（0.4 = 降至40%）
+    // 上坡/下坡速度倍率（在 Tobler 结果上再乘，玩家反馈：上坡再快一点、下坡更快更省力）
+    static const float UPHILL_SPEED_BOOST = 1.15;   // 上坡目标速度倍率（1.15 = 提高约15%）
+    static const float DOWNHILL_SPEED_BOOST = 1.15; // 下坡目标速度倍率
+    static const float DOWNHILL_SPEED_MAX_MULTIPLIER = 1.25; // 下坡速度倍率上限（对应约6.5 m/s，避免数值爆炸）
     
     // ==================== [HARD] Pandolf 能量消耗模型系数（Pandolf et al., 1977 原始值）====================
     // 以下系数均来自 Pandolf et al., 1977 论文的实验测量结果，属于 HARD CONFIG。
@@ -949,6 +960,36 @@ class StaminaConstants
                 return params.sprint_speed_boost;
         }
         return 0.30; // 默认值（30%）
+    }
+
+    // 获取战术冲刺爆发时长（秒）；爆发期内负重对速度惩罚减轻
+    static float GetTacticalSprintBurstDuration()
+    {
+        return TACTICAL_SPRINT_BURST_DURATION;
+    }
+
+    // 获取战术冲刺爆发后缓冲区时长（秒）；8s 后这 5s 内负重惩罚从爆发系数线性过渡到 1.0
+    static float GetTacticalSprintBurstBufferDuration()
+    {
+        return TACTICAL_SPRINT_BURST_BUFFER_DURATION;
+    }
+
+    // 获取战术冲刺爆发期内负重惩罚乘数（0~1，越小负重影响越弱）
+    static float GetTacticalSprintBurstEncumbranceFactor()
+    {
+        return TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR;
+    }
+
+    // 获取战术冲刺冷却时长（秒）；爆发结束或松开冲刺后在此时间内再次冲刺不触发爆发，直接平稳期
+    static float GetTacticalSprintCooldown()
+    {
+        return TACTICAL_SPRINT_COOLDOWN;
+    }
+
+    // 获取室内楼梯下负重速度惩罚乘数（0~1；判定为室内楼梯时 encumbranceSpeedPenalty *= 此值）
+    static float GetIndoorStairsEncumbranceSpeedFactor()
+    {
+        return INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR;
     }
 
     // ==================== 边际效应参数配置方法 ====================
