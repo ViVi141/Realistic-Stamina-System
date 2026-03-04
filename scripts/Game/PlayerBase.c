@@ -636,6 +636,12 @@ modded class SCR_CharacterControllerComponent
         return m_fSprintStartTime;
     }
 
+    // 获取冲刺冷却结束时间（世界时间秒）；-1 表示无冷却。供屏幕效果等判断「冷却即将完成」使用
+    float GetSprintCooldownUntil()
+    {
+        return m_fSprintCooldownUntil;
+    }
+
     // 根据体力更新速度（玩家每 50ms，AI 每 100ms）
     void UpdateSpeedBasedOnStamina()
     {
