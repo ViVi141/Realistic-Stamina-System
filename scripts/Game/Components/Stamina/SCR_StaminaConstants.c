@@ -462,6 +462,37 @@ class StaminaConstants
     static const float DOWNHILL_SPEED_BOOST = 1.15; // 下坡目标速度倍率
     static const float DOWNHILL_SPEED_MAX_MULTIPLIER = 1.25; // 下坡速度倍率上限（对应约6.5 m/s，避免数值爆炸）
     
+    // ==================== 镜头惯性与头部物理（Camera Inertia & Head Bob）====================
+    // 通过镜头表现“负重感”和“疲劳感”，不依赖 UI。仅在第一人称下生效。
+    // 起步/急停惯性
+    static const float CAM_INERTIA_START_LAG_DURATION = 0.25;   // 起步滞后时长（秒），重装时按下 W 后镜头前倾+延迟感
+    static const float CAM_INERTIA_START_TILT_DEG = 2.0;         // 起步时镜头前倾角度（度）
+    static const float CAM_INERTIA_DECEL_OVERSHOOT_DURATION = 0.4; // 急停“前冲”持续时间（秒）
+    static const float CAM_INERTIA_DECEL_OVERSHOOT_FORWARD_M = 0.06; // 急停时镜头向前多冲出的距离（米），最大负载时达到此值
+    static const float CAM_INERTIA_OVERSHOOT_LOAD_MIN_KG = 10.0;  // 急停过冲曲线：低于此负重（kg）几乎无过冲
+    static const float CAM_INERTIA_OVERSHOOT_LOAD_MAX_KG = 40.0;  // 急停过冲曲线：达到此负重时过冲为最大值
+    static const float CAM_INERTIA_OVERSHOOT_EXPONENT = 1.5;       // 过冲随负重的非线性指数（>1 重装更敏感）
+    static const float CAM_INERTIA_ENCUMBRANCE_THRESHOLD = 0.25; // 负重占比超过此值（相对 BODY_TOLERANCE）才开始明显惯性
+    // 步伐垂直颠簸（与负重、坡度关联）
+    static const float CAM_BOB_VERTICAL_AMPLITUDE_BASE = 0.008;  // 基础垂直颠簸幅度（米），负重/疲劳时加深
+    static const float CAM_BOB_VERTICAL_FREQ_BASE = 1.8;        // 基础步频（Hz），负重时变沉（频率略降）
+    static const float CAM_BOB_ENCUMBRANCE_SCALE = 2.0;         // 负重对颠簸幅度的缩放（0~1 负重 * scale 加到幅度）
+    static const float CAM_BOB_STAMINA_SCALE = 0.5;             // 低体力时额外加深颠簸（(1-stamina)*scale）
+    // 上坡时左右摇摆（保持平衡感）
+    static const float CAM_BOB_UPHILL_SWAY_AMPLITUDE = 0.012;   // 上坡左右摇摆幅度（米）
+    static const float CAM_BOB_UPHILL_SWAY_FREQ = 0.6;           // 低频（Hz）
+    static const float CAM_BOB_UPHILL_SLOPE_DEG_MIN = 8.0;      // 坡度超过此度数才启用上坡摇摆（度）
+    // 调试倍率：设为 3.0～5.0 可明显看出镜头惯性/颠簸是否生效，确认后改回 1.0
+    static const float CAM_DEBUG_STRENGTH = 1;
+    // 冲刺时视野：与战术爆发联动（Burst +5° / Cruise +2°），疲劳/Limp 时收窄（-2°）
+    static const float CAM_SPRINT_FOV_BURST_DEG = 5.0;   // 爆发期 (0~8s) FOV 加宽
+    static const float CAM_SPRINT_FOV_CRUISE_DEG = 3.0;   // 稳定期/巡航期 (8s 后) FOV 轻度加宽
+    static const float CAM_SPRINT_FOV_LIMP_DEG = -2.0;    // 疲劳/Limp (体力<阈值) FOV 略收窄
+    static const float CAM_SPRINT_FOV_LIMP_STAMINA_THRESHOLD = 0.2; // 低于此体力视为 Limp，应用 FOV 收窄
+    static const float CAM_SPRINT_FOV_BONUS_DEG = 5.0;    // [保留] 兼容旧逻辑，实际以 BURST/CRUISE/LIMP 为准
+    static const float CAM_SPRINT_FOV_BLEND_UP_SEC = 0.2;   // 进入冲刺时 FOV 过渡时长（秒）
+    static const float CAM_SPRINT_FOV_BLEND_DOWN_SEC = 0.25; // 退出冲刺时 FOV 过渡时长（秒）
+    static const float CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC = 12.0; // FOV 加成变化速率上限（度/秒），保证全链路无突变
     // ==================== [HARD] Pandolf 能量消耗模型系数（Pandolf et al., 1977 原始值）====================
     // 以下系数均来自 Pandolf et al., 1977 论文的实验测量结果，属于 HARD CONFIG。
     // Python 数字孪生必须与这些值完全同步，否则优化器输出与游戏实际行为将产生系统性偏差。
@@ -991,6 +1022,31 @@ class StaminaConstants
     {
         return INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR;
     }
+
+    static float GetCamInertiaStartLagDuration() { return CAM_INERTIA_START_LAG_DURATION; }
+    static float GetCamInertiaStartTiltDeg() { return CAM_INERTIA_START_TILT_DEG; }
+    static float GetCamInertiaDecelOvershootDuration() { return CAM_INERTIA_DECEL_OVERSHOOT_DURATION; }
+    static float GetCamInertiaDecelOvershootForwardM() { return CAM_INERTIA_DECEL_OVERSHOOT_FORWARD_M; }
+    static float GetCamInertiaOvershootLoadMinKg() { return CAM_INERTIA_OVERSHOOT_LOAD_MIN_KG; }
+    static float GetCamInertiaOvershootLoadMaxKg() { return CAM_INERTIA_OVERSHOOT_LOAD_MAX_KG; }
+    static float GetCamInertiaOvershootExponent() { return CAM_INERTIA_OVERSHOOT_EXPONENT; }
+    static float GetCamInertiaEncumbranceThreshold() { return CAM_INERTIA_ENCUMBRANCE_THRESHOLD; }
+    static float GetCamSprintFovBurstDeg() { return CAM_SPRINT_FOV_BURST_DEG; }
+    static float GetCamSprintFovCruiseDeg() { return CAM_SPRINT_FOV_CRUISE_DEG; }
+    static float GetCamSprintFovLimpDeg() { return CAM_SPRINT_FOV_LIMP_DEG; }
+    static float GetCamSprintFovLimpStaminaThreshold() { return CAM_SPRINT_FOV_LIMP_STAMINA_THRESHOLD; }
+    static float GetCamBobVerticalAmplitudeBase() { return CAM_BOB_VERTICAL_AMPLITUDE_BASE; }
+    static float GetCamBobVerticalFreqBase() { return CAM_BOB_VERTICAL_FREQ_BASE; }
+    static float GetCamBobEncumbranceScale() { return CAM_BOB_ENCUMBRANCE_SCALE; }
+    static float GetCamBobStaminaScale() { return CAM_BOB_STAMINA_SCALE; }
+    static float GetCamBobUphillSwayAmplitude() { return CAM_BOB_UPHILL_SWAY_AMPLITUDE; }
+    static float GetCamBobUphillSwayFreq() { return CAM_BOB_UPHILL_SWAY_FREQ; }
+    static float GetCamBobUphillSlopeDegMin() { return CAM_BOB_UPHILL_SLOPE_DEG_MIN; }
+    static float GetCamDebugStrength() { return CAM_DEBUG_STRENGTH; }
+    static float GetCamSprintFovBonusDeg() { return CAM_SPRINT_FOV_BONUS_DEG; }
+    static float GetCamSprintFovBlendUpSec() { return CAM_SPRINT_FOV_BLEND_UP_SEC; }
+    static float GetCamSprintFovBlendDownSec() { return CAM_SPRINT_FOV_BLEND_DOWN_SEC; }
+    static float GetCamSprintFovMaxRateDegPerSec() { return CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC; }
 
     // ==================== 边际效应参数配置方法 ====================
 
