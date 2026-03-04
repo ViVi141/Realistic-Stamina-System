@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.12.0
+# Realistic Stamina System (RSS) v3.14.1
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.12.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.14.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -161,6 +161,27 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*.json       # 优化后的配置文件（3 个预设）
     └── README.md                         # Tools 工具集文档
 ```
+
+## v3.14.1 版本更新 / v3.14.1 Updates
+
+**2026-03-05**
+
+### ✅ 新增
+
+- **战术冲刺爆发与冷却** - Sprint 前 8 秒爆发期内负重对速度惩罚降至 20%；8～13 秒缓冲区内线性过渡到正常惩罚；爆发结束或松开冲刺后 15 秒冷却内再次冲刺不触发爆发。
+- **室内楼梯负重速度减免** - 室内且原始坡度 &gt; 0 时判定为楼梯，负重速度惩罚乘 0.4；新增 `GetRawSlopeAngle` 供室内楼梯判定使用。
+- **坡度速度过渡立即提速** - 目标速度比当前平滑值高出 ≥ 0.08 时取消 5 秒平滑、立即提速，避免上坡中细微缓坡频繁加速。
+- **镜头惯性与头部物理** - 第一人称下：起步滞后/前倾、急停前冲（随负重非线性）、步伐垂直颠簸与上坡左右摇摆；冲刺 FOV 与战术爆发联动（Burst +5° / Cruise +3° / Limp -2°）。见 [CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)。
+
+### 🔁 变更
+
+- **坡度与消耗/速度** - 缓坡下坡消耗最多减少 60%（原 50%）；Tobler 坡度速度上坡再乘 1.15、下坡再乘 1.15 且上限 1.25，坡度对速度限制再向 1.0 拉近 30%。
+
+### 📚 文档
+
+- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) 补充战术冲刺、室内楼梯、坡度过渡、镜头与头部物理等小节与常量表。
+
+---
 
 ## v3.12.0 版本更新 / v3.12.0 Updates
 

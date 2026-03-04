@@ -6,6 +6,30 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.14.1] - 2026-03-05
+
+### ✅ 新增
+
+- **战术冲刺爆发与冷却** - Sprint 前 8 秒为爆发期，爆发期内负重对速度的惩罚乘数降至 0.2；8～13 秒为缓冲区，负重惩罚从 0.2 线性过渡到 1.0；爆发+缓冲结束或松开冲刺后进入 15 秒冷却，冷却内再次冲刺不触发爆发、直接按稳定期计算。`CalculateFinalSpeedMultiplier` / `CalculateFinalSpeedMultiplierFromInputs` 新增 `currentWorldTime`、`sprintStartTime` 参数；PlayerBase 新增 `m_fSprintStartTime`、`m_bLastWasSprinting`、`m_fSprintCooldownUntil` 与 `GetSprintStartTime()`（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **室内楼梯负重速度减免** - 室内且原始坡度 &gt; 0 时判定为室内楼梯，将用于速度的负重惩罚乘以 `INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR`（0.4）。新增 `SpeedCalculator.GetRawSlopeAngle(controller)`，返回不做室内归零的坡度角度；UpdateSpeed 与服务器 RPC 校验中均应用楼梯判定与惩罚减免（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **坡度速度过渡立即提速** - `SlopeSpeedTransition` 新增 `SNAP_UP_THRESHOLD`（0.08）：仅当目标速度比当前平滑值高出至少此量时才取消平滑、立即提速，避免上坡中细微缓坡造成频繁加速；减速仍使用 5 秒平滑（[SCR_SlopeSpeedTransition.c](scripts/Game/Components/Stamina/SCR_SlopeSpeedTransition.c)）
+- **镜头惯性与头部物理（第一人称）** - 新增 modded `CharacterCamera1stPerson`：在 `OnUpdate` 中原生 head bob 之后对 `m_CameraTM` 施加起步滞后/前倾、急停前冲（随负重非线性）、步伐垂直颠簸（幅度与负重/体力关联）、上坡左右摇摆（坡度 ≥ 8°）；冲刺 FOV 与战术爆发联动（Burst +5° / Cruise +3° / Limp -2°），带平滑与速率上限；低体力落步时调用 `OnBreathFootDown()` 占位。常量与 getter 集中于 SCR_StaminaConstants（[CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+
+### 🔁 变更
+
+- **坡度与消耗/速度** - 下坡消耗：缓坡（0%～-15%）下允许最多减少 60% 消耗（原 50% 放宽至 40% 下限）。坡度速度（Tobler 结果）：上坡再乘 `UPHILL_SPEED_BOOST`（1.15），下坡再乘 `DOWNHILL_SPEED_BOOST`（1.15）并限制上限 `DOWNHILL_SPEED_MAX_MULTIPLIER`（1.25）；坡度对速度的限制再减少 30%（倍率向 1.0 拉近 30%）（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+
+### 📚 文档
+
+- **体力系统计算逻辑文档** - 架构补充「镜头惯性与头部物理」模块；坡度速度公式补充上/下坡倍率与 30% 拉近；新增 §3.17 坡度速度过渡（含 SNAP_UP_THRESHOLD）、§3.18 战术冲刺（爆发/缓冲/冷却）、§3.19 室内楼梯与负重减免、§3.20 镜头惯性与头部物理；常量表新增战术冲刺、镜头与头部物理、坡度速度过渡等并重排小节编号（[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)）
+
+### 🔸 包含的提交（3.14.1，含 f3698b12 与 e27130f）
+
+- f3698b12 feat: 增强体力系统与坡度影响逻辑
+- e27130f feat: 增加镜头惯性与头部物理效果
+
+---
+
 ## [3.14.0] - 2026-02-28
 
 ### ✅ 新增

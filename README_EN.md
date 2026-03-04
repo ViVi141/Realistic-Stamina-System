@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.12.0
+# Realistic Stamina System (RSS) v3.14.1
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.12.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.14.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
@@ -32,6 +32,25 @@ It dynamically adjusts movement speed based on stamina, encumbrance, slope, envi
 For the full, detailed (and frequently updated) explanation, see:
 - **Changelog**: `CHANGELOG.md`
 - **Chinese full README**: `README_CN.md`
+
+## v3.14.1 Updates
+
+**2026-03-05**
+
+### ✅ Added
+
+- **Tactical sprint burst and cooldown** - First 8 s of sprint: encumbrance speed penalty ×0.2; 8–13 s buffer: linear transition to full penalty; 15 s cooldown after burst end or release, during which re-sprint does not trigger burst.
+- **Indoor stairs encumbrance speed reduction** - When indoor and raw slope &gt; 0, encumbrance speed penalty ×0.4; new `GetRawSlopeAngle` for stairs detection.
+- **Slope speed transition snap-up** - If target speed exceeds current smoothed value by ≥0.08, skip 5 s transition and snap to target (avoids frequent micro-acceleration on gentle slopes while climbing).
+- **Camera inertia and head bob (first-person)** - Start lag/tilt, decel overshoot (nonlinear with load), vertical step bob and uphill sway; sprint FOV tied to tactical burst (Burst +5° / Cruise +3° / Limp −2°). See [CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c), [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c).
+
+### 🔁 Changed
+
+- **Slope and drain/speed** - Gentle downhill drain reduction cap 60% (was 50%); Tobler slope speed: uphill ×1.15, downhill ×1.15 with max 1.25, then 30% pull toward 1.0.
+
+### 📚 Docs
+
+- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) updated with tactical sprint, indoor stairs, slope transition, camera/head bob sections and constant tables.
 
 ## v3.12.0 Updates
 
