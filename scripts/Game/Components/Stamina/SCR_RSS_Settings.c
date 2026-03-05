@@ -349,9 +349,9 @@ class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
     static const int PARAMS_ARRAY_SIZE = 45;
-    static const int SETTINGS_FLOATS_SIZE = 15;
+    static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 4;
-    static const int SETTINGS_BOOLS_SIZE = 13;
+    static const int SETTINGS_BOOLS_SIZE = 14;
 
     // ==================== 基础配置 ====================
     [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
@@ -654,6 +654,9 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_bUseEngineTimezone = true;
         m_fLongitude = 0.0;
         m_fTimeZoneOffsetHours = 0.0;
+        m_fAltitudeMeters = 0.0;
+        m_bMapOverWater = false;
+        m_fFogDensity = 0.0;
     }
 
     // ==================== 调试配置 ====================
@@ -743,7 +746,16 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 
     [Attribute("0.0", UIWidgets.EditBox, "Time zone offset override (hours). Example: +8 for CST. Used when not using engine timezone. | 时区偏移覆盖（小时），例如 +8 表示东八区")]
     float m_fTimeZoneOffsetHours;
-    
+
+    [Attribute("0.0", UIWidgets.EditBox, "Universal temp: altitude (m). 0 = sea level. Used for lapse rate (-6.5°C/1000m). | 通用气温：海拔（米），0=海平面")]
+    float m_fAltitudeMeters;
+
+    [Attribute("false", UIWidgets.CheckBox, "Universal temp: map is ocean/island (reserved for ClimateType). | 通用气温：海洋/岛屿（预留）")]
+    bool m_bMapOverWater;
+
+    [Attribute("0.0", UIWidgets.EditBox, "Universal temp: fog/humidity (0~1). Dampens diurnal range. | 通用气温：雾/湿度(0~1)，压缩昼夜温差")]
+    float m_fFogDensity;
+
     // ==================== Custom 预设：高级系统 ====================
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Fatigue accumulation. | 疲劳积累")]
     bool m_bEnableFatigueSystem;
@@ -916,6 +928,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outFloats.Insert(s.m_fLECoef);
         outFloats.Insert(s.m_fLongitude);
         outFloats.Insert(s.m_fTimeZoneOffsetHours);
+        outFloats.Insert(s.m_fAltitudeMeters);
+        outFloats.Insert(s.m_fFogDensity);
 
         outInts.Insert(s.m_iDebugUpdateInterval);
         outInts.Insert(s.m_iHintUpdateInterval);
@@ -932,6 +946,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outBools.Insert(s.m_bEnableMudPenalty);
         outBools.Insert(s.m_bUseEngineTemperature);
         outBools.Insert(s.m_bUseEngineTimezone);
+        outBools.Insert(s.m_bMapOverWater);
         outBools.Insert(s.m_bEnableFatigueSystem);
         outBools.Insert(s.m_bEnableMetabolicAdaptation);
         outBools.Insert(s.m_bEnableIndoorDetection);
@@ -960,6 +975,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_fLECoef = floats[fi++];
             s.m_fLongitude = floats[fi++];
             s.m_fTimeZoneOffsetHours = floats[fi++];
+            s.m_fAltitudeMeters = floats[fi++];
+            s.m_fFogDensity = floats[fi++];
         }
 
         if (ints && ints.Count() >= SETTINGS_INTS_SIZE)
@@ -984,6 +1001,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bEnableMudPenalty = bools[bi++];
             s.m_bUseEngineTemperature = bools[bi++];
             s.m_bUseEngineTimezone = bools[bi++];
+            s.m_bMapOverWater = bools[bi++];
             s.m_bEnableFatigueSystem = bools[bi++];
             s.m_bEnableMetabolicAdaptation = bools[bi++];
             s.m_bEnableIndoorDetection = bools[bi++];

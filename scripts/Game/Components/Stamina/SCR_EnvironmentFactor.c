@@ -76,6 +76,10 @@ class EnvironmentFactor
     protected float m_fCloudBlockingCoeff = 0.7; // 云层遮挡短波的系数（经验）
     protected float m_fLECoef = 200.0; // 潜热系数（W/m2 每单位地表湿度）
 
+    // 通用气温模型参数（正弦波叠加，兼容各模组地图）
+    protected float m_fAltitudeMeters = 0.0; // 海拔（m），缺省 0
+    protected float m_fFogDensity = 0.0; // 雾/湿度 (0~1)，用于压缩昼夜温差，缺省 0
+
     // 时区/经度用于太阳时校正
     protected bool m_bUseEngineTimezone = true; // 是否优先使用引擎时区信息
     protected float m_fLongitude = 0.0; // 经度覆盖（度）
@@ -499,23 +503,23 @@ class EnvironmentFactor
                 m_fLastKnownSunsetHour = ss;
         }
 
-        // 若之前被标记为 pending，则在安全上下文中执行重算并清理标记
+        // 若之前被标记为 pending，则在安全上下文中执行重算并清理标记（使用通用气温模型）
         if (m_bPendingForceUpdate)
         {
-            if (m_bUseEngineTemperature && m_bUseEngineWeather && m_pCachedWeatherManager)
+            if (m_pCachedWeatherManager)
             {
-                float baseTemp = CalculateTemperatureFromAPI();
-                m_fCachedSurfaceTemperature = baseTemp;
+                float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+                int year, month, day;
+                m_pCachedWeatherManager.GetDate(year, month, day);
+                int n = DayOfYear(year, month, day);
+                float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+                float cloud = InferCloudFactor();
+                float rain = m_pCachedWeatherManager.GetRainIntensity();
+                float altM = GetCurrentAltitudeMeters(owner);
+                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                m_fCachedSurfaceTemperature = T;
                 m_fCachedTemperature = m_fCachedSurfaceTemperature;
             }
-            else
-            {
-                float baseTemp = CalculateEquilibriumTemperatureFromPhysics();
-                m_fCachedSurfaceTemperature = baseTemp;
-                m_fCachedTemperature = m_fCachedSurfaceTemperature;
-            }
-
-            // 清理标记
             m_bPendingForceUpdate = false;
 
             // 日志（使用临时变量以避免 inout 成员写入问题）
@@ -729,6 +733,63 @@ class EnvironmentFactor
         current_t -= (wind * 0.12);
 
         return current_t;
+    }
+
+    // 查询当前海拔（米）：有 owner 时用 SCR_TerrainHelper.GetTerrainY，否则用配置 m_fAltitudeMeters
+    protected float GetCurrentAltitudeMeters(IEntity owner)
+    {
+        if (owner)
+        {
+            World world = owner.GetWorld();
+            if (world)
+            {
+                vector pos = owner.GetOrigin();
+                return SCR_TerrainHelper.GetTerrainY(pos, world, false, null);
+            }
+        }
+        return m_fAltitudeMeters;
+    }
+
+    // 正弦波叠加气温模型：纯数学拟合，无辐射求解，极轻量且稳定
+    // T = T_纬度基准 + T_季节偏差 + T_昼夜波动 - T_海拔衰减 + T_天气修正
+    // 最热约 15:00、最冷约 04:00；阴天/雾压缩昼夜温差
+    protected float CalculateUniversalTemperature(float latitude, int dayOfYear, float hourOfDay, float altitudeMeters, float overcast, float rainIntensity, float fogDensity)
+    {
+        // 1) 纬度基准：赤道年均 27°C，极地 -15°C，Cos 曲线拟合
+        float latRad = latitude * Math.PI / 180.0;
+        float baseTemp = 27.0 - 42.0 * Math.Pow(Math.Sin(latRad), 2.0);
+
+        // 2) 季节修正：纬度越高冬夏温差越大；(day-15)/365*2PI，北半球 1 月最冷、7 月最热
+        float seasonRange = 2.0 + 20.0 * Math.AbsFloat(Math.Sin(latRad));
+        float yearPhase = ((float)(dayOfYear) - 15.0) / 365.0 * 2.0 * Math.PI;
+        float hemisphere;
+        if (latitude >= 0.0)
+            hemisphere = -1.0;
+        else
+            hemisphere = 1.0;
+        float seasonTemp = hemisphere * seasonRange * Math.Cos(yearPhase);
+
+        // 3) 昼夜温差：基础 10°C；云/雾阻尼后不低于 20% 幅度；最低 04:00、最高约 15:00
+        float dailyRange = 10.0;
+        float damping = 1.0 - (overcast * 0.5) - (fogDensity * 0.3);
+        float currentRange = dailyRange * Math.Max(0.2, damping);
+        float hourPhase = (hourOfDay - 9.5) / 24.0 * 2.0 * Math.PI;
+        float dailyTemp = (currentRange / 2.0) * Math.Sin(hourPhase);
+
+        // 4) 海拔：标准递减率 6.5°C/1000m
+        float altTemp = (altitudeMeters / 1000.0) * 6.5;
+
+        // 5) 即时天气：降雨蒸发冷却，仅当气温 >10°C 时显著，最多降 5°C
+        float currentBase = baseTemp + seasonTemp + dailyTemp - altTemp;
+        float rainCooling = 0.0;
+        if (currentBase > 10.0 && rainIntensity > 0.0)
+        {
+            rainCooling = rainIntensity * 5.0 * ((currentBase - 10.0) / 20.0);
+            if (rainCooling > 5.0)
+                rainCooling = 5.0;
+        }
+
+        return currentBase - rainCooling;
     }
 
     // ------------------- 太阳与辐照工具函数（P1） -------------------
@@ -1177,12 +1238,14 @@ class EnvironmentFactor
         // 5) 短波到达地表
         float SW_down = I0 * tau * (1.0 - cloudBlocking);
 
-        // 6) 长波下行（简化）
-        float T_atm = m_fCachedSurfaceTemperature + 2.0; // 大气温用近地温+偏移近似
-        float eps_atm = 0.78 + 0.14 * cloudFactor; // 大气发射率简单模型
+        // 6) 长波下行：天空有效温度由季节基准气温与云量决定，不依赖地表温度，避免热失控
+        float seasonalBaseTemp = EstimateSeasonalAvgTemp(lat, n);
+        float skyTempDepression = (1.0 - cloudFactor) * 12.0;
+        float T_atm = seasonalBaseTemp - skyTempDepression;
+        float eps_atm = 0.75 + 0.15 * cloudFactor;
         float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
 
-        // 7) 地表发射（近似以空气温代替地表温度）
+        // 7) 地表发射（以当前缓存地表温度计算）
         float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((m_fCachedSurfaceTemperature + 273.15), 4);
 
         // 8) 净辐射
@@ -1229,6 +1292,18 @@ class EnvironmentFactor
                 Math.Round(mixing_height_eff));
             StaminaConstants.AddDebugBatchLineOnce("TempStep", line);
         }
+    }
+
+    // 估算季节均温（°C），用于长波下行中的环境参考温度，避免 T_atm = T_surface+2 导致的热失控
+    // 赤道约27°C，随纬度降低；北半球简易季节调制；北大西洋/中高纬海洋偏凉
+    protected float EstimateSeasonalAvgTemp(float lat, int dayOfYear)
+    {
+        float absLat = Math.AbsFloat(lat);
+        float baseTemp = 27.0 - 0.4 * absLat;
+        float seasonOffset = -10.0 * Math.Cos(2.0 * Math.PI * (float)(dayOfYear + 10) / 365.0);
+        if (absLat > 40.0 && absLat < 60.0)
+            baseTemp -= 3.0; // 海洋调节，中高纬偏凉
+        return baseTemp + seasonOffset;
     }
 
     // ------------------- 物理平衡求解（用于初始/回退） -------------------
@@ -1295,12 +1370,15 @@ class EnvironmentFactor
         // 短波到达地表
         float SW_down = I0 * tau * (1.0 - cloudBlocking);
 
-        // 长波下行（近似用地表温+2为大气温）
-        float T_atm = T_surface + 2.0;
-        float eps_atm = 0.78 + 0.14 * cloudFactor;
+        // 长波下行：天空有效温度独立于 T_surface，避免“超级温室”热失控
+        // 用季节基准气温估算环境温度，晴天时天空比气温冷，阴天时接近气温
+        float seasonalBaseTemp = EstimateSeasonalAvgTemp(lat, n);
+        float skyTempDepression = (1.0 - cloudFactor) * 12.0;
+        float T_atm = seasonalBaseTemp - skyTempDepression;
+        float eps_atm = 0.75 + 0.15 * cloudFactor;
         float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
 
-        // 地表发射
+        // 地表发射（仍依赖 T_surface，供二分法求解平衡温度）
         float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((T_surface + 273.15), 4);
 
         // 潜热项（使用当前地表湿度近似，可配置系数）
@@ -1779,6 +1857,8 @@ class EnvironmentFactor
         m_bUseEngineTimezone = settings.m_bUseEngineTimezone;
         m_fLongitude = settings.m_fLongitude;
         m_fTimeZoneOffsetHours = settings.m_fTimeZoneOffsetHours;
+        m_fAltitudeMeters = settings.m_fAltitudeMeters;
+        m_fFogDensity = settings.m_fFogDensity;
 
         // 若引擎可用且启用了引擎时区模式，直接从地图配置读取经度（World Editor 中 Geographic Coords 提供）
         if (m_bUseEngineTimezone && m_pCachedWeatherManager)
@@ -1827,50 +1907,35 @@ class EnvironmentFactor
         // 4. 获取泥泞度系数
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
         
-        // 5. 获取当前气温（根据配置选择：使用引擎温度或完全由模组计算）
-        if (m_bUseEngineTemperature && m_bUseEngineWeather && m_pCachedWeatherManager)
+        // 5. 获取当前气温：通用经验模型（纬度+季节+海拔+昼夜+天气），不依赖物理求解，兼容各模组地图
+        if (m_pCachedWeatherManager)
         {
-            // 使用引擎提供的 min/max 值作为物理模型的边界与初始值
-            float baseTemp = CalculateTemperatureFromAPI();
-            // 首次采样时初始化缓存表面温度并设置时间戳，避免一次性大步进
-            if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
-            {
-                m_fCachedSurfaceTemperature = baseTemp;
-                m_fLastTemperatureUpdateTime = currentTime; // 初始化时间戳
-            }
-
-            // 以固定间隔步进温度（每 m_fTempUpdateInterval 秒一次）
-            float tempDelta = currentTime - m_fLastTemperatureUpdateTime;
-            if (tempDelta >= m_fTempUpdateInterval)
-            {
-                StepTemperature(tempDelta);
-                m_fLastTemperatureUpdateTime = currentTime;
-                // 安排下次非详细日志时间，确保步进日志按间隔显示
-                m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
-            }
-
-            // 将缓存的表面温度作为当前气温输出
-            m_fCachedTemperature = m_fCachedSurfaceTemperature;
-        }
-        else
-        {
-            // 不使用引擎温度：完全由模组内部计算
-            // 首先使用物理平衡估算作为初始温度（若求解失败会退回到模拟昼夜曲线）
-            float baseTemp = CalculateEquilibriumTemperatureFromPhysics();
+            float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+            int year, month, day;
+            m_pCachedWeatherManager.GetDate(year, month, day);
+            int n = DayOfYear(year, month, day);
+            float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+            float cloud = InferCloudFactor();
+            float rain = m_pCachedWeatherManager.GetRainIntensity();
+            float altM = GetCurrentAltitudeMeters(owner);
+            float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
 
             if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
             {
-                m_fCachedSurfaceTemperature = baseTemp;
-                m_fLastTemperatureUpdateTime = currentTime; // 初始化时间戳
+                m_fCachedSurfaceTemperature = T;
+                m_fLastTemperatureUpdateTime = currentTime;
             }
 
-            // 每 m_fTempUpdateInterval 秒进行一步进
             float tempDelta = currentTime - m_fLastTemperatureUpdateTime;
             if (tempDelta >= m_fTempUpdateInterval)
             {
-                StepTemperature(tempDelta);
+                tod = m_pCachedWeatherManager.GetTimeOfTheDay();
+                cloud = InferCloudFactor();
+                rain = m_pCachedWeatherManager.GetRainIntensity();
+                altM = GetCurrentAltitudeMeters(owner);
+                T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
-                // 安排下次非详细日志时间，确保步进日志按间隔显示
                 m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
             }
 
