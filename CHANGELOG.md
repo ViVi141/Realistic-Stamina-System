@@ -6,6 +6,48 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.15.0] - 2026-03-05
+
+### ✅ 新增
+
+- **正弦波叠加通用气温模型** - 放弃纯能量平衡求解，改用基于纬度+季节+海拔+昼夜+天气的经验叠加公式（T = T_纬度基准 + T_季节偏差 + T_昼夜波动 - T_海拔衰减 + T_天气修正）。无辐射积分/二分查找，计算极轻量；最热约 15:00、最冷约 04:00，阴天/雾压缩昼夜温差，降雨蒸发冷却仅当气温 >10°C 时生效、最多降 5°C（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **海拔实时查询** - 有 owner 时用 `SCR_TerrainHelper.GetTerrainY(owner.GetOrigin(), owner.GetWorld())` 取当前地形高度参与气温递减（6.5°C/1000m），无 owner 时回退到配置 `m_fAltitudeMeters`；新增 `GetCurrentAltitudeMeters(owner)`（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **通用气温配置项** - 设置中新增 `m_fAltitudeMeters`（海拔米）、`m_bMapOverWater`（海洋/岛屿预留）、`m_fFogDensity`（雾/湿度 0~1，压缩昼夜温差）；参与 float/bool 序列化，`SETTINGS_FLOATS_SIZE`/`SETTINGS_BOOLS_SIZE` 同步调整（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）
+- **体力消耗参考文档** - 新增 [docs/stamina_consumption_reference.md](docs/stamina_consumption_reference.md)：按距离/负重的空载与 30 kg 跑 600 m / 1000 m 剩余体力参考、可玩性约束建议、战术动作参考；并说明已纳入优化器 PLAYABILITY 约束（50%/40% 硬约束）（[docs/stamina_consumption_reference.md](docs/stamina_consumption_reference.md)）
+- **Realism JSON 验证脚本** - 新增 `tools/verify_realism_json.py`：用数字孪生验证 `optimized_rss_config_realism_super.json` 在 28.87 kg、3.7 m/s、32°C、逆风 5.7 m/s 下 600 m / 1000 m 剩余体力是否满足 ≥50% / ≥40% 硬约束（[tools/verify_realism_json.py](tools/verify_realism_json.py)）
+
+### 🔁 变更
+
+- **长波辐射热失控修复（保留用于步进/回退）** - 长波下行不再使用 `T_atm = T_surface + 2`，改为基于 `EstimateSeasonalAvgTemp(lat, n)` 与云量得到天空有效温度（晴天更冷、阴天接近气温），`eps_atm = 0.75 + 0.15*cloudFactor`；主气温输出已切到通用模型，原物理步进/二分法仍保留在代码中（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **气温更新流程统一** - 所有气温路径（含 ForceUpdate）统一为：有 WeatherManager 时按间隔直接计算 `CalculateUniversalTemperature(...)` 并写缓存，不再区分“引擎温度”与“物理平衡”、不再调用 `StepTemperature`（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）
+- **负重限速下的消耗补偿** - `CalculateLandBaseDrainRate` 新增参数 `encumbranceSpeedPenalty`；Run/Sprint 时用“无负重惩罚下的速度估计”算 Pandolf 上界，按负重惩罚强度插值补回一部分消耗，避免负重压速后“实际速度低→消耗被低估”；Idle 阶段仅在 `currentSpeed < 0.1` 时恢复，否则按 Pandolf 计消耗，防止“移动中误判为 idle 导致边跑边回血”（[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[SCR_StaminaConsumption.c](scripts/Game/Components/Stamina/SCR_StaminaConsumption.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **Run/Sprint 净消耗约束** - 跑步/冲刺时若恢复率大于总消耗，将恢复率钳位为总消耗，避免高努力移动下出现净恢复（[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）
+- **低速 Pandolf 回退** - `CalculatePandolfEnergyExpenditure` 在速度 <0.1 时不再返回固定恢复率，改为按静态站立负重成本 `CalculateStaticStandingCost` 回退，避免移动阶段起步/限速下的生理成本被忽略（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+- **预设参数重优化** - EliteStandard / StandardMilsim / TacticalAction 三套预设由 NSGA-II Super Pipeline 重新优化，参数值全面更新（含恢复、负重惩罚、游泳、环境等）；移除部分预设中的 `encumbrance_speed_penalty_exponent` 赋值，与 C 端逻辑一致（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）
+- **Sprint 启用阈值** - `SPRINT_ENABLE_THRESHOLD` 从 20% 降至 15%，低体力时仍可短时冲刺（[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **分段非线性负重速度惩罚** - 负重对速度的惩罚改为分段曲线（软阈值 30%/60% 体重）：轻装近线性、超重陡增；预设强度用 `coeff/0.2` 缩放，符合运动生理学（[SCR_EncumbranceCache.c](scripts/Game/Components/Stamina/SCR_EncumbranceCache.c)）
+- **坡度逻辑简化** - 删除冗余 `CalculateGradeMultiplier`，坡度对消耗的影响统一由 Pandolf 模型及现有系数承担（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+- **恢复率计算统一为乘数链** - 综合恢复率由“乘积后减负重惩罚再钳位”改为 `productBeforeLoad * loadFactor`，其中 `loadFactor = max(0, 1 - penalty/product)`，避免逻辑歧义（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)）
+- **EPOC 延迟与镜头过冲** - C 端 `EPOC_DELAY_SECONDS` 改为 2.0 s；镜头急停过冲指数由 1.5 改为 1.2，减轻轻/重装手感差异（[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **EPOC 延迟与孪生对齐** - `stamina_constants.py` 中 `EPOC_DELAY_SECONDS` 由 0.5 改为 2.0，与 C 端拟真折中一致（[tools/stamina_constants.py](tools/stamina_constants.py)）
+- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` 更新为 3.14.2（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+### 📚 文档 / 工具
+
+- **体力消耗参考** - 见 [docs/stamina_consumption_reference.md](docs/stamina_consumption_reference.md)；优化器 PLAYABILITY 约束与 30 kg 600 m / 1000 m 目标带已在该文档中说明
+- **数字孪生与管道** - `rss_digital_twin_fix.py`、`rss_super_pipeline.py` 与 JSON 预设的约束/场景更新，以配合新消耗逻辑与可玩性目标；`verify_realism_json.py` 用于离线校验 Realism 预设
+- **配置与坡度文档** - 补充配置优先级说明（[docs/config_sync_summary.md](docs/config_sync_summary.md)）；体力系统计算逻辑文档与英文版更新坡度影响与简化后的逻辑（[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)、[docs/stamina_logic_en.md](docs/stamina_logic_en.md)）；新增漏洞报告与核查结果文档（8f8ac01）
+
+### 🔸 包含的提交（3.15.0，自 8f8ac01 至 3fb6fd5，含两端）
+
+- 8f8ac01 feat: 更新体力系统与文档，优化负重与坡度逻辑
+- 22d238f feat: 优化体力系统中的负重与速度惩罚逻辑
+- a67e623 feat: 更新版本至 3.14.2，优化体力系统与配置参数
+- 0e25c42 feat: 更新体力系统参数与环境因子逻辑
+- 3fb6fd5 feat: 增强环境因子逻辑与通用气温模型
+
+---
+
 ## [3.14.1] - 2026-03-05
 
 ### ✅ 新增
