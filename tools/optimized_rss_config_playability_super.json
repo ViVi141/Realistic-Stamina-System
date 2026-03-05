@@ -3,7 +3,7 @@
   "description": "RSS 增强型优化配置（NSGA-II）- TacticalAction",
   "optimization_method": "NSGA-II (Super Pipeline)",
   "objectives": {
-    "playability_burden": 2.349653889412479,
+    "playability_burden": 2.1372404170593593,
     "stability_risk": 636.3195054813582
   },
   "parameters": {

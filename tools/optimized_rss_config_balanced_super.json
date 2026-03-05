@@ -3,7 +3,7 @@
   "description": "RSS 增强型优化配置（NSGA-II）- StandardMilsim",
   "optimization_method": "NSGA-II (Super Pipeline)",
   "objectives": {
-    "playability_burden": 2.6088697624193484,
+    "playability_burden": 2.331652321814511,
     "stability_risk": 187.59643454379307
   },
   "parameters": {

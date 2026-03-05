@@ -192,6 +192,9 @@ class RSSDigitalTwin:
         self.exercise_duration_minutes = 0.0
         self.last_movement_time = 0.0
         self.max_history_length = 5000
+        self._scenario_wind_drag = 0.0
+        self.environment_factor.heat_stress = 0.0
+        self.environment_factor.cold_stress = 0.0
 
     # -------------------------------------------------------------------------
     # CalculateStaticStandingCost - SCR_RealisticStaminaSystem.c 1135-1168
@@ -425,6 +428,10 @@ class RSSDigitalTwin:
         # 5. 应用负重消耗倍数 (C: totalDrainRate *= encumbranceStaminaDrainMultiplier)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
         total_drain = base * enc_mult
+        # 6. 热应激：消耗倍数 (C: ENV_TEMPERATURE_HEAT_THRESHOLD 30°C 以上)
+        if environment_factor is not None:
+            heat = getattr(environment_factor, 'heat_stress', 0.0)
+            total_drain = total_drain * (1.0 + heat)
 
         return (base_for_recovery, float(max(0.0, total_drain)))
 
@@ -486,6 +493,11 @@ class RSSDigitalTwin:
             marginal_mult = np.clip(c.MARGINAL_DECAY_COEFF - stamina_percent_clamped, 0.2, 1.0)
             recovery_rate *= marginal_mult
 
+        # 冷应激：恢复率惩罚 (C: ENV_TEMPERATURE_COLD_THRESHOLD 0°C 以下)
+        if environment_factor is not None:
+            cold = getattr(environment_factor, 'cold_stress', 0.0)
+            recovery_rate *= max(0.0, 1.0 - cold)
+
         recovery_rate = max(recovery_rate, 0.0)
 
         # 速度调整 (SCR_StaminaRecovery 136-150)
@@ -518,7 +530,8 @@ class RSSDigitalTwin:
     # step - 单步仿真
     # -------------------------------------------------------------------------
     def step(self, speed: float, current_weight: float, grade_percent: float, terrain_factor: float,
-             stance: int, movement_type: int, current_time: float, enable_randomness: bool = True):
+             stance: int, movement_type: int, current_time: float, enable_randomness: bool = True,
+             wind_drag: float = 0.0):
         speed = max(0.0, float(speed))
         current_weight = max(0.0, float(current_weight))
         grade_percent = np.clip(float(grade_percent), -85.0, 85.0)
@@ -562,7 +575,7 @@ class RSSDigitalTwin:
         try:
             base_for_rec, total_drain = self._calculate_drain_rate_c_aligned(
                 speed, current_weight, grade_percent, terrain_factor,
-                stance, movement_type, 0.0, self.environment_factor)
+                stance, movement_type, wind_drag, self.environment_factor)
 
             total_drain = float(total_drain)
             if total_drain >= 0.0:
@@ -772,8 +785,32 @@ class RSSDigitalTwin:
 
     def simulate_scenario(self, speed_profile: List[Tuple[float, float]], current_weight: float,
                           grade_percent: float, terrain_factor: float, stance: int,
-                          movement_type: int, enable_randomness: bool = True) -> Dict:
+                          movement_type: int, enable_randomness: bool = True,
+                          temperature_celsius: float = None, wind_speed_mps: float = None) -> Dict:
         self.reset()
+        c = self.constants
+        heat_threshold = 30.0
+        cold_threshold = 0.0
+        if temperature_celsius is not None:
+            if temperature_celsius > heat_threshold:
+                coeff = getattr(c, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
+                max_add = getattr(c, 'ENV_HEAT_STRESS_MAX_MULTIPLIER', 1.5) - 1.0
+                self.environment_factor.heat_stress = min(
+                    (temperature_celsius - heat_threshold) * coeff, max_add)
+            else:
+                self.environment_factor.heat_stress = 0.0
+            if temperature_celsius < cold_threshold:
+                cold_coeff = getattr(c, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05)
+                self.environment_factor.cold_stress = (
+                    cold_threshold - temperature_celsius) * cold_coeff
+            else:
+                self.environment_factor.cold_stress = 0.0
+        if wind_speed_mps is not None and wind_speed_mps >= 1.0:
+            wind_coeff = getattr(c, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
+            self._scenario_wind_drag = min(1.0, wind_speed_mps * wind_coeff)
+        else:
+            self._scenario_wind_drag = 0.0
+
         time_points = [t for t, _ in speed_profile]
         speeds = [v for _, v in speed_profile]
 
@@ -792,8 +829,9 @@ class RSSDigitalTwin:
             steps = int(duration / 0.2)
 
             for _ in range(steps):
+                wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
                 self.step(speed, current_weight, grade_percent, terrain_factor,
-                         stance, movement_type, current_time, enable_randomness)
+                         stance, movement_type, current_time, enable_randomness, wind_drag)
                 current_time += 0.2
                 nominal_distance += speed * 0.2
 

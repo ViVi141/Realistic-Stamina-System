@@ -323,6 +323,38 @@ class ScenarioLibrary:
             test_type="30kg持续20min"
         )
 
+    @staticmethod
+    def create_run_600m_flat_scenario(load_weight=30.0):
+        """30kg 平地跑道 600m（文献：剩余 70–76%，约束目标带 50–76%，<25% 跛行惩罚）"""
+        run_speed = 3.2  # m/s
+        duration_s = 600.0 / run_speed  # ~187.5s
+        return Scenario(
+            speed_profile=[(0, run_speed), (duration_s, run_speed)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=duration_s,
+            test_type="30kg跑道600m"
+        )
+
+    @staticmethod
+    def create_run_1km_flat_scenario(load_weight=30.0):
+        """30kg 平地跑道 1000m（文献：剩余 50–60%，约束目标带 40–60%，<25% 跛行惩罚）"""
+        run_speed = 3.2  # m/s
+        duration_s = 1000.0 / run_speed  # ~312.5s
+        return Scenario(
+            speed_profile=[(0, run_speed), (duration_s, run_speed)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=duration_s,
+            test_type="30kg跑道1km"
+        )
+
 
 @dataclass
 class BugReport:
@@ -349,6 +381,7 @@ class RSSSuperPipeline:
     当前默认 n_trials=500、population_size=300，可依需要增至 1000–3000。
     """
     # 集中配置：可玩性惩罚系数与阈值（便于调参与文档）
+    # 生理参考见 docs/stamina_consumption_reference.md；下列为文献约束（剩余体力目标带 + 跛行惩罚）
     PLAYABILITY = {
         'min_stamina_threshold': 0.15,
         'min_stamina_coeff': 1200.0,
@@ -357,6 +390,16 @@ class RSSSuperPipeline:
         'exhaustion_coeff': 1000.0,
         'time_ratio_1_15_coeff': 250.0,
         'time_ratio_1_30_coeff': 600.0,
+        # 30kg 600m：文献剩余 70–76%，游戏目标带 50–76%，<25% 跛行强惩罚
+        'run_600m_remaining_target_low': 0.50,
+        'run_600m_remaining_limp': 0.25,
+        'run_600m_below_target_coeff': 3500.0,
+        'run_600m_below_limp_coeff': 6000.0,
+        # 30kg 1000m：文献剩余 50–60%，游戏目标带 40–60%，<25% 跛行强惩罚
+        'run_1km_remaining_target_low': 0.40,
+        'run_1km_remaining_limp': 0.25,
+        'run_1km_below_target_coeff': 3500.0,
+        'run_1km_below_limp_coeff': 6000.0,
     }
     # 集中配置：软约束惩罚系数（恢复顺序、姿态倍数等）
     CONSTRAINT = {
@@ -1190,7 +1233,7 @@ class RSSSuperPipeline:
         Returns:
             可玩性负担（越小越好）
         """
-        # 多负载战斗测试 + 边界/重载/长时：ACFT 1.36kg(2mi=3.218km)，城市35kg，山地25kg，野战30kg，边界4.2m/s 60s，重载45kg 10min，30kg 20min
+        # 多负载 + 边界/重载/长时 + 文献约束(600m/1km)：见 stamina_consumption_reference.md
         scenarios = [
             ScenarioLibrary.create_acft_2mile_scenario(load_weight=1.36),
             ScenarioLibrary.create_urban_combat_scenario(load_weight=35.0),
@@ -1199,6 +1242,8 @@ class RSSSuperPipeline:
             ScenarioLibrary.create_run_sprint_boundary_scenario(load_weight=30.0),
             ScenarioLibrary.create_heavy_load_scenario(load_weight=45.0),
             ScenarioLibrary.create_long_duration_tactical_scenario(load_weight=30.0),
+            ScenarioLibrary.create_run_600m_flat_scenario(load_weight=30.0),
+            ScenarioLibrary.create_run_1km_flat_scenario(load_weight=30.0),
         ]
         
         # 使用并行处理提高性能
@@ -1244,11 +1289,33 @@ class RSSSuperPipeline:
                     exhaustion_ratio = exhausted_frames / len(stamina_history)
                     scenario_burden += (exhaustion_ratio * exhaustion_ratio) * pcfg['exhaustion_coeff']
 
-                return float(scenario_burden), scenario
+                    # 文献约束：30kg 600m/1000m 剩余体力目标带 + 跛行惩罚（见 stamina_consumption_reference.md）
+                    test_type = getattr(scenario, 'test_type', '')
+                    if test_type == '30kg跑道600m':
+                        target_low = pcfg.get('run_600m_remaining_target_low', 0.50)
+                        limp = pcfg.get('run_600m_remaining_limp', 0.25)
+                        coeff_target = pcfg.get('run_600m_below_target_coeff', 3500.0)
+                        coeff_limp = pcfg.get('run_600m_below_limp_coeff', 6000.0)
+                        if min_stamina < limp:
+                            scenario_burden += (limp - min_stamina) * coeff_limp
+                        elif min_stamina < target_low:
+                            scenario_burden += (target_low - min_stamina) * coeff_target
+                    elif test_type == '30kg跑道1km':
+                        target_low = pcfg.get('run_1km_remaining_target_low', 0.40)
+                        limp = pcfg.get('run_1km_remaining_limp', 0.25)
+                        coeff_target = pcfg.get('run_1km_below_target_coeff', 3500.0)
+                        coeff_limp = pcfg.get('run_1km_below_limp_coeff', 6000.0)
+                        if min_stamina < limp:
+                            scenario_burden += (limp - min_stamina) * coeff_limp
+                        elif min_stamina < target_low:
+                            scenario_burden += (target_low - min_stamina) * coeff_target
+
+                min_stamina_out = float(min(stamina_history)) if stamina_history else None
+                return (float(scenario_burden), scenario, min_stamina_out)
             except Exception as e:
                 # 如果仿真失败，返回大惩罚值
                 print(f"场景评估失败: {e}")
-                return 2000.0, None
+                return (2000.0, None, None)
         
         # 使用自定义并行工作器并行评估场景
         try:
@@ -1260,11 +1327,30 @@ class RSSSuperPipeline:
             # 如果并行处理失败，回退到串行处理
             print(f"并行处理失败，回退到串行: {e}")
             results_list = [evaluate_scenario(scenario) for scenario in scenarios]
+
+        pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
+        # 硬约束：30kg 600m/1000m 未达目标带则直接剪枝（见 stamina_consumption_reference.md）
+        for scenario_burden, scenario, min_stamina in results_list:
+            if scenario is None or min_stamina is None:
+                continue
+            test_type = getattr(scenario, 'test_type', '')
+            if test_type == '30kg跑道600m':
+                thr = pcfg.get('run_600m_remaining_target_low', 0.50)
+                if min_stamina < thr:
+                    raise optuna.exceptions.TrialPruned(
+                        f"30kg 600m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
+                    )
+            elif test_type == '30kg跑道1km':
+                thr = pcfg.get('run_1km_remaining_target_low', 0.40)
+                if min_stamina < thr:
+                    raise optuna.exceptions.TrialPruned(
+                        f"30kg 1000m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
+                    )
         
         total_burden = 0.0
-        weights = [0.25, 0.18, 0.14, 0.14, 0.12, 0.09, 0.08]  # ACFT、城市、山地、野战、边界60s、重载10min、长时20min
+        weights = [0.22, 0.16, 0.12, 0.12, 0.10, 0.08, 0.07, 0.07, 0.06]  # +30kg600m、30kg1km（文献约束）
 
-        for i, (scenario_burden, scenario) in enumerate(results_list):
+        for i, (scenario_burden, scenario, _) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
             if scenario is None:
                 return 2_000_000.0
@@ -1289,7 +1375,7 @@ class RSSSuperPipeline:
         # 添加场景结果多样性惩罚
         # 如果所有场景的负担都非常接近，说明参数变化影响不大
         if len(results_list) >= 2:
-            burdens = [scenario_burden for scenario_burden, _ in results_list]
+            burdens = [b for b, _, _ in results_list]
             if len(burdens) >= 2:
                 burden_diff = max(burdens) - min(burdens)
                 if burden_diff < 100.0:
