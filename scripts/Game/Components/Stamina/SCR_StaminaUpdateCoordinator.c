@@ -568,9 +568,7 @@ class StaminaUpdateCoordinator
                 environmentFactor,
                 currentSpeed);
 
-            // 移动中恢复保护（按意图运动状态而非仅按速度）：
-            // 负重/限速可能让 Run/Sprint 的实际速度降到“走路区间”，但生理上仍处于高努力状态，
-            // 不应出现体力净恢复。只要引擎判定处于 Run/Sprint（或正在冲刺），就钳制正向恢复为 0。
+            // Run/Sprint 时仍计算恢复，但保证整体净消耗（恢复率不超过总消耗，避免净恢复）
             int movementPhase = -1;
             bool isSprintingNow = false;
             if (controller)
@@ -579,9 +577,9 @@ class StaminaUpdateCoordinator
                 isSprintingNow = controller.IsSprinting();
             }
             bool isHighEffortMove = (isSprintingNow || movementPhase == 2 || movementPhase == 3);
-            if (isHighEffortMove && currentSpeed >= 0.1)
+            if (isHighEffortMove && currentSpeed >= 0.1 && recoveryRate > totalDrainRate)
             {
-                recoveryRate = 0.0;
+                recoveryRate = totalDrainRate;
             }
             
             // ==================== 热应激对恢复的影响（模块化）====================

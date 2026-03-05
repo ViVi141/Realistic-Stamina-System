@@ -437,46 +437,43 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 		return;
 
 	// EliteStandard preset parameters (optimized by NSGA-II Super Pipeline)
-	m_EliteStandard.energy_to_stamina_coeff = 8.6435526568012687e-07;
-	m_EliteStandard.base_recovery_rate = 1.6234616393570565e-04;
-	m_EliteStandard.standing_recovery_multiplier = 1.7983668851471908;
-	m_EliteStandard.prone_recovery_multiplier = 3.3989908634783235;
-	m_EliteStandard.load_recovery_penalty_coeff = 1.0298276806262319e-05;
-	m_EliteStandard.load_recovery_penalty_exponent = 1.5990126371146123;
-	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.20275211842288976;
-	m_EliteStandard.encumbrance_speed_penalty_exponent = 1.234924145592768;
-	m_EliteStandard.encumbrance_speed_penalty_max = 0.7792604260785807;
-	m_EliteStandard.encumbrance_stamina_drain_coeff = 1.290612394070082;
-	m_EliteStandard.fatigue_accumulation_coeff = 0.007234073162377945;
-	m_EliteStandard.fatigue_max_factor = 2.104130428121163;
-	m_EliteStandard.recovery_nonlinear_coeff = 0.1455761721789501;
-	m_EliteStandard.fast_recovery_multiplier = 2.1936592991633046;
-	m_EliteStandard.medium_recovery_multiplier = 1.140654069060721;
-	m_EliteStandard.slow_recovery_multiplier = 0.7086221445767917;
-	m_EliteStandard.marginal_decay_threshold = 0.7242162596482925;
-	m_EliteStandard.marginal_decay_coeff = 1.136465911388989;
-	m_EliteStandard.min_recovery_stamina_threshold = 0.19934442792827387;
-	m_EliteStandard.min_recovery_rest_time_seconds = 16.442937555728005;
-	m_EliteStandard.sprint_speed_boost = 0.31986028781663983;
-	m_EliteStandard.posture_crouch_multiplier = 1.6104931145413417;
-	m_EliteStandard.posture_prone_multiplier = 2.627300856244837;
-	m_EliteStandard.jump_height_guess = 0.82159292394888;
-	m_EliteStandard.jump_horizontal_speed_guess = 0.1905843980365115;
-	m_EliteStandard.jump_efficiency = 0.22;
-	m_EliteStandard.climb_iso_efficiency = 0.12;
-	m_EliteStandard.slope_uphill_coeff = 0.06415495161115242;
-	m_EliteStandard.slope_downhill_coeff = 0.03420290075193007;
-	m_EliteStandard.swimming_base_power = 17.088370204519837;
-	m_EliteStandard.swimming_encumbrance_threshold = 23.067727513528325;
-	m_EliteStandard.swimming_static_drain_multiplier = 2.9752274670017402;
-	m_EliteStandard.swimming_dynamic_power_efficiency = 1.9493513167295462;
-	m_EliteStandard.swimming_energy_to_stamina_coeff = 5.4171582501299982e-05;
-	m_EliteStandard.env_heat_stress_max_multiplier = 1.4493727173773445;
-	m_EliteStandard.env_rain_weight_max = 4.5; // [v2.17.1] 降雨单独上限：军事BDU+战术背心持续暴雨约3-5kg
-	m_EliteStandard.env_wind_resistance_coeff = 0.058562173226218296;
-	m_EliteStandard.env_mud_penalty_max = 0.3585225454846931;
-	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.018223333118004736;
-	m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.04875995495791108;
+	m_EliteStandard.energy_to_stamina_coeff = 6.5375344460820225e-07;
+	m_EliteStandard.base_recovery_rate = 1.2092420276673984e-04;
+	m_EliteStandard.standing_recovery_multiplier = 1.6274705522836608;
+	m_EliteStandard.prone_recovery_multiplier = 2.8739048827708764;
+	m_EliteStandard.load_recovery_penalty_coeff = 5.8157915403721419e-06;
+	m_EliteStandard.load_recovery_penalty_exponent = 1.5586814439372336;
+	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.11523232692090117;
+	m_EliteStandard.encumbrance_speed_penalty_max = 0.43537557275647093;
+	m_EliteStandard.encumbrance_stamina_drain_coeff = 1.1218964316330995;
+	m_EliteStandard.fatigue_accumulation_coeff = 0.00521464407947373;
+	m_EliteStandard.fatigue_max_factor = 1.9941249860616643;
+	m_EliteStandard.recovery_nonlinear_coeff = 0.4651429559043846;
+	m_EliteStandard.fast_recovery_multiplier = 4.489310287566459;
+	m_EliteStandard.medium_recovery_multiplier = 1.8235374708352132;
+	m_EliteStandard.slow_recovery_multiplier = 0.7549927301328787;
+	m_EliteStandard.marginal_decay_threshold = 0.7127071444847837;
+	m_EliteStandard.marginal_decay_coeff = 1.0896247346816406;
+	m_EliteStandard.min_recovery_stamina_threshold = 0.20081573065601477;
+	m_EliteStandard.min_recovery_rest_time_seconds = 15.779617489002412;
+	m_EliteStandard.sprint_speed_boost = 0.3001515652334391;
+	m_EliteStandard.posture_crouch_multiplier = 1.320270963128607;
+	m_EliteStandard.posture_prone_multiplier = 3.495998178308602;
+	m_EliteStandard.jump_height_guess = 0.5416428217278489;
+	m_EliteStandard.jump_horizontal_speed_guess = 0.2788525673344005;
+	m_EliteStandard.slope_uphill_coeff = 0.08;
+	m_EliteStandard.slope_downhill_coeff = 0.03;
+	m_EliteStandard.swimming_base_power = 15.047998248173707;
+	m_EliteStandard.swimming_encumbrance_threshold = 24.75942217547724;
+	m_EliteStandard.swimming_static_drain_multiplier = 3.0091136924888793;
+	m_EliteStandard.swimming_dynamic_power_efficiency = 2.421069486299581;
+	m_EliteStandard.swimming_energy_to_stamina_coeff = 4.9081931867550735e-05;
+	m_EliteStandard.env_heat_stress_max_multiplier = 1.3009011335420682;
+	m_EliteStandard.env_rain_weight_max = 8.222074666810382;
+	m_EliteStandard.env_wind_resistance_coeff = 0.030755235143049387;
+	m_EliteStandard.env_mud_penalty_max = 0.3206293521756722;
+	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.019962194794899246;
+	m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.05649876959634795;
 }
 
 
@@ -494,46 +491,43 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 		return;
 
 	// StandardMilsim preset parameters (optimized by NSGA-II Super Pipeline)
-	m_StandardMilsim.energy_to_stamina_coeff = 8.9293543281366954e-07;
-	m_StandardMilsim.base_recovery_rate = 6.7829079179066885e-04;
-	m_StandardMilsim.standing_recovery_multiplier = 1.3364492259358276;
-	m_StandardMilsim.prone_recovery_multiplier = 2.536730926670641;
-	m_StandardMilsim.load_recovery_penalty_coeff = 4.9181662673447002e-05;
-	m_StandardMilsim.load_recovery_penalty_exponent = 1.2531989070128102;
-	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.1964432142252763;
-	m_StandardMilsim.encumbrance_speed_penalty_exponent = 2.635644147132381;
-	m_StandardMilsim.encumbrance_speed_penalty_max = 0.938421045720064;
-	m_StandardMilsim.encumbrance_stamina_drain_coeff = 1.4022434372294046;
-	m_StandardMilsim.fatigue_accumulation_coeff = 0.01129783607707972;
-	m_StandardMilsim.fatigue_max_factor = 2.630213408169721;
-	m_StandardMilsim.recovery_nonlinear_coeff = 0.17948239380515596;
-	m_StandardMilsim.fast_recovery_multiplier = 1.757661256777193;
-	m_StandardMilsim.medium_recovery_multiplier = 1.4781847401504784;
-	m_StandardMilsim.slow_recovery_multiplier = 0.6640746541379373;
-	m_StandardMilsim.marginal_decay_threshold = 0.7835968171013827;
-	m_StandardMilsim.marginal_decay_coeff = 1.13532847985672;
-	m_StandardMilsim.min_recovery_stamina_threshold = 0.23561536219946602;
-	m_StandardMilsim.min_recovery_rest_time_seconds = 6.9847532983936205;
-	m_StandardMilsim.sprint_speed_boost = 0.2863504617923482;
-	m_StandardMilsim.posture_crouch_multiplier = 1.4626954770019354;
-	m_StandardMilsim.posture_prone_multiplier = 3.787102306341789;
-	m_StandardMilsim.jump_height_guess = 0.39023180955144926;
-	m_StandardMilsim.jump_horizontal_speed_guess = 1.0799952039411693;
-	m_StandardMilsim.jump_efficiency = 0.22;
-	m_StandardMilsim.climb_iso_efficiency = 0.12;
-	m_StandardMilsim.slope_uphill_coeff = 0.06404662478452412;
-	m_StandardMilsim.slope_downhill_coeff = 0.03246275707495651;
-	m_StandardMilsim.swimming_base_power = 18.56067299119145;
-	m_StandardMilsim.swimming_encumbrance_threshold = 27.889139629658672;
-	m_StandardMilsim.swimming_static_drain_multiplier = 2.7336904488253637;
-	m_StandardMilsim.swimming_dynamic_power_efficiency = 2.1392018293899597;
-	m_StandardMilsim.swimming_energy_to_stamina_coeff = 4.4713650691517700e-05;
-	m_StandardMilsim.env_heat_stress_max_multiplier = 1.4854641132448616;
-	m_StandardMilsim.env_rain_weight_max = 5.0; // [v2.17.1] 降雨单独上限：平衡预设
-	m_StandardMilsim.env_wind_resistance_coeff = 0.0350720719650704;
-	m_StandardMilsim.env_mud_penalty_max = 0.4733191377191007;
-	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.02093575254414298;
-	m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.04254220981734048;
+	m_StandardMilsim.energy_to_stamina_coeff = 1.3323373967813863e-06;
+	m_StandardMilsim.base_recovery_rate = 5.0677822834153507e-04;
+	m_StandardMilsim.standing_recovery_multiplier = 1.6282813511998262;
+	m_StandardMilsim.prone_recovery_multiplier = 1.7069501272931693;
+	m_StandardMilsim.load_recovery_penalty_coeff = 2.8049602340078379e-04;
+	m_StandardMilsim.load_recovery_penalty_exponent = 1.7941627088376095;
+	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.2161992352119106;
+	m_StandardMilsim.encumbrance_speed_penalty_max = 0.5113571481526625;
+	m_StandardMilsim.encumbrance_stamina_drain_coeff = 1.5672351974971264;
+	m_StandardMilsim.fatigue_accumulation_coeff = 0.016812734993477407;
+	m_StandardMilsim.fatigue_max_factor = 2.25360419022019;
+	m_StandardMilsim.recovery_nonlinear_coeff = 0.21298151495026385;
+	m_StandardMilsim.fast_recovery_multiplier = 3.7418491317347495;
+	m_StandardMilsim.medium_recovery_multiplier = 1.904525561371278;
+	m_StandardMilsim.slow_recovery_multiplier = 0.5911205138675298;
+	m_StandardMilsim.marginal_decay_threshold = 0.7209320880692962;
+	m_StandardMilsim.marginal_decay_coeff = 1.0922943543741557;
+	m_StandardMilsim.min_recovery_stamina_threshold = 0.22955783762575865;
+	m_StandardMilsim.min_recovery_rest_time_seconds = 19.44866846044826;
+	m_StandardMilsim.sprint_speed_boost = 0.28912243032206353;
+	m_StandardMilsim.posture_crouch_multiplier = 1.8434289495173308;
+	m_StandardMilsim.posture_prone_multiplier = 2.444574156220321;
+	m_StandardMilsim.jump_height_guess = 0.36832702667629413;
+	m_StandardMilsim.jump_horizontal_speed_guess = 0.25027286730836645;
+	m_StandardMilsim.slope_uphill_coeff = 0.08;
+	m_StandardMilsim.slope_downhill_coeff = 0.03;
+	m_StandardMilsim.swimming_base_power = 17.199911268969306;
+	m_StandardMilsim.swimming_encumbrance_threshold = 20.088148332944726;
+	m_StandardMilsim.swimming_static_drain_multiplier = 2.854064562355094;
+	m_StandardMilsim.swimming_dynamic_power_efficiency = 2.2161276404767376;
+	m_StandardMilsim.swimming_energy_to_stamina_coeff = 5.0745513473360764e-05;
+	m_StandardMilsim.env_heat_stress_max_multiplier = 1.337775315371404;
+	m_StandardMilsim.env_rain_weight_max = 9.146610064305387;
+	m_StandardMilsim.env_wind_resistance_coeff = 0.04355744879748105;
+	m_StandardMilsim.env_mud_penalty_max = 0.35322027370746173;
+	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.023193337522988612;
+	m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.04261396507496626;
 }
 
 
@@ -551,46 +545,43 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 		return;
 
 	// TacticalAction preset parameters (optimized by NSGA-II Super Pipeline)
-	m_TacticalAction.energy_to_stamina_coeff = 5.9373666120588918e-07;
-	m_TacticalAction.base_recovery_rate = 2.1973223293301895e-04;
-	m_TacticalAction.standing_recovery_multiplier = 1.5170355409079903;
-	m_TacticalAction.prone_recovery_multiplier = 3.2005974731435836;
-	m_TacticalAction.load_recovery_penalty_coeff = 3.2066623220366726e-04;
-	m_TacticalAction.load_recovery_penalty_exponent = 1.5902990717555996;
-	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.1756008562535828;
-	m_TacticalAction.encumbrance_speed_penalty_exponent = 2.69083840340154;
-	m_TacticalAction.encumbrance_speed_penalty_max = 0.5632401127785114;
-	m_TacticalAction.encumbrance_stamina_drain_coeff = 1.225118865593151;
-	m_TacticalAction.fatigue_accumulation_coeff = 0.02534764540563692;
-	m_TacticalAction.fatigue_max_factor = 2.8514452440581457;
-	m_TacticalAction.recovery_nonlinear_coeff = 0.6858896657205225;
-	m_TacticalAction.fast_recovery_multiplier = 3.884176887603295;
-	m_TacticalAction.medium_recovery_multiplier = 0.996477841438365;
-	m_TacticalAction.slow_recovery_multiplier = 0.7705514949325014;
-	m_TacticalAction.marginal_decay_threshold = 0.7819676956219188;
-	m_TacticalAction.marginal_decay_coeff = 1.1490801355945937;
-	m_TacticalAction.min_recovery_stamina_threshold = 0.1972280964328801;
-	m_TacticalAction.min_recovery_rest_time_seconds = 16.076721650044412;
-	m_TacticalAction.sprint_speed_boost = 0.3170842440679759;
-	m_TacticalAction.posture_crouch_multiplier = 1.5217370298582777;
-	m_TacticalAction.posture_prone_multiplier = 2.4275375511179607;
-	m_TacticalAction.jump_height_guess = 0.9269558612813429;
-	m_TacticalAction.jump_horizontal_speed_guess = 1.2040137187894302;
-	m_TacticalAction.jump_efficiency = 0.22;
-	m_TacticalAction.climb_iso_efficiency = 0.12;
-	m_TacticalAction.slope_uphill_coeff = 0.06558107122238677;
-	m_TacticalAction.slope_downhill_coeff = 0.03553536542700146;
-	m_TacticalAction.swimming_base_power = 21.2584666605061;
-	m_TacticalAction.swimming_encumbrance_threshold = 24.091437879176222;
-	m_TacticalAction.swimming_static_drain_multiplier = 2.754021149095563;
-	m_TacticalAction.swimming_dynamic_power_efficiency = 2.3597287835022325;
-	m_TacticalAction.swimming_energy_to_stamina_coeff = 5.4003765185881066e-05;
-	m_TacticalAction.env_heat_stress_max_multiplier = 1.4190959637876548;
-	m_TacticalAction.env_rain_weight_max = 4.0; // [v2.17.1] 降雨单独上限：可玩性预设（影响最小）
-	m_TacticalAction.env_wind_resistance_coeff = 0.03364264728328724;
-	m_TacticalAction.env_mud_penalty_max = 0.3947839521822384;
-	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.01693700292785702;
-	m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.04416767358017651;
+	m_TacticalAction.energy_to_stamina_coeff = 5.1933355478371004e-07;
+	m_TacticalAction.base_recovery_rate = 2.3051942852553311e-04;
+	m_TacticalAction.standing_recovery_multiplier = 1.6113447704748989;
+	m_TacticalAction.prone_recovery_multiplier = 2.9124923251105246;
+	m_TacticalAction.load_recovery_penalty_coeff = 4.7019074519381350e-04;
+	m_TacticalAction.load_recovery_penalty_exponent = 1.3118794357637253;
+	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.1407966236551898;
+	m_TacticalAction.encumbrance_speed_penalty_max = 0.44341667162060555;
+	m_TacticalAction.encumbrance_stamina_drain_coeff = 1.15423850923499;
+	m_TacticalAction.fatigue_accumulation_coeff = 0.00798188086648096;
+	m_TacticalAction.fatigue_max_factor = 2.015080053266466;
+	m_TacticalAction.recovery_nonlinear_coeff = 0.6007430741533766;
+	m_TacticalAction.fast_recovery_multiplier = 2.3499602312227656;
+	m_TacticalAction.medium_recovery_multiplier = 1.0635930328059635;
+	m_TacticalAction.slow_recovery_multiplier = 0.7806453540582488;
+	m_TacticalAction.marginal_decay_threshold = 0.8857261124230789;
+	m_TacticalAction.marginal_decay_coeff = 1.0561808460689224;
+	m_TacticalAction.min_recovery_stamina_threshold = 0.15923605281113784;
+	m_TacticalAction.min_recovery_rest_time_seconds = 8.255819784124586;
+	m_TacticalAction.sprint_speed_boost = 0.32166489838888124;
+	m_TacticalAction.posture_crouch_multiplier = 1.3504722710059975;
+	m_TacticalAction.posture_prone_multiplier = 3.9457298484662466;
+	m_TacticalAction.jump_height_guess = 0.6127001690809641;
+	m_TacticalAction.jump_horizontal_speed_guess = 0.7522769405252496;
+	m_TacticalAction.slope_uphill_coeff = 0.08;
+	m_TacticalAction.slope_downhill_coeff = 0.03;
+	m_TacticalAction.swimming_base_power = 17.466586158054064;
+	m_TacticalAction.swimming_encumbrance_threshold = 24.709602524347336;
+	m_TacticalAction.swimming_static_drain_multiplier = 3.1619136326370114;
+	m_TacticalAction.swimming_dynamic_power_efficiency = 2.251177136954043;
+	m_TacticalAction.swimming_energy_to_stamina_coeff = 5.5077361654198262e-05;
+	m_TacticalAction.env_heat_stress_max_multiplier = 1.4311564450776353;
+	m_TacticalAction.env_rain_weight_max = 9.617439099975428;
+	m_TacticalAction.env_wind_resistance_coeff = 0.06269631389224438;
+	m_TacticalAction.env_mud_penalty_max = 0.4514096229397251;
+	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.015556055216804606;
+	m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.04013755924439299;
 }
 
 
@@ -669,7 +660,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Workbench auto-on. | 调试：控制台输出详细日志，工作台模式自动开启")]
     bool m_bDebugLogEnabled;
     
-    [Attribute("5000", UIWidgets.EditBox, "Debug log interval (ms). Range: 1000-60000. | 调试日志间隔（毫秒），范围 1-60 秒")]
+    [Attribute("1000", UIWidgets.EditBox, "Debug batch interval (ms). Unified output per second. | 调试批次间隔（毫秒），统一波次每秒")]
     int m_iDebugUpdateInterval;
     
     [Attribute("false", UIWidgets.CheckBox, "Verbose: Log all calculation details. | 详细模式：输出完整计算过程")]

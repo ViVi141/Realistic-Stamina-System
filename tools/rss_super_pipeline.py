@@ -181,20 +181,21 @@ class ScenarioLibrary:
     def create_acft_2mile_scenario(load_weight=0.0):
         """创建ACFT 2英里测试场景
         
+        现实 ACFT：2 mile = 3.218 km，目标时间 15:27 = 927s → 速度 3.218/927 ≈ 3.47 m/s。
         Args:
-            load_weight: 负载重量（kg），ACFT标准测试应为0.0
+            load_weight: 负载重量（kg），ACFT标准测试应为0.0或最小装备约1.36kg
         """
-        # 校准目标：0kg Run 3.5km/15:27 → 最低体力 20%
-        # 3500m / 927s ≈ 3.776 m/s
-        target_speed = 3500.0 / 927.0
+        acft_distance_m = 3218.0  # 2 mile = 3.218 km
+        target_duration_s = 927.0  # 15分27秒
+        target_speed = acft_distance_m / target_duration_s  # ≈ 3.47 m/s
         return Scenario(
-            speed_profile=[(0, target_speed), (927, target_speed)],
+            speed_profile=[(0, target_speed), (target_duration_s, target_speed)],
             current_weight=90.0 + load_weight,  # 体重90kg + 负载
             grade_percent=0.0,  # 平地
             terrain_factor=1.0,  # 普通地形
             stance=Stance.STAND,  # 站立
             movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=927.0,  # 目标完成时间15分27秒
+            target_finish_time=target_duration_s,
             test_type="ACFT 2英里测试",
             standard_load=0.0  # ACFT标准测试应为0KG
         )
@@ -262,6 +263,66 @@ class ScenarioLibrary:
             test_type="野战巡逻场景"
         )
 
+    @staticmethod
+    def create_run_sprint_boundary_scenario(load_weight=30.0):
+        """Run 与 Sprint 边界区测试（fast jog / tactical sprint）
+
+        速度 4.2 m/s 落在 3.8–4.6 m/s 边界，检测能量曲线不连续、stamina drop 突变；
+        避免优化器利用 Run/Sprint 分界空隙。60s 持续。
+        """
+        speed_m_s = 4.2
+        duration_s = 60.0
+        return Scenario(
+            speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,  # 边界区可能被引擎判 Run 或 Sprint，用 RUN 作为基准
+            target_finish_time=duration_s,
+            test_type="Run/Sprint边界60s"
+        )
+
+    @staticmethod
+    def create_heavy_load_scenario(load_weight=45.0):
+        """重量极端测试（长程/ T1 风格）
+
+        45kg、2.5 m/s、10 分钟；与 Chaos 坡度极端互补，避免模型仅在 30kg 区间最优。
+        任务参考：长程 40–50kg。
+        """
+        speed_m_s = 2.5
+        duration_s = 600.0  # 10 min
+        return Scenario(
+            speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=duration_s,
+            test_type="重载45kg_10min"
+        )
+
+    @staticmethod
+    def create_long_duration_tactical_scenario(load_weight=30.0):
+        """长距离连续机动测试（最重要之一）
+
+        30kg、3.2 m/s、20 分钟；模拟真实战术中「持续 15–30 分钟中速机动」，
+        对 stamina 系统影响极大，避免仅短时场景最优。
+        """
+        speed_m_s = 3.2
+        duration_s = 1200.0  # 20 min
+        return Scenario(
+            speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
+            current_weight=90.0 + load_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=duration_s,
+            test_type="30kg持续20min"
+        )
+
 
 @dataclass
 class BugReport:
@@ -274,11 +335,55 @@ class BugReport:
 
 
 class RSSSuperPipeline:
-    """RSS 增强型多目标优化流水线"""
-    
+    """RSS 增强型多目标优化流水线
+
+    默认目标数量与含义（均 minimize）：
+    - 目标 1：可玩性负担（30kg 多场景）
+    - 目标 2：稳定性风险（BUG 检测 + 软约束惩罚）
+    - 目标 3：生理学损失（100 - 生理学合理性）
+    - 目标 4：会话体验损失（40/60 分钟样本 + 恢复窗）
+    - 可选：Sprint-drop、Sprint-remaining（当 enable_sprint_objective 时）
+
+    经验值（仿真 + 多目标优化）：典型 500–3000 次评估；若用种群算法，
+    例如 population=64、generation=100 → 约 6400 次评估通常已足够。
+    当前默认 n_trials=500、population_size=300，可依需要增至 1000–3000。
+    """
+    # 集中配置：可玩性惩罚系数与阈值（便于调参与文档）
+    PLAYABILITY = {
+        'min_stamina_threshold': 0.15,
+        'min_stamina_coeff': 1200.0,
+        'mean_stamina_threshold': 0.30,
+        'mean_stamina_coeff': 400.0,
+        'exhaustion_coeff': 1000.0,
+        'time_ratio_1_15_coeff': 250.0,
+        'time_ratio_1_30_coeff': 600.0,
+    }
+    # 集中配置：软约束惩罚系数（恢复顺序、姿态倍数等）
+    CONSTRAINT = {
+        'prone_standing': 200.0,
+        'standing_slow': 150.0,
+        'fast_medium': 150.0,
+        'medium_slow': 300.0,
+        'posture_crouch': 200.0,
+        'posture_prone': 600.0,
+        'posture_prone_crouch': 300.0,
+    }
+    # 集中配置：会话相关惩罚与阈值
+    SESSION = {
+        'recovery_soft_target': 0.15,
+        'recovery_soft_coeff': 100.0,
+        'session_fail_engagement': 500.0,
+        'session_penalty_all': 100.0,
+        'final_stamina_low': 0.25,
+        'final_stamina_low_coeff': 200.0,
+        'final_stamina_high': 0.70,
+        'final_stamina_high_coeff': 50.0,
+        'low_events_per_min_coeff': 10.0,
+    }
+
     def __init__(
         self,
-        n_trials: int = 500,  # 默认500次迭代，平衡性能和多样性
+        n_trials: int = 500,  # 总评估次数；经验上 500–3000，种群×代数≈6400 通常足够
         n_jobs: int = -1,  # -1表示自动检测CPU核心数
         use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
         batch_size: int = 5,  # 批处理大小
@@ -295,12 +400,15 @@ class RSSSuperPipeline:
         enable_joint_sprint_energy_constraint: bool = True,  # 是否启用冲刺-能量耦合软约束
         joint_sprint_energy_penalty_scale: float = 8000.0,  # 联合惩罚规模（线性系数）
         joint_sprint_energy_target_coeff: float = 1e-06,  # 目标 energy_to_stamina_coeff（与 C 预设 7-9e-7 对齐）
+        prune_on_critical_bug: bool = True,  # 关键 BUG（负体力/NaN/崩溃）时剪枝
+        prune_on_basic_fitness_fail: bool = True,  # 基础体能未通过时剪枝
+        basic_fitness_time_ratio_max: float = 1.45,  # 基础体能通过条件：actual_time/target_time <= 此值（放宽以配合新孪生逻辑）
     ): 
         """
         初始化流水线
         
         Args:
-            n_trials: 优化迭代次数（默认5000，提高多样性）
+            n_trials: 总评估次数（默认500；建议 500–3000，或 population×generations≈6400）
             n_jobs: 并行线程数（-1表示自动检测CPU核心数）
             use_database: 是否使用数据库存储（默认False，使用内存存储以提高性能）
             batch_size: 批处理大小
@@ -337,6 +445,9 @@ class RSSSuperPipeline:
         # Hard prune threshold for sprint remaining and optional upper cap for sprint multiplier
         self.sprint_prune_threshold = sprint_prune_threshold
         self.sprint_upper_cap = sprint_upper_cap
+        self.prune_on_critical_bug = prune_on_critical_bug
+        self.prune_on_basic_fitness_fail = prune_on_basic_fitness_fail
+        self.basic_fitness_time_ratio_max = basic_fitness_time_ratio_max
         # 冲刺-能量耦合约束配置（可选）
         self.enable_joint_sprint_energy_constraint = enable_joint_sprint_energy_constraint
         self.joint_sprint_energy_penalty_scale = joint_sprint_energy_penalty_scale
@@ -400,14 +511,14 @@ class RSSSuperPipeline:
         encumbrance_speed_penalty_coeff = trial.suggest_float(
             'encumbrance_speed_penalty_coeff', 0.1, 0.22  # 降低上界，减轻速度限制
         )
-        encumbrance_speed_penalty_exponent = trial.suggest_float(
-            'encumbrance_speed_penalty_exponent', 1.0, 3.0
-        )
+        # [DEPRECATED] C 端负重速度惩罚改为“分段非线性 + 软阈值”，不再使用 exponent 参与曲线形状。
+        # 仍保留该字段写入 JSON/C 端结构体以兼容旧配置，但优化器不再搜索该维度。
+        encumbrance_speed_penalty_exponent = 1.5
         encumbrance_speed_penalty_max = trial.suggest_float(
             'encumbrance_speed_penalty_max', 0.4, 0.95
         )
         encumbrance_stamina_drain_coeff = trial.suggest_float(
-            'encumbrance_stamina_drain_coeff', 0.8, 2.0  # 从1.0降低到0.8，允许更低负重惩罚
+            'encumbrance_stamina_drain_coeff', 0.8, 1.6
         )
         
         # [DEPRECATED] 已统一 Pandolf 公式，C/Python 不再使用 Sprint 倍数；保留供 JSON 兼容
@@ -605,74 +716,65 @@ class RSSSuperPipeline:
         # 记录BUG报告
         self.bug_reports.extend(bug_reports)
 
-        # 若检测到关键性BUG（NaN/负体力/仿真崩溃），则尽早剪枝该试验以节约资源
+        constraint_penalty = 0.0
+        # 若检测到关键性BUG（NaN/负体力/仿真崩溃）：可选剪枝或仅加惩罚（默认不剪枝以保证帕累托解非空）
         critical_bug_types = {'negative_stamina', 'nan_value', 'simulation_crash'}
+        critical_penalty = 0.0
         if any(b.bug_type in critical_bug_types for b in bug_reports):
             trial.set_user_attr('critical_bug', True)
-            raise optuna.exceptions.TrialPruned('Critical bug detected during stability evaluation')
+            critical_penalty = getattr(self, 'critical_bug_penalty', 50000.0)
+            if getattr(self, 'prune_on_critical_bug', False):
+                raise optuna.exceptions.TrialPruned('Critical bug detected during stability evaluation')
+            constraint_penalty += critical_penalty
+            stability_risk += critical_penalty
 
         # ==================== 7. 添加物理约束条件（JSON合理性修复） ====================
-        # 这些约束确保生成的参数满足生物学和物理学逻辑
-        
-        constraint_penalty = 0.0
-        
-        # 基础体能检查约束：未通过基础体能测试应被尽早淘汰以节约计算资源
+        # 这些约束确保生成的参数满足生物学和物理学逻辑（constraint_penalty 已在上方初始化）
+
+        # 基础体能检查约束：未通过时可选剪枝或仅加惩罚（默认不剪枝以保证帕累托解非空）
         if not basic_fitness_passed:
             trial.set_user_attr('basic_fitness', False)
-            # 早期剪枝：Failed basic fitness
-            raise optuna.exceptions.TrialPruned('Failed basic fitness check')
-        
-        # 约束1: prone_recovery > standing_recovery（生理逻辑）
-        # 说明：趴下应该比站立更容易恢复体力
+            fitness_penalty = getattr(self, 'basic_fitness_fail_penalty', 30000.0)
+            constraint_penalty += fitness_penalty
+            stability_risk += fitness_penalty
+            if getattr(self, 'prune_on_basic_fitness_fail', False):
+                raise optuna.exceptions.TrialPruned('Failed basic fitness check')
+
+        # 约束1–6：使用集中配置 CONSTRAINT
+        ccfg = getattr(self, 'CONSTRAINT', RSSSuperPipeline.CONSTRAINT)
         if prone_recovery_multiplier <= standing_recovery_multiplier:
             violation_factor = standing_recovery_multiplier - prone_recovery_multiplier + 0.1
-            penalty = violation_factor * 200.0  # 从500降到200
+            penalty = violation_factor * ccfg['prone_standing']
             constraint_penalty += penalty
             stability_risk += penalty
-        
-        # 约束2: standing_recovery > slow_recovery（恢复倍数递减）
-        # 说明：站立恢复应该快于慢速恢复
         if standing_recovery_multiplier <= slow_recovery_multiplier:
             violation_factor = slow_recovery_multiplier - standing_recovery_multiplier + 0.1
-            penalty = violation_factor * 150.0  # 从300降到150
+            penalty = violation_factor * ccfg['standing_slow']
             constraint_penalty += penalty
             stability_risk += penalty
-        
-        # 约束3: fast_recovery > medium_recovery > slow_recovery（恢复速度递减）
-        # 说明：快速恢复 > 中速恢复 > 慢速恢复
         if fast_recovery_multiplier <= medium_recovery_multiplier:
             violation_factor = medium_recovery_multiplier - fast_recovery_multiplier + 0.1
-            penalty = violation_factor * 150.0  # 从400降到150
+            penalty = violation_factor * ccfg['fast_medium']
             constraint_penalty += penalty
             stability_risk += penalty
-        
         if medium_recovery_multiplier <= slow_recovery_multiplier:
             violation_factor = slow_recovery_multiplier - medium_recovery_multiplier + 0.1
-            penalty = violation_factor * 300.0
+            penalty = violation_factor * ccfg['medium_slow']
             constraint_penalty += penalty
             stability_risk += penalty
-        
-        # 约束4: posture_crouch_multiplier > 1.0（蹲下应该增加消耗）
-        # 说明：蹲下时体力消耗应该大于正常站立，multiplier应该>1.0
         if posture_crouch_multiplier <= 1.0:
             violation_factor = 1.0 - posture_crouch_multiplier + 0.1
-            penalty = violation_factor * 200.0
+            penalty = violation_factor * ccfg['posture_crouch']
             constraint_penalty += penalty
             stability_risk += penalty
-        
-        # 约束5: posture_prone_multiplier > 1.0（趴下应该增加消耗）
-        # 说明：趴下时体力消耗应该大于正常站立，multiplier应该>1.0
         if posture_prone_multiplier <= 1.0:
             violation_factor = 1.0 - posture_prone_multiplier + 0.1
-            penalty = violation_factor * 600.0
+            penalty = violation_factor * ccfg['posture_prone']
             constraint_penalty += penalty
             stability_risk += penalty
-        
-        # 约束6: posture_prone_multiplier > posture_crouch_multiplier（趴下比蹲下消耗更大）
-        # 说明：趴下时体力消耗应该大于蹲下
         if posture_prone_multiplier <= posture_crouch_multiplier:
             violation_factor = posture_crouch_multiplier - posture_prone_multiplier + 0.1
-            penalty = violation_factor * 300.0
+            penalty = violation_factor * ccfg['posture_prone_crouch']
             constraint_penalty += penalty
             stability_risk += penalty
         
@@ -837,32 +939,28 @@ class RSSSuperPipeline:
         # 新：评估 40/60 分钟会话相关指标并作为额外目标（越小越好）
         engagement_loss, session_fail = self._evaluate_session_metrics(twin)
 
-        # 如果会话硬约束失败，则早期剪枝该试验（会话不可接受）
+        # 会话失败不再剪枝，改为大惩罚，避免帕累托解数量为 0（失败解仍参与优化但被惩罚支配）
+        scfg = getattr(self, 'SESSION', RSSSuperPipeline.SESSION)
+        session_penalty = 0.0
         if session_fail:
             trial.set_user_attr('session_fail', True)
-            raise optuna.exceptions.TrialPruned('Session-level failure')
+            engagement_loss += scfg['session_fail_engagement']
+            session_penalty = scfg['session_penalty_all']
 
         # Sprint-drop 目标缩放并作为独立目标（仅在启用时包含于返回值中）
         scaled_sprint = sprint_obj * 0.1 if getattr(self, 'enable_sprint_objective', False) else None
 
         # 根据配置返回目标向量（长度需与创建研究时的 directions 一致）
-        # 如果启用了 sprint_remaining_objective，它会作为独立目标被包含（在 enable_sprint_objective 为 True 的上下文中）
-        if getattr(self, 'use_database', False):
-            # 数据库模式：可返回 5 或 6 个目标
-            if getattr(self, 'enable_sprint_objective', False) and getattr(self, 'enable_sprint_remaining_objective', False):
-                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, sprint_remaining_obj * 0.1, float(engagement_loss)
-            elif getattr(self, 'enable_sprint_objective', False):
-                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, float(engagement_loss)
-            else:
-                return scaled_playability, scaled_stability, scaled_realism, float(engagement_loss)
-        else:
-            # 内存模式：可返回 3、4 或 5 个目标
-            if getattr(self, 'enable_sprint_objective', False) and getattr(self, 'enable_sprint_remaining_objective', False):
-                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint, sprint_remaining_obj * 0.1
-            elif getattr(self, 'enable_sprint_objective', False):
-                return scaled_playability, scaled_stability, scaled_realism, scaled_sprint
-            else:
-                return scaled_playability, scaled_stability, scaled_realism
+        # 统一为 4 基目标（playability, stability, realism, engagement）+ 可选 sprint / sprint_remaining
+        engagement_scaled = float(engagement_loss)
+        if getattr(self, 'enable_sprint_objective', False) and getattr(self, 'enable_sprint_remaining_objective', False):
+            return (scaled_playability + session_penalty, scaled_stability + session_penalty,
+                    scaled_realism + session_penalty, engagement_scaled, scaled_sprint, sprint_remaining_obj * 0.1)
+        if getattr(self, 'enable_sprint_objective', False):
+            return (scaled_playability + session_penalty, scaled_stability + session_penalty,
+                    scaled_realism + session_penalty, engagement_scaled, scaled_sprint)
+        return (scaled_playability + session_penalty, scaled_stability + session_penalty,
+                scaled_realism + session_penalty, engagement_scaled)
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
@@ -893,24 +991,7 @@ class RSSSuperPipeline:
         
         # 2. 恢复倍数合理性
         # 检查恢复倍数是否合理
-        prone_recovery = constants.PRONE_RECOVERY_MULTIPLIER
-        standing_recovery = constants.STANDING_RECOVERY_MULTIPLIER
-        fast_recovery = constants.FAST_RECOVERY_MULTIPLIER
-        medium_recovery = constants.MEDIUM_RECOVERY_MULTIPLIER
-        slow_recovery = constants.SLOW_RECOVERY_MULTIPLIER
-        
-        # 恢复倍数合理性检查（分离姿态和恢复阶段）
-        # 姿态约束：趴下应该比站立恢复快
-        if not (prone_recovery > standing_recovery):
-            realism_score -= 15.0  # 趴下应该比站立恢复快
-        elif abs(prone_recovery - standing_recovery) < 0.5:
-            realism_score -= 8.0  # 惩罚差异过小的参数
-
-        # 恢复阶段约束：快速 > 中等 > 慢速
-        if not (fast_recovery > medium_recovery > slow_recovery):
-            realism_score -= 15.0  # 恢复阶段应该递减
-        elif abs(fast_recovery - slow_recovery) < 1.0:
-            realism_score -= 8.0  # 惩罚差异过小的参数
+        # 恢复/姿态顺序由软约束（CONSTRAINT）统一表达，此处仅保留数值范围类检查
         
         # 3. 代谢阈值合理性
         # 检查代谢阈值是否在合理范围内
@@ -935,19 +1016,11 @@ class RSSSuperPipeline:
         # 已统一为 Pandolf 公式，不再使用 Sprint 倍数（速度项自然体现 Sprint 更高消耗）
 
         # 7. 疲劳系统合理性
-        # 检查疲劳积累系数是否合理
         fatigue_accumulation = constants.FATIGUE_ACCUMULATION_COEFF
         if fatigue_accumulation < 0.005 or fatigue_accumulation > 0.03:
             realism_score -= 8.0  # 疲劳积累系数偏离合理范围
         
-        # 8. 姿态系统合理性
-        # 检查姿态消耗倍数是否合理
-        crouch_multiplier = constants.POSTURE_CROUCH_MULTIPLIER
-        prone_multiplier = constants.POSTURE_PRONE_MULTIPLIER
-        if crouch_multiplier <= 1.0 or prone_multiplier <= 1.0:
-            realism_score -= 10.0  # 姿态倍数应该大于1.0
-        if prone_multiplier <= crouch_multiplier:
-            realism_score -= 8.0  # 趴下应该比蹲下消耗更大
+        # 姿态倍数顺序与 >1.0 由软约束（CONSTRAINT）统一表达，此处不再重复扣分
         
         # 确保分数在0-100范围内
         realism_score = max(0.0, min(realism_score, 100.0))
@@ -1024,8 +1097,8 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         actual_sprint_drop = max(0.0, -sprint_delta)
-        # 支持可配置的目标区间和惩罚系数
-        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.01, 0.10))
+        # 与全局 sprint_drop_target 一致（默认 0.15~0.40），避免移动平衡与冲刺剩余/联合约束两套标准
+        required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.15, 0.40))
         if actual_sprint_drop < required_sprint_drop_min:
             # 连续惩罚：低于下限按距离线性惩罚（可调系数）
             penalty += (required_sprint_drop_min - actual_sprint_drop) * getattr(self, 'sprint_drop_penalty_below', 4000.0)
@@ -1095,10 +1168,10 @@ class RSSSuperPipeline:
             min_stamina = results['min_stamina']
 
             # 仅使用最低体力作为基础体能判定：平均值在持续消耗场景中容易产生误导（可能被短时高值抬高）
-            # 通过条件：完成时间不超过 120%
+            # 通过条件：完成时间不超过配置比例（默认 1.45，放宽以配合新孪生逻辑 Run/Sprint 不恢复等）
             # 原来的 min_stamina >= 20% 过于严格（默认常量会掉到0），因此仅保留时间检查。
-            # 如果需要基于体力做评分，可以在后续阶段处理。
-            passed = time_ratio <= 1.2
+            max_ratio = getattr(self, 'basic_fitness_time_ratio_max', 1.45)
+            passed = time_ratio <= max_ratio
             # 记录调试信息以便分析剪枝原因
             if not passed:
                 print(f"[Fitness] time_ratio={time_ratio:.3f}, min_stamina={min_stamina:.3f} -> rejected")
@@ -1117,12 +1190,15 @@ class RSSSuperPipeline:
         Returns:
             可玩性负担（越小越好）
         """
-        # 30KG战斗负载测试 - 结合多个场景（含环境压力场景）
+        # 多负载战斗测试 + 边界/重载/长时：ACFT 1.36kg(2mi=3.218km)，城市35kg，山地25kg，野战30kg，边界4.2m/s 60s，重载45kg 10min，30kg 20min
         scenarios = [
-            ScenarioLibrary.create_acft_2mile_scenario(load_weight=30.0),
-            ScenarioLibrary.create_urban_combat_scenario(load_weight=30.0),
+            ScenarioLibrary.create_acft_2mile_scenario(load_weight=1.36),
+            ScenarioLibrary.create_urban_combat_scenario(load_weight=35.0),
             ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0),
             ScenarioLibrary.create_realistic_field_patrol_scenario(load_weight=30.0),
+            ScenarioLibrary.create_run_sprint_boundary_scenario(load_weight=30.0),
+            ScenarioLibrary.create_heavy_load_scenario(load_weight=45.0),
+            ScenarioLibrary.create_long_duration_tactical_scenario(load_weight=30.0),
         ]
         
         # 使用并行处理提高性能
@@ -1150,10 +1226,10 @@ class RSSSuperPipeline:
                 actual_time = float(results['total_time_with_penalty'])
                 time_ratio = actual_time / max(target_time, 1e-6)
 
-                # 1) 完成时间惩罚：允许轻微超时，但超时越多惩罚越大（连续而非阶梯）
-                # 目标：30KG 下不要“过分慢”，但也不强迫极限跑。
-                scenario_burden += max(0.0, time_ratio - 1.15) * 250.0  # 增加惩罚系数
-                scenario_burden += max(0.0, time_ratio - 1.30) * 600.0  # 增加惩罚系数
+                # 1) 完成时间惩罚：使用集中配置 PLAYABILITY
+                pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
+                scenario_burden += max(0.0, time_ratio - 1.15) * pcfg['time_ratio_1_15_coeff']
+                scenario_burden += max(0.0, time_ratio - 1.30) * pcfg['time_ratio_1_30_coeff']
 
                 # 2) 体力压力惩罚：min/mean 体力越低，可玩性越差（连续）
                 stamina_history = results.get('stamina_history', [])
@@ -1161,16 +1237,12 @@ class RSSSuperPipeline:
                     min_stamina = float(min(stamina_history))
                     mean_stamina = float(sum(stamina_history) / len(stamina_history))
 
-                    # 偏好：最低体力至少 15%（从20%放宽到15%）
-                    scenario_burden += max(0.0, 0.15 - min_stamina) * 1200.0  # 增加惩罚系数和阈值
+                    scenario_burden += max(0.0, pcfg['min_stamina_threshold'] - min_stamina) * pcfg['min_stamina_coeff']
+                    scenario_burden += max(0.0, pcfg['mean_stamina_threshold'] - mean_stamina) * pcfg['mean_stamina_coeff']
 
-                    # 偏好：平均体力不要太低（避免全程“红条”）
-                    scenario_burden += max(0.0, 0.30 - mean_stamina) * 400.0  # 增加惩罚系数和阈值
-
-                    # 3) “耗尽占比”惩罚：低体力时长占比越高，惩罚越大（平方增强区分度）
-                    exhausted_frames = sum(1 for s in stamina_history if s < 0.10)  # 增加耗尽阈值
+                    exhausted_frames = sum(1 for s in stamina_history if s < 0.10)
                     exhaustion_ratio = exhausted_frames / len(stamina_history)
-                    scenario_burden += (exhaustion_ratio * exhaustion_ratio) * 1000.0  # 增加惩罚系数
+                    scenario_burden += (exhaustion_ratio * exhaustion_ratio) * pcfg['exhaustion_coeff']
 
                 return float(scenario_burden), scenario
             except Exception as e:
@@ -1190,8 +1262,8 @@ class RSSSuperPipeline:
             results_list = [evaluate_scenario(scenario) for scenario in scenarios]
         
         total_burden = 0.0
-        weights = [0.35, 0.25, 0.2, 0.2]  # 2英里、城市、山地、野战巡逻
-        
+        weights = [0.25, 0.18, 0.14, 0.14, 0.12, 0.09, 0.08]  # ACFT、城市、山地、野战、边界60s、重载10min、长时20min
+
         for i, (scenario_burden, scenario) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
             if scenario is None:
@@ -1444,14 +1516,13 @@ class RSSSuperPipeline:
         
         # 创建研究（使用NSGA-II采样器，改进参数以增加多样性）
         # 根据配置动态构建 direction 列表（确保与 objective 返回值匹配）
+        # 默认 4 目标：playability, stability, realism, engagement_loss（内存与数据库一致）
         base_directions = ['minimize', 'minimize', 'minimize']
-        # 如果启用 sprint objective，添加其方向；如果还启用了 sprint_remaining objective，则再添加一个方向
+        base_directions.append('minimize')  # engagement_loss（第 4 目标，内存/数据库均启用）
         if getattr(self, 'enable_sprint_objective', False):
             base_directions.append('minimize')  # sprint objective
             if getattr(self, 'enable_sprint_remaining_objective', False):
                 base_directions.append('minimize')  # sprint remaining objective
-        if self.use_database:
-            base_directions.append('minimize')  # engagement_loss
 
         if self.use_database:
             # 使用数据库存储以便后续分析（性能较慢）
@@ -1467,7 +1538,7 @@ class RSSSuperPipeline:
                     storage=storage_url,
                     directions=base_directions,
                     sampler=optuna.samplers.NSGAIISampler(
-                        population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
+                        population_size=300,  # 种群大小；经验上 population×代数≈6400 已足够
                         mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）
                         crossover_prob=0.9,  # 增加交叉概率以提高收敛速度
                         swapping_prob=0.5,    # 增加交换概率以提高多样性
@@ -1483,7 +1554,7 @@ class RSSSuperPipeline:
                 study_name=study_name,
                 directions=base_directions,
                 sampler=optuna.samplers.NSGAIISampler(
-                    population_size=300,  # 增加种群大小以提高多样性（从200增加到300）
+                    population_size=300,  # 种群大小；经验上 population×代数≈6400 已足够
                     mutation_prob=0.5,  # 增加变异概率以提高探索能力（从0.4增加到0.5）
                     crossover_prob=0.9,  # 增加交叉概率以提高收敛速度
                     swapping_prob=0.5,    # 增加交换概率以提高多样性
@@ -1562,7 +1633,21 @@ class RSSSuperPipeline:
         
         # 提取帕累托前沿
         self.best_trials = self.study.best_trials
-        
+        if len(self.best_trials) == 0:
+            # 帕累托为空时（例如所有 trial 被惩罚导致无非支配解）：用已完成 trial 按前两目标之和排序取前 50 作为回退
+            completed = [t for t in self.study.get_trials() if t.state == optuna.trial.TrialState.COMPLETE and t.values is not None]
+            if completed:
+                def _sum_first_two(trial):
+                    v = trial.values
+                    if v is None or len(v) < 2:
+                        return float('inf')
+                    return float(v[0]) + float(v[1])
+                completed.sort(key=_sum_first_two)
+                self.best_trials = completed[:50]
+                print(f"\n帕累托前沿为空，已用已完成 trial 回退：取前 {len(self.best_trials)} 个（按可玩性+稳定性之和排序）")
+            else:
+                print("\n警告：无已完成 trial，无法生成导出解。请放宽剪枝/约束或增加 n_trials。")
+
         print(f"\n帕累托前沿：")
         print(f"  非支配解数量：{len(self.best_trials)}")
         
@@ -1728,8 +1813,8 @@ class RSSSuperPipeline:
 
         # ACFT 通过：空载 ACFT 最低体力 > 1%
         acft_ok = acft_res is not None and min(acft_hist) > 0.01
-        # 恢复窗通过：30s 冲刺后 60s 恢复，末端体力应 > 15%
-        recovery_ok = sprint_res is not None and (sprint_hist[-1] > 0.15 if sprint_hist else True)
+        # 恢复窗通过：30s 冲刺后 60s 恢复，末端体力应 > 5%（放宽自 15%，避免与低 base_recovery_rate 采样冲突导致 0 解）
+        recovery_ok = sprint_res is not None and (sprint_hist[-1] > 0.05 if sprint_hist else True)
 
         # low_events：巡逻样本中低于10%的次数（按分钟标准化）
         patrol_low_count = sum(1 for s in patrol_hist if s < 0.10)
@@ -1743,14 +1828,20 @@ class RSSSuperPipeline:
         time_in_window_est = sum(1 for s in patrol_hist if 0.2 <= s <= 0.8) / max(len(patrol_hist), 1)
         engagement_loss = 100.0 - 100.0 * time_in_window_est
 
-        # 如果 final_stamina_est 不在 [0.25, 0.70] 区间，增加额外惩罚
-        if final_stamina_est < 0.25:
-            engagement_loss += (0.25 - final_stamina_est) * 200.0  # 越低惩罚越大
-        elif final_stamina_est > 0.70:
-            engagement_loss += (final_stamina_est - 0.70) * 50.0  # 过高也略微惩罚（过轻松）
+        scfg = getattr(self, 'SESSION', RSSSuperPipeline.SESSION)
+        if final_stamina_est < scfg['final_stamina_low']:
+            engagement_loss += (scfg['final_stamina_low'] - final_stamina_est) * scfg['final_stamina_low_coeff']
+        elif final_stamina_est > scfg['final_stamina_high']:
+            engagement_loss += (final_stamina_est - scfg['final_stamina_high']) * scfg['final_stamina_high_coeff']
 
-        # 增加 low_events 惩罚：每分钟低于10% 的次数越多，体验越差
-        engagement_loss += min(low_events_per_min, 10.0) * 10.0
+        engagement_loss += min(low_events_per_min, 10.0) * scfg['low_events_per_min_coeff']
+
+        # 恢复窗软惩罚：30s 冲刺后 60s 恢复，末端在 (5%, target) 时线性鼓励恢复至 target 以上（不改变 session_fail）
+        if sprint_hist and len(sprint_hist) > 0:
+            recovery_end = float(sprint_hist[-1])
+            target = scfg['recovery_soft_target']
+            if 0.05 < recovery_end < target:
+                engagement_loss += (target - recovery_end) * scfg['recovery_soft_coeff']
 
         # 会话失败判定（硬约束）：ACFT / 恢复窗 / 不可复原崩溃
         session_fail = not (acft_ok and recovery_ok and no_permanent_incapacitation)

@@ -117,7 +117,7 @@ class RSSConstants:
     MIN_RECOVERY_STAMINA_THRESHOLD = 0.2
     MIN_RECOVERY_REST_TIME_SECONDS = 3.0
 
-    EPOC_DELAY_SECONDS = 0.5
+    EPOC_DELAY_SECONDS = 2.0
     EPOC_DRAIN_RATE = 0.001
 
     ENERGY_TO_STAMINA_COEFF = 9e-07  # 与 C 端 EliteStandard 预设一致
@@ -230,11 +230,14 @@ class RSSDigitalTwin:
     # -------------------------------------------------------------------------
     def _pandolf_expenditure(self, velocity: float, current_weight: float,
                             grade_percent: float, terrain_factor: float) -> float:
-        """与 C 完全一致。返回 %/s，velocity<0.1 时返回 -0.0025（恢复）。"""
+        """与 C 完全一致。返回 %/s。低速回退到静态负重站立消耗（不返回“恢复”）。"""
         velocity = max(0.0, velocity)
         current_weight = max(0.0, current_weight)
         if velocity < 0.1:
-            return -0.0025
+            bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+            load_weight = max(0.0, current_weight - bw)
+            static_rate = self._static_standing_cost(bw, load_weight)
+            return float(max(static_rate, 0.0))
 
         vb = getattr(self.constants, 'PANDOLF_BASE_COEFF', 2.7)
         vc = getattr(self.constants, 'PANDOLF_VELOCITY_COEFF', 3.2)
@@ -279,6 +282,40 @@ class RSSDigitalTwin:
         body_mass_percent = eff / bw if bw > 0 else 0.0
         mult = 1.0 + coeff * body_mass_percent
         return float(np.clip(mult, 1.0, 3.0))
+
+    # -------------------------------------------------------------------------
+    # EncumbranceCache (speed penalty) - SCR_EncumbranceCache.c (segmented nonlinear)
+    # effectiveLoad = max(equipmentWeight - BASE_WEIGHT, 0)
+    # ratio = effectiveLoad / CHARACTER_WEIGHT
+    # penalty = segmented(ratio) * (coeff / 0.20), clamp(0, max_pen)
+    # -------------------------------------------------------------------------
+    def _encumbrance_speed_penalty_base(self, current_weight: float) -> float:
+        base_w = getattr(self.constants, 'BASE_WEIGHT', 1.36)
+        bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+        coeff = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
+        max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+
+        effective_load = max(0.0, current_weight - bw - base_w)
+        ratio = 0.0
+        if bw > 0.0:
+            ratio = effective_load / bw
+        ratio = float(np.clip(ratio, 0.0, 2.0))
+
+        raw = 0.0
+        if ratio <= 0.3:
+            raw = 0.15 * ratio
+        elif ratio <= 0.6:
+            seg = ratio - 0.3
+            raw = 0.045 + 0.35 * (seg ** 1.5)
+        else:
+            seg = ratio - 0.6
+            raw = 0.25 + 0.65 * (seg * seg)
+
+        scale = 1.0
+        if 0.20 > 0.0:
+            scale = coeff / 0.20
+        raw = raw * scale
+        return float(np.clip(raw, 0.0, max_pen))
 
     # -------------------------------------------------------------------------
     # StaminaConsumptionCalculator.CalculatePostureMultiplier
@@ -336,9 +373,12 @@ class RSSDigitalTwin:
         rest_per_tick = getattr(self.constants, 'REST_RECOVERY_PER_TICK', 0.0005)
 
         # 1. 基础消耗率 (C: StaminaUpdateCoordinator.CalculateLandBaseDrainRate)
-        if movement_type == MovementType.IDLE or speed <= 0.05:
-            # Idle: baseDrainRate = -REST_RECOVERY_PER_TICK
-            raw = -rest_per_tick
+        if movement_type == MovementType.IDLE:
+            if speed < 0.1:
+                raw = -rest_per_tick
+            else:
+                pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
+                raw = pandolf_per_s * (1.0 + wind_drag) * 0.2
         elif speed < 0.1:
             # 静态负重站立
             load_weight = max(0.0, current_weight - bw)
@@ -346,6 +386,24 @@ class RSSDigitalTwin:
             raw = static_per_s * 0.2
         else:
             pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
+
+            # 负重限速努力补偿（与 C 端 SCR_StaminaUpdateCoordinator 一致）
+            if movement_type == MovementType.RUN or movement_type == MovementType.SPRINT:
+                base_pen = self._encumbrance_speed_penalty_base(current_weight)
+                if base_pen > 0.0:
+                    speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
+                    enc_pen = base_pen * (1.0 + speed_ratio)
+                    if movement_type == MovementType.SPRINT:
+                        enc_pen = enc_pen * 1.5
+                    enc_pen = float(np.clip(enc_pen, 0.0, getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)))
+
+                    denom = max(1.0 - enc_pen, 0.15)
+                    unenc_speed = min(speed / denom, 7.0)
+                    effort_per_s = self._pandolf_expenditure(unenc_speed, current_weight, grade_percent, terrain_factor)
+                    if effort_per_s > pandolf_per_s:
+                        blend = float(np.clip(enc_pen / 0.5, 0.0, 1.0))
+                        pandolf_per_s = pandolf_per_s + (effort_per_s - pandolf_per_s) * blend
+
             raw = pandolf_per_s * (1.0 + wind_drag) * 0.2
 
         base_for_recovery = max(0.0, raw) if raw > 0 else 0.0
@@ -519,6 +577,11 @@ class RSSDigitalTwin:
                 self.stamina, self.rest_duration_minutes, self.exercise_duration_minutes,
                 current_weight, base_for_rec, False, stance, self.environment_factor, speed)
 
+            # Run/Sprint 时仍计算恢复，但保证整体净消耗（恢复率不超过消耗，避免净恢复）
+            if (movement_type == MovementType.RUN or movement_type == MovementType.SPRINT) and speed >= 0.1:
+                if recovery_rate > total_drain:
+                    recovery_rate = float(total_drain)
+
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
             net_change = recovery_rate - total_drain
             net_change = np.clip(float(net_change), -0.1, 0.01)
@@ -579,8 +642,6 @@ class RSSDigitalTwin:
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.2)
         bw = getattr(c, 'CHARACTER_WEIGHT', 90.0)
         base_w = getattr(c, 'BASE_WEIGHT', 1.36)
-        coeff = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
-        exp = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_EXPONENT', 1.5)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         sprint_boost = getattr(c, 'SPRINT_SPEED_BOOST', 0.30)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
@@ -595,10 +656,7 @@ class RSSDigitalTwin:
         slope_mult = 1.0
         scaled_run = run_base * slope_mult
 
-        eff_weight = max(0.0, current_weight - bw - base_w)
-        body_mass_pct = eff_weight / bw if bw > 0 else 0.0
-        base_penalty = coeff * (body_mass_pct ** exp)
-        base_penalty = np.clip(base_penalty, 0.0, max_pen)
+        base_penalty = self._encumbrance_speed_penalty_base(current_weight)
         speed_ratio = np.clip(last_speed / game_max, 0.0, 1.0)
         enc_penalty = base_penalty * (1.0 + speed_ratio)
         if phase == MovementType.SPRINT:
@@ -623,6 +681,38 @@ class RSSDigitalTwin:
 
         return float(game_max * mult)
 
+    def _compute_engine_movement_phase(
+        self,
+        intent_phase: int,
+        actual_speed: float,
+        last_speed: float,
+        current_weight: float,
+        enable_randomness: bool,
+    ) -> int:
+        """近似引擎判定的移动类型（可能与输入意图不一致）。"""
+        phase = int(intent_phase)
+        if phase == MovementType.IDLE:
+            return MovementType.IDLE
+
+        # 可选：低速/重载时偶发误判为 idle（用于对齐线上观察到的状态抖动）。
+        if enable_randomness:
+            bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+            base_w = getattr(self.constants, 'BASE_WEIGHT', 1.36)
+            effective_load = max(0.0, current_weight - bw - base_w)
+            ratio = 0.0
+            if bw > 0.0:
+                ratio = effective_load / bw
+
+            if actual_speed < 0.25 and last_speed < 0.25 and ratio > 0.30:
+                # ratio>30% 且速度很低时，给一个小概率误判。
+                # 概率随负重增加而上升，上限 20%。
+                p = (ratio - 0.30) / 0.70
+                p = float(np.clip(p, 0.0, 0.20))
+                if random.random() < p:
+                    return MovementType.IDLE
+
+        return phase
+
     def simulate_closed_loop(
         self,
         duration_s: float,
@@ -642,21 +732,32 @@ class RSSDigitalTwin:
 
         steps = int(duration_s / dt)
         for _ in range(steps):
+            intent_phase = int(movement_intent)
             actual_speed = self.calculate_actual_speed(
-                self.stamina, current_weight, movement_intent, last_speed
+                self.stamina, current_weight, intent_phase, last_speed
             )
             exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
             can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.15)
-            effective_phase = movement_intent
-            if (exhausted or not can_sprint) and movement_intent == MovementType.SPRINT:
+            effective_intent = intent_phase
+            if (exhausted or not can_sprint) and intent_phase == MovementType.SPRINT:
                 effective_phase = MovementType.RUN
+            else:
+                effective_phase = effective_intent
+
+            engine_phase = self._compute_engine_movement_phase(
+                effective_phase,
+                actual_speed,
+                last_speed,
+                current_weight,
+                enable_randomness,
+            )
             self.step(
                 actual_speed,
                 current_weight,
                 grade_percent,
                 terrain_factor,
                 stance,
-                effective_phase,
+                engine_phase,
                 current_time,
                 enable_randomness,
             )
@@ -679,11 +780,7 @@ class RSSDigitalTwin:
         current_time = 0.0
         total_distance = 0.0
         nominal_distance = 0.0
-        bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
-        base = getattr(self.constants, 'BASE_WEIGHT', 1.36)
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
-        coeff = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
-        exp = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_EXPONENT', 1.5)
         max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(stance, 1.0)
 
@@ -700,12 +797,12 @@ class RSSDigitalTwin:
                 current_time += 0.2
                 nominal_distance += speed * 0.2
 
-                eff_weight = max(0.0, current_weight - bw - base)
-                body_mass_pct = eff_weight / bw if bw > 0 else 0.0
-                speed_penalty = coeff * (body_mass_pct ** exp)
+                base_pen = self._encumbrance_speed_penalty_base(current_weight)
+                speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
+                speed_penalty = base_pen * (1.0 + speed_ratio)
                 if movement_type == MovementType.SPRINT:
-                    speed_penalty *= 1.5
-                speed_penalty = np.clip(speed_penalty, 0.0, max_pen)
+                    speed_penalty = speed_penalty * 1.5
+                speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
                 effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
                 total_distance += effective_speed * 0.2
 
