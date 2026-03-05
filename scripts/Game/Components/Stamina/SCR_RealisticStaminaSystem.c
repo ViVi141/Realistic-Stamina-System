@@ -856,9 +856,15 @@ class RealisticStaminaSpeedSystem
         velocity = Math.Max(velocity, 0.0);
         currentWeight = Math.Max(currentWeight, 0.0);
         
-        // 如果速度为0或很小，返回恢复率（负数）
+        // 速度接近 0 时不应返回“恢复”（负数）。移动阶段的低速通常来自限速/起步，
+        // 生理上仍存在静态支撑与姿态维持成本；此处用静态负重站立消耗回退。
         if (velocity < 0.1)
-            return -0.0025; // 恢复率（负数）
+        {
+            float bodyWeight = CHARACTER_WEIGHT; // 90kg
+            float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0);
+            float staticDrain = CalculateStaticStandingCost(bodyWeight, loadWeight);
+            return Math.Max(staticDrain, 0.0);
+        }
         
         // 计算基础项：2.7 + 3.2·(V-0.7)²
         // 优化：对于顶尖运动员，运动时的经济性（Running Economy）更高

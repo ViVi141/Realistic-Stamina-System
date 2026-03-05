@@ -26,6 +26,7 @@ class StaminaUpdateCoordinator
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
     // @param currentSpeed 当前速度（m/s）
+    // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）
     // @param currentWeightWithWet 包含湿重的总重量（kg）
     // @param gradePercent 坡度百分比
     // @param terrainFactor 地形系数（已包含泥泞修正）
@@ -34,6 +35,7 @@ class StaminaUpdateCoordinator
     // @return 基础消耗率（每0.2秒）
     static float CalculateLandBaseDrainRate(
         float currentSpeed,
+        float encumbranceSpeedPenalty,
         float currentWeightWithWet,
         float gradePercent,
         float terrainFactor,
@@ -50,18 +52,67 @@ class StaminaUpdateCoordinator
         {
             if (currentMovementPhase == 0)
             {
-                // Idle/Rest：恢复（强制）
-                baseDrainRate = -StaminaConstants.REST_RECOVERY_PER_TICK;
+                // Idle/Rest：仅在真正静止时恢复。
+                // 引擎/动画状态偶发把移动中的实体标记为 idle；若 currentSpeed 已经在移动范围内，
+                // 继续恢复会导致“冲刺/移动也回血”的反直觉行为。
+                if (currentSpeed < 0.1)
+                {
+                    baseDrainRate = -StaminaConstants.REST_RECOVERY_PER_TICK;
+                }
+                else
+                {
+                    float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                        currentSpeed,
+                        currentWeightWithWet,
+                        gradePercent,
+                        terrainFactor,
+                        true);
+                    pandolfPerS = pandolfPerS * (1.0 + windDrag);
+                    baseDrainRate = pandolfPerS * 0.2;
+                }
             }
             else
             {
-                // Walk/Run/Sprint：统一使用 Pandolf 能量消耗模型
+                // Walk/Run/Sprint：统一使用 Pandolf 能量消耗模型（以实际速度为主）
                 float pandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                     currentSpeed,
                     currentWeightWithWet,
                     gradePercent,
                     terrainFactor,
                     true);
+
+                // 负重限速努力补偿（生理学近似）：当负重显著压低“跑/冲刺”的实际速度时，
+                // 单纯用实际速度会低估局部肌肉招募与步态低效带来的代谢成本。
+                // 用“无负重惩罚下的速度估计”计算同模型的上界，并按负重惩罚强度插值补回一部分。
+                // 仅对 Run/Sprint 生效，避免把 Walk 的自我节能策略也当作“努力维持目标速度”。
+                if (encumbranceSpeedPenalty > 0.0 && (currentMovementPhase == 2 || currentMovementPhase == 3) && currentSpeed > 0.1)
+                {
+                    float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
+                    float encPenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
+                    if (isSprinting || currentMovementPhase == 3)
+                        encPenalty = encPenalty * 1.5;
+                    float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+                    encPenalty = Math.Clamp(encPenalty, 0.0, maxPenalty);
+
+                    float denom = 1.0 - encPenalty;
+                    denom = Math.Max(denom, 0.15);
+                    float unencumberedSpeedEstimate = currentSpeed / denom;
+                    unencumberedSpeedEstimate = Math.Min(unencumberedSpeedEstimate, 7.0);
+
+                    float effortPandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                        unencumberedSpeedEstimate,
+                        currentWeightWithWet,
+                        gradePercent,
+                        terrainFactor,
+                        true);
+
+                    if (effortPandolfPerS > pandolfPerS)
+                    {
+                        float blend = Math.Clamp(encPenalty / 0.5, 0.0, 1.0);
+                        pandolfPerS = pandolfPerS + (effortPandolfPerS - pandolfPerS) * blend;
+                    }
+                }
+
                 pandolfPerS = pandolfPerS * (1.0 + windDrag);
                 baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒
             }
@@ -323,6 +374,7 @@ class StaminaUpdateCoordinator
     static BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
         float currentSpeed,
+        float encumbranceSpeedPenalty,
         float currentWeight,
         float currentWeightWithWet,
         float gradePercent,
@@ -395,6 +447,7 @@ class StaminaUpdateCoordinator
                 // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
             baseDrainRate = CalculateLandBaseDrainRate(
                 currentSpeed,
+                encumbranceSpeedPenalty,
                 currentWeightWithWet,
                 gradePercent,
                 terrainFactor,
@@ -514,6 +567,22 @@ class StaminaUpdateCoordinator
                 stanceInt,
                 environmentFactor,
                 currentSpeed);
+
+            // 移动中恢复保护（按意图运动状态而非仅按速度）：
+            // 负重/限速可能让 Run/Sprint 的实际速度降到“走路区间”，但生理上仍处于高努力状态，
+            // 不应出现体力净恢复。只要引擎判定处于 Run/Sprint（或正在冲刺），就钳制正向恢复为 0。
+            int movementPhase = -1;
+            bool isSprintingNow = false;
+            if (controller)
+            {
+                movementPhase = controller.GetCurrentMovementPhase();
+                isSprintingNow = controller.IsSprinting();
+            }
+            bool isHighEffortMove = (isSprintingNow || movementPhase == 2 || movementPhase == 3);
+            if (isHighEffortMove && currentSpeed >= 0.1)
+            {
+                recoveryRate = 0.0;
+            }
             
             // ==================== 热应激对恢复的影响（模块化）====================
             // 生理学依据：高温不仅让人动起来累，更让人休息不回来

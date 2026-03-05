@@ -1147,6 +1147,7 @@ modded class SCR_CharacterControllerComponent
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
+            encumbranceSpeedPenalty,
             totalWeight,
             totalWeightWithWetAndBody,
             gradePercent,

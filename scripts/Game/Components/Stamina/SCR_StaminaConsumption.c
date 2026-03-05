@@ -114,6 +114,7 @@ class StaminaConsumptionCalculator
             float weight_for_base = currentWeight + StaminaConstants.CHARACTER_WEIGHT; // 装备+湿重 + 人体
             baseDrainRateByVelocity = StaminaUpdateCoordinator.CalculateLandBaseDrainRate(
                 currentSpeed,
+                0.0,
                 weight_for_base,
                 gradePercent,
                 terrainFactor,
