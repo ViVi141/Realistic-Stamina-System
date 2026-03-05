@@ -103,7 +103,7 @@ class RSSConstants:
     SMOOTH_TRANSITION_END = 0.05
     MIN_LIMP_SPEED_MULTIPLIER = 1.0 / 5.2  # 1.0 m/s
     EXHAUSTION_THRESHOLD = 0.0
-    SPRINT_ENABLE_THRESHOLD = 0.20
+    SPRINT_ENABLE_THRESHOLD = 0.15
     SPRINT_SPEED_BOOST = 0.30  # 从配置获取，默认 0.30
 
     FATIGUE_START_TIME_MINUTES = 5.0
@@ -584,7 +584,7 @@ class RSSDigitalTwin:
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         sprint_boost = getattr(c, 'SPRINT_SPEED_BOOST', 0.30)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
-        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.20)
+        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.15)
 
         phase = movement_phase
         if exhausted or not can_sprint:
@@ -646,7 +646,7 @@ class RSSDigitalTwin:
                 self.stamina, current_weight, movement_intent, last_speed
             )
             exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
-            can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.20)
+            can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.15)
             effective_phase = movement_intent
             if (exhausted or not can_sprint) and movement_intent == MovementType.SPRINT:
                 effective_phase = MovementType.RUN

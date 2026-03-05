@@ -250,6 +250,8 @@ RealisticStaminaSystem/
 
 ## 技术文档 / Technical Documentation
 
+**配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。详见 [docs/config_sync_summary.md](docs/config_sync_summary.md)。
+
 - **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 体力系统计算逻辑与常量说明
 - **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
 - **[tools/README.md](tools/README.md)** - 工具集完整文档
@@ -453,7 +455,7 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 **Sprint 相关：**
 - `SPRINT_SPEED_BOOST = 0.30`：Sprint 相对 Run 的速度提升（+30%）
 - `SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0`：Sprint 消耗倍数（×3.0）
-- `SPRINT_ENABLE_THRESHOLD = 0.20`：体力 ≥ 20% 才允许 Sprint
+- `SPRINT_ENABLE_THRESHOLD = 0.15`：体力 ≥ 15% 才允许 Sprint
 
 **负重相关：**
 - `CHARACTER_WEIGHT = 90.0`（kg）
@@ -694,7 +696,7 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 - **Sprint**
   - `SPRINT_SPEED_BOOST`（默认 +30%）
   - `SPRINT_STAMINA_DRAIN_MULTIPLIER`（默认 ×3.0）
-  - `SPRINT_ENABLE_THRESHOLD`（默认 20%）
+  - `SPRINT_ENABLE_THRESHOLD`（默认 15%）
 - **负重**
   - `CHARACTER_WEIGHT`（默认 90kg）
   - `ENCUMBRANCE_SPEED_PENALTY_COEFF`、`ENCUMBRANCE_STAMINA_DRAIN_COEFF`

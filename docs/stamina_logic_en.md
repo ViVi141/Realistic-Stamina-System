@@ -278,6 +278,8 @@ staminaDrainRate = E * ENERGY_TO_STAMINA_COEFF
 
 File location: SCR_RealisticStaminaSystem.c L852-L921
 
+**Slope data flow (no double application):** Slope affects the system in exactly two places. **Consumption**: Pandolf G term + Santee downhill correction in `CalculatePandolfEnergyExpenditure` (SCR_RealisticStaminaSystem.c ~882–948). **Speed**: Tobler's Hiking Function in `CalculateSlopeAdjustedTargetSpeed` (~1000–1060). The former `CalculateGradeMultiplier` has been removed; slope is applied only via these two paths.
+
 ---
 
 ### 3.2 Givoni-Goldman Running Model *(legacy, replaced by Pandolf)*
@@ -352,21 +354,26 @@ File location: SCR_RealisticStaminaSystem.c L124-L169
 
 ---
 
-### 3.5 Load Speed Penalty
+### 3.5 Load Speed Penalty (segmented nonlinear + soft threshold)
+
+Soft thresholds at 30% and 60% body mass: near-linear when light, steep when heavy.
 
 **Formula:**
 ```
 effectiveLoad = max(currentWeight - baseWeight, 0.0)
-weightPercent = effectiveLoad / characterWeight
-speedPenalty = ENCUMBRANCE_SPEED_PENALTY_COEFF * weightPercent
-speedPenalty = clamp(speedPenalty, 0.0, 0.5)
+ratio = effectiveLoad / characterWeight, clamp(ratio, 0, 2)
+
+if ratio <= 0.3:  speedPenalty = 0.15 * ratio
+elif ratio <= 0.6: speedPenalty = 0.045 + 0.35 * (ratio - 0.3)^1.5
+else: speedPenalty = 0.25 + 0.65 * (ratio - 0.6)^2
+
+speedPenalty = clamp(speedPenalty, 0.0, GetEncumbranceSpeedPenaltyMax())
 ```
+Sprint applies an extra factor (1.0 + speedRatio) and ×1.5, still capped by max.
 
-Example:
-- 30 kg load (effectiveLoad = 28.64 kg, weightPercent = 0.318)
-- speedPenalty = 0.20 * 0.318 = 0.064 (6.4 percent speed reduction)
+Example (90 kg character): 10 kg → ~1.7%; 27 kg (ratio 0.3) → 4.5%; 40 kg → ~6.5% (Sprint ×1.5); 60 kg → ~25%.
 
-File location: SCR_RealisticStaminaSystem.c L300-L332
+File location: SCR_EncumbranceCache.c (UpdateCache)
 
 ---
 
@@ -564,6 +571,7 @@ File location: SCR_EnvironmentFactor.c L823-L852
 **Total power:**
 ```
 P_total = P_static + P_horizontal + P_vertical + P_survival
+P_survival = SWIMMING_SURVIVAL_STRESS_POWER   # constant 15 W, survival stress term
 ```
 
 **Static power:**
@@ -637,33 +645,9 @@ File location: SCR_FatigueSystem.c L26-L93
 
 ---
 
-### 3.14 Grade Correction
+### 3.14 Grade Correction *(CalculateGradeMultiplier removed)*
 
-**Uphill:**
-```
-if slopeAngle > 0:
-    normalizedGrade = slopeAngle / 100.0
-    gradePower = normalizedGrade ^ 1.2
-    kGrade = 1.0 + gradePower * 5.0
-    kGrade = min(kGrade, 3.0)
-```
-
-**Downhill (mild):**
-```
-elif slopeAngle < 0 and abs(slopeAngle) <= 15:
-    kGrade = 1.0 + slopeAngle * GRADE_DOWNHILL_COEFF
-    kGrade = max(kGrade, 0.5)
-```
-
-**Downhill (steep):**
-```
-elif slopeAngle < 0 and abs(slopeAngle) > 15:
-    steepGradePenalty = (abs(slopeAngle) - 15.0) * 0.02
-    kGrade = 1.0 + steepGradePenalty
-    kGrade = min(kGrade, 1.5)
-```
-
-File location: SCR_RealisticStaminaSystem.c L779-L825
+Grade is applied only via **Pandolf G term + Santee correction** (3.15) for drain, and **Tobler's Hiking Function** (3.16) for speed. See "Slope data flow" at the start of §3.
 
 ---
 
@@ -740,7 +724,7 @@ The following constants are hardcoded and cannot be changed via config:
 | `INITIAL_STAMINA_AFTER_ACFT` | 1.0 (100 percent) | Initial stamina | SCR_StaminaConstants.c L41 |
 | `EXHAUSTION_THRESHOLD` | 0.0 (0 percent) | Exhaustion threshold | SCR_StaminaConstants.c L44 |
 | `EXHAUSTION_LIMP_SPEED` | 1.0 m/s | Base limp speed (used as minimum; actual exhaustion speed now scales with encumbrance) | SCR_StaminaConstants.c L45 |
-| `SPRINT_ENABLE_THRESHOLD` | 0.20 (20 percent) | Min stamina to sprint | SCR_StaminaConstants.c L46 |
+| `SPRINT_ENABLE_THRESHOLD` | 0.15 (15 percent) | Min stamina to sprint | SCR_StaminaConstants.c L46 |
 | `MIN_RECOVERY_STAMINA_THRESHOLD` | 0.2 (20 percent) | Min recovery stamina | SCR_StaminaConstants.c L212 |
 | `MIN_RECOVERY_REST_TIME_SECONDS` | 3.0 s | Rest time at low stamina | SCR_StaminaConstants.c L213 |
 

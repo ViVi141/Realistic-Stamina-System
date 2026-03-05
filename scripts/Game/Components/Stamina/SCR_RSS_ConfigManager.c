@@ -132,6 +132,11 @@ class SCR_RSS_ConfigManager
             // 检查是否已应用服务器配置
             if (!m_bIsServerConfigApplied)
             {
+                // --- 配置优先级说明 ---
+                // 1) 运行期动态配置优先：游戏内读取的均为本 ConfigManager 提供的值（当前选中预设或服务器配置）。
+                //    工具/脚本中的常量（如 tools/stamina_constants.py）仅影响优化器与离线工具，不覆盖运行时。
+                // 2) Custom 预设：仅做字段补全，不覆盖用户已在 JSON 中设置的值。
+                // 3) 非 Custom 预设：使用代码内最新 Optuna 默认值覆盖内存并写回 JSON，确保预设与模组版本一致。
                 // --- 核心修复逻辑开始 ---
                 
                 // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）

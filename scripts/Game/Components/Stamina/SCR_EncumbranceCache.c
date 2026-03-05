@@ -98,12 +98,28 @@ class EncumbranceCache
         float effectiveWeight = Math.Max(currentWeight - StaminaConstants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
         
-        // 计算速度惩罚（基于体重百分比，使用幂函数）
-        float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-        float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
+        // 分段非线性速度惩罚（软阈值 30%/60% 体重）：轻装近线性、超重陡增，符合运动生理学
+        float ratio = Math.Clamp(m_fCachedBodyMassPercent, 0.0, 2.0);
+        float rawPenalty = 0.0;
+        if (ratio <= 0.3)
+        {
+            rawPenalty = 0.15 * ratio;
+        }
+        else if (ratio <= 0.6)
+        {
+            float segment = ratio - 0.3;
+            rawPenalty = 0.045 + 0.35 * Math.Pow(segment, 1.5);
+        }
+        else
+        {
+            float segment = ratio - 0.6;
+            rawPenalty = 0.25 + 0.65 * (segment * segment);
+        }
+        // 预设强度缩放：coeff/0.2 使 Custom(0.2)=1.0，便于不同预设微调整体惩罚强度
+        float coeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+        rawPenalty = rawPenalty * (coeff / 0.20);
         float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
-        m_fCachedEncumbranceSpeedPenalty = encumbranceSpeedPenaltyCoeff * Math.Pow(m_fCachedBodyMassPercent, exp);
-        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(m_fCachedEncumbranceSpeedPenalty, 0.0, max_pen);
+        m_fCachedEncumbranceSpeedPenalty = Math.Clamp(rawPenalty, 0.0, max_pen);
         
         // 计算体力消耗倍数
         float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();

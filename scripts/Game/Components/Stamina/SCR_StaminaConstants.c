@@ -153,7 +153,7 @@ class StaminaConstants
     // 精疲力尽阈值
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // m/s（跛行速度）
-    static const float SPRINT_ENABLE_THRESHOLD = 0.20; // 0.20（20点），体力≥20时才能Sprint
+    static const float SPRINT_ENABLE_THRESHOLD = 0.15; // 0.15（15%），体力≥15%时才能Sprint；与意志力平台期0.25间隔10%避免窄窗
     
     // 坡度修正系数
     static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
@@ -197,6 +197,7 @@ class StaminaConstants
     
     // [SOFT] 负重对速度的惩罚系数（β）- 由配置管理器动态获取，此处为代码回退默认值
     // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
+    // 当前约 30 kg 时速度惩罚约 5%（Sprint 约 7%）。若需更强「负重感」，可提高到 0.3–0.4 并做测试。
     // 注意：运行时通过 GetEncumbranceSpeedPenaltyCoeff() / GetEncumbranceStaminaDrainCoeff() 获取
     static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // [SOFT fallback]
     static const float ENCUMBRANCE_SPEED_EXPONENT = 1.5; // [SOFT fallback]
@@ -471,7 +472,7 @@ class StaminaConstants
     static const float CAM_INERTIA_DECEL_OVERSHOOT_FORWARD_M = 0.06; // 急停时镜头向前多冲出的距离（米），最大负载时达到此值
     static const float CAM_INERTIA_OVERSHOOT_LOAD_MIN_KG = 10.0;  // 急停过冲曲线：低于此负重（kg）几乎无过冲
     static const float CAM_INERTIA_OVERSHOOT_LOAD_MAX_KG = 40.0;  // 急停过冲曲线：达到此负重时过冲为最大值
-    static const float CAM_INERTIA_OVERSHOOT_EXPONENT = 1.5;       // 过冲随负重的非线性指数（>1 重装更敏感）
+    static const float CAM_INERTIA_OVERSHOOT_EXPONENT = 1.2;       // 过冲随负重的非线性指数（1.0–1.2 减轻轻/重装手感差异）
     static const float CAM_INERTIA_ENCUMBRANCE_THRESHOLD = 0.25; // 负重占比超过此值（相对 BODY_TOLERANCE）才开始明显惯性
     // 步伐垂直颠簸（与负重、坡度关联）
     static const float CAM_BOB_VERTICAL_AMPLITUDE_BASE = 0.008;  // 基础垂直颠簸幅度（米），负重/疲劳时加深
@@ -545,8 +546,8 @@ class StaminaConstants
     // ==================== EPOC（过量耗氧）延迟参数 ====================
     // 生理学依据：运动停止后，心率不会立刻下降，前几秒应该维持高代谢水平（EPOC）
     // 参考：Brooks et al., 2000; LaForgia et al., 2006
-    // 拟真平衡点：缩短到0.5秒，减少按键无响应感
-    static const float EPOC_DELAY_SECONDS = 0.5; // EPOC延迟时间（秒）- 从2秒降到0.5秒
+    // 拟真向延长至 2 秒；若影响手感可再降低（现实为分钟级）
+    static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
     static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
 
     // ==================== 姿态交互修正参数 ====================

@@ -569,17 +569,21 @@ class RealisticStaminaSpeedSystem
         }
         
         // ==================== 综合恢复率计算（深度生理压制版本）====================
-        // 核心概念：从"净增加"改为"代谢净值"
-        // 最终恢复率 = (基础恢复率 × 姿态修正) - (负重压制 + 氧债惩罚)
-        // 综合恢复率 = 基础恢复率 × 健康状态倍数 × 休息时间倍数 × 年龄倍数 × 疲劳恢复倍数 × 姿态恢复倍数 × 边际效应衰减 - 负重惩罚
-        float totalRecoveryRate = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier * stanceRecoveryMultiplier * marginalDecayMultiplier;
-        
-        // 应用负重静态剥夺（从恢复率中减去负重惩罚）
-        totalRecoveryRate = totalRecoveryRate - loadRecoveryPenalty;
-        
-        // 确保恢复率不为负（最低为0）
-        totalRecoveryRate = Math.Max(totalRecoveryRate, 0.0);
-        
+        // 核心概念：统一为乘数链，避免“乘法链后减法”导致的逻辑歧义与调试困难。
+        // 等价于原“乘积 - 负重惩罚”再钳位非负：loadFactor = max(0, 1 - penalty/product)，total = product * loadFactor。
+        float productBeforeLoad = baseRecoveryRate * fitnessRecoveryMultiplier * restTimeMultiplier * ageRecoveryMultiplier * fatigueRecoveryMultiplier * stanceRecoveryMultiplier * marginalDecayMultiplier;
+        float loadFactor = 1.0;
+        if (productBeforeLoad > 0.0)
+        {
+            float penaltyRatio = loadRecoveryPenalty / productBeforeLoad;
+            loadFactor = Math.Max(0.0, 1.0 - penaltyRatio);
+        }
+        else
+        {
+            loadFactor = 0.0;
+        }
+        float totalRecoveryRate = productBeforeLoad * loadFactor;
+
         return totalRecoveryRate;
     }
     
@@ -819,66 +823,6 @@ class RealisticStaminaSpeedSystem
         // 每次 UpdateSpeedBasedOnStamina 调用间隔 0.2 秒
         return drainPerSec * 0.2;
     }
-    // 
-    // 坡度修正：
-    // - 上坡 (G > 0): K_grade = 1 + (G × 0.12)（使用幂函数）
-    // - 下坡 (G < 0): 
-    //   * 缓坡（-15% < G < 0）：减少消耗（每1%减少3%消耗）
-    //   * 陡坡（G ≤ -15%）：增加消耗（离心收缩负荷）
-    //
-    // 生理学修正（下坡陡坡）：
-    // 实际上，穿着30kg重负荷下陡坡对膝盖和肌肉的离心收缩负荷极大，
-    // 能量消耗有时并不比平地低。当坡度超过-15度时，消耗率反而略微回升。
-    //
-    // @param gradePercent 坡度百分比（例如，5% = 5.0，-15% = -15.0）
-    // @return 坡度修正乘数
-    static float CalculateGradeMultiplier(float gradePercent)
-    {
-        float kGrade = 1.0;
-        
-        if (gradePercent > 0.0)
-        {
-            // 上坡：使用幂函数代替线性增长
-            // 公式：kGrade = 1.0 + (gradePercent × 0.01)^1.2 × 5.0
-            // 这样5%坡度时：1.0 + (0.05^1.2) × 5.0 ≈ 1.0 + 0.047 × 5.0 ≈ 1.235倍
-            // 而15%坡度时：1.0 + (0.15^1.2) × 5.0 ≈ 1.0 + 0.173 × 5.0 ≈ 1.865倍
-            // 让小坡几乎无感，陡坡才真正吃力
-            float normalizedGrade = gradePercent * 0.01; // 转换为0.0-1.0范围（假设最大100%）
-            float gradePower = StaminaHelpers.Pow(normalizedGrade, 1.2); // 使用1.2次方
-            kGrade = 1.0 + (gradePower * 5.0);
-            
-            // 限制最大坡度修正（避免数值爆炸）
-            kGrade = Math.Min(kGrade, 3.0); // 最多3倍消耗
-        }
-        else if (gradePercent < 0.0)
-        {
-            // 下坡：根据坡度绝对值决定消耗修正
-            float absGradePercent = Math.AbsFloat(gradePercent);
-            
-            if (absGradePercent <= 15.0)
-            {
-                // 缓坡（0% 到 -15%）：减少消耗（玩家反馈：下坡更省力）
-                kGrade = 1.0 + (gradePercent * GRADE_DOWNHILL_COEFF);
-                // 限制下坡修正，允许最多减少60%消耗（原50%放宽至40%下限）
-                kGrade = Math.Max(kGrade, 0.4);
-            }
-            else
-            {
-                // 陡坡（超过-15%）：增加消耗（离心收缩负荷）
-                // 生理学依据：重负荷下陡坡对膝盖和肌肉的离心收缩负荷极大
-                // 公式：kGrade = 1.0 + (absGradePercent - 15.0) × 0.02
-                // 例如：-20%坡度时 = 1.0 + (20.0 - 15.0) × 0.02 = 1.1倍（消耗增加10%）
-                //      -30%坡度时 = 1.0 + (30.0 - 15.0) × 0.02 = 1.3倍（消耗增加30%）
-                float steepGradePenalty = (absGradePercent - 15.0) * 0.02;
-                kGrade = 1.0 + steepGradePenalty;
-                // 限制陡坡修正，最多增加50%消耗（1.5倍）
-                kGrade = Math.Min(kGrade, 1.5);
-            }
-        }
-        
-        return kGrade;
-    }
-    
     // 计算基于完整 Pandolf 模型的体力消耗率（包括坡度项、地形系数、Santee下坡修正）
     // 
     // 完整 Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²)) · η

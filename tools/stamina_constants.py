@@ -103,7 +103,7 @@ INITIAL_STAMINA_AFTER_ACFT = 1.0  # 100.0 / 100.0 = 1.0（100%，满值）
 # ==================== 精疲力尽阈值 ====================
 EXHAUSTION_THRESHOLD = 0.0  # 0.0（0点）
 EXHAUSTION_LIMP_SPEED = 1.0  # m/s（跛行速度）。在游戏中仅作为动态计算下限，实际速度会根据负重惩罚降低。
-SPRINT_ENABLE_THRESHOLD = 0.20  # 0.20（20点），体力≥20时才能Sprint
+SPRINT_ENABLE_THRESHOLD = 0.15  # 0.15（15%），体力≥15%时才能Sprint；与意志力0.25间隔10%
 
 # ==================== Sprint（冲刺）相关参数 ====================
 SPRINT_SPEED_BOOST = 0.30  # [SOFT][OPTIMIZE] Sprint时速度比Run加30%，Optuna: 0.28 ~ 0.35

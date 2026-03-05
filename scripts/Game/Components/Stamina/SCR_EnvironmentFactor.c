@@ -2239,7 +2239,7 @@ class EnvironmentFactor
         // 1. 体感温度
         float T_eff = T - 1.35 * Math.Sqrt(wind);
 
-        // 2. 热调节额外消耗（单位：Watts）
+        // 2. 热调节额外消耗（单位：Watts）。冷/热均用二次项，避免大 dt 时冷侧反超热侧（符合热应激通常不低于冷应激的生理参考）。
         float extra_watts = 0.0;
         const float T_low = 18.0;
         const float T_high = 27.0;
@@ -2250,7 +2250,8 @@ class EnvironmentFactor
         }
         else if (T_eff > T_high)
         {
-            extra_watts = 2.0 * (T_eff - T_high);
+            float dtHot = T_eff - T_high;
+            extra_watts = 2.0 * (dtHot * dtHot);
         }
 
         // [修复 v2.16.0] 单位转换：extra 是瓦特（Watts），而 basePower 是体力/tick 单位。
