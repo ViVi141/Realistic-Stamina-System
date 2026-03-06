@@ -344,6 +344,12 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_ConfigManager.Save();
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
         PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
+
+        // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
+        if (settings.m_bHintDisplayEnabled)
+            SCR_StaminaHUDComponent.Init();
+        else
+            SCR_StaminaHUDComponent.Destroy();
     }
     
     // 处理客户端配置请求
@@ -428,6 +434,12 @@ modded class SCR_CharacterControllerComponent
                 SCR_RSS_ConfigManager.Save();
                 SCR_RSS_ConfigManager.SetServerConfigApplied(true);
                 Print("[RSS] 服务器配置已同步: " + selectedPreset);
+
+                // 服务器配置应用后，根据 hint 开关创建或销毁 HUD
+                if (settings.m_bHintDisplayEnabled)
+                    SCR_StaminaHUDComponent.Init();
+                else
+                    SCR_StaminaHUDComponent.Destroy();
             }
         }
     }
@@ -1566,11 +1578,17 @@ modded class SCR_CharacterControllerComponent
                 SCR_RSS_ConfigManager.SetServerConfigApplied(true);
 
                 PrintFormat("[RSS] Applied server config: preset=%1, version=%2", selectedPreset, configVersion);
+
+                // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
+                if (settings.m_bHintDisplayEnabled)
+                    SCR_StaminaHUDComponent.Init();
+                else
+                    SCR_StaminaHUDComponent.Destroy();
             }
         }
     }
 
-    // RPC: 清除客户端上记录的“服务器配置已应用”标志（Owner-targeted）
+    // RPC: 清除客户端上记录的"服务器配置已应用"标志（Owner-targeted）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     void RPC_ClearServerConfigApplied()
     {

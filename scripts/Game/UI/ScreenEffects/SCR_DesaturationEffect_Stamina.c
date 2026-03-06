@@ -10,6 +10,10 @@ modded class SCR_DesaturationEffect
     [Attribute(defvalue: "0.1", uiwidget: UIWidgets.EditBox, desc: "体力低于此值时接近黑白 (0-1)")]
     protected float m_fStaminaDesaturationEnd;
 
+    // 体力显示平滑：服务器复制频率低于客户端帧率时，避免去饱和效果抽动
+    protected static float s_fSmoothedStaminaForEffect = 1.0;
+    protected static const float STAMINA_EFFECT_SMOOTH_ALPHA = 0.4;
+
     override void AddDesaturationEffect()
     {
         if (!m_BloodHZ)
@@ -39,8 +43,9 @@ modded class SCR_DesaturationEffect
         if (!staminaComp)
             return 1.0;
 
-        float stamina = staminaComp.GetStamina();
-        float t = Math.InverseLerp(m_fStaminaDesaturationEnd, m_fStaminaDesaturationStart, stamina);
+        float rawStamina = staminaComp.GetStamina();
+        s_fSmoothedStaminaForEffect = Math.Lerp(s_fSmoothedStaminaForEffect, rawStamina, STAMINA_EFFECT_SMOOTH_ALPHA);
+        float t = Math.InverseLerp(m_fStaminaDesaturationEnd, m_fStaminaDesaturationStart, s_fSmoothedStaminaForEffect);
         return Math.Clamp(t, 0.0, 1.0);
     }
 

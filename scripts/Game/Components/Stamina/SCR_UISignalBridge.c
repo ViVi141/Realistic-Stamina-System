@@ -7,6 +7,10 @@ class UISignalBridge
     // ==================== 状态变量 ====================
     protected SignalsManagerComponent m_pSignalsManager; // 信号管理器组件引用
     protected int m_iExhaustionSignal = -1; // "Exhaustion" 信号的ID（-1表示未找到）
+
+    // 体力显示平滑：与 HUD 一致，避免 Exhaustion 信号驱动效果抽动
+    protected static float s_fSmoothedStaminaForSignal = 1.0;
+    protected static const float STAMINA_SIGNAL_SMOOTH_ALPHA = 0.4;
     
     // ==================== 公共方法 ====================
     
@@ -68,6 +72,9 @@ class UISignalBridge
         // 检查是否已初始化
         if (!IsInitialized())
             return;
+
+        s_fSmoothedStaminaForSignal = Math.Lerp(s_fSmoothedStaminaForSignal, staminaPercent, STAMINA_SIGNAL_SMOOTH_ALPHA);
+        float displayStamina = s_fSmoothedStaminaForSignal;
         
         float uiExhaustion = 0.0;
         
@@ -79,8 +86,8 @@ class UISignalBridge
         else
         {
             // 综合考虑体力剩余量和瞬时消耗功率来决定UI表现
-            // 基础模糊：由体力剩余量决定（体力越低，模糊越强）
-            float fatigueBase = 1.0 - staminaPercent;
+            // 基础模糊：由体力剩余量决定（体力越低，模糊越强），使用平滑后的显示值
+            float fatigueBase = 1.0 - displayStamina;
             
             // 瞬时模糊：由运动强度/消耗功率决定（消耗越大，模糊越强）
             // totalDrainRate 约 0.001-0.02（每0.2秒），乘以系数转换为信号值
@@ -98,11 +105,11 @@ class UISignalBridge
             // 崩溃期强化：体力 < 25% 时模糊感剧增
             // 官方阈值是 0.45，拟真模型的崩溃点是 0.25
             // 当体力掉到 0.25 时，信号值应该超过 0.45，立即触发视觉模糊
-            if (staminaPercent <= 0.25)
+            if (displayStamina <= 0.25)
             {
                 // 非线性映射：进入崩溃期，模糊感呈指数级加强
                 // 0.25 → 0.5, 0.1 → 0.8, 0.0 → 1.0
-                float collapseFactor = (0.25 - staminaPercent) / 0.25; // 0.0-1.0
+                float collapseFactor = (0.25 - displayStamina) / 0.25; // 0.0-1.0
                 float collapseBoost = 0.3 + (collapseFactor * 0.5); // 0.3-0.8（额外强化）
                 uiExhaustion = fatigueBase + intensityBoost + collapseBoost;
             }

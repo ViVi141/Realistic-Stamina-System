@@ -35,6 +35,10 @@ class SCR_StaminaHUDComponent
     protected static float s_fCachedWetWeight = 0.0;
     protected static bool s_bCachedIsSwimming = false; // 是否在游泳
     
+    // 体力显示平滑：服务器复制频率低于客户端帧率时，避免体力条抽动
+    protected static float s_fDisplayStaminaPercent = 1.0;
+    protected static const float STAMINA_DISPLAY_SMOOTH_ALPHA = 0.4;  // 指数平滑系数（每 50ms 更新约 3 次可追上 90%）
+    
     // 上一次显示的值（用于减少不必要的更新）
     protected string m_sLastDisplayedText = "";
     
@@ -57,6 +61,7 @@ class SCR_StaminaHUDComponent
         bool isSwimming)
     {
         s_fCachedStaminaPercent = staminaPercent;
+        s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
         s_fCachedSpeedMultiplier = speedMultiplier;
         s_fCachedCurrentSpeed = currentSpeed;
         s_fCachedWeight = weight;
@@ -79,6 +84,7 @@ class SCR_StaminaHUDComponent
     static void UpdateStaminaValue(float staminaPercent)
     {
         s_fCachedStaminaPercent = staminaPercent;
+        s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
         
         // 如果实例存在，更新显示
         if (s_Instance)
@@ -113,6 +119,7 @@ class SCR_StaminaHUDComponent
         {
             s_Instance.DestroyHUD();
             s_Instance = null;
+            s_fDisplayStaminaPercent = 1.0;  // 重置平滑值，便于下次初始化
         }
     }
     
@@ -210,8 +217,8 @@ class SCR_StaminaHUDComponent
     // 更新显示
     protected void UpdateDisplay()
     {
-        // 计算各项数值
-        int staminaPct = Math.Clamp(Math.Round(s_fCachedStaminaPercent * 100.0), 0, 100);
+        // 计算各项数值（体力使用平滑后的显示值，避免服务器复制频率低导致的抽动）
+        int staminaPct = Math.Clamp(Math.Round(s_fDisplayStaminaPercent * 100.0), 0, 100);
         int speedPct = Math.Round(s_fCachedSpeedMultiplier * 100.0);
         int speedMs = Math.Round(s_fCachedCurrentSpeed * 10.0);  // 保留一位小数（乘10存储）
         int weightKg = Math.Round(s_fCachedWeight);

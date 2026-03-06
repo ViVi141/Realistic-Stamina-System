@@ -6,6 +6,19 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.15.1] - 2026-03-07
+
+### 🐛 修复
+
+- **服务器配置下发后 Hint HUD 不显示** - 客户端 `InitStaminaHUD` 在 1 秒后执行时，若服务器配置尚未到达则 `m_bHintDisplayEnabled` 仍为 false，HUD 不会创建；配置到达后也未再次调用 `Init()`。修复：在 `ApplyFullConfig`、`RPC_ClientReceiveConfig`、`RPC_SendConfigData` 应用服务器配置后，根据 `m_bHintDisplayEnabled` 调用 `SCR_StaminaHUDComponent.Init()` 或 `Destroy()`，确保配置晚于 HUD 初始化到达时仍能正确显示或隐藏（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **体力条抽动（服务器复制频率低于客户端帧率）** - 服务器下发的体力值复制频率（如 10–20 Hz）低于客户端帧率时，体力条在每次复制包到达时跳变。修复：在显示层增加指数平滑（alpha=0.4），约 3 次 50ms 更新可追上 90%。涉及：`SCR_StaminaHUDComponent`（体力条 HUD）、`SCR_DesaturationEffect_Stamina`（去饱和效果）、`SCR_UISignalBridge`（Exhaustion 信号驱动的模糊与呼吸声）（[SCR_StaminaHUDComponent.c](scripts/Game/Components/Stamina/SCR_StaminaHUDComponent.c)、[SCR_DesaturationEffect_Stamina.c](scripts/Game/UI/ScreenEffects/SCR_DesaturationEffect_Stamina.c)、[SCR_UISignalBridge.c](scripts/Game/Components/Stamina/SCR_UISignalBridge.c)）
+
+### 🔁 变更
+
+- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` 更新为 3.15.1（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.15.0] - 2026-03-05
 
 ### ✅ 新增
