@@ -195,6 +195,19 @@ FrameWidgetClass {
          "Font Size" 13
          "Horizontal Align" 1
         }
+        TextWidgetClass "{A1B2C3D4E5F6001B}" {
+         Name "Text-Time"
+         Slot LayoutSlot "{A1B2C3D4E5F6001C}" {
+          Padding 2 0 2 0
+         }
+         Color 1 1 1 1
+         Opacity 0.85
+         Text "ETA 0"
+         "Exact Size" 1
+         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         "Font Size" 13
+         "Horizontal Align" 1
+        }
         TextWidgetClass "{A1B2C3D4E5F60007}" {
          Name "Text-Speed"
          Slot LayoutSlot "{A1B2C3D4E5F60008}" {

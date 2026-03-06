@@ -229,15 +229,16 @@ class StaminaUpdateCoordinator
         CollapseTransition collapseTransition,
         float currentSpeed = 0.0,
         EnvironmentFactor environmentFactor = null,
-        SlopeSpeedTransition slopeSpeedTransition = null)
+        SlopeSpeedTransition slopeSpeedTransition = null,
+        vector velocity = vector.Zero)
     {
         if (!controller)
             return 1.0;
         
         // 室内楼梯：室内且原始坡度>0 时减轻负重对速度的惩罚（不改变室内0坡度逻辑）
-        float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller);
+        float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller, velocity);
         IEntity ownerForStairs = controller.GetOwner();
-        bool isIndoorStairs = (environmentFactor && ownerForStairs && environmentFactor.IsIndoorForEntity(ownerForStairs) && rawSlopeAngle > 0.0);
+        bool isIndoorStairs = (environmentFactor && ownerForStairs && environmentFactor.IsIndoorForEntity(ownerForStairs) && Math.AbsFloat(rawSlopeAngle) > 0.0);
         if (isIndoorStairs)
             encumbranceSpeedPenalty = encumbranceSpeedPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
         
@@ -262,8 +263,8 @@ class StaminaUpdateCoordinator
         // 计算速度倍数
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         
-        // 获取坡度角度，考虑室内检测
-        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor);
+        // 获取坡度角度，考虑室内检测（传入 velocity 用于判断上下坡）
+        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor, velocity);
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
         
@@ -623,5 +624,117 @@ class StaminaUpdateCoordinator
         }
         
         return newTargetStamina;
+    }
+
+    // 获取当前净体力变化率（用于 HUD 显示耗尽/回满时间）
+    // @param inVehicle 是否在载具中；载具内只恢复不消耗，不应用 EPOC 延迟消耗
+    // @return 净变化率（/秒）：负=消耗中，正=恢复中。恢复/消耗率按每0.2秒设计，乘以5转为每秒
+    static float GetNetStaminaRatePerSecond(
+        float staminaPercent,
+        bool useSwimmingModel,
+        float currentSpeed,
+        float totalDrainRate,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        EpocState epocState,
+        EncumbranceCache encumbranceCache,
+        ExerciseTracker exerciseTracker,
+        SCR_CharacterControllerComponent controller,
+        EnvironmentFactor environmentFactor = null,
+        bool inVehicle = false)
+    {
+        float recoveryRate = 0.0;
+        bool isInEpocDelay = false;
+        float speedBeforeStop = 0.0;
+        if (epocState)
+        {
+            isInEpocDelay = epocState.IsInEpocDelay();
+            speedBeforeStop = epocState.GetSpeedBeforeStop();
+        }
+
+        // 载具内始终计算恢复（载具不应用 EPOC 消耗）；行人仅在非 EPOC 时计算恢复
+        if (!isInEpocDelay || inVehicle)
+        {
+            float currentWeightForRecovery = 0.0;
+            float staticDrainForRecovery = 0.0;
+            int stanceInt = 2;
+            EnvironmentFactor envFactor = null;
+            float speedForRecovery = 0.0;
+            float heatPenalty = 1.0;
+
+            if (inVehicle)
+            {
+                // 载具内：与行人共用同一算法，仅参数不同（无负重、趴姿、无环境、零速度）
+                // 关键：staticDrainForRecovery 用 Rest 负值，与行人静止时一致，否则恢复率缺 REST_RECOVERY 加成导致 ETA 突增
+                currentWeightForRecovery = 0.0;
+                staticDrainForRecovery = -StaminaConstants.REST_RECOVERY_PER_TICK;
+                stanceInt = 2;
+                envFactor = null;
+                speedForRecovery = 0.0;
+                heatPenalty = 1.0;
+            }
+            else
+            {
+                if (encumbranceCache && encumbranceCache.IsCacheValid())
+                    currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
+                currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
+
+                staticDrainForRecovery = baseDrainRateByVelocity;
+                if (baseDrainRateByVelocityForModule > 0.0)
+                    staticDrainForRecovery = baseDrainRateByVelocityForModule;
+                ECharacterStance stanceForRecovery = controller.GetStance();
+                if (stanceForRecovery == ECharacterStance.PRONE)
+                    staticDrainForRecovery = 0.0;
+
+                if (stanceForRecovery == ECharacterStance.PRONE)
+                    stanceInt = 2;
+                else if (stanceForRecovery == ECharacterStance.CROUCH)
+                    stanceInt = 1;
+                else
+                    stanceInt = 0;
+
+                envFactor = environmentFactor;
+                speedForRecovery = currentSpeed;
+                heatPenalty = 1.0 / heatStressMultiplier;
+            }
+
+            float restDurationMinutes = 0.0;
+            float exerciseDurationMinutes = 0.0;
+            if (exerciseTracker)
+            {
+                restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
+                exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
+            }
+
+            recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                staminaPercent, restDurationMinutes, exerciseDurationMinutes,
+                currentWeightForRecovery, staticDrainForRecovery, false, stanceInt,
+                envFactor, speedForRecovery);
+
+            if (!inVehicle)
+            {
+                int movementPhase = -1;
+                bool isSprintingNow = false;
+                if (controller)
+                {
+                    movementPhase = controller.GetCurrentMovementPhase();
+                    isSprintingNow = controller.IsSprinting();
+                }
+                bool isHighEffortMove = (isSprintingNow || movementPhase == 2 || movementPhase == 3);
+                if (isHighEffortMove && currentSpeed >= 0.1 && recoveryRate > totalDrainRate)
+                    recoveryRate = totalDrainRate;
+            }
+
+            recoveryRate = recoveryRate * heatPenalty;
+        }
+
+        float epocDrainRate = 0.0;
+        if (isInEpocDelay && !inVehicle)
+            epocDrainRate = StaminaRecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+
+        float finalDrainRate = totalDrainRate + epocDrainRate;
+        float netRatePerTick = recoveryRate - finalDrainRate;
+        return netRatePerTick * 5.0;
     }
 }

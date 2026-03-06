@@ -6,16 +6,28 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
-## [3.15.1] - 2026-03-07
+## [3.15.11] - 2026-03-07
 
 ### 🐛 修复
 
+- **坡度计算完全用法线 + 速度矢量** - 坡度幅值始终由地形法线计算（`GetTerrainSlopeAngleMagnitude`），上下坡符号由速度矢量与坡向点积判断（`GetSlopeSignFromVelocity`）；移除对 `GetMovementSlopeAngle` 的依赖，侧向平移、任意方向移动均正确受坡度影响；新增 `velocity` 参数贯穿 `GetSlopeAngle`/`GetRawSlopeAngle`/`UpdateSpeed`/`CalculateGradePercent`；室内楼梯判定改为 `|rawSlope| > 0` 以兼容下坡（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **等高线移动按上坡惩罚** - 沿等高线（速度垂直于坡向）移动时原先被误判为下坡。新增 `CONTOUR_COS_THRESHOLD`（0.2）：当 `|cos(速度与坡向夹角)| < 0.2` 时视为等高线/侧移，按上坡惩罚（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)）
+- **游泳时 HUD 不显示速度** - 游泳命令通过 `PrePhys_SetTranslation` 直接改变位移，`GetVelocity()` 可能不更新，导致 HUD 显示速度为 0。修复：游泳时改用位置差分测速（`StaminaUpdateCoordinator.CalculateCurrentSpeed`），将计算得到的 3D 速度模长传给 HUD；新增 `m_vLastPositionSample`、`m_bHasLastPositionSample`、`m_vComputedVelocity` 缓存（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **进入载具后 HUD 不再更新** - 进入载具后 `GetLocalControlledEntity()` 返回载具而非角色，导致 `ShouldProcessStaminaUpdate()` 为 false、整个更新被跳过；且载具分支在体力恢复后直接 return，未执行 HUD 更新。修复：1) `ShouldProcessStaminaUpdate()` 增加载具内判断：若本地控制的实体是载具且本角色在该载具内，仍返回 true；2) 载具分支内增加 HUD 更新逻辑，构建 `DebugInfoParams` 并调用 `OutputHintInfo`；3) `OutputHintInfo` 增加载具内角色判定，允许角色在本地控制的载具内时也更新 HUD（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_DebugDisplay.c](scripts/Game/Components/Stamina/SCR_DebugDisplay.c)）
 - **服务器配置下发后 Hint HUD 不显示** - 客户端 `InitStaminaHUD` 在 1 秒后执行时，若服务器配置尚未到达则 `m_bHintDisplayEnabled` 仍为 false，HUD 不会创建；配置到达后也未再次调用 `Init()`。修复：在 `ApplyFullConfig`、`RPC_ClientReceiveConfig`、`RPC_SendConfigData` 应用服务器配置后，根据 `m_bHintDisplayEnabled` 调用 `SCR_StaminaHUDComponent.Init()` 或 `Destroy()`，确保配置晚于 HUD 初始化到达时仍能正确显示或隐藏（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **体力条抽动（服务器复制频率低于客户端帧率）** - 服务器下发的体力值复制频率（如 10–20 Hz）低于客户端帧率时，体力条在每次复制包到达时跳变。修复：在显示层增加指数平滑（alpha=0.4），约 3 次 50ms 更新可追上 90%。涉及：`SCR_StaminaHUDComponent`（体力条 HUD）、`SCR_DesaturationEffect_Stamina`（去饱和效果）、`SCR_UISignalBridge`（Exhaustion 信号驱动的模糊与呼吸声）（[SCR_StaminaHUDComponent.c](scripts/Game/Components/Stamina/SCR_StaminaHUDComponent.c)、[SCR_DesaturationEffect_Stamina.c](scripts/Game/UI/ScreenEffects/SCR_DesaturationEffect_Stamina.c)、[SCR_UISignalBridge.c](scripts/Game/Components/Stamina/SCR_UISignalBridge.c)）
 
+### ✅ 新增
+
+- **ETA（预计恢复/消耗时间）** - HUD 显示体力回满或耗尽预计时间，载具内与行人路径共用 `GetNetStaminaRatePerSecond` 算法（[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **游泳时 HUD 显示速度向量俯仰角** - 游泳时原坡度栏改为显示游泳速度向量的俯仰角（正=上浮，负=下潜），标签为 "SWIM"；陆地时仍显示地形坡度 "SLOPE"（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_StaminaHUDComponent.c](scripts/Game/Components/Stamina/SCR_StaminaHUDComponent.c)）
+
 ### 🔁 变更
 
-- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` 更新为 3.15.1（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+- **载具内运动累积疲劳继承上车前最后一帧** - 恢复率计算使用 ExerciseTracker 的 restDuration、exerciseDuration（先读取再 Update），上车后继承下车前最后一帧的疲劳状态，载具内 rest 持续累积、exercise 逐渐衰减（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **载具内实际恢复速度与行人路径一致** - 体力更新应用疲劳上限（GetMaxStaminaCap）钳位，并每帧调用 ProcessFatigueDecay(currentTime, 0.0) 更新疲劳衰减（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **载具内恢复体力优化** - 载具内视为最优休息：无视所有环境因素（热应激、冷应激、地表湿度），姿态=趴下，无负重，零速度。体力更新与 HUD 共用同一恢复率（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` 更新为 3.15.11（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
 
 ---
 

@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.14.0
+// Realistic Stamina System (RSS) - v3.15.11
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -86,6 +86,9 @@ modded class SCR_CharacterControllerComponent
     // 因此通过“位置差分/时间步长”计算速度向量，作为消耗模型的速度输入
     
     // ==================== 游泳状态缓存（用于调试显示）====================
+    protected vector m_vLastPositionSample = vector.Zero;
+    protected bool m_bHasLastPositionSample = false;
+    protected vector m_vComputedVelocity = vector.Zero;
     protected CompartmentAccessComponent m_pCompartmentAccess;
     protected CharacterAnimationComponent m_pAnimComponent;
 
@@ -522,6 +525,22 @@ modded class SCR_CharacterControllerComponent
         return (handler.GetCommandSwim() != null);
     }
     
+    // 检测游泳时是否有动作输入（用于区分主动游泳与海浪漂移）
+    // GetCurrentInputAngle 在空闲时返回 false，海浪漂移时玩家未按键，故不计算水平/垂直消耗
+    protected bool HasSwimInput()
+    {
+        if (!m_pAnimComponent)
+            return false;
+        CharacterCommandHandlerComponent handler = m_pAnimComponent.GetCommandHandler();
+        if (!handler)
+            return false;
+        CharacterCommandMove moveCmd = handler.GetCommandMove();
+        if (!moveCmd)
+            return false;
+        float inputAngle = 0.0;
+        return moveCmd.GetCurrentInputAngle(inputAngle);
+    }
+    
     // ==================== 改进：使用动作监听器检测跳跃输入 ====================
     // 采用多重检测方法确保准确性：
     // 1. 动作监听器（OnJumpActionTriggered）- 实时检测输入动作
@@ -619,15 +638,27 @@ modded class SCR_CharacterControllerComponent
     }
     
     // 判断当前角色是否应参与体力系统更新
-    // 玩家：仅本地控制实体；AI：仅服务器端
+    // 玩家：仅本地控制实体（含载具内：本地控制的载具且本角色在该载具内）；AI：仅服务器端
     protected bool ShouldProcessStaminaUpdate()
     {
         IEntity owner = GetOwner();
         if (!owner)
             return false;
-        // 本地控制的玩家
+        // 本地控制的玩家（角色直接受控）
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
             return true;
+        // 载具内：本地控制的实体是载具，且本角色在该载具内，也应处理（否则 HUD 不更新）
+        IEntity controlled = SCR_PlayerController.GetLocalControlledEntity();
+        if (controlled && m_pCompartmentAccess)
+        {
+            BaseCompartmentSlot slot = m_pCompartmentAccess.GetCompartment();
+            if (slot)
+            {
+                IEntity vehicle = slot.GetVehicle();
+                if (vehicle == controlled)
+                    return true;
+            }
+        }
         // 服务器端的 AI（非玩家控制）
         if (Replication.IsServer() && !IsPlayerControlled())
             return true;
@@ -696,50 +727,111 @@ modded class SCR_CharacterControllerComponent
                 }
             }
             
-            // 在载具中可以恢复体力（静止状态）
-            if (m_pStaminaComponent)
+            // ==================== 载具内更新运动/休息跟踪（运动累积疲劳继承上车前最后一帧）====================
+            // 先调用 Update 再读取，使恢复率与 ETA 使用更新后的 restDuration/exerciseDuration
+            float vehicleRestMinutes = 0.0;
+            float vehicleExerciseMinutes = 0.0;
+            if (m_pExerciseTracker)
             {
-                float currentStamina = m_pStaminaComponent.GetTargetStamina();
-                if (currentStamina < 1.0)
+                // ExerciseTracker.Update 期望毫秒（与 Initialize 一致）
+                float vehicleCurrentTimeMs = GetGame().GetWorld().GetWorldTime();
+                m_pExerciseTracker.Update(vehicleCurrentTimeMs, false, true);  // 载具内视为休息，保留休息进度
+                vehicleRestMinutes = m_pExerciseTracker.GetRestDurationMinutes();
+                vehicleExerciseMinutes = m_pExerciseTracker.GetExerciseDurationMinutes();
+            }
+            
+            // ==================== 载具内恢复体力（优化：无视环境、趴姿、无负重、零速度）====================
+            // 运动累积疲劳继承上车前最后一帧；环境=null，姿态=趴下，负重=0，速度=0
+            float vehicleStaminaPercent = 1.0;
+            if (m_pStaminaComponent)
+                vehicleStaminaPercent = Math.Clamp(m_pStaminaComponent.GetTargetStamina(), 0.0, 1.0);
+            
+            // 与行人路径共用 GetNetStaminaRatePerSecond，仅参数不同（载具内 inVehicle=true）
+            float vehicleNetRatePerSec = 0.0;
+            if (vehicleStaminaPercent < 1.0)
+            {
+                // 行人空闲时 totalDrainRate 为负（Rest 恢复），净率 = recoveryRate - totalDrainRate 会额外贡献；载具内需传入相同负值
+                vehicleNetRatePerSec = StaminaUpdateCoordinator.GetNetStaminaRatePerSecond(
+                    vehicleStaminaPercent, false, 0.0, -StaminaConstants.REST_RECOVERY_PER_TICK, 0.0, 0.0, 1.0,
+                    m_pEpocState, m_pEncumbranceCache, m_pExerciseTracker, this, null, true);
+                float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;  // 转为每 0.2 秒，供体力更新
+                
+                // 体力更新（与行人路径一致：应用疲劳上限，更新疲劳衰减）
+                float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                if (m_pFatigueSystem)
+                    m_pFatigueSystem.ProcessFatigueDecay(currentWorldTime, 0.0);  // 载具内视为静止
+                float maxStaminaCap = 1.0;
+                if (m_pFatigueSystem)
+                    maxStaminaCap = m_pFatigueSystem.GetMaxStaminaCap();
+                float timeDeltaSec;
+                if (m_fLastStaminaUpdateTime >= 0.0)
+                    timeDeltaSec = currentWorldTime - m_fLastStaminaUpdateTime;
+                else
+                    timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
+                timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
+                float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
+                float oldStamina = vehicleStaminaPercent;
+                float newStamina = Math.Clamp(oldStamina + vehicleRecoveryRate * tickScale, 0.0, maxStaminaCap);
+                if (vehicleStaminaPercent > maxStaminaCap)
+                    newStamina = maxStaminaCap;  // 超过疲劳上限时立即降至上限
+                m_pStaminaComponent.SetTargetStamina(newStamina);
+                m_fLastStaminaUpdateTime = currentWorldTime;
+                vehicleStaminaPercent = newStamina;
+                
+                if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
                 {
-                    // 计算恢复率（使用标准恢复模型）
-                    const float restDurationMinutes = 0.0; // 载具中视为静止，但恢复时间较短
-                    const float exerciseDurationMinutes = 0.0; // 无运动累积疲劳
-                    const float currentWeightForRecovery = 0.0; // 载具中负重不影响恢复
-                    const float baseDrainRateByVelocity = 0.0; // 无消耗
-                    float recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
-                        currentStamina,
-                        restDurationMinutes,
-                        exerciseDurationMinutes,
-                        currentWeightForRecovery,
-                        baseDrainRateByVelocity,
-                        false, // 不禁用正向恢复
-                        0, // 站立姿态
-                        m_pEnvironmentFactor, // v2.15.0：传递环境因子模块
-                        0.0); // 载具中视为静止，currentSpeed为0.0
-                    
-                    // 使用 GetWorldTime 计算实际流逝时间，不依赖预期间隔
-                    float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                    float timeDeltaSec;
-                    if (m_fLastStaminaUpdateTime >= 0.0)
-                        timeDeltaSec = currentWorldTime - m_fLastStaminaUpdateTime;
-                    else
-                        timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
-                    timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5); // 防止时间跳跃异常
-                    float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
-                    float newStamina = Math.Clamp(currentStamina + recoveryRate * tickScale, 0.0, 1.0);
-                    m_pStaminaComponent.SetTargetStamina(newStamina);
-                    m_fLastStaminaUpdateTime = currentWorldTime;
-                    
-                    // 调试信息：载具中体力恢复
-                    if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
-                    {
-                        PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (恢复率: %3/0.2s) | %1%% → %2%% (Rate: %3/0.2s)",
-                            Math.Round(currentStamina * 100.0).ToString(),
-                            Math.Round(newStamina * 100.0).ToString(),
-                            recoveryRate.ToString());
-                    }
+                    PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (净率: %3/s)",
+                        Math.Round(oldStamina * 100.0).ToString(),
+                        Math.Round(newStamina * 100.0).ToString(),
+                        vehicleNetRatePerSec.ToString());
                 }
+            }
+            
+            // ==================== 载具内 HUD 更新 ====================
+            // 载具内始终为恢复模式，确保 ETA 显示绿色（不受上一帧消耗/恢复状态影响）
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings && settings.m_bHintDisplayEnabled)
+            {
+                float vehicleTimeToDepleteSec = -1.0;  // 载具内永不消耗
+                float vehicleTimeToFullSec = -1.0;
+                float targetStamina = 1.0;
+                if (m_pFatigueSystem)
+                    targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
+                if (vehicleStaminaPercent < targetStamina && vehicleNetRatePerSec > 0.00001)
+                {
+                    vehicleTimeToFullSec = (targetStamina - vehicleStaminaPercent) / vehicleNetRatePerSec;
+                    if (vehicleTimeToFullSec < 0.5)
+                        vehicleTimeToFullSec = 0.5;  // 避免 HUD 因 <0.5 显示黑色
+                }
+                
+                float vehicleDebugWeight = 0.0;
+                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+                    vehicleDebugWeight = m_pEncumbranceCache.GetCurrentWeight();
+                
+                DebugInfoParams vehicleParams = new DebugInfoParams();
+                vehicleParams.owner = owner;
+                vehicleParams.movementTypeStr = "Vehicle";
+                vehicleParams.staminaPercent = vehicleStaminaPercent;
+                vehicleParams.baseSpeedMultiplier = 1.0;
+                vehicleParams.encumbranceSpeedPenalty = 0.0;
+                vehicleParams.finalSpeedMultiplier = 1.0;
+                vehicleParams.gradePercent = 0.0;
+                vehicleParams.slopeAngleDegrees = 0.0;
+                vehicleParams.isSprinting = false;
+                vehicleParams.currentMovementPhase = 0;
+                vehicleParams.debugCurrentWeight = vehicleDebugWeight;
+                vehicleParams.combatEncumbrancePercent = 0.0;
+                vehicleParams.terrainDetector = m_pTerrainDetector;
+                vehicleParams.environmentFactor = m_pEnvironmentFactor;
+                vehicleParams.heatStressMultiplier = 1.0;
+                vehicleParams.rainWeight = 0.0;
+                vehicleParams.swimmingWetWeight = m_fCurrentWetWeight;
+                vehicleParams.currentSpeed = 0.0;
+                vehicleParams.isSwimming = false;
+                vehicleParams.stanceTransitionManager = m_pStanceTransitionManager;
+                vehicleParams.timeToDepleteSec = vehicleTimeToDepleteSec;
+                vehicleParams.timeToFullSec = vehicleTimeToFullSec;
+                DebugDisplay.OutputHintInfo(vehicleParams);
             }
             
             // 继续调度下一次更新，但不进行速度更新和体力消耗计算
@@ -802,14 +894,30 @@ modded class SCR_CharacterControllerComponent
         // 注意：负重惩罚已在上文为精疲力尽计算过一次，这里无需再次获取。
         
         // ==================== 获取当前实际速度（m/s）====================
-        // 使用游戏引擎原生的 GetVelocity() 方法获取速度
-        vector velocity = GetVelocity();
-        vector horizontalVelocity = velocity;
-        horizontalVelocity[1] = 0.0; // 忽略垂直速度
-        float currentSpeed = horizontalVelocity.Length();
-        
-        // 确保currentSpeed不超过物理上限
-        currentSpeed = Math.Min(currentSpeed, 7.0);
+        // 游泳时 GetVelocity() 可能不更新（PrePhys_SetTranslation 直接改位移），使用位置差分测速
+        bool isSwimmingForSpeed = SwimmingStateManager.IsSwimming(this);
+        vector velocity;
+        float currentSpeed;
+        if (isSwimmingForSpeed)
+        {
+            float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
+            SpeedCalculationResult speedResult = StaminaUpdateCoordinator.CalculateCurrentSpeed(
+                owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
+            velocity = speedResult.computedVelocity;
+            currentSpeed = Math.Min(speedResult.computedVelocity.Length(), 7.0);  // 游泳用 3D 速度模长
+            m_vLastPositionSample = speedResult.lastPositionSample;
+            m_bHasLastPositionSample = speedResult.hasLastPositionSample;
+            m_vComputedVelocity = speedResult.computedVelocity;
+        }
+        else
+        {
+            velocity = GetVelocity();
+            vector horizontalVelocity = velocity;
+            horizontalVelocity[1] = 0.0;  // 忽略垂直速度
+            currentSpeed = horizontalVelocity.Length();
+            currentSpeed = Math.Min(currentSpeed, 7.0);
+            m_bHasLastPositionSample = false;  // 离开游泳时重置
+        }
         
         // ==================== 战术冲刺爆发与冷却 ====================
         float currentTimeSprint = GetGame().GetWorld().GetWorldTime() / 1000.0;
@@ -839,7 +947,7 @@ modded class SCR_CharacterControllerComponent
         m_bLastWasSprinting = isSprintActive;
         
         // ==================== 速度计算和更新（模块化）====================
-        // 模块化：使用 StaminaUpdateCoordinator 更新速度
+        // 模块化：使用 StaminaUpdateCoordinator 更新速度（传入 velocity 用于坡度上下判断）
         float finalSpeedMultiplier = StaminaUpdateCoordinator.UpdateSpeed(
             this,
             staminaPercent,
@@ -847,7 +955,8 @@ modded class SCR_CharacterControllerComponent
             m_pCollapseTransition,
             currentSpeed,
             m_pEnvironmentFactor,
-            m_pSlopeSpeedTransition);
+            m_pSlopeSpeedTransition,
+            velocity);
         
         // 获取基础速度倍数（用于调试显示）
         float baseSpeedMultiplier = RealisticStaminaSpeedSystem.CalculateSpeedMultiplierByStamina(staminaPercent);
@@ -922,10 +1031,9 @@ modded class SCR_CharacterControllerComponent
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
         
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）
-        // previous version used milliseconds here, but most modules expect seconds.
-        float currentTimeForExercise = GetGame().GetWorld().GetWorldTime() / 1000.0; // now in seconds
-        // 与旧逻辑保持一致：使用秒单位的 currentTime（供湿重/环境因子等模块使用）
-        float currentTime = currentTimeForExercise;
+        // GetWorldTime 返回毫秒；ExerciseTracker.Update 期望毫秒；其他模块用秒
+        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
+        float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
         
         // 体力更新用实际时间差（GetWorldTime），不依赖预期间隔
         float timeDeltaSec;
@@ -955,11 +1063,11 @@ modded class SCR_CharacterControllerComponent
         
         // 地形系数：铺装路面 1.0 → 深雪 2.1-3.0
         // 优化检测频率：移动时0.5秒检测一次，静止时2秒检测一次（性能优化）
-        // 注意：使用上面已声明的 currentTimeForExercise
+        // 注意：terrain 检测使用秒单位的 currentTime
         float terrainFactor = 1.0; // 默认值（铺装路面）
         if (m_pTerrainDetector)
         {
-            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTimeForExercise, currentSpeed);
+            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTime, currentSpeed);
         }
         
         // ==================== 环境因子更新（模块化）====================
@@ -1119,8 +1227,8 @@ modded class SCR_CharacterControllerComponent
         
         if (m_pExerciseTracker)
         {
-            // 更新运动/休息时间跟踪
-            m_pExerciseTracker.Update(currentTimeForExercise, isCurrentlyMoving);
+            // 更新运动/休息时间跟踪（ExerciseTracker 期望毫秒）
+            m_pExerciseTracker.Update(currentTimeForExerciseMs, isCurrentlyMoving);
             
             // 计算累积疲劳因子（基于运动持续时间）
             // 公式：fatigue_factor = 1.0 + FATIGUE_ACCUMULATION_COEFF × max(0, exercise_duration - FATIGUE_START_TIME)
@@ -1137,6 +1245,11 @@ modded class SCR_CharacterControllerComponent
         // 坡度项 G·(0.23 + 1.34·V²) 已整合在公式中
         // 注意：由于几乎没有完全平地的地形，所以始终使用包含坡度的 Pandolf 模型
         
+        // 游泳优化：未检测到动作输入时（海浪漂移）传零速度
+        vector velocityForDrain = velocity;
+        if (useSwimmingModel && !HasSwimInput())
+            velocityForDrain = vector.Zero;
+
         // 获取坡度信息（模块化：使用 SpeedCalculator 计算坡度百分比）
         float slopeAngleDegrees = 0.0; // 初始化坡度角度
         GradeCalculationResult gradeResult = SpeedCalculator.CalculateGradePercent(
@@ -1144,7 +1257,8 @@ modded class SCR_CharacterControllerComponent
             currentSpeed,
             m_pJumpVaultDetector,
             slopeAngleDegrees,
-            m_pEnvironmentFactor);
+            m_pEnvironmentFactor,
+            velocityForDrain);
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
         
@@ -1164,7 +1278,7 @@ modded class SCR_CharacterControllerComponent
             totalWeightWithWetAndBody,
             gradePercent,
             terrainFactor,
-            velocity,
+            velocityForDrain,
             m_bSwimmingVelocityDebugPrinted,
             owner,
             m_pEnvironmentFactor, // v2.14.0修复：传递环境因子
@@ -1324,46 +1438,87 @@ modded class SCR_CharacterControllerComponent
         // 定期同步服务器配置
         UpdateServerConfigSync();
         
-        // ==================== 调试输出（统一波次每秒）====================
-        if (owner == SCR_PlayerController.GetLocalControlledEntity() && StaminaConstants.IsDebugBatchActive())
+        // ==================== 调试输出与 HUD 实时更新 =====================
+        // HUD：Hint 开启时每 50ms 更新，实现实时显示；调试：与批次同步（每 m_iDebugUpdateInterval）
+        if (owner == SCR_PlayerController.GetLocalControlledEntity())
         {
-            // 获取负重信息用于调试
-            float combatEncumbrancePercent = 0.0;
-            float debugCurrentWeight = 0.0;
-            
-            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            bool needDebugOutput = StaminaConstants.IsDebugBatchActive();
+            bool needHintOutput = (settings && settings.m_bHintDisplayEnabled);
+
+            if (needDebugOutput || needHintOutput)
             {
-                debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
-                combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
+                float combatEncumbrancePercent = 0.0;
+                float debugCurrentWeight = 0.0;
+                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+                {
+                    debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
+                    combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
+                }
+
+                float timeToDepleteSec = -1.0;
+                float timeToFullSec = -1.0;
+                if (needHintOutput)
+                {
+                    float netRate = StaminaUpdateCoordinator.GetNetStaminaRatePerSecond(
+                        staminaPercent, useSwimmingModel, currentSpeed, totalDrainRate,
+                        baseDrainRateByVelocity, baseDrainRateByVelocityForModule,
+                        heatStressMultiplier, m_pEpocState, m_pEncumbranceCache,
+                        m_pExerciseTracker, this, m_pEnvironmentFactor);
+                    float targetStamina = 1.0;
+                    if (m_pFatigueSystem)
+                        targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
+                    if (netRate < -0.0001)
+                        timeToDepleteSec = staminaPercent / Math.AbsFloat(netRate);
+                    else if (netRate > 0.0001 && staminaPercent < targetStamina)
+                        timeToFullSec = (targetStamina - staminaPercent) / netRate;
+                }
+
+                string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+                DebugInfoParams debugParams = new DebugInfoParams();
+                debugParams.owner = owner;
+                debugParams.movementTypeStr = movementTypeStr;
+                debugParams.staminaPercent = staminaPercent;
+                debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
+                debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
+                debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
+                debugParams.gradePercent = gradePercent;
+                // 游泳时显示速度向量的俯仰角（正=上浮，负=下潜），陆地时显示地形坡度
+                if (isSwimming)
+                {
+                    float horizontalLen = Math.Sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);
+                    float swimmingPitchDeg = 0.0;
+                    if (horizontalLen > 0.01 || Math.AbsFloat(velocity[1]) > 0.01)
+                    {
+                        swimmingPitchDeg = Math.Atan2(velocity[1], horizontalLen) * Math.RAD2DEG;
+                        swimmingPitchDeg = Math.Clamp(swimmingPitchDeg, -90.0, 90.0);
+                    }
+                    debugParams.slopeAngleDegrees = swimmingPitchDeg;
+                }
+                else
+                {
+                    debugParams.slopeAngleDegrees = slopeAngleDegrees;
+                }
+                debugParams.isSprinting = isSprinting;
+                debugParams.currentMovementPhase = currentMovementPhase;
+                debugParams.debugCurrentWeight = debugCurrentWeight;
+                debugParams.combatEncumbrancePercent = combatEncumbrancePercent;
+                debugParams.terrainDetector = m_pTerrainDetector;
+                debugParams.environmentFactor = m_pEnvironmentFactor;
+                debugParams.heatStressMultiplier = heatStressMultiplier;
+                debugParams.rainWeight = rainWeight;
+                debugParams.swimmingWetWeight = m_fCurrentWetWeight;
+                debugParams.currentSpeed = currentSpeed;
+                debugParams.isSwimming = isSwimming;
+                debugParams.stanceTransitionManager = m_pStanceTransitionManager;
+                debugParams.timeToDepleteSec = timeToDepleteSec;
+                debugParams.timeToFullSec = timeToFullSec;
+
+                if (needDebugOutput)
+                    DebugDisplay.OutputDebugInfo(debugParams);
+                if (needHintOutput)
+                    DebugDisplay.OutputHintInfo(debugParams);
             }
-            
-            string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-            
-            DebugInfoParams debugParams = new DebugInfoParams();
-            debugParams.owner = owner;
-            debugParams.movementTypeStr = movementTypeStr;
-            debugParams.staminaPercent = staminaPercent;
-            debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
-            debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
-            debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
-            debugParams.gradePercent = gradePercent;
-            debugParams.slopeAngleDegrees = slopeAngleDegrees;
-            debugParams.isSprinting = isSprinting;
-            debugParams.currentMovementPhase = currentMovementPhase;
-            debugParams.debugCurrentWeight = debugCurrentWeight;
-            debugParams.combatEncumbrancePercent = combatEncumbrancePercent;
-            debugParams.terrainDetector = m_pTerrainDetector;
-            debugParams.environmentFactor = m_pEnvironmentFactor;
-            debugParams.heatStressMultiplier = heatStressMultiplier;
-            debugParams.rainWeight = rainWeight;
-            debugParams.swimmingWetWeight = m_fCurrentWetWeight;
-            debugParams.currentSpeed = currentSpeed;
-            debugParams.isSwimming = isSwimming;
-            debugParams.stanceTransitionManager = m_pStanceTransitionManager;
-            DebugDisplay.OutputDebugInfo(debugParams);
-            
-            // 输出屏幕 Hint 信息（与批次同步）
-            DebugDisplay.OutputHintInfo(debugParams);
         }
         
         // 刷新调试批次（输出所有累积行）
@@ -1677,13 +1832,13 @@ modded class SCR_CharacterControllerComponent
             float currentSpeed = horizontalVelocity.Length();
             currentSpeed = Math.Min(currentSpeed, 7.0);
 
-            // 获取坡度角度（服务器端计算）
-            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor);
+            // 获取坡度角度（服务器端计算，传入 velocity 用于判断上下坡）
+            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, velocity);
 
             // 室内楼梯：与 UpdateSpeed 一致，减轻负重对速度的惩罚
-            float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this);
+            float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this, velocity);
             IEntity ownerEnt = GetOwner();
-            bool isIndoorStairsServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.IsIndoorForEntity(ownerEnt) && rawSlopeServer > 0.0);
+            bool isIndoorStairsServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.IsIndoorForEntity(ownerEnt) && Math.AbsFloat(rawSlopeServer) > 0.0);
             if (isIndoorStairsServer)
                 encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
 

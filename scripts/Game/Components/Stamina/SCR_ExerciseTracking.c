@@ -28,7 +28,8 @@ class ExerciseTracker
     // 更新运动/休息持续时间跟踪
     // @param currentTime 当前世界时间（毫秒）
     // @param isCurrentlyMoving 当前是否在移动（速度 > 0.05 m/s）
-    void Update(float currentTime, bool isCurrentlyMoving)
+    // @param isInVehicle 是否在载具中；载具内从运动转为静止时保留休息进度，不重置（避免上车后 ETA 从 1 分钟突增为 4 分钟）
+    void Update(float currentTime, bool isCurrentlyMoving, bool isInVehicle = false)
     {
         float currentTimeSeconds = currentTime / 1000.0; // 转换为秒
         
@@ -45,9 +46,9 @@ class ExerciseTracker
             }
             else
             {
-                // 从静止转为运动：重置运动时间和休息时间
+                // 从静止转为运动：重置运动时间；休息时间改为衰减而非清零，避免「走向载具」导致上车后 ETA 从 1 分钟突增为 4 分钟
                 m_fExerciseDurationMinutes = 0.0;
-                m_fRestDurationMinutes = 0.0;
+                // 不再清零 m_fRestDurationMinutes；运动时按 1:1 衰减，使短距离走向载具几乎保留休息进度
             }
             m_bWasMoving = true;
             m_fLastMovementTime = currentTimeSeconds; // 更新最后移动时间
@@ -87,8 +88,15 @@ class ExerciseTracker
                     // 累积休息时间（用于多维度恢复模型）
                     if (m_bWasMoving)
                     {
-                        // 从运动转为 idle：重置休息时间
-                        m_fRestDurationMinutes = 0.0;
+                        // 从运动转为 idle：通常重置休息时间；载具内保留进度（上车视为延续休息）
+                        if (isInVehicle)
+                        {
+                            m_fRestDurationMinutes += restTimeDelta / 60.0; // 延续休息进度
+                        }
+                        else
+                        {
+                            m_fRestDurationMinutes = 0.0;
+                        }
                     }
                     else
                     {

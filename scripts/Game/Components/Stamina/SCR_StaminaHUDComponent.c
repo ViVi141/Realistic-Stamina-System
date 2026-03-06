@@ -19,6 +19,7 @@ class SCR_StaminaHUDComponent
     protected TextWidget m_wTextLocation;     // 室内/室外
     protected TextWidget m_wTextGround;       // 地面类型
     protected TextWidget m_wTextWet;          // 湿重
+    protected TextWidget m_wTextTime;         // 耗尽/回满时间预估
     
     // 缓存的数据
     protected static float s_fCachedStaminaPercent = 1.0;
@@ -34,6 +35,8 @@ class SCR_StaminaHUDComponent
     protected static float s_fCachedTerrainDensity = -1.0; // 地面密度
     protected static float s_fCachedWetWeight = 0.0;
     protected static bool s_bCachedIsSwimming = false; // 是否在游泳
+    protected static float s_fCachedTimeToDepleteSec = -1.0;  // 按当前净消耗，耗尽所需秒数（-1=恢复中）
+    protected static float s_fCachedTimeToFullSec = -1.0;      // 按当前净恢复，回满所需秒数（-1=消耗中）
     
     // 体力显示平滑：服务器复制频率低于客户端帧率时，避免体力条抽动
     protected static float s_fDisplayStaminaPercent = 1.0;
@@ -58,7 +61,9 @@ class SCR_StaminaHUDComponent
         bool isIndoor,
         float terrainDensity,
         float wetWeight,
-        bool isSwimming)
+        bool isSwimming,
+        float timeToDepleteSec = -1.0,
+        float timeToFullSec = -1.0)
     {
         s_fCachedStaminaPercent = staminaPercent;
         s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
@@ -74,6 +79,8 @@ class SCR_StaminaHUDComponent
         s_fCachedTerrainDensity = terrainDensity;
         s_fCachedWetWeight = wetWeight;
         s_bCachedIsSwimming = isSwimming;
+        s_fCachedTimeToDepleteSec = timeToDepleteSec;
+        s_fCachedTimeToFullSec = timeToFullSec;
         
         // 如果实例存在，更新显示
         if (s_Instance)
@@ -164,6 +171,7 @@ class SCR_StaminaHUDComponent
         m_wTextLocation = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Location"));
         m_wTextGround = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Ground"));
         m_wTextWet = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Wet"));
+        m_wTextTime = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Time"));
         
         // 向后兼容：如果没有找到新的 widget，使用旧的 "Text"
         if (!m_wTextStamina)
@@ -187,6 +195,7 @@ class SCR_StaminaHUDComponent
         if (m_wTextLocation) widgetCount++;
         if (m_wTextGround) widgetCount++;
         if (m_wTextWet) widgetCount++;
+        if (m_wTextTime) widgetCount++;
         
         if (StaminaConstants.IsDebugEnabled())
             Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets");
@@ -211,6 +220,7 @@ class SCR_StaminaHUDComponent
         m_wTextLocation = null;
         m_wTextGround = null;
         m_wTextWet = null;
+        m_wTextTime = null;
         m_sLastDisplayedText = "";
     }
     
@@ -227,6 +237,65 @@ class SCR_StaminaHUDComponent
         int windSpeedInt = Math.Round(s_fCachedWindSpeed);  // 风速（m/s）
         int wetKg = Math.Round(s_fCachedWetWeight * 10.0);  // 保留一位小数
         
+        // 构建耗尽/回满时间显示字符串（净消耗显示耗尽时间，净恢复显示回满时间，平衡/已耗尽/已回满显示 0）
+        string timeStr = "0";
+        bool showBlackZero = false;
+        if (s_fCachedTimeToDepleteSec >= 0.0)
+        {
+            if (s_fCachedTimeToDepleteSec < 0.5)
+            {
+                timeStr = "0";
+                showBlackZero = true;
+            }
+            else
+            {
+                int sec = Math.Round(s_fCachedTimeToDepleteSec);
+                if (sec >= 60)
+                {
+                    int m = sec / 60;
+                    int s = sec % 60;
+                    if (s > 0)
+                        timeStr = m.ToString() + "m" + s.ToString() + "s";
+                    else
+                        timeStr = m.ToString() + "m";
+                }
+                else
+                {
+                    timeStr = sec.ToString() + "s";
+                }
+            }
+        }
+        else if (s_fCachedTimeToFullSec >= 0.0)
+        {
+            if (s_fCachedTimeToFullSec < 0.5)
+            {
+                timeStr = "0";
+                showBlackZero = true;
+            }
+            else
+            {
+                int sec = Math.Round(s_fCachedTimeToFullSec);
+                if (sec >= 60)
+                {
+                    int m = sec / 60;
+                    int s = sec % 60;
+                    if (s > 0)
+                        timeStr = "+" + m.ToString() + "m" + s.ToString() + "s";
+                    else
+                        timeStr = "+" + m.ToString() + "m";
+                }
+                else
+                {
+                    timeStr = "+" + sec.ToString() + "s";
+                }
+            }
+        }
+        else
+        {
+            timeStr = "0";
+            showBlackZero = true;
+        }
+
         // 构建完整文本用于检测变化
         string indoorStr = "O";
         if (s_bCachedIsIndoor)
@@ -234,7 +303,7 @@ class SCR_StaminaHUDComponent
         string fullText = staminaPct.ToString() + speedMs.ToString() + weightKg.ToString() + 
                           s_sCachedMoveType + slopeAngle.ToString() + tempC.ToString() + 
                           windSpeedInt.ToString() + indoorStr + 
-                          s_fCachedTerrainDensity.ToString() + wetKg.ToString();
+                          s_fCachedTerrainDensity.ToString() + wetKg.ToString() + timeStr;
         
         // 如果没有变化，不更新
         if (fullText == m_sLastDisplayedText)
@@ -252,6 +321,21 @@ class SCR_StaminaHUDComponent
         {
             m_wTextStamina.SetText("STA " + staminaPct.ToString() + "%");
             m_wTextStamina.SetColor(staminaColor);
+        }
+
+        // 更新耗尽/回满时间预估（耗尽红色，恢复绿色，平衡/已耗尽/已回满黑色 0）
+        // 载具内始终为恢复模式，显示绿色（不受上一帧状态影响）
+        if (m_wTextTime)
+        {
+            m_wTextTime.SetText("ETA " + timeStr);
+            if (s_fCachedTimeToDepleteSec >= 0.0)
+                m_wTextTime.SetColor(GUIColors.RED_BRIGHT2);
+            else if (s_fCachedTimeToFullSec >= 0.0 || s_sCachedMoveType == "Vehicle")
+                m_wTextTime.SetColor(Color.FromRGBA(100, 200, 100, 255));
+            else if (showBlackZero)
+                m_wTextTime.SetColor(Color.FromRGBA(0, 0, 0, 255));
+            else
+                m_wTextTime.SetColor(Color.FromRGBA(0, 0, 0, 255));
         }
         
         // 更新速度（显示实际速度 m/s，颜色基于速度倍数）
@@ -293,21 +377,25 @@ class SCR_StaminaHUDComponent
             m_wTextMove.SetColor(GUIColors.DEFAULT);
         }
         
-        // 更新坡度（陡坡变色）
-        // 上坡消耗更多体力，下坡速度更快但有风险
+        // 更新坡度/游泳角度（陡坡变色；游泳时显示速度向量俯仰角）
+        // 陆地：上坡消耗更多体力，下坡速度更快但有风险
+        // 游泳：正=上浮，负=下潜
         if (m_wTextSlope)
         {
             int absSlopeAngle = Math.AbsInt(slopeAngle);
+            string angleLabel = "SLOPE ";
+            if (s_bCachedIsSwimming)
+                angleLabel = "SWIM ";
             if (absSlopeAngle > 1)
             {
                 string slopeDir = "";
                 if (slopeAngle > 0)
                     slopeDir = "+";
-                m_wTextSlope.SetText("SLOPE " + slopeDir + slopeAngle.ToString() + "deg");
+                m_wTextSlope.SetText(angleLabel + slopeDir + slopeAngle.ToString() + "deg");
             }
             else
             {
-                m_wTextSlope.SetText("SLOPE 0deg");
+                m_wTextSlope.SetText(angleLabel + "0deg");
             }
             
             // 坡度颜色：陡坡（>20度）红色，中等坡度（>10度）橙色
@@ -500,8 +588,11 @@ class SCR_StaminaHUDComponent
     }
     
     // 获取速度颜色（越接近最大速度越红，表示体力消耗越快）
+    // 载具内或静止时速度为 0，使用中性色
     protected Color GetSpeedColor(int pct)
     {
+        if (s_fCachedCurrentSpeed <= 0.05 || s_sCachedMoveType == "Vehicle")
+            return GUIColors.DEFAULT;
         if (pct >= 95)
             return GUIColors.RED_BRIGHT2;
         else if (pct >= 80)

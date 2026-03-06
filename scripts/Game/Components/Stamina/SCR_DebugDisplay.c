@@ -25,6 +25,8 @@ class DebugInfoParams
     float currentSpeed;  // 当前实际速度（m/s）
     bool isSwimming;     // 是否在游泳
     StanceTransitionManager stanceTransitionManager; // 姿态转换管理器（新增）
+    float timeToDepleteSec;  // 按当前净消耗，体力耗尽所需秒数（-1 表示净恢复中）
+    float timeToFullSec;     // 按当前净恢复，体力回满所需秒数（-1 表示净消耗中）
 }
 
 class DebugDisplay
@@ -553,9 +555,32 @@ class DebugDisplay
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
         
-        // 只对本地控制的玩家输出
-        if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
-            return;
+        // 只对本地控制的玩家输出（含载具内：角色在本地控制的载具中）
+        IEntity controlled = SCR_PlayerController.GetLocalControlledEntity();
+        if (params.owner != controlled)
+        {
+            bool isOwnerInControlledVehicle = false;
+            if (controlled)
+            {
+                ChimeraCharacter character = ChimeraCharacter.Cast(params.owner);
+                if (character)
+                {
+                    CompartmentAccessComponent compAccess = character.GetCompartmentAccessComponent();
+                    if (compAccess)
+                    {
+                        BaseCompartmentSlot slot = compAccess.GetCompartment();
+                        if (slot)
+                        {
+                            IEntity vehicle = slot.GetVehicle();
+                            if (vehicle == controlled)
+                                isOwnerInControlledVehicle = true;
+                        }
+                    }
+                }
+            }
+            if (!isOwnerInControlledVehicle)
+                return;
+        }
         
         // 计算总湿重（降雨 + 游泳）
         float totalWetWeight = params.rainWeight + params.swimmingWetWeight;
@@ -593,7 +618,9 @@ class DebugDisplay
             isIndoor,
             terrainDensity,
             totalWetWeight,
-            params.isSwimming
+            params.isSwimming,
+            params.timeToDepleteSec,
+            params.timeToFullSec
         );
     }
     

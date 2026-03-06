@@ -153,90 +153,100 @@ class SpeedCalculator
         return finalSpeedMultiplier;
     }
     
-    // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
+    // 速度阈值（m/s）：低于此值视为静止，坡度符号按上坡处理
+    protected static const float VELOCITY_SIGN_THRESHOLD = 0.1;
+    // 等高线判定阈值：|cos(速度与坡向夹角)| < 此值时视为沿等高线移动，按上坡惩罚
+    // 0.2 约对应夹角 78°～102°，即大致垂直于坡向的侧移/等高线移动
+    protected static const float CONTOUR_COS_THRESHOLD = 0.2;
+
+    // 通过地面法线计算地形坡度幅值（与移动方向无关）
     // @param controller 角色控制器组件
-    // @return 坡度角度（度）
-    static float GetRawSlopeAngle(SCR_CharacterControllerComponent controller)
+    // @return 坡度角度幅值（0..45 度），失败返回 0
+    static float GetTerrainSlopeAngleMagnitude(SCR_CharacterControllerComponent controller)
     {
         if (!controller)
             return 0.0;
-        float slopeAngleDegrees = 0.0;
-        CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
-        if (animComponent)
-        {
-            CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
-            if (handler)
-            {
-                CharacterCommandMove moveCmd = handler.GetCommandMove();
-                if (moveCmd)
-                {
-                    slopeAngleDegrees = moveCmd.GetMovementSlopeAngle();
-                    float inputAngle = 0.0;
-                    if (moveCmd.GetCurrentInputAngle(inputAngle))
-                    {
-                        if (Math.AbsFloat(inputAngle) > 90.0)
-                            slopeAngleDegrees = -slopeAngleDegrees;
-                    }
-                }
-            }
-        }
-        slopeAngleDegrees = Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
-        return slopeAngleDegrees;
+        IEntity owner = controller.GetOwner();
+        if (!owner)
+            return 0.0;
+        BaseWorld world = owner.GetWorld();
+        if (!world)
+            return 0.0;
+        vector pos = owner.GetOrigin();
+        vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, world, false, null);
+        float dotUp = vector.Dot(normal, vector.Up);
+        dotUp = Math.Clamp(dotUp, 0.0, 1.0);
+        float slopeAngleDegrees = Math.Acos(dotUp) * Math.RAD2DEG;
+        return Math.Clamp(slopeAngleDegrees, 0.0, 45.0);
+    }
+
+    // 根据速度矢量与坡向判断上/下坡符号
+    // 上坡方向 = 法线水平分量的反方向（陡升方向）
+    // 沿等高线移动（速度垂直于坡向）时按上坡惩罚，因需维持平衡、侧向踩坡
+    // @param normal 地面法线
+    // @param velocity 速度矢量（水平分量参与判断）
+    // @return +1 上坡/等高线，-1 下坡，静止时 +1
+    static int GetSlopeSignFromVelocity(vector normal, vector velocity)
+    {
+        vector horizontalVel = velocity;
+        horizontalVel[1] = 0.0;
+        float velLen = horizontalVel.Length();
+        if (velLen < VELOCITY_SIGN_THRESHOLD)
+            return 1;
+        vector horizontalNormal = normal;
+        horizontalNormal[1] = 0.0;
+        float hLen = horizontalNormal.Length();
+        if (hLen < 0.001)
+            return 1;
+        vector uphillDir = horizontalNormal * (-1.0 / hLen);
+        float dot = vector.Dot(horizontalVel, uphillDir);
+        float cosAngle = dot / velLen;
+        if (cosAngle > CONTOUR_COS_THRESHOLD)
+            return 1;
+        if (cosAngle < -CONTOUR_COS_THRESHOLD)
+            return -1;
+        return 1;
+    }
+
+    // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
+    // 完全用法线坡度 + 速度矢量判断上下坡
+    // @param controller 角色控制器组件
+    // @param velocity 速度矢量（可选，vector.Zero 时从 controller 获取或按上坡处理）
+    // @return 坡度角度（度）
+    static float GetRawSlopeAngle(SCR_CharacterControllerComponent controller, vector velocity = vector.Zero)
+    {
+        if (!controller)
+            return 0.0;
+        IEntity owner = controller.GetOwner();
+        if (!owner)
+            return 0.0;
+        float magnitude = GetTerrainSlopeAngleMagnitude(controller);
+        if (magnitude < 0.01)
+            return 0.0;
+        vector pos = owner.GetOrigin();
+        vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, owner.GetWorld(), false, null);
+        if (velocity.Length() < VELOCITY_SIGN_THRESHOLD)
+            velocity = controller.GetVelocity();
+        int sign = GetSlopeSignFromVelocity(normal, velocity);
+        float slopeAngleDegrees = magnitude * sign;
+        return Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
     }
     
-    // 获取坡度角度（修复了背对坡倒车不消耗体力的漏洞）
+    // 获取坡度角度（完全用法线坡度 + 速度矢量判断上下坡）
     // 此方法直接返回坡度角度，单位为度。
-    // 例如 28.6 表示坡度 28.6°。如果需要斜率比（rise/run），请使用 tan(angle * DEG2RAD)。
-    // 引擎接口名称有时会混淆，之前错误地认为其返回斜率比，导致 Debug 输出异常。
     // @param controller 角色控制器组件
     // @param environmentFactor 环境因子组件（可选，用于室内检测)
+    // @param velocity 速度矢量（可选，用于判断上下坡）
     // @return 坡度角度（度）
-    static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null)
+    static float GetSlopeAngle(SCR_CharacterControllerComponent controller, EnvironmentFactor environmentFactor = null, vector velocity = vector.Zero)
     {
-        // 检查是否在室内，如果是则返回0坡度
-        // 使用 IsIndoorForEntity(owner) 而非 IsIndoor()，避免服务器处理远程玩家 RPC 时 m_pCachedOwner 未更新导致的室内误判
         if (environmentFactor && controller)
         {
             IEntity ownerForCheck = controller.GetOwner();
             if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
                 return 0.0;
         }
-        
-        float slopeAngleDegrees = 0.0;
-        CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
-        if (animComponent)
-        {
-            CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
-            if (handler)
-            {
-                CharacterCommandMove moveCmd = handler.GetCommandMove();
-                if (moveCmd)
-                {
-                    // 1. 获取角色面向方向的坡度角度
-                    slopeAngleDegrees = moveCmd.GetMovementSlopeAngle();
-                    
-                    // 2. 获取移动输入方向
-                    // GetCurrentInputAngle() 返回输入角度（-180 到 180 度）
-                    // 0 度表示向前，180 度或 -180 度表示向后
-                    // 如果角度绝对值大于 90 度，说明主要在后退
-                    float inputAngle = 0.0;
-                    if (moveCmd.GetCurrentInputAngle(inputAngle))
-                    {
-                        // 3. 核心修正逻辑：
-                        // 如果移动输入方向主要在后退（角度绝对值 > 90 度）
-                        // 说明角色的实际移动方向与面向方向相反，我们需要翻转角度的正负号
-                        // 例如：背对山上（面向下坡 -15度）倒车往山上走，结果变为 -(-15) = +15度（上坡惩罚）
-                        if (Math.AbsFloat(inputAngle) > 90.0)
-                        {
-                            slopeAngleDegrees = -slopeAngleDegrees;
-                        }
-                    }
-                }
-            }
-        }
-        // clamp to physically plausible range to guard against engine glitches
-        slopeAngleDegrees = Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
-        return slopeAngleDegrees;
+        return GetRawSlopeAngle(controller, velocity);
     }
     
     // 计算坡度百分比（考虑攀爬和跳跃状态）
@@ -247,13 +257,15 @@ class SpeedCalculator
     // @param jumpVaultDetector 跳跃检测器（可选）
     // @param slopeAngleDegrees 坡度角度（输入，通常为0.0；输出会被替换）
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
+    // @param velocity 速度矢量（可选，用于判断上下坡，游泳时传 computedVelocity）
     // @return 坡度计算结果（包含坡度百分比和角度）
     static GradeCalculationResult CalculateGradePercent(
         SCR_CharacterControllerComponent controller,
         float currentSpeed,
         JumpVaultDetector jumpVaultDetector,
         float slopeAngleDegrees,
-        EnvironmentFactor environmentFactor = null)
+        EnvironmentFactor environmentFactor = null,
+        vector velocity = vector.Zero)
     {
         if (!s_pResultGrade)
             s_pResultGrade = new GradeCalculationResult();
@@ -278,8 +290,8 @@ class SpeedCalculator
         // 只在非攀爬、非跳跃状态下获取坡度
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
-            // 获取坡度角度并转换为坡度百分比
-            float rawAngleDeg = GetSlopeAngle(controller, environmentFactor);
+            // 获取坡度角度并转换为坡度百分比（传入 velocity 用于判断上下坡）
+            float rawAngleDeg = GetSlopeAngle(controller, environmentFactor, velocity);
             s_pResultGrade.slopeAngleDegrees = rawAngleDeg;
             // 将角度转换为斜率比：tan(angle_rad)
             float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
