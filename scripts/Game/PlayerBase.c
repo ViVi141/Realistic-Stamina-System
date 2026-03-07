@@ -389,7 +389,7 @@ modded class SCR_CharacterControllerComponent
             array<bool> boolSettings = new array<bool>();
             BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
-            RPC_SendFullConfigOwner(
+            RPC_SendFullConfigBroadcast(
                 settings.m_sConfigVersion,
                 settings.m_sSelectedPreset,
                 eliteParams,
@@ -459,21 +459,29 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
-    // RPC: 服务器发送完整配置给客户端（目标客户端）
+    // RPC: 服务器发送完整配置（原 Owner 目标；Reforger 规则下仅 Owner 可执行 Owner RPC，故改为 Broadcast，由客户端用 IsPlayerControlled 过滤）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     void RPC_SendFullConfigOwner(string configVersion, string selectedPreset,
                                  array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
                                  array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
         ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
     }
 
-    // RPC: 服务器广播完整配置给所有客户端
+    // RPC: 服务器广播完整配置；客户端仅在本角色为本地玩家控制时应用（避免非 Owner 执行 Owner RPC 导致客户端收不到）
     [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
     void RPC_SendFullConfigBroadcast(string configVersion, string selectedPreset,
                                      array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
                                      array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
         ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
     }
     
@@ -1723,7 +1731,7 @@ modded class SCR_CharacterControllerComponent
         array<int> intSettings = new array<int>();
         array<bool> boolSettings = new array<bool>();
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-        RPC_SendFullConfigOwner(
+        RPC_SendFullConfigBroadcast(
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             eliteParams,
@@ -1970,32 +1978,33 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
-    // RPC: 服务器将验证后的速度与 HUD 开关同步回客户端（与体力工作同路，确保客户端收到数值时也收到 HUD 状态）
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    // RPC: 服务器将验证后的速度与 HUD 开关同步回客户端（Broadcast 因仅 Owner 可执行 Owner RPC；客户端用 IsPlayerControlled 过滤）
+    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
     void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, bool hintDisplayEnabled)
     {
-        if (!Replication.IsServer())
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
+        if (m_pNetworkSyncManager)
+            m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
         {
-            if (m_pNetworkSyncManager)
-                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
+            // 仅在实际变化时更新 HUD，避免同值重复 RPC 导致闪烁
+            bool changed = (settings.m_bHintDisplayEnabled != hintDisplayEnabled);
+            settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+            if (changed)
             {
-                // 仅在实际变化时更新 HUD，避免同值重复 RPC 导致闪烁
-                bool changed = (settings.m_bHintDisplayEnabled != hintDisplayEnabled);
-                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
-                if (changed)
+                if (hintDisplayEnabled)
                 {
-                    if (hintDisplayEnabled)
-                    {
-                        SCR_StaminaHUDComponent.Init();
-                        Print("[RSS] HUD state from server sync: ON (stamina path)");
-                    }
-                    else
-                    {
-                        SCR_StaminaHUDComponent.Destroy();
-                        Print("[RSS] HUD state from server sync: OFF (stamina path)");
-                    }
+                    SCR_StaminaHUDComponent.Init();
+                    Print("[RSS] HUD state from server sync: ON (stamina path)");
+                }
+                else
+                {
+                    SCR_StaminaHUDComponent.Destroy();
+                    Print("[RSS] HUD state from server sync: OFF (stamina path)");
                 }
             }
         }
