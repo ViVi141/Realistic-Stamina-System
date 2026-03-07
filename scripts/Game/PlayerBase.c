@@ -1987,9 +1987,15 @@ modded class SCR_CharacterControllerComponent
                 if (changed)
                 {
                     if (hintDisplayEnabled)
+                    {
                         SCR_StaminaHUDComponent.Init();
+                        Print("[RSS] HUD state from server sync: ON (stamina path)");
+                    }
                     else
+                    {
                         SCR_StaminaHUDComponent.Destroy();
+                        Print("[RSS] HUD state from server sync: OFF (stamina path)");
+                    }
                 }
             }
         }
