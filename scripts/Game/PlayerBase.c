@@ -114,6 +114,19 @@ modded class SCR_CharacterControllerComponent
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
 
+            // 若该实体为玩家控制角色，延迟主动推送配置（避免仅依赖客户端请求时 RPC 未达或未回）
+            PlayerManager playerManager = GetGame().GetPlayerManager();
+            if (playerManager)
+            {
+                int playerId = playerManager.GetPlayerIdFromControlledEntity(owner);
+                if (playerId > 0)
+                {
+                    GetGame().GetCallqueue().CallLater(PushConfigToOwnerClient, 2500, false);
+                    if (IsRssDebugEnabled())
+                        PrintFormat("[RSS] Server: will push config to player %1 in 2.5s", GetPlayerLabel(owner));
+                }
+            }
+
             // debug: 输出当前的能量转体力系数
             if (IsRssDebugEnabled())
             {
@@ -1664,30 +1677,31 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
-    // RPC: 客户端请求服务器配置
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ServerRequestConfig()
+    // 服务器主动向本实体所属客户端推送配置（玩家角色就绪后延迟调用，不依赖客户端请求 RPC）
+    void PushConfigToOwnerClient()
     {
         if (!Replication.IsServer())
             return;
-
-        // 服务器发送完整配置给请求的客户端（避免客户端只收到预设名称而丢失关键字段）
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             return;
+        PrintFormat("[RSS] Server push config to client: %1", GetPlayerLabel(GetOwner()));
+        SendFullConfigToOwner(settings);
+    }
 
-        PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
-
+    // 将当前配置组包并发送给本实体 Owner（供 RPC 处理与主动推送共用）
+    protected void SendFullConfigToOwner(SCR_RSS_Settings settings)
+    {
+        if (!settings)
+            return;
         array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
         array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
         array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
         array<float> customParams = BuildPresetArray(settings.m_Custom);
-
         array<float> floatSettings = new array<float>();
         array<int> intSettings = new array<int>();
         array<bool> boolSettings = new array<bool>();
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
         RPC_SendFullConfigOwner(
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
@@ -1699,6 +1713,21 @@ modded class SCR_CharacterControllerComponent
             intSettings,
             boolSettings
         );
+    }
+
+    // RPC: 客户端请求服务器配置
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ServerRequestConfig()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
+        SendFullConfigToOwner(settings);
     }
     
     // 本地版本比较工具（用于决定是否应用服务器配置）

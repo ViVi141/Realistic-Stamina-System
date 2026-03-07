@@ -554,6 +554,10 @@ class DebugDisplay
         // 如果 Hint 显示没开启，直接退出
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
+
+        // 配置已开启但 HUD 未创建时补建（应对配置晚于 InitStaminaHUD/SyncHUDToConfig 到达或首次 CreateHUD 失败）
+        if (!SCR_StaminaHUDComponent.IsInitialized())
+            SCR_StaminaHUDComponent.Init();
         
         // 只对本地控制的玩家输出（含载具内：角色在本地控制的载具中）
         IEntity controlled = SCR_PlayerController.GetLocalControlledEntity();
