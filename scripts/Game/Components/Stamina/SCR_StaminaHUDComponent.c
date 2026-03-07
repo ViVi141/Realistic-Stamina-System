@@ -126,14 +126,35 @@ class SCR_StaminaHUDComponent
         {
             s_Instance.DestroyHUD();
             s_Instance = null;
-            s_fDisplayStaminaPercent = 1.0;  // 重置平滑值，便于下次初始化
         }
+        ResetCachedValues();
     }
     
     // 检查是否已初始化
     static bool IsInitialized()
     {
         return s_Instance != null;
+    }
+
+    // 重置 HUD 静态缓存，确保角色切换时不继承上一角色数据
+    static void ResetCachedValues()
+    {
+        s_fCachedStaminaPercent = 1.0;
+        s_fCachedSpeedMultiplier = 1.0;
+        s_fCachedCurrentSpeed = 0.0;
+        s_fCachedWeight = 0.0;
+        s_sCachedMoveType = "Idle";
+        s_fCachedSlopeAngle = 0.0;
+        s_fCachedTemperature = 20.0;
+        s_fCachedWindSpeed = 0.0;
+        s_fCachedWindDirection = 0.0;
+        s_bCachedIsIndoor = false;
+        s_fCachedTerrainDensity = -1.0;
+        s_fCachedWetWeight = 0.0;
+        s_bCachedIsSwimming = false;
+        s_fCachedTimeToDepleteSec = -1.0;
+        s_fCachedTimeToFullSec = -1.0;
+        s_fDisplayStaminaPercent = 1.0;
     }
     
     // ==================== 私有方法 ====================

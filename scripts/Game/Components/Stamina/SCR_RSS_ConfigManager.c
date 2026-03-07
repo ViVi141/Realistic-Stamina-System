@@ -8,13 +8,14 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.15.18";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.16.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
     protected static const float RELOAD_COOLDOWN = 5.0;  // 重载冷却（秒）
     protected static bool m_bIsServerConfigApplied = false;  // 是否已应用服务器配置
     protected static ref array<IEntity> m_aConfigChangeListeners = new array<IEntity>();  // 配置变更监听器
+    protected static SCR_RSS_ConfigSyncComponent m_ConfigSyncComponent;  // 持久实体上的配置同步组件（可选，有则优先用 RplProp 下发）
     protected static string m_sLastSelectedPreset = "";  // 上次选中的预设，用于检测变更
     protected static ref SCR_RSS_Settings m_CachedSettings;  // 配置缓存，用于检测变更
     protected static float m_fLastSyncTime = 0.0;  // 上次同步时间
@@ -806,7 +807,33 @@ class SCR_RSS_ConfigManager
             Print("[RSS_ConfigManager] Unregistered config change listener: " + listener.GetName());
         }
     }
-    
+
+    // 注册持久实体上的配置同步组件（由 SCR_RSS_ConfigSyncComponent.EOnInit 调用）
+    static void RegisterConfigSyncComponent(SCR_RSS_ConfigSyncComponent comp)
+    {
+        if (comp)
+        {
+            m_ConfigSyncComponent = comp;
+            Print("[RSS_ConfigManager] Registered config sync component (persistent entity).");
+        }
+    }
+
+    // 注销配置同步组件
+    static void UnregisterConfigSyncComponent(SCR_RSS_ConfigSyncComponent comp)
+    {
+        if (m_ConfigSyncComponent == comp)
+        {
+            m_ConfigSyncComponent = null;
+            Print("[RSS_ConfigManager] Unregistered config sync component.");
+        }
+    }
+
+    // 获取已注册的配置同步组件（Bootstrap 等用于在 Load 后触发一次推送）
+    static SCR_RSS_ConfigSyncComponent GetConfigSyncComponent()
+    {
+        return m_ConfigSyncComponent;
+    }
+
     // 检测配置变更
     static bool DetectConfigChanges()
     {
@@ -888,18 +915,25 @@ class SCR_RSS_ConfigManager
     // 通知配置变更
     static void NotifyConfigChanges()
     {
-        for (int i = 0; i < m_aConfigChangeListeners.Count(); i++)
+        if (m_ConfigSyncComponent)
+            m_ConfigSyncComponent.PushServerConfigToReplication();
+        for (int i = m_aConfigChangeListeners.Count() - 1; i >= 0; i--)
         {
             IEntity listener = m_aConfigChangeListeners[i];
-            if (listener)
+            if (!listener)
             {
-                SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(listener.FindComponent(SCR_CharacterControllerComponent));
-                if (controller)
-                {
-                    // 通知监听器配置已变更
-                    controller.OnConfigChanged();
-                }
+                m_aConfigChangeListeners.Remove(i);
+                continue;
             }
+
+            SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(listener.FindComponent(SCR_CharacterControllerComponent));
+            if (!controller)
+            {
+                m_aConfigChangeListeners.Remove(i);
+                continue;
+            }
+
+            controller.OnConfigChanged();
         }
     }
     

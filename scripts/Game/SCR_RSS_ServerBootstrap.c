@@ -18,6 +18,10 @@ modded class SCR_BaseGameMode
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
+            // 若场景中已有持久实体挂载了同步组件并完成注册，则再推一次确保客户端收到（组件可能早于 Load 初始化）
+            SCR_RSS_ConfigSyncComponent sync = SCR_RSS_ConfigManager.GetConfigSyncComponent();
+            if (sync)
+                sync.PushServerConfigToReplication();
             return;
         }
 

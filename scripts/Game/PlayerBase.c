@@ -21,7 +21,6 @@ modded class SCR_CharacterControllerComponent
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
     
     // 网络同步相关
-    protected ref NetworkSyncManager m_pNetworkSyncManager;
     protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
@@ -32,6 +31,22 @@ modded class SCR_CharacterControllerComponent
     protected static const float SERVER_FIRST_BROADCAST_DELAY = 3.0; // 服务器首次广播延迟（秒），便于客户端进服后收到
     protected bool m_bIsConnected = false; // 网络连接状态
     protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
+    protected int m_iVehicleDebugCounter = 0; // 载具调试计数（角色实例级）
+    protected bool m_bLastExhaustedState = false; // 精疲力尽上一帧状态（角色实例级）
+    protected static const bool SERVER_AUTHORITATIVE_STAMINA = true; // 彻底重构：服务器为体力真值来源
+    protected float m_fLastAuthoritativeStatePushTime = -1.0; // 上次推送权威状态时间（秒）
+    protected static const float AUTHORITATIVE_STATE_PUSH_INTERVAL = 0.1; // 权威状态复制间隔（秒）
+
+    // ==================== RplProp 复制属性（服务器→客户端，不依赖 RPC）====================
+    // 仅复制给本角色 Owner，由引擎同步；服务器写值后 Replication.BumpMe()
+    [RplProp(condition: RplCondition.OwnerOnly, onRplName: "OnServerConfigReplicated")]
+    protected bool m_bServerHintEnabled = false;
+    [RplProp(condition: RplCondition.OwnerOnly, onRplName: "OnServerConfigReplicated")]
+    protected int m_iServerPresetIndex = 1; // 0=EliteStandard, 1=StandardMilsim, 2=TacticalAction, 3=Custom
+    [RplProp(condition: RplCondition.OwnerOnly, onRplName: "OnServerSpeedReplicated")]
+    protected float m_fServerSpeedMultiplier = 1.0;
+    [RplProp(condition: RplCondition.OwnerOnly, onRplName: "OnServerStaminaReplicated")]
+    protected float m_fServerStaminaPercent = 1.0;
     
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
@@ -228,11 +243,6 @@ modded class SCR_CharacterControllerComponent
         // 初始化EPOC状态管理
         m_pEpocState = new EpocState();
         
-        // 初始化网络同步管理器
-        m_pNetworkSyncManager = new NetworkSyncManager();
-        if (m_pNetworkSyncManager)
-            m_pNetworkSyncManager.Initialize();
-        
         // 缓存组件，避免在每0.2s的更新循环中重复查找
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
@@ -254,7 +264,7 @@ modded class SCR_CharacterControllerComponent
             GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
         }
     }
-    
+
     // 服务器向全体客户端广播当前配置（配置变更与定期广播共用）
     protected void BroadcastConfigToAllClients()
     {
@@ -290,7 +300,23 @@ modded class SCR_CharacterControllerComponent
     void OnConfigChanged()
     {
         if (Replication.IsServer())
+        {
             BroadcastConfigToAllClients();
+            SetServerConfigPropsAndBump();
+        }
+    }
+
+    // 服务器：将当前 ConfigManager 的 HUD/预设写入 RplProp 并 BumpMe，供复制到客户端 Owner
+    protected void SetServerConfigPropsAndBump()
+    {
+        if (!Replication.IsServer())
+            return;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        m_bServerHintEnabled = settings.m_bHintDisplayEnabled;
+        m_iServerPresetIndex = GetPresetIndexFromName(settings.m_sSelectedPreset);
+        Replication.BumpMe();
     }
 
     // 获取用于日志的玩家标识（名称/ID）
@@ -367,6 +393,72 @@ modded class SCR_CharacterControllerComponent
             SCR_StaminaHUDComponent.Init();
         else
             SCR_StaminaHUDComponent.Destroy();
+    }
+
+    // 预设索引 → 预设名（与 SCR_RSS_Settings 预设名一致）
+    protected static string GetPresetNameFromIndex(int index)
+    {
+        if (index == 0) return "EliteStandard";
+        if (index == 1) return "StandardMilsim";
+        if (index == 2) return "TacticalAction";
+        if (index == 3) return "Custom";
+        return "StandardMilsim";
+    }
+
+    // 预设名 → 索引（服务器写 RplProp 时用）
+    protected static int GetPresetIndexFromName(string presetName)
+    {
+        if (presetName == "EliteStandard") return 0;
+        if (presetName == "StandardMilsim") return 1;
+        if (presetName == "TacticalAction") return 2;
+        if (presetName == "Custom") return 3;
+        return 1;
+    }
+
+    // RplProp 回调：服务器下发的 HUD + 预设索引已复制到本端，仅客户端且本角色受控时应用
+    void OnServerConfigReplicated()
+    {
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        settings.m_bHintDisplayEnabled = m_bServerHintEnabled;
+        settings.m_sSelectedPreset = GetPresetNameFromIndex(m_iServerPresetIndex);
+        settings.InitPresets(true);
+        SCR_RSS_ConfigManager.ApplyServerConfigNoWrite();
+        if (settings.m_bHintDisplayEnabled)
+            SCR_StaminaHUDComponent.Init();
+        else
+            SCR_StaminaHUDComponent.Destroy();
+        if (IsRssDebugEnabled())
+            PrintFormat("[RSS] Applied config from RplProp: preset=%1, HUD=%2", settings.m_sSelectedPreset, m_bServerHintEnabled);
+    }
+
+    // RplProp 回调：服务器下发的速度倍数已复制到本端，仅客户端且本角色受控时应用
+    void OnServerSpeedReplicated()
+    {
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
+        OverrideMaxSpeed(Math.Clamp(m_fServerSpeedMultiplier, 0.15, 1.0));
+    }
+
+    // RplProp 回调：服务器下发体力百分比（权威值），客户端用它覆盖本地体力，避免跨角色或时序漂移
+    void OnServerStaminaReplicated()
+    {
+        if (Replication.IsServer())
+            return;
+        if (!IsPlayerControlled())
+            return;
+        if (!m_pStaminaComponent)
+            return;
+        float clamped = Math.Clamp(m_fServerStaminaPercent, 0.0, 1.0);
+        m_pStaminaComponent.SetTargetStamina(clamped);
+        SCR_StaminaHUDComponent.UpdateStaminaValue(clamped);
     }
     
     // 处理客户端配置请求
@@ -574,6 +666,10 @@ modded class SCR_CharacterControllerComponent
         // 只对本地控制的玩家处理
         if (controlled && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
+            // 切换到新角色前，先清空 HUD 及其静态缓存，避免继承旧角色显示数据
+            SCR_StaminaHUDComponent.Destroy();
+            SCR_StaminaHUDComponent.ResetCachedValues();
+
             InputManager inputManager = GetGame().GetInputManager();
             if (inputManager)
             {
@@ -605,6 +701,7 @@ modded class SCR_CharacterControllerComponent
             
             // 销毁体力 HUD 显示
             SCR_StaminaHUDComponent.Destroy();
+            SCR_StaminaHUDComponent.ResetCachedValues();
         }
     }
     
@@ -694,6 +791,11 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner)
             return false;
+
+        // 服务器权威模式：仅服务器执行体力更新，客户端只接收复制后的状态
+        if (SERVER_AUTHORITATIVE_STAMINA)
+            return Replication.IsServer();
+
         // 本地控制的玩家（角色直接受控）
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
             return true;
@@ -764,11 +866,10 @@ modded class SCR_CharacterControllerComponent
         if (isInVehicle)
         {
             // 调试信息：载具状态
-            static int vehicleDebugCounter = 0;
-            vehicleDebugCounter++;
-            if (vehicleDebugCounter >= 25) // 每5秒输出一次
+            m_iVehicleDebugCounter++;
+            if (m_iVehicleDebugCounter >= 25) // 每5秒输出一次
             {
-                vehicleDebugCounter = 0;
+                m_iVehicleDebugCounter = 0;
                 if (m_pStaminaComponent && IsRssDebugEnabled())
                 {
                     float currentStamina = m_pStaminaComponent.GetTargetStamina();
@@ -828,7 +929,7 @@ modded class SCR_CharacterControllerComponent
                 m_fLastStaminaUpdateTime = currentWorldTime;
                 vehicleStaminaPercent = newStamina;
                 
-                if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
+                if (m_iVehicleDebugCounter == 0 && IsRssDebugEnabled())
                 {
                     PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% → %2%% (净率: %3/s)",
                         Math.Round(oldStamina * 100.0).ToString(),
@@ -883,6 +984,8 @@ modded class SCR_CharacterControllerComponent
                 vehicleParams.timeToFullSec = vehicleTimeToFullSec;
                 DebugDisplay.OutputHintInfo(vehicleParams);
             }
+
+            PushAuthoritativeState(vehicleStaminaPercent, 1.0);
             
             // 继续调度下一次更新，但不进行速度更新和体力消耗计算
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
@@ -914,7 +1017,6 @@ modded class SCR_CharacterControllerComponent
         // ==================== 精疲力尽逻辑（融合模型）====================
         // 如果体力 ≤ 0，强制速度为当前最大Walk速度（考虑负重）
         bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
-        static bool lastExhaustedState = false;
         if (isExhausted)
         {
             // 计算动态跛行倍率
@@ -922,10 +1024,10 @@ modded class SCR_CharacterControllerComponent
             OverrideMaxSpeed(limpSpeedMultiplier);
             
             // 调试信息：精疲力尽状态
-            if (!lastExhaustedState && IsRssDebugEnabled())
+            if (!m_bLastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RSS] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
-                lastExhaustedState = true;
+                m_bLastExhaustedState = true;
             }
             
             // 继续执行后续逻辑（但速度已被限制）
@@ -933,10 +1035,10 @@ modded class SCR_CharacterControllerComponent
         }
         else
         {
-            if (lastExhaustedState && IsRssDebugEnabled())
+            if (m_bLastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RSS] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
-                lastExhaustedState = false;
+                m_bLastExhaustedState = false;
             }
         }
         
@@ -1043,38 +1145,8 @@ modded class SCR_CharacterControllerComponent
                 currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
         }
 
-        // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
-        // AI 无网络同步，直接应用本地计算结果
-        if (IsPlayerControlled() && m_pNetworkSyncManager)
-        {
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-            // 周期性上报：客户端发给服务器（每 NETWORK_SYNC_INTERVAL 秒一次）
-            if (m_pNetworkSyncManager.ShouldSync(currentWorldTime))
-            {
-                if (!Replication.IsServer())
-                {
-                    RPC_ClientReportStamina(staminaPercent, currentWeight);
-                    m_pNetworkSyncManager.UpdateReportedState(staminaPercent, currentWeight);
-                }
-            }
-
-            // 应用服务器验证/平滑修正（如果服务器已有验证值则使用，否则使用本地预测）
-            float smoothed = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentWorldTime);
-            if (m_pNetworkSyncManager.HasServerValidation())
-            {
-                OverrideMaxSpeed(smoothed);
-            }
-            else
-            {
-                OverrideMaxSpeed(finalSpeedMultiplier);
-            }
-        }
-        else
-        {
-            // AI 或非网络实体：直接应用
-            OverrideMaxSpeed(finalSpeedMultiplier);
-        }
+        // 服务器全权模式：速度倍率由服务器计算并直接应用
+        OverrideMaxSpeed(finalSpeedMultiplier);
         
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
@@ -1489,6 +1561,7 @@ modded class SCR_CharacterControllerComponent
         
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
+        PushAuthoritativeState(staminaPercent, finalSpeedMultiplier);
         
         // ==================== 服务器配置同步 ====================
         // 服务器定期向全体客户端广播配置（弥补 Owner 单播可能未达的情况）
@@ -1604,6 +1677,26 @@ modded class SCR_CharacterControllerComponent
         // 继续更新
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
     }
+
+    // 服务器将权威体力与速度定时复制给 Owner 客户端
+    protected void PushAuthoritativeState(float staminaPercent, float speedMultiplier)
+    {
+        if (!Replication.IsServer())
+            return;
+
+        float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (m_fLastAuthoritativeStatePushTime >= 0.0)
+        {
+            float deltaSec = nowSec - m_fLastAuthoritativeStatePushTime;
+            if (deltaSec < AUTHORITATIVE_STATE_PUSH_INTERVAL)
+                return;
+        }
+
+        m_fLastAuthoritativeStatePushTime = nowSec;
+        m_fServerStaminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+        m_fServerSpeedMultiplier = Math.Clamp(speedMultiplier, 0.15, 1.0);
+        Replication.BumpMe();
+    }
     
     // 采集速度样本（每秒一次，仅玩家）
     void CollectSpeedSample()
@@ -1716,6 +1809,7 @@ modded class SCR_CharacterControllerComponent
             return;
         PrintFormat("[RSS] Server push config to client: %1", GetPlayerLabel(GetOwner()));
         SendFullConfigToOwner(settings);
+        SetServerConfigPropsAndBump();
     }
 
     // 将当前配置组包并发送给本实体 Owner（供 RPC 处理与主动推送共用）
@@ -1856,157 +1950,6 @@ modded class SCR_CharacterControllerComponent
         {
             m_fLastServerSyncTime = currentTime;
             RequestServerConfig();
-        }
-    }
-
-    // RPC: 客户端向服务器上报体力与负重（周期性）
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ClientReportStamina(float staminaPercent, float weight)
-    {
-        if (Replication.IsServer())
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-            // 速率限制：拒绝过于频繁的客户端上报（防止恶意刷频）
-            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime))
-            {
-                if (IsRssDebugEnabled())
-                    PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
-                return;
-            }
-
-            // 服务器端基础校验
-            float clampedStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
-
-            // 记录并检测异常跳变
-            if (m_pNetworkSyncManager)
-            {
-                float lastReported = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
-                if (Math.AbsFloat(clampedStamina - lastReported) > 0.5 && IsRssDebugEnabled())
-                    PrintFormat("[RSS] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
-
-                // 更新服务器端记录（用于后续检测和统计）
-                m_pNetworkSyncManager.UpdateReportedState(clampedStamina, weight);
-            }
-
-            // 使用服务器端的权威负重数据（优先）
-            float serverWeight = 0.0;
-            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                serverWeight = m_pEncumbranceCache.GetCurrentWeight();
-            else
-            {
-                SCR_CharacterInventoryStorageComponent inventoryComponent = SCR_CharacterInventoryStorageComponent.Cast(
-                    GetOwner().FindComponent(SCR_CharacterInventoryStorageComponent));
-                if (inventoryComponent)
-                    serverWeight = inventoryComponent.GetTotalWeight();
-            }
-
-            // 计算速度惩罚（基于服务器重量）
-            // serverWeight 为装备/背包重量，不含身体重量
-            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
-            float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
-            float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-            float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
-            float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
-            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, exp);
-            encPenalty = Math.Clamp(encPenalty, 0.0, max_pen);
-
-            // 获取服务器端的移动状态（权威）
-            bool isSprinting = IsSprinting();
-            int currentMovementPhase = GetCurrentMovementPhase();
-            bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(clampedStamina);
-            bool canSprint = RealisticStaminaSpeedSystem.CanSprint(clampedStamina);
-
-            // 计算当前速度（使用服务器位置差分）
-            vector velocity = GetVelocity();
-            vector horizontalVelocity = velocity;
-            horizontalVelocity[1] = 0.0;
-            float currentSpeed = horizontalVelocity.Length();
-            currentSpeed = Math.Min(currentSpeed, 7.0);
-
-            // 获取坡度角度（服务器端计算，传入 velocity 用于判断上下坡）
-            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, velocity);
-
-            // 室内楼梯：与 UpdateSpeed 一致，减轻负重对速度的惩罚
-            float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this, velocity);
-            IEntity ownerEnt = GetOwner();
-            bool isIndoorStairsServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.IsIndoorForEntity(ownerEnt) && Math.AbsFloat(rawSlopeServer) > 0.0);
-            if (isIndoorStairsServer)
-                encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
-
-            // 使用权威计算函数生成最终速度倍数（传入冲刺开始时间以保持战术爆发期一致）
-            float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
-                clampedStamina,
-                encPenalty,
-                isSprinting,
-                currentMovementPhase,
-                isExhausted,
-                canSprint,
-                currentSpeed,
-                slopeAngleDegrees,
-                GetSprintStartTime());
-
-            validated = Math.Clamp(validated, 0.15, 1.0);
-
-            if (m_pNetworkSyncManager)
-            {
-                // 使用外部已声明的 currentTime 以避免重复声明
-                currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-                // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽；同时附带 HUD 开关，与体力工作同路更新
-                SCR_RSS_Settings serverSettings = SCR_RSS_ConfigManager.GetSettings();
-                bool hintEnabled = (serverSettings && serverSettings.m_bHintDisplayEnabled);
-                if (!m_pNetworkSyncManager.HasServerValidation())
-                {
-                    m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                    RPC_ServerSyncSpeedMultiplier(validated, hintEnabled);
-                }
-                else
-                {
-                    float speedDiff = Math.AbsFloat(validated - m_pNetworkSyncManager.GetServerValidatedSpeedMultiplier());
-                    if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
-                    {
-                        m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                        RPC_ServerSyncSpeedMultiplier(validated, hintEnabled);
-                    }
-                    else
-                    {
-                        // 未达到触发阈值：暂不下发（保持现有客户端平滑逻辑）
-                    }
-                }
-            }
-        }
-    }
-
-    // RPC: 服务器将验证后的速度与 HUD 开关同步回客户端（Broadcast 因仅 Owner 可执行 Owner RPC；客户端用 IsPlayerControlled 过滤）
-    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
-    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, bool hintDisplayEnabled)
-    {
-        if (Replication.IsServer())
-            return;
-        if (!IsPlayerControlled())
-            return;
-        if (m_pNetworkSyncManager)
-            m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
-        {
-            // 仅在实际变化时更新 HUD，避免同值重复 RPC 导致闪烁
-            bool changed = (settings.m_bHintDisplayEnabled != hintDisplayEnabled);
-            settings.m_bHintDisplayEnabled = hintDisplayEnabled;
-            if (changed)
-            {
-                if (hintDisplayEnabled)
-                {
-                    SCR_StaminaHUDComponent.Init();
-                    Print("[RSS] HUD state from server sync: ON (stamina path)");
-                }
-                else
-                {
-                    SCR_StaminaHUDComponent.Destroy();
-                    Print("[RSS] HUD state from server sync: OFF (stamina path)");
-                }
-            }
         }
     }
 
