@@ -26,6 +26,7 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
+    protected const int HUD_SYNC_DELAY_MS = 3000; // 客户端 HUD 与服务器配置同步延迟（毫秒），用于配置晚于 InitStaminaHUD 到达时补显 HUD
     protected bool m_bIsConnected = false; // 网络连接状态
     protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
     
@@ -344,9 +345,9 @@ modded class SCR_CharacterControllerComponent
         settings.m_sConfigVersion = configVersion;
         settings.m_sSelectedPreset = selectedPreset;
 
-        SCR_RSS_ConfigManager.Save();
-        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
+        // 仅更新缓存与标志，不写盘，避免客户端/主机在“应用下发配置”时写入 JSON（与服务器下发时间戳一致会令人误解）
+        SCR_RSS_ConfigManager.ApplyServerConfigNoWrite();
+        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2, HUD(hintDisplayEnabled)=%3", selectedPreset, configVersion, settings.m_bHintDisplayEnabled);
 
         // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
         if (settings.m_bHintDisplayEnabled)
@@ -396,14 +397,13 @@ modded class SCR_CharacterControllerComponent
     {
         if (!Replication.IsServer())
         {
-            // 客户端应用新配置
+            // 客户端应用新配置；仅更新缓存与标志，不写盘
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
                 settings.m_sSelectedPreset = newPreset;
                 settings.InitPresets(true);
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                SCR_RSS_ConfigManager.ApplyServerConfigNoWrite();
                 Print("[RSS] 服务器配置已变更: " + newPreset);
             }
         }
@@ -434,9 +434,8 @@ modded class SCR_CharacterControllerComponent
                 // 重新初始化预设
                 settings.InitPresets(true);
                 
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-                Print("[RSS] 服务器配置已同步: " + selectedPreset);
+                SCR_RSS_ConfigManager.ApplyServerConfigNoWrite();
+                PrintFormat("[RSS] 服务器配置已同步: %1, HUD(hintDisplayEnabled)=%2", selectedPreset, settings.m_bHintDisplayEnabled);
 
                 // 服务器配置应用后，根据 hint 开关创建或销毁 HUD
                 if (settings.m_bHintDisplayEnabled)
@@ -569,6 +568,8 @@ modded class SCR_CharacterControllerComponent
             
             // 初始化体力 HUD 显示（延迟初始化，确保 HUD 系统已加载）
             GetGame().GetCallqueue().CallLater(InitStaminaHUD, 1000, false);
+            // 延迟同步 HUD 与服务器配置（若配置在 1s 之后才到达，此处可根据已下发的配置补显或隐藏 HUD）
+            GetGame().GetCallqueue().CallLater(SyncHUDToConfig, HUD_SYNC_DELAY_MS, false);
         }
         else
         {
@@ -590,6 +591,30 @@ modded class SCR_CharacterControllerComponent
     void InitStaminaHUD()
     {
         SCR_StaminaHUDComponent.Init();
+    }
+
+    // 根据当前已下发的服务器配置同步 HUD 显示状态（用于配置晚于 InitStaminaHUD 到达时补显）
+    void SyncHUDToConfig()
+    {
+        if (Replication.IsServer())
+            return;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        bool wantHUD = settings.m_bHintDisplayEnabled;
+        bool hasHUD = SCR_StaminaHUDComponent.IsInitialized();
+        if (wantHUD && !hasHUD)
+        {
+            SCR_StaminaHUDComponent.Init();
+            if (IsRssDebugEnabled())
+                Print("[RSS] SyncHUDToConfig: HUD created (server config applied late).");
+        }
+        else if (!wantHUD && hasHUD)
+        {
+            SCR_StaminaHUDComponent.Destroy();
+        }
+        if (!SCR_RSS_ConfigManager.IsServerConfigApplied())
+            RequestServerConfig();
     }
     
     // 跳跃动作监听器回调函数
@@ -1737,12 +1762,11 @@ modded class SCR_CharacterControllerComponent
                 settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
                 settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
 
-                // 重新初始化预设并保存（使用系统预设刷新，确保一致性）
+                // 重新初始化预设；仅更新缓存与标志，不写盘
                 settings.InitPresets(true);
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+                SCR_RSS_ConfigManager.ApplyServerConfigNoWrite();
 
-                PrintFormat("[RSS] Applied server config: preset=%1, version=%2", selectedPreset, configVersion);
+                PrintFormat("[RSS] Applied server config: preset=%1, version=%2, HUD(hintDisplayEnabled)=%3", selectedPreset, configVersion, settings.m_bHintDisplayEnabled);
 
                 // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
                 if (settings.m_bHintDisplayEnabled)

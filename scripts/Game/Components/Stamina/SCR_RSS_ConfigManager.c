@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.15.12";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.15.13";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -752,6 +752,13 @@ class SCR_RSS_ConfigManager
         return m_bIsLoaded;
     }
     
+    // 仅更新缓存并标记“已应用服务器配置”，不写入磁盘（用于客户端/主机在应用下发配置时避免写 JSON）
+    static void ApplyServerConfigNoWrite()
+    {
+        UpdateConfigCache();
+        SetServerConfigApplied(true);
+    }
+
     // 设置服务器配置已应用标志
     static void SetServerConfigApplied(bool applied)
     {
