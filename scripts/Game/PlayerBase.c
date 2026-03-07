@@ -27,6 +27,9 @@ modded class SCR_CharacterControllerComponent
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
     protected const int HUD_SYNC_DELAY_MS = 3000; // 客户端 HUD 与服务器配置同步延迟（毫秒），用于配置晚于 InitStaminaHUD 到达时补显 HUD
+    protected static float s_fLastServerBroadcastTime = -1000.0; // 上次服务器广播配置时间（秒），负值表示尚未广播
+    protected static const float SERVER_BROADCAST_INTERVAL = 10.0; // 服务器向全体客户端广播配置间隔（秒）
+    protected static const float SERVER_FIRST_BROADCAST_DELAY = 3.0; // 服务器首次广播延迟（秒），便于客户端进服后收到
     protected bool m_bIsConnected = false; // 网络连接状态
     protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
     
@@ -114,18 +117,11 @@ modded class SCR_CharacterControllerComponent
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
 
-            // 若该实体为玩家控制角色，延迟主动推送配置（避免仅依赖客户端请求时 RPC 未达或未回）
-            PlayerManager playerManager = GetGame().GetPlayerManager();
-            if (playerManager)
-            {
-                int playerId = playerManager.GetPlayerIdFromControlledEntity(owner);
-                if (playerId > 0)
-                {
-                    GetGame().GetCallqueue().CallLater(PushConfigToOwnerClient, 2500, false);
-                    if (IsRssDebugEnabled())
-                        PrintFormat("[RSS] Server: will push config to player %1 in 2.5s", GetPlayerLabel(owner));
-                }
-            }
+            // 玩家连接时未必已有角色；角色在服务器上创建时（本 OnInit）延迟向该实体 Owner 推送配置。
+            // 若本实体归属某玩家，2.5s 后单播会发往该客户端；若为 AI 等则 Owner 为服务器，收到端为 no-op。
+            GetGame().GetCallqueue().CallLater(PushConfigToOwnerClient, 2500, false);
+            if (IsRssDebugEnabled())
+                PrintFormat("[RSS] Server: will push config to owner in 2.5s (entity=%1)", GetPlayerLabel(owner));
 
             // debug: 输出当前的能量转体力系数
             if (IsRssDebugEnabled())
@@ -259,38 +255,42 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
+    // 服务器向全体客户端广播当前配置（配置变更与定期广播共用）
+    protected void BroadcastConfigToAllClients()
+    {
+        if (!Replication.IsServer())
+            return;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+        array<float> customParams = BuildPresetArray(settings.m_Custom);
+        array<float> floatSettings = new array<float>();
+        array<int> intSettings = new array<int>();
+        array<bool> boolSettings = new array<bool>();
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+        RPC_SendFullConfigBroadcast(
+            settings.m_sConfigVersion,
+            settings.m_sSelectedPreset,
+            eliteParams,
+            standardParams,
+            tacticalParams,
+            customParams,
+            floatSettings,
+            intSettings,
+            boolSettings
+        );
+        if (IsRssDebugEnabled())
+            Print("[RSS] Server broadcast config to all clients.");
+    }
+
     // 处理配置变更通知
     void OnConfigChanged()
     {
         if (Replication.IsServer())
-        {
-            // 服务器配置变更，通知所有客户端
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
-                array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
-                array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
-                array<float> customParams = BuildPresetArray(settings.m_Custom);
-
-                array<float> floatSettings = new array<float>();
-                array<int> intSettings = new array<int>();
-                array<bool> boolSettings = new array<bool>();
-                BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
-                RPC_SendFullConfigBroadcast(
-                    settings.m_sConfigVersion,
-                    settings.m_sSelectedPreset,
-                    eliteParams,
-                    standardParams,
-                    tacticalParams,
-                    customParams,
-                    floatSettings,
-                    intSettings,
-                    boolSettings
-                );
-            }
-        }
+            BroadcastConfigToAllClients();
     }
 
     // 获取用于日志的玩家标识（名称/ID）
@@ -1483,7 +1483,28 @@ modded class SCR_CharacterControllerComponent
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
         
         // ==================== 服务器配置同步 ====================
-        // 定期同步服务器配置
+        // 服务器定期向全体客户端广播配置（弥补 Owner 单播可能未达的情况）
+        if (Replication.IsServer())
+        {
+            float worldTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            bool shouldBroadcast = false;
+            if (s_fLastServerBroadcastTime < 0.0)
+            {
+                if (worldTimeSec >= SERVER_FIRST_BROADCAST_DELAY)
+                    shouldBroadcast = true;
+            }
+            else
+            {
+                if (worldTimeSec - s_fLastServerBroadcastTime >= SERVER_BROADCAST_INTERVAL)
+                    shouldBroadcast = true;
+            }
+            if (shouldBroadcast)
+            {
+                s_fLastServerBroadcastTime = worldTimeSec;
+                BroadcastConfigToAllClients();
+            }
+        }
+        // 客户端定期请求服务器配置
         UpdateServerConfigSync();
         
         // ==================== 调试输出与 HUD 实时更新 =====================
