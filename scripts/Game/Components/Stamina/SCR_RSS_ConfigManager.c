@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.15.14";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.15.16";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -199,13 +199,14 @@ class SCR_RSS_ConfigManager
         }
         else
         {
-            // 文件不存在，初始化预设并保存默认值
-            Print("[RSS_ConfigManager] Config file not found, creating new config with defaults");
+            // 文件不存在，初始化预设并保存默认值（默认生效预设=StandardMilsim 平衡）
+            Print("[RSS_ConfigManager] Config file not found, creating new config with defaults (active preset: StandardMilsim)");
             m_Settings.InitPresets();
             
             // 设置所有必要的默认值
             m_Settings.m_sConfigVersion = CURRENT_VERSION;
             m_Settings.m_sSelectedPreset = "StandardMilsim";
+            SetConfigNoteIfEmpty();
             m_Settings.m_bHintDisplayEnabled = false;
             m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
             m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
@@ -423,12 +424,23 @@ class SCR_RSS_ConfigManager
         // 用户通过 JSON 修改的 UI 设置（hint、debug）必须被保留
         // 迁移逻辑 MigrateConfig 已处理首次从 pre-3.4.0 升级时的默认值
         
+        SetConfigNoteIfEmpty();
         // 如果有任何默认值被设置，保存配置
         if (needsSave)
         {
             Print("[RSS_ConfigManager] Saving config with default values applied");
             Save();
         }
+    }
+
+    // 为 JSON 文件首行写入说明，避免误读“默认平衡却看到 m_EliteStandard”
+    protected static void SetConfigNoteIfEmpty()
+    {
+        if (!m_Settings)
+            return;
+        if (m_Settings.m_sConfigNote && m_Settings.m_sConfigNote != "")
+            return;
+        m_Settings.m_sConfigNote = "Active preset = m_sSelectedPreset. File always has 4 blocks: m_EliteStandard, m_StandardMilsim, m_TacticalAction, m_Custom. | 当前生效=m_sSelectedPreset，文件含四块预设。";
     }
 
     // 仅允许服务器写入配置文件，防止客户端覆盖服务器 JSON
@@ -453,6 +465,7 @@ class SCR_RSS_ConfigManager
             return;
         }
         
+        SetConfigNoteIfEmpty();
         // 创建配置备份
         CreateConfigBackup();
         
@@ -460,7 +473,10 @@ class SCR_RSS_ConfigManager
         SCR_JsonSaveContext saveContext = new SCR_JsonSaveContext();
         saveContext.WriteValue("", m_Settings);
         saveContext.SaveToFile(CONFIG_PATH);
-        Print("[RSS_ConfigManager] Settings saved to " + CONFIG_PATH);
+        string activePreset = m_Settings.m_sSelectedPreset;
+        if (!activePreset || activePreset == "")
+            activePreset = "StandardMilsim";
+        PrintFormat("[RSS_ConfigManager] Settings saved to %1 (active preset: %2)", CONFIG_PATH, activePreset);
         
         // 更新配置缓存
         UpdateConfigCache();

@@ -117,8 +117,8 @@ modded class SCR_CharacterControllerComponent
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
 
-            // 玩家连接时未必已有角色；角色在服务器上创建时（本 OnInit）延迟向该实体 Owner 推送配置。
-            // 若本实体归属某玩家，2.5s 后单播会发往该客户端；若为 AI 等则 Owner 为服务器，收到端为 no-op。
+            // 玩家与角色分离：玩家连接后只有复活/生成才会拥有角色并操控。本组件挂在角色上，角色创建（复活）时才会 OnInit。
+            // 此时向本实体 Owner（若为玩家则为其客户端）延迟 2.5s 单播配置；若为 AI 则 Owner 为服务器，接收端 no-op。
             GetGame().GetCallqueue().CallLater(PushConfigToOwnerClient, 2500, false);
             if (IsRssDebugEnabled())
                 PrintFormat("[RSS] Server: will push config to owner in 2.5s (entity=%1)", GetPlayerLabel(owner));
@@ -1945,11 +1945,13 @@ modded class SCR_CharacterControllerComponent
                 // 使用外部已声明的 currentTime 以避免重复声明
                 currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
-                // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽
+                // 初次验证立即下发，之后仅在偏差持续超时/显著时下发以减少带宽；同时附带 HUD 开关，与体力工作同路更新
+                SCR_RSS_Settings serverSettings = SCR_RSS_ConfigManager.GetSettings();
+                bool hintEnabled = (serverSettings && serverSettings.m_bHintDisplayEnabled);
                 if (!m_pNetworkSyncManager.HasServerValidation())
                 {
                     m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                    RPC_ServerSyncSpeedMultiplier(validated);
+                    RPC_ServerSyncSpeedMultiplier(validated, hintEnabled);
                 }
                 else
                 {
@@ -1957,7 +1959,7 @@ modded class SCR_CharacterControllerComponent
                     if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
                     {
                         m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                        RPC_ServerSyncSpeedMultiplier(validated);
+                        RPC_ServerSyncSpeedMultiplier(validated, hintEnabled);
                     }
                     else
                     {
@@ -1968,14 +1970,28 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
-    // RPC: 服务器将验证后的速度同步回客户端（目标客户端）
+    // RPC: 服务器将验证后的速度与 HUD 开关同步回客户端（与体力工作同路，确保客户端收到数值时也收到 HUD 状态）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier)
+    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, bool hintDisplayEnabled)
     {
         if (!Replication.IsServer())
         {
             if (m_pNetworkSyncManager)
                 m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
+            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+            if (settings)
+            {
+                // 仅在实际变化时更新 HUD，避免同值重复 RPC 导致闪烁
+                bool changed = (settings.m_bHintDisplayEnabled != hintDisplayEnabled);
+                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
+                if (changed)
+                {
+                    if (hintDisplayEnabled)
+                        SCR_StaminaHUDComponent.Init();
+                    else
+                        SCR_StaminaHUDComponent.Destroy();
+                }
+            }
         }
     }
 

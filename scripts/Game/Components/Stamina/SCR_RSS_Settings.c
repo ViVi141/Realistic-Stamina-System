@@ -354,6 +354,10 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE = 14;
 
     // ==================== 基础配置 ====================
+    // 说明：当前生效的预设由 m_sSelectedPreset 指定；本文件始终包含四个预设块（m_EliteStandard=精英拟真、m_StandardMilsim=平衡、m_TacticalAction=流畅、m_Custom=自定义），并非“默认=平衡则文件里只有平衡”。
+    [Attribute("", desc: "Read-only note: active preset = m_sSelectedPreset; file contains all 4 preset blocks. | 说明：当前生效由 m_sSelectedPreset 指定，文件含四个预设块")]
+    string m_sConfigNote;
+
     [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
