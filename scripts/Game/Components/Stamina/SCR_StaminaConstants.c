@@ -439,6 +439,11 @@ class StaminaConstants
     static const float SLOPE_DOWNHILL_COEFF = 0.03; // 下坡影响系数（每度减少3%消耗，约为上坡的1/3）
     static const float SLOPE_MAX_MULTIPLIER = 2.0; // 最大坡度影响倍数（上坡）
     static const float SLOPE_MIN_MULTIPLIER = 0.7; // 最小坡度影响倍数（下坡）
+    // 坡度-消耗生理学修正（Margaria/Santee：缓下坡最省能，陡下坡刹车耗能）
+    static const float GENTLE_DOWNHILL_GRADE_MAX = 12.0;       // 缓下坡上限（|坡度%|），约 -9%～-12% 为能耗最低
+    static const float GENTLE_DOWNHILL_SAVINGS_MULTIPLIER = 1.25; // 缓下坡时坡度项“省能”放大（1.25 = 多 25% 节省）
+    static const float STEEP_DOWNHILL_GRADE_THRESHOLD = 15.0;  // 超过此 |坡度%| 开始加陡下坡刹车惩罚
+    static const float STEEP_DOWNHILL_PENALTY_MAX_FRACTION = 0.5; // 陡下坡惩罚上限（相对 baseTerm 的比例，-30% 坡度时约达此值）
     
     // ==================== 负重×坡度交互项参数 ====================
     static const float ENCUMBRANCE_SLOPE_INTERACTION_COEFF = 0.15; // 负重×坡度交互系数
@@ -1521,7 +1526,10 @@ class StaminaConstants
     // 疲劳堆积最大值（防止无限累积）
     // [v2.17.0] 10.0→3.0：稳态连续切换上限 ×4，35kg 趴→站最差约 8.3%，避免无限叠加
     static const float STANCE_FATIGUE_MAX = 3.0; // 最大疲劳堆积值
-    
+
+    // 姿态窗口结算：连续两次切换时间差 < 1 秒视为同窗口，>= 1 秒则结束窗口并结算
+    static const float STANCE_WINDOW_GAP = 1.0; // 间隔超过此值（秒）则结束当前窗口、结算体力并开新窗口
+
     // ==================== 负重因子（线性化）====================
     // v2.0 优化：将原来的 1.5 次幂改为线性，避免负重影响过快
     // WeightFactor = CurrentWeight / 90.0

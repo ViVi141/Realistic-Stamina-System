@@ -6,6 +6,20 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.15.12] - 2026-03-07
+
+### 🐛 修复 / 优化
+
+- **坡度-消耗更符合生理** - 缓下坡（0～-12%）放大 Pandolf 坡度项“省能”效果（`GENTLE_DOWNHILL_SAVINGS_MULTIPLIER`）；陡下坡（< -15%）叠加正向惩罚项（`STEEP_DOWNHILL_PENALTY_MAX_FRACTION`），替代原 Santee 下坡修正（[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）
+- **运动方向有效坡度** - 坡度改为“幅值 × cos(速度与上坡夹角)”，沿等高线移动时有效坡度=0，斜向按几何比例缩放，与 Pandolf 沿路径坡度一致（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)：`GetSlopeProjectionCos`、`GetRawSlopeAngle`）
+
+### 🔁 变更
+
+- **姿态窗口结算** - 连续两次切换间隔 < 1 秒视为同窗口，≥ 1 秒结束窗口；窗口内按秒聚合，每秒只计该秒内最靠近秒末的那次切换；总消耗在窗口结束时一次性扣除。新增 **无切换满 1 秒即结算**：体力更新循环中调用 `TrySettleWindow(currentTimeSec)`，满足则立刻扣体力（[SCR_StanceTransitionManager.c](scripts/Game/Components/Stamina/SCR_StanceTransitionManager.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **配置版本** - `CURRENT_VERSION` 更新为 3.15.12（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.15.11] - 2026-03-07
 
 ### 🐛 修复

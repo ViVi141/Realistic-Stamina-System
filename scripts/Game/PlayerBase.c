@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.15.11
+// Realistic Stamina System (RSS) - v3.15.12
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -637,6 +637,10 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
+    // 姿态切换锁定说明：Override SetStanceChange/CanChangeStance 会与基类或合并模组产生 Multiple declaration，
+    // 无法在本 addon 中通过拦截上述接口实现“动画未完成时禁止再次切换”。反复蹲起仍由 StanceTransitionManager
+    // 的疲劳堆积与单次消耗计费约束。
+    
     // 判断当前角色是否应参与体力系统更新
     // 玩家：仅本地控制实体（含载具内：本地控制的载具且本角色在该载具内）；AI：仅服务器端
     protected bool ShouldProcessStaminaUpdate()
@@ -1163,6 +1167,12 @@ modded class SCR_CharacterControllerComponent
             
             // ==================== 姿态转换处理（模块化）====================
             m_pStanceTransitionManager.UpdateFatigue(timeDeltaSec);
+            
+            // 无切换满 1 秒则立刻结算上一窗口（先结算再处理本次切换）
+            float currentTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float stanceSettleCost = m_pStanceTransitionManager.TrySettleWindow(currentTimeSec);
+            if (stanceSettleCost > 0.0)
+                staminaPercent = staminaPercent - stanceSettleCost;
             
             // 处理姿态转换的体力消耗（基于乳酸堆积模型）
             bool stanceEncumbranceCacheValid = false;

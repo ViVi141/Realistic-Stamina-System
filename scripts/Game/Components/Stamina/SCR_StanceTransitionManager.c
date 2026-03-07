@@ -22,6 +22,14 @@ class StanceTransitionManager
     
     protected float m_fStanceFatigue; // 疲劳堆积值
     
+    // 窗口结算：连续切换间隔 < 1s 同窗口，>= 1s 结束窗口并结算；每秒只计该秒内最靠近秒末的那次
+    protected float m_fWindowStartTime = -1.0;      // 当前窗口 T0（秒），-1 表示无窗口
+    protected float m_fLastStanceChangeTime = -1.0;  // 上次切换时间（用于判断间隔）
+    protected float m_fWindowPendingTotal = 0.0;     // 当前窗口已累计消耗（结算时一次性扣除）
+    protected float m_fCurrentSecondIndex = -1.0;   // 当前所在秒序号（0= [T0,T0+1) ），float 避免强转
+    protected float m_fCurrentSecondBestTime = -1.0; // 当前秒内“最靠近秒末”的那次切换时间
+    protected float m_fCurrentSecondBestCost = 0.0;  // 该次切换的消耗
+    
     // ==================== 公共方法 ====================
     
     // 初始化状态
@@ -30,6 +38,12 @@ class StanceTransitionManager
         m_eLastStance = ECharacterStance.STAND;
         m_bInitialized = false;
         m_fStanceFatigue = 0.0;
+        m_fWindowStartTime = -1.0;
+        m_fLastStanceChangeTime = -1.0;
+        m_fWindowPendingTotal = 0.0;
+        m_fCurrentSecondIndex = -1.0;
+        m_fCurrentSecondBestTime = -1.0;
+        m_fCurrentSecondBestCost = 0.0;
     }
     
     // 设置初始姿态（避免第一帧误判）
@@ -46,6 +60,27 @@ class StanceTransitionManager
         // 疲劳堆积自动衰减：每秒衰减 0.5
         float decayAmount = StaminaConstants.STANCE_FATIGUE_DECAY * deltaTime;
         m_fStanceFatigue = Math.Max(0.0, m_fStanceFatigue - decayAmount);
+    }
+    
+    // 无切换满 1 秒时尝试结束当前窗口并结算（由体力更新循环定期调用）
+    // @param currentTimeSec 当前世界时间（秒）
+    // @return 若满足「距上次切换 >= STANCE_WINDOW_GAP」则返回本窗口累计消耗，否则 0
+    float TrySettleWindow(float currentTimeSec)
+    {
+        if (!m_bInitialized || m_fLastStanceChangeTime < 0.0)
+            return 0.0;
+        float gapSec = StaminaConstants.STANCE_WINDOW_GAP;
+        if ((currentTimeSec - m_fLastStanceChangeTime) < gapSec)
+            return 0.0;
+        float toReturn = m_fWindowPendingTotal;
+        if (m_fCurrentSecondBestTime >= 0.0)
+            toReturn = toReturn + m_fCurrentSecondBestCost;
+        m_fWindowStartTime = -1.0;
+        m_fWindowPendingTotal = 0.0;
+        m_fCurrentSecondIndex = -1.0;
+        m_fCurrentSecondBestTime = -1.0;
+        m_fCurrentSecondBestCost = 0.0;
+        return toReturn;
     }
     
     // 处理姿态转换逻辑
@@ -72,7 +107,12 @@ class StanceTransitionManager
         if (currentStance == m_eLastStance)
             return 0.0;
         
-        // 计算姿态转换消耗
+        BaseWorld world = owner.GetWorld();
+        float currentTimeSec = 0.0;
+        if (world)
+            currentTimeSec = world.GetWorldTime() / 1000.0;
+        
+        float gapSec = StaminaConstants.STANCE_WINDOW_GAP;
         float transitionCost = CalculateStanceTransitionCost(
             m_eLastStance,
             currentStance,
@@ -82,14 +122,66 @@ class StanceTransitionManager
             owner
         );
         
-        // 更新上一帧姿态
+        // 与上次切换间隔 >= 1 秒：结束当前窗口并结算，再以本次为 T0 开新窗口
+        if (m_fLastStanceChangeTime >= 0.0 && (currentTimeSec - m_fLastStanceChangeTime) >= gapSec)
+        {
+            float toReturn = m_fWindowPendingTotal;
+            if (m_fCurrentSecondBestTime >= 0.0)
+                toReturn = toReturn + m_fCurrentSecondBestCost;
+            m_fWindowStartTime = currentTimeSec;
+            m_fLastStanceChangeTime = currentTimeSec;
+            m_fWindowPendingTotal = transitionCost;
+            m_fCurrentSecondIndex = 0.0;
+            m_fCurrentSecondBestTime = currentTimeSec;
+            m_fCurrentSecondBestCost = transitionCost;
+            m_eLastStance = currentStance;
+            m_fStanceFatigue = Math.Min(m_fStanceFatigue + StaminaConstants.STANCE_FATIGUE_ACCUMULATION, StaminaConstants.STANCE_FATIGUE_MAX);
+            return toReturn;
+        }
+        
+        // 尚无窗口：以本次为 T0 开窗，不结算
+        if (m_fWindowStartTime < 0.0)
+        {
+            m_fWindowStartTime = currentTimeSec;
+            m_fLastStanceChangeTime = currentTimeSec;
+            m_fWindowPendingTotal = 0.0;
+            m_fCurrentSecondIndex = 0.0;
+            m_fCurrentSecondBestTime = currentTimeSec;
+            m_fCurrentSecondBestCost = transitionCost;
+            m_eLastStance = currentStance;
+            m_fStanceFatigue = Math.Min(m_fStanceFatigue + StaminaConstants.STANCE_FATIGUE_ACCUMULATION, StaminaConstants.STANCE_FATIGUE_MAX);
+            return 0.0;
+        }
+        
+        // 同一窗口内：按秒聚合，只保留该秒内最靠近秒末的那次
+        float elapsed = currentTimeSec - m_fWindowStartTime;
+        float secondIndex = Math.Floor(elapsed);
+        if (secondIndex < 0.0)
+            secondIndex = 0.0;
+        float targetTime = m_fWindowStartTime + secondIndex + 1.0;
+        
+        if (secondIndex > m_fCurrentSecondIndex)
+        {
+            m_fWindowPendingTotal = m_fWindowPendingTotal + m_fCurrentSecondBestCost;
+            m_fCurrentSecondIndex = secondIndex;
+            m_fCurrentSecondBestTime = currentTimeSec;
+            m_fCurrentSecondBestCost = transitionCost;
+        }
+        else
+        {
+            float distNew = Math.AbsFloat(currentTimeSec - targetTime);
+            float distOld = Math.AbsFloat(m_fCurrentSecondBestTime - targetTime);
+            if (distNew < distOld)
+            {
+                m_fCurrentSecondBestTime = currentTimeSec;
+                m_fCurrentSecondBestCost = transitionCost;
+            }
+        }
+        
+        m_fLastStanceChangeTime = currentTimeSec;
         m_eLastStance = currentStance;
-        
-        // 增加疲劳堆积（每次姿态转换增加 1.0）
-        m_fStanceFatigue = Math.Min(m_fStanceFatigue + StaminaConstants.STANCE_FATIGUE_ACCUMULATION, 
-                                     StaminaConstants.STANCE_FATIGUE_MAX);
-        
-        return transitionCost;
+        m_fStanceFatigue = Math.Min(m_fStanceFatigue + StaminaConstants.STANCE_FATIGUE_ACCUMULATION, StaminaConstants.STANCE_FATIGUE_MAX);
+        return 0.0;
     }
     
     // ==================== 核心计算方法 ====================

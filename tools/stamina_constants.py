@@ -172,6 +172,13 @@ GRADE_DOWNHILL_COEFF = 0.05  # 每1%下坡减少5%消耗
 HIGH_GRADE_THRESHOLD = 15.0  # 15%（高坡度阈值）
 HIGH_GRADE_MULTIPLIER = 1.2  # 高坡度额外1.2×乘数
 
+# ==================== [HARD] Pandolf 下坡修正（与 C 端 SCR_StaminaConstants 3.15.12 一致）====================
+# 缓下坡：放大省能；陡下坡：叠加刹车惩罚。数字孪生须与 C 端 CalculatePandolfEnergyExpenditure 一致。
+GENTLE_DOWNHILL_GRADE_MAX = 12.0       # 缓下坡上限 |坡度%|，0～-12% 为省能区
+GENTLE_DOWNHILL_SAVINGS_MULTIPLIER = 1.25  # 缓下坡时坡度项省能放大倍数
+STEEP_DOWNHILL_GRADE_THRESHOLD = 15.0  # 超过此 |坡度%| 开始加陡下坡刹车惩罚
+STEEP_DOWNHILL_PENALTY_MAX_FRACTION = 0.5  # 陡下坡惩罚上限（相对 baseTerm 的比例）
+
 # ==================== [HARD] 地形系数常量（实验测量比值，基准=铺路）====================
 TERRAIN_FACTOR_PAVED = 1.0  # [HARD] 铺装路面（基准）
 TERRAIN_FACTOR_DIRT  = 1.1  # [HARD] 碎石路 +10%

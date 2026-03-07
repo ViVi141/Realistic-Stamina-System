@@ -875,7 +875,7 @@ class RealisticStaminaSpeedSystem
         float fitnessBonus = StaminaConstants.FIXED_PANDOLF_FITNESS_BONUS;
         float baseTerm = (PANDOLF_BASE_COEFF * fitnessBonus) + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
         
-        // 计算坡度项：G·(0.23 + 1.34·V²)
+        // 计算坡度项：G·(0.23 + 1.34·V²)（Pandolf 原始项）
         // 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
         float gradeDecimal = gradePercent * 0.01; // 转换为小数
         float velocitySquared = velocity * velocity;
@@ -886,24 +886,28 @@ class RealisticStaminaSpeedSystem
         float maxGradeTerm = baseTerm * 3.0;
         gradeTerm = Math.Min(gradeTerm, maxGradeTerm);
         
-        // 应用 Santee 下坡修正（如果启用）
-        // 当下坡超过 -15% 时，需要用力"刹车"，消耗增加
-        if (useSanteeCorrection && gradePercent < 0.0)
+        // 生理学修正：缓下坡更省能、陡下坡刹车耗能（Margaria / Santee 等）
+        // 1) 缓下坡（约 0～-12%）：能耗最低区，放大 Pandolf 负坡度项的“省能”效果
+        if (gradePercent < 0.0 && gradePercent > -StaminaConstants.GENTLE_DOWNHILL_GRADE_MAX)
         {
-            float santeeCorrection = CalculateSanteeDownhillCorrection(gradePercent);
-            // 修正系数 < 1.0 表示消耗增加（因为修正系数在分母位置）
-            // 例如：修正系数 0.8 表示消耗 = 原始消耗 / 0.8 = 1.25倍
-            if (santeeCorrection < 1.0 && santeeCorrection > 0.0)
-            {
-                gradeTerm = gradeTerm / santeeCorrection; // 下坡陡坡时，消耗增加
-            }
+            gradeTerm = gradeTerm * StaminaConstants.GENTLE_DOWNHILL_SAVINGS_MULTIPLIER;
+        }
+        // 2) 陡下坡（< -15%）：离心收缩/刹车导致能耗回升，叠加正向惩罚项
+        float steepDownhillPenalty = 0.0;
+        if (useSanteeCorrection && gradePercent < -StaminaConstants.STEEP_DOWNHILL_GRADE_THRESHOLD)
+        {
+            float absGrade = Math.AbsFloat(gradePercent);
+            float ramp = (absGrade - StaminaConstants.STEEP_DOWNHILL_GRADE_THRESHOLD) / 15.0;
+            if (ramp > 1.0)
+                ramp = 1.0;
+            steepDownhillPenalty = baseTerm * ramp * StaminaConstants.STEEP_DOWNHILL_PENALTY_MAX_FRACTION;
         }
         
         // 应用地形系数：η
         // 地形系数直接影响移动消耗，铺装路面 η=1.0，草地 η=1.2，沙地 η=1.8
         terrainFactor = Math.Clamp(terrainFactor, 0.5, 3.0); // 限制在合理范围内
         
-        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项) · η
+        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项 + 陡下坡惩罚) · η
         // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
         // 使用标准体重（70kg）作为参考，计算相对重量倍数
         float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
@@ -912,9 +916,8 @@ class RealisticStaminaSpeedSystem
         weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
 
         // [修复] 根据原始 Pandolf 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
-        // 原始公式：E = M · (基础项 + 坡度项) · η
-        // 其中 E 的单位是 Watts，M 是总重量（kg）
-        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm) * terrainFactor * REFERENCE_WEIGHT;
+        // 原始公式：E = M · (基础项 + 坡度项 + 陡下坡惩罚) · η；陡下坡惩罚仅在下坡 < -15% 时非零
+        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm + steepDownhillPenalty) * terrainFactor * REFERENCE_WEIGHT;
         
         // debug: log intermediates when debug enabled
         if (StaminaConstants.IsDebugEnabled())
@@ -1153,13 +1156,14 @@ class RealisticStaminaSpeedSystem
         return staticDrainRate;
     }
     
-    // ==================== Santee 下坡修正模型（2001）====================
-    // 基于 Santee et al. (2001) 的下坡修正模型
+    // ==================== Santee 下坡修正模型（2001）[已由陡下坡惩罚项替代] ====================
+    // 基于 Santee et al. (2001) 的下坡修正模型。现消耗侧改用“缓下坡省能 + 陡下坡惩罚”显式项，
+    // 本函数不再被调用，仅保留供参考。
     // Pandolf 原型在处理下坡（负坡度）时不够精确
     // Santee 修正：当 G < -15% 时，需要用力"刹车"以防摔倒（离心收缩）
     // 修正系数：μ = 1.0 - [G·(1 - G/15)/2]
     // 其中 G 为负坡度百分比（例如 -15% = -15.0）
-    // 
+    //
     // @param gradePercent 坡度百分比（例如，-15% = -15.0，正数=上坡，负数=下坡）
     // @return 下坡修正系数（0.7-1.0），用于修正 Pandolf 模型的坡度项
     static float CalculateSanteeDownhillCorrection(float gradePercent)

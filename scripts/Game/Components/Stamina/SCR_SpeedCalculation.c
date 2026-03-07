@@ -153,10 +153,9 @@ class SpeedCalculator
         return finalSpeedMultiplier;
     }
     
-    // 速度阈值（m/s）：低于此值视为静止，坡度符号按上坡处理
+    // 速度阈值（m/s）：低于此值视为静止，有效坡度按 0 处理（无运动方向）
     protected static const float VELOCITY_SIGN_THRESHOLD = 0.1;
-    // 等高线判定阈值：|cos(速度与坡向夹角)| < 此值时视为沿等高线移动，按上坡惩罚
-    // 0.2 约对应夹角 78°～102°，即大致垂直于坡向的侧移/等高线移动
+    // [仅用于 GetSlopeSignFromVelocity 等] 等高线判定阈值；有效坡度已改为“幅值×cos(速度与上坡夹角)”，等高线自然为 0
     protected static const float CONTOUR_COS_THRESHOLD = 0.2;
 
     // 通过地面法线计算地形坡度幅值（与移动方向无关）
@@ -180,27 +179,37 @@ class SpeedCalculator
         return Math.Clamp(slopeAngleDegrees, 0.0, 45.0);
     }
 
-    // 根据速度矢量与坡向判断上/下坡符号
-    // 上坡方向 = 法线水平分量的反方向（陡升方向）
-    // 沿等高线移动（速度垂直于坡向）时按上坡惩罚，因需维持平衡、侧向踩坡
+    // 根据速度矢量与坡向得到“沿运动方向”的投影系数 cos(速度与上坡夹角)
+    // 用于计算有效坡度：effectiveSlopeDeg = magnitude × cosAngle（Pandolf 的 G 应为运动方向上的 rise/run）
+    // 上坡方向 = 法线水平分量的反方向；cosAngle=1 直上坡，-1 直下坡，0 等高线
     // @param normal 地面法线
-    // @param velocity 速度矢量（水平分量参与判断）
-    // @return +1 上坡/等高线，-1 下坡，静止时 +1
-    static int GetSlopeSignFromVelocity(vector normal, vector velocity)
+    // @param velocity 速度矢量（水平分量参与）
+    // @return cos(夹角)，范围 [-1,1]；静止或平地时返回 0
+    static float GetSlopeProjectionCos(vector normal, vector velocity)
     {
         vector horizontalVel = velocity;
         horizontalVel[1] = 0.0;
         float velLen = horizontalVel.Length();
         if (velLen < VELOCITY_SIGN_THRESHOLD)
-            return 1;
+            return 0.0;
         vector horizontalNormal = normal;
         horizontalNormal[1] = 0.0;
         float hLen = horizontalNormal.Length();
         if (hLen < 0.001)
-            return 1;
+            return 0.0;
         vector uphillDir = horizontalNormal * (-1.0 / hLen);
-        float dot = vector.Dot(horizontalVel, uphillDir);
-        float cosAngle = dot / velLen;
+        float cosAngle = vector.Dot(horizontalVel, uphillDir) / velLen;
+        return Math.Clamp(cosAngle, -1.0, 1.0);
+    }
+
+    // 根据速度矢量与坡向判断上/下坡符号（仅用于需二值判断的场合，如 HUD）
+    // 上坡方向 = 法线水平分量的反方向；沿等高线视为上坡
+    // @param normal 地面法线
+    // @param velocity 速度矢量（水平分量参与判断）
+    // @return +1 上坡/等高线，-1 下坡，静止时 +1
+    static int GetSlopeSignFromVelocity(vector normal, vector velocity)
+    {
+        float cosAngle = GetSlopeProjectionCos(normal, velocity);
         if (cosAngle > CONTOUR_COS_THRESHOLD)
             return 1;
         if (cosAngle < -CONTOUR_COS_THRESHOLD)
@@ -209,10 +218,11 @@ class SpeedCalculator
     }
 
     // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
-    // 完全用法线坡度 + 速度矢量判断上下坡
+    // 使用“运动方向有效坡度”：幅值由地形法线得到，再投影到速度方向（magnitude × cos(速度与上坡夹角)），
+    // 使沿等高线移动时坡度为 0、斜向移动时坡度按几何比例缩放，与 Pandolf 的“沿路径坡度”一致，避免法线全幅导致的不合理。
     // @param controller 角色控制器组件
-    // @param velocity 速度矢量（可选，vector.Zero 时从 controller 获取或按上坡处理）
-    // @return 坡度角度（度）
+    // @param velocity 速度矢量（可选，vector.Zero 时从 controller 获取；静止时有效坡度=0）
+    // @return 有效坡度角度（度），正=上坡，负=下坡，0=平地/等高线/静止
     static float GetRawSlopeAngle(SCR_CharacterControllerComponent controller, vector velocity = vector.Zero)
     {
         if (!controller)
@@ -227,9 +237,9 @@ class SpeedCalculator
         vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, owner.GetWorld(), false, null);
         if (velocity.Length() < VELOCITY_SIGN_THRESHOLD)
             velocity = controller.GetVelocity();
-        int sign = GetSlopeSignFromVelocity(normal, velocity);
-        float slopeAngleDegrees = magnitude * sign;
-        return Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
+        float cosAngle = GetSlopeProjectionCos(normal, velocity);
+        float effectiveSlopeDegrees = magnitude * cosAngle;
+        return Math.Clamp(effectiveSlopeDegrees, -45.0, 45.0);
     }
     
     // 获取坡度角度（完全用法线坡度 + 速度矢量判断上下坡）

@@ -50,6 +50,12 @@ class RSSConstants:
     PANDOLF_STATIC_COEFF_1 = 1.2
     PANDOLF_STATIC_COEFF_2 = 1.6
 
+    # [HARD] Pandolf 下坡修正（与 C 端 3.15.12 一致）
+    GENTLE_DOWNHILL_GRADE_MAX = 12.0
+    GENTLE_DOWNHILL_SAVINGS_MULTIPLIER = 1.25
+    STEEP_DOWNHILL_GRADE_THRESHOLD = 15.0
+    STEEP_DOWNHILL_PENALTY_MAX_FRACTION = 0.5
+
     # 预计算人物属性 [HARD] (age=22, fitness=1.0)
     FIXED_FITNESS_EFFICIENCY_FACTOR = 0.70
     FIXED_FITNESS_RECOVERY_MULTIPLIER = 1.25
@@ -217,19 +223,8 @@ class RSSDigitalTwin:
         return float(max(0.0, rate))
 
     # -------------------------------------------------------------------------
-    # CalculateSanteeDownhillCorrection - SCR_RealisticStaminaSystem.c 1172-1195
-    # -------------------------------------------------------------------------
-    def _santee_downhill_correction(self, grade_percent: float) -> float:
-        if grade_percent >= 0:
-            return 1.0
-        ab = abs(grade_percent)
-        if ab <= 15.0:
-            return 1.0
-        term = ab * (1.0 - ab / 15.0) / 2.0
-        return float(np.clip(1.0 - term, 0.5, 1.0))
-
-    # -------------------------------------------------------------------------
     # CalculatePandolfEnergyExpenditure - SCR_RealisticStaminaSystem.c 904-976
+    # 坡度项与 C 端 3.15.12 一致：缓下坡放大省能，陡下坡叠加刹车惩罚（已替代 Santee）
     # -------------------------------------------------------------------------
     def _pandolf_expenditure(self, velocity: float, current_weight: float,
                             grade_percent: float, terrain_factor: float) -> float:
@@ -257,17 +252,27 @@ class RSSDigitalTwin:
         vsq = velocity * velocity
         grade_term = g_dec * (gb + gv * vsq)
 
-        if grade_percent < 0:
-            santee = self._santee_downhill_correction(grade_percent)
-            if 0 < santee < 1.0:
-                grade_term = grade_term / santee
-
         max_grade_term = base_term * 3.0
         grade_term = min(grade_term, max_grade_term)
-        terrain_factor = np.clip(terrain_factor, 0.5, 3.0)
 
+        # 生理学修正（与 C 端 3.15.12 一致）：缓下坡更省能、陡下坡刹车耗能
+        gentle_max = getattr(self.constants, 'GENTLE_DOWNHILL_GRADE_MAX', 12.0)
+        gentle_mult = getattr(self.constants, 'GENTLE_DOWNHILL_SAVINGS_MULTIPLIER', 1.25)
+        steep_thr = getattr(self.constants, 'STEEP_DOWNHILL_GRADE_THRESHOLD', 15.0)
+        steep_frac = getattr(self.constants, 'STEEP_DOWNHILL_PENALTY_MAX_FRACTION', 0.5)
+        if grade_percent < 0.0 and grade_percent > -gentle_max:
+            grade_term = grade_term * gentle_mult
+        steep_downhill_penalty = 0.0
+        if grade_percent < -steep_thr:
+            abs_grade = abs(grade_percent)
+            ramp = (abs_grade - steep_thr) / 15.0
+            if ramp > 1.0:
+                ramp = 1.0
+            steep_downhill_penalty = base_term * ramp * steep_frac
+
+        terrain_factor = np.clip(terrain_factor, 0.5, 3.0)
         w_mult = max(current_weight / ref, 0.1)
-        energy_expenditure = w_mult * (base_term + grade_term) * terrain_factor * ref
+        energy_expenditure = w_mult * (base_term + grade_term + steep_downhill_penalty) * terrain_factor * ref
         stamina_drain_rate = energy_expenditure * coeff
         return float(max(stamina_drain_rate, 0.0))
 
