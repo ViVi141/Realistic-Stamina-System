@@ -117,6 +117,9 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_ConfigManager.Load();
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
+            // 服务器主动推送配置：复制早期 RplRcver.Owner 可能未就绪，3 秒后 Broadcast 确保新加入玩家收到
+            if (IsPlayerControlled())
+                GetGame().GetCallqueue().CallLater(ServerPushConfigToClients, 3000, false);
 
             // debug: 输出当前的能量转体力系数
             if (IsRssDebugEnabled())
@@ -239,10 +242,10 @@ modded class SCR_CharacterControllerComponent
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
         
-        // 客户端请求服务器配置
+        // 客户端请求服务器配置（延迟 3 秒确保复制/所有权已建立）
         if (!Replication.IsServer())
         {
-            GetGame().GetCallqueue().CallLater(RequestServerConfig, 1000, false);
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, 3000, false);
             // 初始化网络连接状态
             m_bIsConnected = true;
             // 开始网络连接监控
@@ -250,6 +253,37 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
+    // 服务器主动推送配置给所有客户端（用于新玩家加入时，复制早期客户端请求可能未送达）
+    void ServerPushConfigToClients()
+    {
+        if (!Replication.IsServer())
+            return;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
+        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
+        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
+        array<float> customParams = BuildPresetArray(settings.m_Custom);
+        array<float> floatSettings = new array<float>();
+        array<int> intSettings = new array<int>();
+        array<bool> boolSettings = new array<bool>();
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+        RPC_SendFullConfigBroadcast(
+            settings.m_sConfigVersion,
+            settings.m_sSelectedPreset,
+            eliteParams,
+            standardParams,
+            tacticalParams,
+            customParams,
+            floatSettings,
+            intSettings,
+            boolSettings
+        );
+        if (IsRssDebugEnabled())
+            PrintFormat("[RSS] Server pushed config to all clients (proactive): %1", GetPlayerLabel(GetOwner()));
+    }
+
     // 处理配置变更通知
     void OnConfigChanged()
     {
@@ -1604,7 +1638,8 @@ modded class SCR_CharacterControllerComponent
         array<bool> boolSettings = new array<bool>();
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
-        RPC_SendFullConfigOwner(
+        // 使用 Broadcast 替代 Owner：复制早期 RplRcver.Owner 可能未就绪，Broadcast 确保送达
+        RPC_SendFullConfigBroadcast(
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             eliteParams,

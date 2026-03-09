@@ -14,6 +14,7 @@ class SCR_RSS_ConfigManager
     protected static float m_fLastLoadTime = 0.0;
     protected static const float RELOAD_COOLDOWN = 5.0;  // 重载冷却（秒）
     protected static bool m_bIsServerConfigApplied = false;  // 是否已应用服务器配置
+    protected static bool m_bLoggedClientDefaultsOnce = false;  // 客户端默认值日志仅打印一次
     protected static ref array<IEntity> m_aConfigChangeListeners = new array<IEntity>();  // 配置变更监听器
     protected static string m_sLastSelectedPreset = "";  // 上次选中的预设，用于检测变更
     protected static ref SCR_RSS_Settings m_CachedSettings;  // 配置缓存，用于检测变更
@@ -84,12 +85,17 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
+            m_Settings.m_iDataExportIntervalMs = 1000;
 
             m_bIsLoaded = true;
             m_fLastLoadTime = 0.0;
             EnsureDefaultValues();
             UpdateConfigCache();
-            Print("[RSS_ConfigManager] Client: Using in-memory defaults (JSON read skipped).");
+            if (!m_bLoggedClientDefaultsOnce)
+            {
+                m_bLoggedClientDefaultsOnce = true;
+                Print("[RSS_ConfigManager] Client: Using in-memory defaults (JSON read skipped).");
+            }
             return;
         }
         
@@ -431,10 +437,11 @@ class SCR_RSS_ConfigManager
         // 用户通过 JSON 修改的 UI 设置（hint、debug）必须被保留
         // 迁移逻辑 MigrateConfig 已处理首次从 pre-3.4.0 升级时的默认值
         
-        // 如果有任何默认值被设置，保存配置
+        // 如果有任何默认值被设置，保存配置（客户端仅更新缓存，不写盘）
         if (needsSave)
         {
-            Print("[RSS_ConfigManager] Saving config with default values applied");
+            if (CanWriteConfig())
+                Print("[RSS_ConfigManager] Saving config with default values applied");
             Save();
         }
     }
@@ -603,7 +610,8 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_iEnvironmentUpdateInterval = m_Settings.m_iEnvironmentUpdateInterval;
         m_CachedSettings.m_iDataExportIntervalMs = m_Settings.m_iDataExportIntervalMs;
         
-        Print("[RSS_ConfigManager] Config cache updated");
+        if (Replication.IsServer())
+            Print("[RSS_ConfigManager] Config cache updated");
     }
     
     // 重新加载配置文件（热重载）
@@ -779,6 +787,7 @@ class SCR_RSS_ConfigManager
         m_Settings = null;
         m_bIsServerConfigApplied = false;
         m_bIsLoaded = false;
+        m_bLoggedClientDefaultsOnce = false;  // 重连后允许再次打印
     }
     
     // 检查服务器配置是否已应用
