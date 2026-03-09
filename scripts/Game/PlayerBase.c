@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.15.12
+// Realistic Stamina System (RSS) - v3.16.5
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -10,8 +10,8 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bHasPreviousSpeed = false; // 是否已有上一秒的速度数据
     protected const int SPEED_SAMPLE_INTERVAL_MS = 1000; // 每秒采集一次速度样本
     
-    // 速度更新相关
-    protected const int SPEED_UPDATE_INTERVAL_MS = 50; // 每0.05秒更新一次速度（玩家）
+    // 速度更新相关（60Hz 同步）
+    protected const int SPEED_UPDATE_INTERVAL_MS = 17; // 60Hz ≈ 16.67ms，玩家速度/体力主循环
     protected const int SPEED_UPDATE_INTERVAL_AI_MS = 100; // AI 每 0.1 秒更新一次（性能优化）
     
     // 状态信息缓存
@@ -22,6 +22,8 @@ modded class SCR_CharacterControllerComponent
     
     // 网络同步相关
     protected ref NetworkSyncManager m_pNetworkSyncManager;
+    protected string m_sLastSpeedSource = "";  // 调试用：上次速度计算来源（Server/Client）
+    protected static ref array<string> s_aAIDebugLines = new array<string>();  // AI 调试行缓存
     protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
@@ -353,98 +355,6 @@ modded class SCR_CharacterControllerComponent
             SCR_StaminaHUDComponent.Init();
         else
             SCR_StaminaHUDComponent.Destroy();
-    }
-    
-    // 处理客户端配置请求
-    void HandleClientConfigRequest(IEntity clientEntity)
-    {
-        if (!Replication.IsServer()) return;
-        
-        // 服务器发送完整配置给请求的客户端
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
-        {
-            PrintFormat("[RSS] Sync config to client (listener): %1", GetPlayerLabel(clientEntity));
-            array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
-            array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
-            array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
-            array<float> customParams = BuildPresetArray(settings.m_Custom);
-
-            array<float> floatSettings = new array<float>();
-            array<int> intSettings = new array<int>();
-            array<bool> boolSettings = new array<bool>();
-            BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
-            RPC_SendFullConfigOwner(
-                settings.m_sConfigVersion,
-                settings.m_sSelectedPreset,
-                eliteParams,
-                standardParams,
-                tacticalParams,
-                customParams,
-                floatSettings,
-                intSettings,
-                boolSettings
-            );
-            Print("[RSS] 已发送完整配置给客户端");
-        }
-    }
-    
-    // RPC: 服务器广播配置变更给所有客户端
-    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
-    void RPC_BroadcastConfigChange(string newPreset)
-    {
-        if (!Replication.IsServer())
-        {
-            // 客户端应用新配置
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                settings.m_sSelectedPreset = newPreset;
-                settings.InitPresets(true);
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-                Print("[RSS] 服务器配置已变更: " + newPreset);
-            }
-        }
-    }
-    
-    // RPC: 服务器发送关键配置给客户端
-    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
-    void RPC_SendConfigData(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled, 
-                           float staminaDrainMultiplier, float staminaRecoveryMultiplier, 
-                           int terrainUpdateInterval, int environmentUpdateInterval)
-    {
-        if (!Replication.IsServer())
-        {
-            // 客户端应用配置
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                // 复制关键配置
-                settings.m_sConfigVersion = configVersion;
-                settings.m_sSelectedPreset = selectedPreset;
-                settings.m_bDebugLogEnabled = debugLogEnabled;
-                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
-                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
-                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
-                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
-                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
-                
-                // 重新初始化预设
-                settings.InitPresets(true);
-                
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-                Print("[RSS] 服务器配置已同步: " + selectedPreset);
-
-                // 服务器配置应用后，根据 hint 开关创建或销毁 HUD
-                if (settings.m_bHintDisplayEnabled)
-                    SCR_StaminaHUDComponent.Init();
-                else
-                    SCR_StaminaHUDComponent.Destroy();
-            }
-        }
     }
 
     // RPC: 服务器发送完整配置给客户端（目标客户端）
@@ -997,38 +907,13 @@ modded class SCR_CharacterControllerComponent
                 currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
         }
 
-        // ==================== 网络同步：周期性上报与服务器验证（最小实现）====================
-        // AI 无网络同步，直接应用本地计算结果
-        if (IsPlayerControlled() && m_pNetworkSyncManager)
-        {
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-            // 周期性上报：客户端发给服务器（每 NETWORK_SYNC_INTERVAL 秒一次）
-            if (m_pNetworkSyncManager.ShouldSync(currentWorldTime))
-            {
-                if (!Replication.IsServer())
-                {
-                    RPC_ClientReportStamina(staminaPercent, currentWeight);
-                    m_pNetworkSyncManager.UpdateReportedState(staminaPercent, currentWeight);
-                }
-            }
-
-            // 应用服务器验证/平滑修正（如果服务器已有验证值则使用，否则使用本地预测）
-            float smoothed = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentWorldTime);
-            if (m_pNetworkSyncManager.HasServerValidation())
-            {
-                OverrideMaxSpeed(smoothed);
-            }
-            else
-            {
-                OverrideMaxSpeed(finalSpeedMultiplier);
-            }
-        }
+        // ==================== 速度倍率应用 ====================
+        // 玩家：客户端本地计算；AI：服务器端计算（AI 实体在服务器端模拟）
+        OverrideMaxSpeed(finalSpeedMultiplier);
+        if (IsPlayerControlled())
+            m_sLastSpeedSource = "Client";
         else
-        {
-            // AI 或非网络实体：直接应用
-            OverrideMaxSpeed(finalSpeedMultiplier);
-        }
+            m_sLastSpeedSource = "Server";
         
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
@@ -1448,6 +1333,24 @@ modded class SCR_CharacterControllerComponent
         // 定期同步服务器配置
         UpdateServerConfigSync();
         
+        // ==================== AI 调试数据收集（非玩家实体）====================
+        if (owner != SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled())
+        {
+            string movementStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+            string aiLine = string.Format("[RSS] AI: %1 | 体力=%2%% 速度倍=%3 速度=%4m/s 类型=%5 | 来源:%6",
+                owner.GetName(),
+                Math.Round(staminaPercent * 100.0).ToString(),
+                Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+                Math.Round(currentSpeed * 10.0) / 10.0,
+                movementStr,
+                m_sLastSpeedSource);
+            if (!s_aAIDebugLines)
+                s_aAIDebugLines = new array<string>();
+            s_aAIDebugLines.Insert(aiLine);
+            if (s_aAIDebugLines.Count() > 15)
+                s_aAIDebugLines.RemoveItem(s_aAIDebugLines.Get(0));
+        }
+        
         // ==================== 调试输出与 HUD 实时更新 =====================
         // HUD：Hint 开启时每 50ms 更新，实现实时显示；调试：与批次同步（每 m_iDebugUpdateInterval）
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
@@ -1523,9 +1426,18 @@ modded class SCR_CharacterControllerComponent
                 debugParams.stanceTransitionManager = m_pStanceTransitionManager;
                 debugParams.timeToDepleteSec = timeToDepleteSec;
                 debugParams.timeToFullSec = timeToFullSec;
+                debugParams.speedSource = m_sLastSpeedSource;
 
                 if (needDebugOutput)
+                {
                     DebugDisplay.OutputDebugInfo(debugParams);
+                    if (s_aAIDebugLines)
+                    {
+                        for (int i = 0; i < s_aAIDebugLines.Count(); i++)
+                            StaminaConstants.AddDebugBatchLine(s_aAIDebugLines.Get(i));
+                        s_aAIDebugLines.Clear();
+                    }
+                }
                 if (needHintOutput)
                     DebugDisplay.OutputHintInfo(debugParams);
             }
@@ -1676,94 +1588,6 @@ modded class SCR_CharacterControllerComponent
         );
     }
     
-    // 本地版本比较工具（用于决定是否应用服务器配置）
-    protected int CompareVersionsLocal(string v1, string v2)
-    {
-        if (!v1 || v1 == "") v1 = "0.0.0";
-        if (!v2 || v2 == "") v2 = "0.0.0";
-
-        array<string> p1 = new array<string>();
-        array<string> p2 = new array<string>();
-        v1.Split(".", p1, false);
-        v2.Split(".", p2, false);
-
-        int num1 = 0;
-        int num2 = 0;
-        int mul = 10000;
-        for (int i = 0; i < 3; i++)
-        {
-            if (i < p1.Count()) num1 += p1[i].ToInt() * mul;
-            if (i < p2.Count()) num2 += p2[i].ToInt() * mul;
-            mul = mul / 100;
-        }
-
-        if (num1 < num2) return -1;
-        if (num1 > num2) return 1;
-        return 0;
-    }
-
-    // RPC: 服务器发送完整配置给客户端（目标客户端）
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ClientReceiveConfig(string configVersion, string selectedPreset, bool debugLogEnabled, bool hintDisplayEnabled,
-                                 float staminaDrainMultiplier, float staminaRecoveryMultiplier,
-                                 int terrainUpdateInterval, int environmentUpdateInterval, bool forceApply)
-    {
-        if (!Replication.IsServer())
-        {
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                // 决定是否应用：如果本地已被服务器配置应用且服务器配置并非强制下发，则仅在服务器版本更高时才覆盖
-                string localVersion = settings.m_sConfigVersion;
-                if (!localVersion || localVersion == "") localVersion = "0.0.0";
-
-                if (!forceApply && SCR_RSS_ConfigManager.IsServerConfigApplied())
-                {
-                    int cmp = CompareVersionsLocal(configVersion, localVersion);
-                    if (cmp <= 0)
-                    {
-                        PrintFormat("[RSS] Ignoring server config v%1 because local server config is already applied and is newer or equal (local=%2)", configVersion, localVersion);
-                        return;
-                    }
-                }
-
-                // 应用收到的关键配置
-                settings.m_sConfigVersion = configVersion;
-                settings.m_sSelectedPreset = selectedPreset;
-                settings.m_bDebugLogEnabled = debugLogEnabled;
-                settings.m_bHintDisplayEnabled = hintDisplayEnabled;
-                settings.m_fStaminaDrainMultiplier = staminaDrainMultiplier;
-                settings.m_fStaminaRecoveryMultiplier = staminaRecoveryMultiplier;
-                settings.m_iTerrainUpdateInterval = terrainUpdateInterval;
-                settings.m_iEnvironmentUpdateInterval = environmentUpdateInterval;
-
-                // 重新初始化预设并保存（使用系统预设刷新，确保一致性）
-                settings.InitPresets(true);
-                SCR_RSS_ConfigManager.Save();
-                SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-
-                PrintFormat("[RSS] Applied server config: preset=%1, version=%2", selectedPreset, configVersion);
-
-                // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
-                if (settings.m_bHintDisplayEnabled)
-                    SCR_StaminaHUDComponent.Init();
-                else
-                    SCR_StaminaHUDComponent.Destroy();
-            }
-        }
-    }
-
-    // RPC: 清除客户端上记录的"服务器配置已应用"标志（Owner-targeted）
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ClearServerConfigApplied()
-    {
-        if (!Replication.IsServer())
-        {
-            SCR_RSS_ConfigManager.SetServerConfigApplied(false);
-            Print("[RSS] Local server-config-applied flag cleared");
-        }
-    }
-
     // 定期向服务器请求配置（客户端使用）
     void UpdateServerConfigSync()
     {

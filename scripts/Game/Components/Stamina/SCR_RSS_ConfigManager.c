@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.15.12";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.16.5";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -862,7 +862,7 @@ class SCR_RSS_ConfigManager
         return hasChanged;
     }
     
-    // 通知配置变更
+    // 通知配置变更（仅调用第一个监听器广播，避免重复 RPC）
     static void NotifyConfigChanges()
     {
         for (int i = 0; i < m_aConfigChangeListeners.Count(); i++)
@@ -873,8 +873,8 @@ class SCR_RSS_ConfigManager
                 SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(listener.FindComponent(SCR_CharacterControllerComponent));
                 if (controller)
                 {
-                    // 通知监听器配置已变更
                     controller.OnConfigChanged();
+                    break;
                 }
             }
         }

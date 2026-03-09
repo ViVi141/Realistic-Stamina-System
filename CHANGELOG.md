@@ -6,6 +6,30 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.16.5] - 2026-03-09
+
+### 📌 版本说明
+
+- **基于 3.15.12** - 以提交 `1dc9a5e`（3.15.12）为基础，丢弃 3.15.13～3.16.4 的提交（a6955af～68287298）
+
+### 🔁 变更
+
+- **玩家完全本地计算** - 玩家与 AI 均直接使用本地计算的 `finalSpeedMultiplier`，不再依赖服务器校验；AI 在服务器端模拟（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **网络架构清理** - 删除未使用 RPC：`RPC_BroadcastConfigChange`、`RPC_SendConfigData`、`RPC_ClientReceiveConfig`、`RPC_ClearServerConfigApplied`；删除 `HandleClientConfigRequest`、`CompareVersionsLocal`（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **60Hz 速度更新** - `SPEED_UPDATE_INTERVAL_MS` 改为 17（约 60Hz），提升速度响应（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **配置变更通知优化** - `NotifyConfigChanges` 仅对第一个监听器调用，避免重复广播（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+### ✅ 新增
+
+- **调试显示速度来源** - 增加 `m_sLastSpeedSource`，调试输出显示 `| 速度来源:Server` 或 `| 速度来源:Client`（[SCR_DebugDisplay.c](scripts/Game/Components/Stamina/SCR_DebugDisplay.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **AI 调试数据** - 除玩家外，收集 AI 角色数据并显示：体力、速度倍率、速度、运动类型及数据来源；最多保留 15 条，随本地玩家调试输出一并显示（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+
+### 🔧 配置版本
+
+- **CURRENT_VERSION** 更新为 3.16.5（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.15.12] - 2026-03-07
 
 ### 🐛 修复 / 优化

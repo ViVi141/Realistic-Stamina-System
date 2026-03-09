@@ -27,6 +27,7 @@ class DebugInfoParams
     StanceTransitionManager stanceTransitionManager; // 姿态转换管理器（新增）
     float timeToDepleteSec;  // 按当前净消耗，体力耗尽所需秒数（-1 表示净恢复中）
     float timeToFullSec;     // 按当前净恢复，体力回满所需秒数（-1 表示净消耗中）
+    string speedSource;      // 速度计算来源：Server=服务器权威 Client=客户端本地 Local=AI/非网络
 }
 
 class DebugDisplay
@@ -391,7 +392,12 @@ class DebugDisplay
             terrainInfo,
             stanceTransitionInfo);
         
-        StaminaConstants.AddDebugBatchLine(debugMessage + envInfo);
+        string speedSourceStr = "";
+        if (params.speedSource && params.speedSource != "")
+        {
+            speedSourceStr = string.Format(" | 速度来源:%1 | Speed Source:%2", params.speedSource, params.speedSource);
+        }
+        StaminaConstants.AddDebugBatchLine(debugMessage + speedSourceStr + envInfo);
     }
     
     // 输出状态信息（每秒一次）

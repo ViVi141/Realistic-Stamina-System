@@ -7,20 +7,22 @@ class NetworkSyncManager
 {
     // ==================== 状态变量 ====================
     protected float m_fServerValidatedSpeedMultiplier = 1.0; // 服务器端验证的速度倍数
+    protected bool m_bHasReceivedServerValidation = false;   // 是否已收到过服务器验证值（含 1.0）
     protected float m_fLastReportedStaminaPercent = 1.0; // 上次客户端报告的体力百分比
     protected float m_fLastReportedWeight = 0.0; // 上次客户端报告的重量
     protected const float VALIDATION_TOLERANCE = 0.1; // 验证容差（10%差异视为正常）
-    protected const float NETWORK_SYNC_INTERVAL = 1.0; // 网络同步间隔（秒）
+    protected const float SYNC_HZ = 60.0; // 同步频率（Hz）
+    protected const float NETWORK_SYNC_INTERVAL = 1.0 / SYNC_HZ; // 网络同步间隔（60Hz ≈ 16.67ms）
     protected float m_fLastNetworkSyncTime = 0.0; // 上次网络同步时间
 
     // 客户端上报速率限制（防滥用）
     protected float m_fLastClientReportTime = 0.0; // 记录上次接受客户端上报的服务器时间（秒）
-    protected const float MIN_CLIENT_REPORT_INTERVAL = 0.2; // 最小允许的客户端上报间隔（秒）
+    protected const float MIN_CLIENT_REPORT_INTERVAL = 1.0 / SYNC_HZ; // 最小允许的客户端上报间隔（60Hz）
 
     // 网络同步容差优化：连续偏差累计触发
     protected float m_fDeviationStartTime = -1.0; // 偏差开始时间（-1表示无偏差）
-    protected const float DEVIATION_TRIGGER_DURATION = 2.0; // 偏差触发持续时间（秒），连续超过此时间才触发同步
-    protected const float SMOOTH_TRANSITION_DURATION = 0.1; // 速度插值平滑过渡时间（秒）
+    protected const float DEVIATION_TRIGGER_DURATION = 0.0; // 偏差触发持续时间（秒），0=立即下发
+    protected const float SMOOTH_TRANSITION_DURATION = 1.0 / SYNC_HZ; // 速度插值平滑过渡时间（60Hz）
     protected float m_fTargetSpeedMultiplier = 1.0; // 目标速度倍数（用于插值）
     protected float m_fSmoothedSpeedMultiplier = 1.0; // 平滑后的速度倍数
     protected float m_fLastSmoothUpdateTime = 0.0; // 上次平滑更新时间（用于内部时间管理）
@@ -31,6 +33,7 @@ class NetworkSyncManager
     void Initialize()
     {
         m_fServerValidatedSpeedMultiplier = 1.0;
+        m_bHasReceivedServerValidation = false;
         m_fLastReportedStaminaPercent = 1.0;
         m_fLastReportedWeight = 0.0;
         m_fLastNetworkSyncTime = 0.0;
@@ -41,7 +44,7 @@ class NetworkSyncManager
         m_fLastClientReportTime = 0.0;
     }
     
-    // 检查是否需要发送网络同步（每1秒一次）
+    // 检查是否需要发送网络同步（60Hz）
     // @param currentTime 当前世界时间
     // @return true表示需要同步，false表示不需要
     bool ShouldSync(float currentTime)
@@ -73,16 +76,10 @@ class NetworkSyncManager
     {
         float targetSpeedMultiplier = finalSpeedMultiplier;
         
-        // 如果服务器端验证的速度倍数与客户端计算的不同，使用插值平滑过渡
-        if (m_fServerValidatedSpeedMultiplier > 0.0 && m_fServerValidatedSpeedMultiplier != finalSpeedMultiplier)
+        // 服务器权威：已收到验证值时，始终以服务器值为目标（插值平滑过渡）
+        if (m_bHasReceivedServerValidation && m_fServerValidatedSpeedMultiplier > 0.0)
         {
-            // 检查是否需要使用服务器端的值（差异较大时）
-            float serverDifference = Math.AbsFloat(finalSpeedMultiplier - m_fServerValidatedSpeedMultiplier);
-            if (serverDifference > VALIDATION_TOLERANCE * 2.0) // 双倍容差时才使用服务器端值
-            {
-                // 使用服务器端的值作为目标，但使用插值平滑过渡
-                targetSpeedMultiplier = m_fServerValidatedSpeedMultiplier;
-            }
+            targetSpeedMultiplier = m_fServerValidatedSpeedMultiplier;
         }
         
         m_fTargetSpeedMultiplier = targetSpeedMultiplier;
@@ -133,32 +130,20 @@ class NetworkSyncManager
     {
         if (speedDifference > VALIDATION_TOLERANCE)
         {
-            // 偏差超过容差：检查是否为连续偏差
             if (m_fDeviationStartTime < 0.0)
             {
-                // 首次检测到偏差：记录开始时间
                 m_fDeviationStartTime = currentTime;
-                return false;
             }
-            else
+            float deviationDuration = currentTime - m_fDeviationStartTime;
+            if (deviationDuration >= DEVIATION_TRIGGER_DURATION)
             {
-                // 已有偏差：检查持续时间
-                float deviationDuration = currentTime - m_fDeviationStartTime;
-                
-                if (deviationDuration >= DEVIATION_TRIGGER_DURATION)
-                {
-                    // 连续偏差持续时间超过阈值：触发同步
-                    m_fDeviationStartTime = -1.0;
-                    return true;
-                }
-                // 否则：偏差持续时间不足，不触发同步（容忍小幅度偏差）
-                return false;
+                m_fDeviationStartTime = -1.0;
+                return true;
             }
+            return false;
         }
         else
         {
-            // 偏差在容差范围内：验证通过
-            // 重置偏差计时器
             m_fDeviationStartTime = -1.0;
             return false;
         }
@@ -169,6 +154,7 @@ class NetworkSyncManager
     void SetServerValidatedSpeedMultiplier(float speedMultiplier)
     {
         m_fServerValidatedSpeedMultiplier = speedMultiplier;
+        m_bHasReceivedServerValidation = true;
     }
     
     // 获取服务器端验证的速度倍数
@@ -179,9 +165,10 @@ class NetworkSyncManager
     }
 
     // 判断服务器是否已设置验证值（用于客户端决定是否优先使用服务器值）
+    // 修复：此前用「值≠1.0」判断，导致满速时误判为无验证；现用「是否收到过」判断
     bool HasServerValidation()
     {
-        return Math.AbsFloat(m_fServerValidatedSpeedMultiplier - 1.0) > 0.0001;
+        return m_bHasReceivedServerValidation;
     }
     
     // 更新报告的状态值
