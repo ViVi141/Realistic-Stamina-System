@@ -12,9 +12,14 @@
 
 - **基于 3.15.12** - 以提交 `1dc9a5e`（3.15.12）为基础，丢弃 3.15.13～3.16.4 的提交（a6955af～68287298）
 
+### ✅ 新增
+
+- **外部模组 API** - 新增 `SCR_RSS_API` 静态类，供其他模组获取玩家体力与环境信息：`GetPlayerInfo(entity)`、`GetEnvironmentInfo(entity)`、`IsRssManaged(entity)`；结构体 `RSS_PlayerInfo`、`RSS_EnvironmentInfo`（[SCR_RSS_API.c](scripts/Game/Components/Stamina/SCR_RSS_API.c)、[docs/RSS_API.md](docs/RSS_API.md)）
+- **数据导出（文件桥接）** - 配置 `m_bDataExportEnabled` 开启后，服务器按 `m_iDataExportIntervalMs` 间隔将玩家体力与环境写入 `$profile:RSS_PlayerData.json`，供外部应用（命令控制台等）读取
+
 ### 🔁 变更
 
-- **玩家完全本地计算** - 玩家与 AI 均直接使用本地计算的 `finalSpeedMultiplier`，不再依赖服务器校验；AI 在服务器端模拟（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **玩家完全本地计算** - 玩家在客户端本地计算、AI 在服务器端计算，两者均直接使用 `finalSpeedMultiplier`，不再依赖服务器校验（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **网络架构清理** - 删除未使用 RPC：`RPC_BroadcastConfigChange`、`RPC_SendConfigData`、`RPC_ClientReceiveConfig`、`RPC_ClearServerConfigApplied`；删除 `HandleClientConfigRequest`、`CompareVersionsLocal`（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **60Hz 速度更新** - `SPEED_UPDATE_INTERVAL_MS` 改为 17（约 60Hz），提升速度响应（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **配置变更通知优化** - `NotifyConfigChanges` 仅对第一个监听器调用，避免重复广播（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）

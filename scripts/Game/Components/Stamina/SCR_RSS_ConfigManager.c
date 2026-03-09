@@ -56,12 +56,13 @@ class SCR_RSS_ConfigManager
         // Workbench: debug 开启，统一波次每秒输出
         m_Settings.m_bDebugLogEnabled = true;
         m_Settings.m_bHintDisplayEnabled = true;
+        m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON.");
         return;
         #endif
 
@@ -222,6 +223,7 @@ class SCR_RSS_ConfigManager
             #ifdef WORKBENCH
                 m_Settings.m_sSelectedPreset = "EliteStandard";
                 m_Settings.m_bDebugLogEnabled = true;
+                m_Settings.m_bDataExportEnabled = true;
                 Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
             #endif
 
@@ -239,6 +241,7 @@ class SCR_RSS_ConfigManager
         #ifdef WORKBENCH
             m_Settings.m_bDebugLogEnabled = true;
             m_Settings.m_bHintDisplayEnabled = true;
+            m_Settings.m_bDataExportEnabled = true;
         #endif
         
         // 确保所有字段有合理的默认值（兼容旧版本配置文件或空值）
@@ -394,6 +397,11 @@ class SCR_RSS_ConfigManager
         if (m_Settings.m_iEnvironmentUpdateInterval <= 0)
         {
             m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+            needsSave = true;
+        }
+        if (m_Settings.m_iDataExportIntervalMs <= 0)
+        {
+            m_Settings.m_iDataExportIntervalMs = 1000;
             needsSave = true;
         }
         
@@ -590,8 +598,10 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_bEnableFatigueSystem = m_Settings.m_bEnableFatigueSystem;
         m_CachedSettings.m_bEnableMetabolicAdaptation = m_Settings.m_bEnableMetabolicAdaptation;
         m_CachedSettings.m_bEnableIndoorDetection = m_Settings.m_bEnableIndoorDetection;
+        m_CachedSettings.m_bDataExportEnabled = m_Settings.m_bDataExportEnabled;
         m_CachedSettings.m_iTerrainUpdateInterval = m_Settings.m_iTerrainUpdateInterval;
         m_CachedSettings.m_iEnvironmentUpdateInterval = m_Settings.m_iEnvironmentUpdateInterval;
+        m_CachedSettings.m_iDataExportIntervalMs = m_Settings.m_iDataExportIntervalMs;
         
         Print("[RSS_ConfigManager] Config cache updated");
     }
@@ -622,6 +632,8 @@ class SCR_RSS_ConfigManager
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
+        m_Settings.m_bDataExportEnabled = false;
+        m_Settings.m_iDataExportIntervalMs = 1000;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;

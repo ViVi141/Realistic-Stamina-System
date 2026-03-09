@@ -608,7 +608,10 @@ modded class SCR_CharacterControllerComponent
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
             return;
         }
-        
+
+        // 数据导出：服务器端按配置间隔写入 JSON（方案一：文件桥接）
+        SCR_RSS_DataExport.TryExport();
+
         int intervalMs = GetSpeedUpdateIntervalMs();
 
         // 仅对本地玩家或服务器端 AI 处理
@@ -1727,6 +1730,69 @@ modded class SCR_CharacterControllerComponent
             if (m_pNetworkSyncManager)
                 m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
         }
+    }
+
+    // ==================== 外部模组 API（SCR_RSS_API 调用）====================
+    // 检查 RSS 数据是否已初始化（体力组件、环境因子等）
+    bool HasRssData()
+    {
+        return (m_pStaminaComponent != null && m_pEnvironmentFactor != null);
+    }
+
+    float GetRssStaminaPercent()
+    {
+        if (m_pStaminaComponent)
+            return Math.Clamp(m_pStaminaComponent.GetTargetStamina(), 0.0, 1.0);
+        return 1.0;
+    }
+
+    float GetRssSpeedMultiplier()
+    {
+        return m_fLastSpeedMultiplier;
+    }
+
+    float GetRssCurrentSpeed()
+    {
+        vector velocity = GetVelocity();
+        vector horizontalVelocity = velocity;
+        horizontalVelocity[1] = 0.0;
+        float speed = horizontalVelocity.Length();
+        return Math.Min(speed, 7.0);
+    }
+
+    int GetRssMovementPhase()
+    {
+        return GetCurrentMovementPhase();
+    }
+
+    bool GetRssIsSprinting()
+    {
+        return IsSprinting();
+    }
+
+    bool GetRssIsExhausted()
+    {
+        float stamina = GetRssStaminaPercent();
+        return RealisticStaminaSpeedSystem.IsExhausted(stamina);
+    }
+
+    bool GetRssIsSwimming()
+    {
+        return SwimmingStateManager.IsSwimming(this);
+    }
+
+    float GetRssCurrentWeight()
+    {
+        if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            return m_pEncumbranceCache.GetCurrentWeight();
+        if (m_pCachedInventoryComponent)
+            return m_pCachedInventoryComponent.GetTotalWeight();
+        return 0.0;
+    }
+
+    EnvironmentFactor GetRssEnvironmentFactor()
+    {
+        return m_pEnvironmentFactor;
     }
 
 }

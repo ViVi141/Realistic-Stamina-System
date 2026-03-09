@@ -350,8 +350,8 @@ class SCR_RSS_Settings
     // ==================== Sync helpers ====================
     static const int PARAMS_ARRAY_SIZE = 45;
     static const int SETTINGS_FLOATS_SIZE = 17;
-    static const int SETTINGS_INTS_SIZE = 4;
-    static const int SETTINGS_BOOLS_SIZE = 14;
+    static const int SETTINGS_INTS_SIZE = 5;
+    static const int SETTINGS_BOOLS_SIZE = 15;
 
     // ==================== 基础配置 ====================
     [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
@@ -675,6 +675,12 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     // ==================== HUD 显示配置 ====================
     [Attribute("false", UIWidgets.CheckBox, "HUD: Show stamina/speed/weight in top-right. Default OFF. | 屏幕右上角显示体力/速度/负重等，默认关闭")]
     bool m_bHintDisplayEnabled;
+
+    [Attribute("false", UIWidgets.CheckBox, "Data Export: Write player stamina/env to JSON for external apps. File: RSS_PlayerData.json in profile. | 数据导出：将玩家体力/环境写入 JSON 供外部应用读取")]
+    bool m_bDataExportEnabled;
+
+    [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
+    int m_iDataExportIntervalMs;
     
     [Attribute("5000", UIWidgets.EditBox, "[Deprecated] HUD is real-time now. Kept for compatibility. | [已弃用] HUD 已实时更新，保留兼容")]
     int m_iHintUpdateInterval;
@@ -935,6 +941,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outInts.Insert(s.m_iHintUpdateInterval);
         outInts.Insert(s.m_iTerrainUpdateInterval);
         outInts.Insert(s.m_iEnvironmentUpdateInterval);
+        outInts.Insert(s.m_iDataExportIntervalMs);
 
         outBools.Insert(s.m_bDebugLogEnabled);
         outBools.Insert(s.m_bVerboseLogging);
@@ -950,6 +957,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outBools.Insert(s.m_bEnableFatigueSystem);
         outBools.Insert(s.m_bEnableMetabolicAdaptation);
         outBools.Insert(s.m_bEnableIndoorDetection);
+        outBools.Insert(s.m_bDataExportEnabled);
     }
 
     static void ApplySettingsFromArrays(SCR_RSS_Settings s, array<float> floats, array<int> ints, array<bool> bools)
@@ -986,6 +994,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_iHintUpdateInterval = ints[ii++];
             s.m_iTerrainUpdateInterval = ints[ii++];
             s.m_iEnvironmentUpdateInterval = ints[ii++];
+            s.m_iDataExportIntervalMs = ints[ii++];
         }
 
         if (bools && bools.Count() >= SETTINGS_BOOLS_SIZE)
@@ -1005,6 +1014,11 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bEnableFatigueSystem = bools[bi++];
             s.m_bEnableMetabolicAdaptation = bools[bi++];
             s.m_bEnableIndoorDetection = bools[bi++];
+            s.m_bDataExportEnabled = bools[bi++];
         }
+
+        // 数据导出开关仅服务器生效，客户端收到配置后强制关闭，避免客户端写文件
+        if (!Replication.IsServer())
+            s.m_bDataExportEnabled = false;
     }
 }
