@@ -399,11 +399,13 @@ modded class SCR_CharacterControllerComponent
             settings = new SCR_RSS_Settings();
 
         // 配置未变化时跳过应用，避免每 5 秒重复 Save 和日志刷屏
-        if (settings.m_sConfigVersion == configVersion && settings.m_sSelectedPreset == selectedPreset)
+        // 必须已应用过服务器配置才可跳过：首次连接时客户端默认值可能与服务器版本/预设名相同，若直接跳过会导致预设参数从未被应用
+        if (SCR_RSS_ConfigManager.IsServerConfigApplied()
+            && settings.m_sConfigVersion == configVersion
+            && settings.m_sSelectedPreset == selectedPreset)
         {
             m_fFirstConfigRequestTime = -1.0;
             m_fLastConfigTimeoutWarningTime = -1.0;
-            SCR_RSS_ConfigManager.SetServerConfigApplied(true);
             return;
         }
 
