@@ -261,21 +261,16 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             return;
-        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
-        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
-        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
-        array<float> customParams = BuildPresetArray(settings.m_Custom);
+        array<float> combinedPresetParams = new array<float>();
         array<float> floatSettings = new array<float>();
         array<int> intSettings = new array<int>();
         array<bool> boolSettings = new array<bool>();
+        BuildCombinedPresetArray(settings, combinedPresetParams);
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
         Rpc(RPC_SendFullConfigBroadcast,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
-            eliteParams,
-            standardParams,
-            tacticalParams,
-            customParams,
+            combinedPresetParams,
             floatSettings,
             intSettings,
             boolSettings
@@ -293,23 +288,17 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
-                array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
-                array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
-                array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
-                array<float> customParams = BuildPresetArray(settings.m_Custom);
-
+                array<float> combinedPresetParams = new array<float>();
                 array<float> floatSettings = new array<float>();
                 array<int> intSettings = new array<int>();
                 array<bool> boolSettings = new array<bool>();
+                BuildCombinedPresetArray(settings, combinedPresetParams);
                 BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
                 Rpc(RPC_SendFullConfigBroadcast,
                     settings.m_sConfigVersion,
                     settings.m_sSelectedPreset,
-                    eliteParams,
-                    standardParams,
-                    tacticalParams,
-                    customParams,
+                    combinedPresetParams,
                     floatSettings,
                     intSettings,
                     boolSettings
@@ -357,6 +346,47 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings.WriteSettingsToArrays(s, floatSettings, intSettings, boolSettings);
     }
 
+    // 将 4 个预设数组合并为 1 个，用于 RPC（Enfusion Rpc 有参数数量限制）
+    protected void BuildCombinedPresetArray(SCR_RSS_Settings s, array<float> outCombined)
+    {
+        if (!outCombined || !s)
+            return;
+        outCombined.Clear();
+        int size = SCR_RSS_Settings.PARAMS_ARRAY_SIZE;
+        array<float> elite = BuildPresetArray(s.m_EliteStandard);
+        array<float> standard = BuildPresetArray(s.m_StandardMilsim);
+        array<float> tactical = BuildPresetArray(s.m_TacticalAction);
+        array<float> custom = BuildPresetArray(s.m_Custom);
+        for (int i = 0; i < size; i++)
+        {
+            if (i < elite.Count())
+                outCombined.Insert(elite[i]);
+            else
+                outCombined.Insert(0.0);
+        }
+        for (int i = 0; i < size; i++)
+        {
+            if (i < standard.Count())
+                outCombined.Insert(standard[i]);
+            else
+                outCombined.Insert(0.0);
+        }
+        for (int i = 0; i < size; i++)
+        {
+            if (i < tactical.Count())
+                outCombined.Insert(tactical[i]);
+            else
+                outCombined.Insert(0.0);
+        }
+        for (int i = 0; i < size; i++)
+        {
+            if (i < custom.Count())
+                outCombined.Insert(custom[i]);
+            else
+                outCombined.Insert(0.0);
+        }
+    }
+
     protected void ApplyFullConfig(string configVersion, string selectedPreset,
         array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
         array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
@@ -367,6 +397,15 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             settings = new SCR_RSS_Settings();
+
+        // 配置未变化时跳过应用，避免每 5 秒重复 Save 和日志刷屏
+        if (settings.m_sConfigVersion == configVersion && settings.m_sSelectedPreset == selectedPreset)
+        {
+            m_fFirstConfigRequestTime = -1.0;
+            m_fLastConfigTimeoutWarningTime = -1.0;
+            SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+            return;
+        }
 
         if (!settings.m_EliteStandard) settings.m_EliteStandard = new SCR_RSS_Params();
         if (!settings.m_StandardMilsim) settings.m_StandardMilsim = new SCR_RSS_Params();
@@ -397,20 +436,43 @@ modded class SCR_CharacterControllerComponent
     }
 
     // RPC: 服务器发送完整配置给客户端（目标客户端）
+    // 使用合并的 presetParams 以规避 Enfusion Rpc 参数数量限制（最多约 6–7 个）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     void RPC_SendFullConfigOwner(string configVersion, string selectedPreset,
-                                 array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                 array<float> combinedPresetParams,
                                  array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
-        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
+        ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
     }
 
     // RPC: 服务器广播完整配置给所有客户端
     [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
     void RPC_SendFullConfigBroadcast(string configVersion, string selectedPreset,
-                                     array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
+                                     array<float> combinedPresetParams,
                                      array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
+        ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
+    }
+
+    protected void ApplyFullConfigFromCombined(string configVersion, string selectedPreset,
+        array<float> combinedPresetParams,
+        array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
+    {
+        int size = SCR_RSS_Settings.PARAMS_ARRAY_SIZE;
+        if (!combinedPresetParams || combinedPresetParams.Count() < size * 4)
+            return;
+        array<float> eliteParams = new array<float>();
+        array<float> standardParams = new array<float>();
+        array<float> tacticalParams = new array<float>();
+        array<float> customParams = new array<float>();
+        for (int i = 0; i < size; i++)
+            eliteParams.Insert(combinedPresetParams[i]);
+        for (int i = size; i < size * 2; i++)
+            standardParams.Insert(combinedPresetParams[i]);
+        for (int i = size * 2; i < size * 3; i++)
+            tacticalParams.Insert(combinedPresetParams[i]);
+        for (int i = size * 3; i < size * 4; i++)
+            customParams.Insert(combinedPresetParams[i]);
         ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
     }
     
@@ -1628,24 +1690,18 @@ modded class SCR_CharacterControllerComponent
 
         PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
 
-        array<float> eliteParams = BuildPresetArray(settings.m_EliteStandard);
-        array<float> standardParams = BuildPresetArray(settings.m_StandardMilsim);
-        array<float> tacticalParams = BuildPresetArray(settings.m_TacticalAction);
-        array<float> customParams = BuildPresetArray(settings.m_Custom);
-
+        array<float> combinedPresetParams = new array<float>();
         array<float> floatSettings = new array<float>();
         array<int> intSettings = new array<int>();
         array<bool> boolSettings = new array<bool>();
+        BuildCombinedPresetArray(settings, combinedPresetParams);
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
         // 使用 Broadcast 替代 Owner：复制早期 RplRcver.Owner 可能未就绪，Broadcast 确保送达
         Rpc(RPC_SendFullConfigBroadcast,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
-            eliteParams,
-            standardParams,
-            tacticalParams,
-            customParams,
+            combinedPresetParams,
             floatSettings,
             intSettings,
             boolSettings
