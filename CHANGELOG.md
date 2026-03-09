@@ -6,6 +6,14 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.16.11] - 2026-03-10
+
+### 🔧 配置版本
+
+- **CURRENT_VERSION** 更新为 3.16.11（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.16.5] - 2026-03-09
 
 ### 📌 版本说明
