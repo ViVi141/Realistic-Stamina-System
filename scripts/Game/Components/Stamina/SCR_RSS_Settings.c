@@ -348,7 +348,7 @@ class SCR_RSS_Params
 class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
-    static const int PARAMS_ARRAY_SIZE = 45;
+    static const int PARAMS_ARRAY_SIZE = 41;  // 必须与 WriteParamsToArray/ApplyParamsFromArray 字段数一致
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
     static const int SETTINGS_BOOLS_SIZE = 15;

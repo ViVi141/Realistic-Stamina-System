@@ -28,8 +28,11 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
+    protected const float CONFIG_FETCH_TIMEOUT_SEC = 30.0; // 配置获取超时（秒），超时后每 30 秒打印一次警告
     protected bool m_bIsConnected = false; // 网络连接状态
     protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
+    protected float m_fFirstConfigRequestTime = -1.0; // 首次请求配置时间（秒），-1 表示未在等待
+    protected float m_fLastConfigTimeoutWarningTime = -1.0; // 上次打印超时警告时间，避免刷屏
     
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
@@ -348,6 +351,8 @@ modded class SCR_CharacterControllerComponent
 
         SCR_RSS_ConfigManager.Save();
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+        m_fFirstConfigRequestTime = -1.0;  // 收到配置，清除超时计时
+        m_fLastConfigTimeoutWarningTime = -1.0;
         PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
 
         // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
@@ -388,7 +393,10 @@ modded class SCR_CharacterControllerComponent
         // 检测重连
         if (!m_bIsConnected && isConnected)
         {
-            // 网络重连
+            // 网络重连：立即重置配置状态，避免使用旧服务器配置；重置超时计时以便重新计时
+            SCR_RSS_ConfigManager.ResetClientConfigAwaitingSync();
+            m_fFirstConfigRequestTime = -1.0;
+            m_fLastConfigTimeoutWarningTime = -1.0;
             m_bIsConnected = true;
             m_fLastReconnectTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
             Print("[RSS] 网络已重连，准备同步服务器配置");
@@ -1544,6 +1552,24 @@ modded class SCR_CharacterControllerComponent
     {
         if (!Replication.IsServer())
         {
+            bool awaitingSync = !SCR_RSS_ConfigManager.IsServerConfigApplied();
+            if (awaitingSync)
+            {
+                // 仅在尚未收到配置时重置（首次连接或重连后），避免定期同步时误清已生效配置
+                SCR_RSS_ConfigManager.ResetClientConfigAwaitingSync();
+                if (m_fFirstConfigRequestTime < 0.0)
+                    m_fFirstConfigRequestTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                // 超时检测：超过 CONFIG_FETCH_TIMEOUT_SEC 未收到配置，每 30 秒打印一次警告
+                float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                if (nowSec - m_fFirstConfigRequestTime >= CONFIG_FETCH_TIMEOUT_SEC)
+                {
+                    if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
+                    {
+                        m_fLastConfigTimeoutWarningTime = nowSec;
+                        Print("[RSS] 配置获取超时，继续使用默认配置并重试。若持续无响应请检查服务器或网络。");
+                    }
+                }
+            }
             if (!m_bLoggedInitialConfigRequest)
             {
                 Print("[RSS] Client requesting server config");

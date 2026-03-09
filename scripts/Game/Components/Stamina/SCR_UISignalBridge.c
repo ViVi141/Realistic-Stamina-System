@@ -73,57 +73,7 @@ class UISignalBridge
         if (!IsInitialized())
             return;
 
-        s_fSmoothedStaminaForSignal = Math.Lerp(s_fSmoothedStaminaForSignal, staminaPercent, STAMINA_SIGNAL_SMOOTH_ALPHA);
-        float displayStamina = s_fSmoothedStaminaForSignal;
-        
-        float uiExhaustion = 0.0;
-        
-        if (isExhausted)
-        {
-            // 彻底没气了，满模糊（达到或超过官方阈值 0.45）
-            uiExhaustion = 1.0;
-        }
-        else
-        {
-            // 综合考虑体力剩余量和瞬时消耗功率来决定UI表现
-            // 基础模糊：由体力剩余量决定（体力越低，模糊越强），使用平滑后的显示值
-            float fatigueBase = 1.0 - displayStamina;
-            
-            // 瞬时模糊：由运动强度/消耗功率决定（消耗越大，模糊越强）
-            // totalDrainRate 约 0.001-0.02（每0.2秒），乘以系数转换为信号值
-            // 例如：totalDrainRate = 0.01 → intensityBoost = 0.5（50%瞬时模糊）
-            float intensityBoost = 0.0;
-            if (currentSpeed > 0.05)
-            {
-                // 计算瞬时消耗功率（归一化）
-                // totalDrainRate 通常在 0.001-0.02 之间（每0.2秒）
-                // 归一化到 0.0-1.0 范围，然后乘以强度系数
-                float normalizedDrainRate = Math.Clamp(totalDrainRate / 0.02, 0.0, 1.0); // 假设最大消耗为0.02
-                intensityBoost = normalizedDrainRate * 0.5; // 瞬时模糊最高50%
-            }
-            
-            // 崩溃期强化：体力 < 25% 时模糊感剧增
-            // 官方阈值是 0.45，拟真模型的崩溃点是 0.25
-            // 当体力掉到 0.25 时，信号值应该超过 0.45，立即触发视觉模糊
-            if (displayStamina <= 0.25)
-            {
-                // 非线性映射：进入崩溃期，模糊感呈指数级加强
-                // 0.25 → 0.5, 0.1 → 0.8, 0.0 → 1.0
-                float collapseFactor = (0.25 - displayStamina) / 0.25; // 0.0-1.0
-                float collapseBoost = 0.3 + (collapseFactor * 0.5); // 0.3-0.8（额外强化）
-                uiExhaustion = fatigueBase + intensityBoost + collapseBoost;
-            }
-            else
-            {
-                // 正常期：基础模糊 + 瞬时模糊
-                uiExhaustion = fatigueBase + intensityBoost;
-            }
-        }
-        
-        // 限制信号值在有效范围内（0.0-1.0）
-        uiExhaustion = Math.Clamp(uiExhaustion, 0.0, 1.0);
-        
-        // 更新信号值（这会让官方UI特效和音效系统响应）
-        m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, uiExhaustion);
+        // 已移除体力驱动的画面效果（原 40% 以下模糊、呼吸声等）
+        m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, 0.0);
     }
 }

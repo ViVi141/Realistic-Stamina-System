@@ -41,6 +41,11 @@ class SCR_StaminaHUDComponent
     // 体力显示平滑：服务器复制频率低于客户端帧率时，避免体力条抽动
     protected static float s_fDisplayStaminaPercent = 1.0;
     protected static const float STAMINA_DISPLAY_SMOOTH_ALPHA = 0.4;  // 指数平滑系数（每 50ms 更新约 3 次可追上 90%）
+
+    // 速度显示平滑：从静止到全速时，HUD 数值渐变而非瞬时跳变
+    protected static float s_fDisplaySpeedMultiplier = 1.0;
+    protected static float s_fDisplayCurrentSpeed = 0.0;
+    protected static const float SPEED_DISPLAY_SMOOTH_ALPHA = 0.35;  // 略慢于体力，使起步时数值有 buildup 感
     
     // 上一次显示的值（用于减少不必要的更新）
     protected string m_sLastDisplayedText = "";
@@ -69,6 +74,8 @@ class SCR_StaminaHUDComponent
         s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
         s_fCachedSpeedMultiplier = speedMultiplier;
         s_fCachedCurrentSpeed = currentSpeed;
+        s_fDisplaySpeedMultiplier = Math.Lerp(s_fDisplaySpeedMultiplier, speedMultiplier, SPEED_DISPLAY_SMOOTH_ALPHA);
+        s_fDisplayCurrentSpeed = Math.Lerp(s_fDisplayCurrentSpeed, currentSpeed, SPEED_DISPLAY_SMOOTH_ALPHA);
         s_fCachedWeight = weight;
         s_sCachedMoveType = moveType;
         s_fCachedSlopeAngle = slopeAngle;
@@ -127,6 +134,8 @@ class SCR_StaminaHUDComponent
             s_Instance.DestroyHUD();
             s_Instance = null;
             s_fDisplayStaminaPercent = 1.0;  // 重置平滑值，便于下次初始化
+            s_fDisplaySpeedMultiplier = 1.0;
+            s_fDisplayCurrentSpeed = 0.0;
         }
     }
     
@@ -227,10 +236,10 @@ class SCR_StaminaHUDComponent
     // 更新显示
     protected void UpdateDisplay()
     {
-        // 计算各项数值（体力使用平滑后的显示值，避免服务器复制频率低导致的抽动）
+        // 计算各项数值（体力、速度使用平滑后的显示值，避免瞬时跳变）
         int staminaPct = Math.Clamp(Math.Round(s_fDisplayStaminaPercent * 100.0), 0, 100);
-        int speedPct = Math.Round(s_fCachedSpeedMultiplier * 100.0);
-        int speedMs = Math.Round(s_fCachedCurrentSpeed * 10.0);  // 保留一位小数（乘10存储）
+        int speedPct = Math.Round(s_fDisplaySpeedMultiplier * 100.0);
+        int speedMs = Math.Round(s_fDisplayCurrentSpeed * 10.0);  // 保留一位小数（乘10存储）
         int weightKg = Math.Round(s_fCachedWeight);
         int slopeAngle = Math.Round(s_fCachedSlopeAngle);
         int tempC = Math.Round(s_fCachedTemperature);  // 虚拟气温（°C）
@@ -588,10 +597,10 @@ class SCR_StaminaHUDComponent
     }
     
     // 获取速度颜色（越接近最大速度越红，表示体力消耗越快）
-    // 载具内或静止时速度为 0，使用中性色
+    // 载具内或静止时速度为 0，使用中性色（使用平滑后的显示速度判断）
     protected Color GetSpeedColor(int pct)
     {
-        if (s_fCachedCurrentSpeed <= 0.05 || s_sCachedMoveType == "Vehicle")
+        if (s_fDisplayCurrentSpeed <= 0.05 || s_sCachedMoveType == "Vehicle")
             return GUIColors.DEFAULT;
         if (pct >= 95)
             return GUIColors.RED_BRIGHT2;

@@ -23,6 +23,14 @@
 - **网络架构清理** - 删除未使用 RPC：`RPC_BroadcastConfigChange`、`RPC_SendConfigData`、`RPC_ClientReceiveConfig`、`RPC_ClearServerConfigApplied`；删除 `HandleClientConfigRequest`、`CompareVersionsLocal`（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **60Hz 速度更新** - `SPEED_UPDATE_INTERVAL_MS` 改为 17（约 60Hz），提升速度响应（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **配置变更通知优化** - `NotifyConfigChanges` 仅对第一个监听器调用，避免重复广播（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+- **移除体力低于 40% 的画面效果** - 删除 `SCR_DesaturationEffect_Stamina.c`（体力去饱和）；`SCR_UISignalBridge` 始终将 Exhaustion 设为 0，不再触发模糊和呼吸声（[SCR_UISignalBridge.c](scripts/Game/Components/Stamina/SCR_UISignalBridge.c)）
+- **HUD 速度显示平滑** - 速度倍率和实际速度添加指数平滑（alpha=0.35），从静止到全速时 SPD 数值渐变而非瞬时跳变（[SCR_StaminaHUDComponent.c](scripts/Game/Components/Stamina/SCR_StaminaHUDComponent.c)）
+- **客户端配置同步时机** - 请求服务器配置前调用 `ResetClientConfigAwaitingSync()`，避免使用旧服务器/上一会话配置；仅在 `!IsServerConfigApplied` 时重置，定期同步不误清已生效配置（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）
+- **配置获取超时** - 30 秒未收到配置时每 30 秒打印一次警告，继续使用默认配置并每 5 秒重试（[PlayerBase.c](scripts/Game/PlayerBase.c)）
+
+### 🐛 修复
+
+- **PARAMS_ARRAY_SIZE 与字段数不一致** - 原 45 导致 `ApplyParamsFromArray` 恒提前返回，客户端预设参数从未被应用；修正为 41 与 `WriteParamsToArray` 字段数一致（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）
 
 ### ✅ 新增
 

@@ -769,6 +769,17 @@ class SCR_RSS_ConfigManager
     {
         m_bIsServerConfigApplied = applied;
     }
+
+    // 客户端在请求服务器配置前重置状态，避免使用旧服务器/上一会话的配置
+    // 调用后，下次 GetSettings() 会触发 Load() 创建内存默认值，直至 ApplyFullConfig 覆盖
+    static void ResetClientConfigAwaitingSync()
+    {
+        if (Replication.IsServer())
+            return;
+        m_Settings = null;
+        m_bIsServerConfigApplied = false;
+        m_bIsLoaded = false;
+    }
     
     // 检查服务器配置是否已应用
     static bool IsServerConfigApplied()
