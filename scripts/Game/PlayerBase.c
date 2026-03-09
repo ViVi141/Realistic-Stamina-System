@@ -269,7 +269,7 @@ modded class SCR_CharacterControllerComponent
         array<int> intSettings = new array<int>();
         array<bool> boolSettings = new array<bool>();
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-        RPC_SendFullConfigBroadcast(
+        Rpc(RPC_SendFullConfigBroadcast,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             eliteParams,
@@ -303,7 +303,7 @@ modded class SCR_CharacterControllerComponent
                 array<bool> boolSettings = new array<bool>();
                 BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
-                RPC_SendFullConfigBroadcast(
+                Rpc(RPC_SendFullConfigBroadcast,
                     settings.m_sConfigVersion,
                     settings.m_sSelectedPreset,
                     eliteParams,
@@ -1609,8 +1609,8 @@ modded class SCR_CharacterControllerComponent
                 Print("[RSS] Client requesting server config");
                 m_bLoggedInitialConfigRequest = true;
             }
-            // 发送RPC请求服务器配置
-            RPC_ServerRequestConfig();
+            // 发送RPC请求服务器配置（必须用 Rpc() 发送，直接调用仅在本地执行）
+            Rpc(RPC_ServerRequestConfig);
         }
     }
     
@@ -1639,7 +1639,7 @@ modded class SCR_CharacterControllerComponent
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
         // 使用 Broadcast 替代 Owner：复制早期 RplRcver.Owner 可能未就绪，Broadcast 确保送达
-        RPC_SendFullConfigBroadcast(
+        Rpc(RPC_SendFullConfigBroadcast,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             eliteParams,
@@ -1763,7 +1763,7 @@ modded class SCR_CharacterControllerComponent
                 if (!m_pNetworkSyncManager.HasServerValidation())
                 {
                     m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                    RPC_ServerSyncSpeedMultiplier(validated);
+                    Rpc(RPC_ServerSyncSpeedMultiplier, validated);
                 }
                 else
                 {
@@ -1771,7 +1771,7 @@ modded class SCR_CharacterControllerComponent
                     if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
                     {
                         m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                        RPC_ServerSyncSpeedMultiplier(validated);
+                        Rpc(RPC_ServerSyncSpeedMultiplier, validated);
                     }
                     else
                     {

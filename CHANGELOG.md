@@ -33,6 +33,7 @@
 - **配置获取失败（RplRcver.Owner 复制未就绪）** - 复制早期 RplRcver.Owner 可能未建立，客户端请求后服务器响应无法送达；修复：1) 响应改用 `RPC_SendFullConfigBroadcast` 替代 `RPC_SendFullConfigOwner`；2) 服务器在玩家角色创建 3 秒后主动 Broadcast 推送配置；3) 客户端首次请求延迟由 1 秒改为 3 秒（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 - **客户端配置等待期日志刷屏** - 配置获取超时时每 5 秒重置触发 Load/EnsureDefaultValues/UpdateConfigCache，导致 "Saving config"、"Config cache updated"、"Client: Using in-memory defaults" 重复打印；修复：1) EnsureDefaultValues 仅在服务器端打印 Saving；2) 客户端 Load 的 in-memory 日志仅首次打印；3) UpdateConfigCache 仅在服务器端打印；4) 客户端 Load 补全 m_iDataExportIntervalMs 默认值（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
 - **PARAMS_ARRAY_SIZE 与字段数不一致** - 原 45 导致 `ApplyParamsFromArray` 恒提前返回，客户端预设参数从未被应用；修正为 41 与 `WriteParamsToArray` 字段数一致（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）
+- **RPC 未通过 Rpc() 发送** - Enfusion 中直接调用 RPC 方法仅在本地执行，必须用 `Rpc(method, ...)` 才能通过网络发送。修复：1) 客户端请求配置改为 `Rpc(RPC_ServerRequestConfig)`；2) 服务器发送配置改为 `Rpc(RPC_SendFullConfigBroadcast, ...)`；3) 服务器下发速度倍率改为 `Rpc(RPC_ServerSyncSpeedMultiplier, validated)`（[PlayerBase.c](scripts/Game/PlayerBase.c)）
 
 ### ✅ 新增
 
