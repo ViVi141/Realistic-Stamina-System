@@ -319,6 +319,12 @@ class RealisticStaminaSpeedSystem
     //
     // @param owner 角色实体
     // @return 速度惩罚值 (0.0-1.0)，表示速度减少的比例
+    // [已废弃 - 勿调用] CalculateEncumbranceSpeedPenalty
+    // 此函数使用旧的线性惩罚公式（speedPenalty = coeff × bodyMassPercent），
+    // 与当前系统采用的**三段非线性模型**不一致。
+    // 实际速度惩罚由 SCR_EncumbranceCache.UpdateCache() 计算并缓存，
+    // 请通过 EncumbranceCache.GetCachedEncumbranceSpeedPenalty() 获取正确值。
+    // 保留此函数仅供历史参考，不得在任何新代码中调用。
     static float CalculateEncumbranceSpeedPenalty(IEntity owner)
     {
         // 获取当前负重（kg）
@@ -341,8 +347,11 @@ class RealisticStaminaSpeedSystem
         // 计算有效负重占体重的百分比（Body Mass Percentage）
         float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
 
-        // 应用真实医学模型：速度惩罚 = β * (负重/体重)
-        // β = 0.20 表示40%体重负重时，速度下降20%（符合文献）
+        // [旧线性公式 - 已废弃] 速度惩罚 = β × (负重/体重)
+        // 当前系统改用三段非线性模型（见 SCR_EncumbranceCache.UpdateCache）：
+        //   ratio≤0.3: 0.15×ratio
+        //   0.3<ratio≤0.6: 0.045 + 0.35×(ratio-0.3)^1.5
+        //   ratio>0.6: 0.25 + 0.65×(ratio-0.6)²
         float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
         float speedPenalty = encumbranceSpeedPenaltyCoeff * bodyMassPercent;
         
