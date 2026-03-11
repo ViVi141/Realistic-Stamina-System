@@ -26,14 +26,15 @@ modded class SCR_CharacterControllerComponent
     protected static ref array<string> s_aAIDebugLines = new array<string>();  // AI 调试行缓存
     protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
-    protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 服务器配置同步间隔（秒）
+    protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 未收到配置时的重试间隔（秒），收到后不再请求
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
     protected const float CONFIG_FETCH_TIMEOUT_SEC = 30.0; // 配置获取超时（秒），超时后每 30 秒打印一次警告
     protected bool m_bIsConnected = false; // 网络连接状态
     protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
     protected float m_fFirstConfigRequestTime = -1.0; // 首次请求配置时间（秒），-1 表示未在等待
     protected float m_fLastConfigTimeoutWarningTime = -1.0; // 上次打印超时警告时间，避免刷屏
-    
+    protected bool m_bClientAckedConfig = false;  // 服务器：该客户端是否已回执“已收到配置”，收到后不再推送
+
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
     protected ref CollapseTransition m_pCollapseTransition;
@@ -117,9 +118,9 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_ConfigManager.Load();
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
-            // 服务器主动推送配置：复制早期 RplRcver.Owner 可能未就绪，3 秒后 Broadcast 确保新加入玩家收到
+            // 服务器检测到玩家（本控制器）：主动推送配置，直到收到客户端回执
             if (IsPlayerControlled())
-                GetGame().GetCallqueue().CallLater(ServerPushConfigToClients, 3000, false);
+                GetGame().GetCallqueue().CallLater(ServerPushConfigToOwner, 3000, false);
 
             // debug: 输出当前的能量转体力系数
             if (IsRssDebugEnabled())
@@ -242,22 +243,22 @@ modded class SCR_CharacterControllerComponent
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
         
-        // 客户端请求服务器配置（延迟 3 秒确保复制/所有权已建立）
         if (!Replication.IsServer())
         {
-            GetGame().GetCallqueue().CallLater(RequestServerConfig, 3000, false);
-            // 初始化网络连接状态
+            // 客户端不再主动请求；等待服务器推送，收到后回执
             m_bIsConnected = true;
-            // 开始网络连接监控
             GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
         }
     }
     
-    // 服务器主动推送配置给所有客户端（用于新玩家加入时，复制早期客户端请求可能未送达）
-    void ServerPushConfigToClients()
+    // 服务器主动推送配置给本控制器所属玩家，直到收到客户端回执后不再推送
+    void ServerPushConfigToOwner()
     {
         if (!Replication.IsServer())
             return;
+        if (m_bClientAckedConfig)
+            return;
+
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             return;
@@ -267,7 +268,7 @@ modded class SCR_CharacterControllerComponent
         array<bool> boolSettings = new array<bool>();
         BuildCombinedPresetArray(settings, combinedPresetParams);
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-        Rpc(RPC_SendFullConfigBroadcast,
+        Rpc(RPC_SendFullConfigOwner,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             combinedPresetParams,
@@ -276,7 +277,8 @@ modded class SCR_CharacterControllerComponent
             boolSettings
         );
         if (IsRssDebugEnabled())
-            PrintFormat("[RSS] Server pushed config to all clients (proactive): %1", GetPlayerLabel(GetOwner()));
+            PrintFormat("[RSS] Server pushed config to client (will retry until ack): %1", GetPlayerLabel(GetOwner()));
+        GetGame().GetCallqueue().CallLater(ServerPushConfigToOwner, 3000, false);
     }
 
     // 处理配置变更通知
@@ -284,7 +286,7 @@ modded class SCR_CharacterControllerComponent
     {
         if (Replication.IsServer())
         {
-            // 服务器配置变更，通知所有客户端
+            // 服务器配置变更，通知各客户端（点对点，由 ConfigManager 对每个监听器调用本方法）
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
             if (settings)
             {
@@ -295,7 +297,7 @@ modded class SCR_CharacterControllerComponent
                 BuildCombinedPresetArray(settings, combinedPresetParams);
                 BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
-                Rpc(RPC_SendFullConfigBroadcast,
+                Rpc(RPC_SendFullConfigOwner,
                     settings.m_sConfigVersion,
                     settings.m_sSelectedPreset,
                     combinedPresetParams,
@@ -444,7 +446,28 @@ modded class SCR_CharacterControllerComponent
                                  array<float> combinedPresetParams,
                                  array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
-        ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
+        bool applied = ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
+        if (!Replication.IsServer() && applied)
+            Rpc(RPC_ClientAckConfig);
+    }
+
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ClientAckConfig()
+    {
+        if (Replication.IsServer())
+        {
+            m_bClientAckedConfig = true;
+            Rpc(RPC_ServerAckReceived);
+            if (IsRssDebugEnabled())
+                PrintFormat("[RSS] 收到客户端配置回执，停止推送: %1", GetPlayerLabel(GetOwner()));
+        }
+    }
+
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ServerAckReceived()
+    {
+        if (!Replication.IsServer() && IsRssDebugEnabled())
+            Print("[RSS] 服务器已确认收到回执，后续不再推送配置");
     }
 
     // RPC: 服务器广播完整配置给所有客户端
@@ -456,13 +479,13 @@ modded class SCR_CharacterControllerComponent
         ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
     }
 
-    protected void ApplyFullConfigFromCombined(string configVersion, string selectedPreset,
+    protected bool ApplyFullConfigFromCombined(string configVersion, string selectedPreset,
         array<float> combinedPresetParams,
         array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
         int size = SCR_RSS_Settings.PARAMS_ARRAY_SIZE;
         if (!combinedPresetParams || combinedPresetParams.Count() < size * 4)
-            return;
+            return false;
         array<float> eliteParams = new array<float>();
         array<float> standardParams = new array<float>();
         array<float> tacticalParams = new array<float>();
@@ -476,6 +499,7 @@ modded class SCR_CharacterControllerComponent
         for (int i = size * 3; i < size * 4; i++)
             customParams.Insert(combinedPresetParams[i]);
         ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
+        return true;
     }
     
     // 网络连接监控
@@ -497,9 +521,8 @@ modded class SCR_CharacterControllerComponent
             m_fLastConfigTimeoutWarningTime = -1.0;
             m_bIsConnected = true;
             m_fLastReconnectTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            Print("[RSS] 网络已重连，准备同步服务器配置");
-            
-            // 延迟同步配置，确保网络稳定
+            Print("[RSS] 网络已重连，等待服务器推送配置");
+            // 若服务器复用同一控制器则不会再次主动推送，延迟一次请求作为兜底
             GetGame().GetCallqueue().CallLater(RequestServerConfig, RECONNECT_SYNC_DELAY * 1000, false);
         }
         else if (m_bIsConnected && !isConnected)
@@ -1016,22 +1039,34 @@ modded class SCR_CharacterControllerComponent
                 currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
         }
 
+        // 提前取得当前时间（秒），供速度应用与体力 RPC 节流使用
+        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
+        float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
+
         // ==================== 速度倍率应用 ====================
-        // 玩家：客户端本地计算；AI：服务器端计算（AI 实体在服务器端模拟）
-        OverrideMaxSpeed(finalSpeedMultiplier);
+        // 玩家：客户端本地计算；导出开启时采用服务器校验速度（平滑值）；AI：服务器端计算
+        float speedToApply = finalSpeedMultiplier;
+        if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled() && m_pNetworkSyncManager.HasServerValidation())
+        {
+            m_pNetworkSyncManager.GetTargetSpeedMultiplier(finalSpeedMultiplier);
+            speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
+        }
+        OverrideMaxSpeed(speedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
             m_sLastSpeedSource = "Server";
-        
+
+        // 仅当服务器开启数据导出时向服务器上报体力与负重（节流由 NetworkSyncManager.ShouldSync 控制）
+        if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && m_pNetworkSyncManager.ShouldSync(currentTime) && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
+            Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight);
+
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
         bool isSwimming = SwimmingStateManager.IsSwimming(this);
-        
+
         // 运动/休息时间跟踪（用于地形检测和疲劳计算）
-        // GetWorldTime 返回毫秒；ExerciseTracker.Update 期望毫秒；其他模块用秒
-        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
-        float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
+        // GetWorldTime 返回毫秒；ExerciseTracker.Update 期望毫秒；其他模块用秒（currentTime 已在上方取得）
         
         // 体力更新用实际时间差（GetWorldTime），不依赖预期间隔
         float timeDeltaSec;
@@ -1437,11 +1472,7 @@ modded class SCR_CharacterControllerComponent
         
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
-        
-        // ==================== 服务器配置同步 ====================
-        // 定期同步服务器配置
-        UpdateServerConfigSync();
-        
+
         // ==================== AI 调试数据收集（非玩家实体）====================
         if (owner != SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled())
         {
@@ -1645,27 +1676,24 @@ modded class SCR_CharacterControllerComponent
         }
     }
     
-    // 客户端请求服务器配置
+    // 客户端请求服务器配置（连接/重连后推送到收到为止，收到后不再请求；配置启动后不变）
     void RequestServerConfig()
     {
         if (!Replication.IsServer())
         {
-            bool awaitingSync = !SCR_RSS_ConfigManager.IsServerConfigApplied();
-            if (awaitingSync)
+            if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+                return;
+
+            // 尚未收到配置：记录首次请求时间与超时提示（重置仅在重连时由 MonitorNetworkConnection 调用）
+            if (m_fFirstConfigRequestTime < 0.0)
+                m_fFirstConfigRequestTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (nowSec - m_fFirstConfigRequestTime >= CONFIG_FETCH_TIMEOUT_SEC)
             {
-                // 仅在尚未收到配置时重置（首次连接或重连后），避免定期同步时误清已生效配置
-                SCR_RSS_ConfigManager.ResetClientConfigAwaitingSync();
-                if (m_fFirstConfigRequestTime < 0.0)
-                    m_fFirstConfigRequestTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                // 超时检测：超过 CONFIG_FETCH_TIMEOUT_SEC 未收到配置，每 30 秒打印一次警告
-                float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                if (nowSec - m_fFirstConfigRequestTime >= CONFIG_FETCH_TIMEOUT_SEC)
+                if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
                 {
-                    if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
-                    {
-                        m_fLastConfigTimeoutWarningTime = nowSec;
-                        Print("[RSS] 配置获取超时，继续使用默认配置并重试。若持续无响应请检查服务器或网络。");
-                    }
+                    m_fLastConfigTimeoutWarningTime = nowSec;
+                    Print("[RSS] 配置获取超时，继续使用默认配置并重试。若持续无响应请检查服务器或网络。");
                 }
             }
             if (!m_bLoggedInitialConfigRequest)
@@ -1699,8 +1727,7 @@ modded class SCR_CharacterControllerComponent
         BuildCombinedPresetArray(settings, combinedPresetParams);
         BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
 
-        // 使用 Broadcast 替代 Owner：复制早期 RplRcver.Owner 可能未就绪，Broadcast 确保送达
-        Rpc(RPC_SendFullConfigBroadcast,
+        Rpc(RPC_SendFullConfigOwner,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
             combinedPresetParams,
@@ -1710,10 +1737,12 @@ modded class SCR_CharacterControllerComponent
         );
     }
     
-    // 定期向服务器请求配置（客户端使用）
+    // 仅在未收到配置时按间隔重试请求，收到后不再请求（类 TCP：连接后推送直到收到，重连再发）
     void UpdateServerConfigSync()
     {
         if (Replication.IsServer()) return;
+        if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+            return;
 
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         if (currentTime - m_fLastServerSyncTime >= SERVER_CONFIG_SYNC_INTERVAL)
@@ -1729,6 +1758,9 @@ modded class SCR_CharacterControllerComponent
     {
         if (Replication.IsServer())
         {
+            if (!SCR_RSS_ConfigManager.GetSettings() || !SCR_RSS_ConfigManager.GetSettings().m_bDataExportEnabled)
+                return;
+
             float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
             // 速率限制：拒绝过于频繁的客户端上报（防止恶意刷频）

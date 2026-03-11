@@ -21,7 +21,8 @@ class SCR_RSS_ConfigManager
     protected static float m_fLastSyncTime = 0.0;  // 上次同步时间
     protected static const float SYNC_COOLDOWN = 2.0;  // 同步冷却（秒）
     protected static bool m_bIsSyncing = false;  // 是否正在同步
-    
+    protected static bool m_bServerDataExportEnabled = false;  // 客户端保存的“服务器是否开启数据导出”（用于决定是否发送体力 RPC）
+
     // 默认值与合理范围常量（便于维护）
     protected static const int DEFAULT_UPDATE_INTERVAL_MS = 5000;    // 检测/日志更新间隔
     protected static const int DEFAULT_DEBUG_BATCH_INTERVAL_MS = 1000; // 调试批次间隔（1 秒）
@@ -788,6 +789,7 @@ class SCR_RSS_ConfigManager
         m_bIsServerConfigApplied = false;
         m_bIsLoaded = false;
         m_bLoggedClientDefaultsOnce = false;  // 重连后允许再次打印
+        m_bServerDataExportEnabled = false;  // 未收到新配置前不发送体力 RPC
     }
     
     // 检查服务器配置是否已应用
@@ -795,7 +797,26 @@ class SCR_RSS_ConfigManager
     {
         return m_bIsServerConfigApplied;
     }
-    
+
+    // 设置服务器数据导出开关（仅客户端在应用配置时调用，用于决定是否发送体力 RPC）
+    static void SetServerDataExportEnabled(bool value)
+    {
+        m_bServerDataExportEnabled = value;
+    }
+
+    // 获取“服务器是否开启数据导出”：服务器返回自身配置，客户端返回同步得到的值
+    static bool GetServerDataExportEnabled()
+    {
+        if (Replication.IsServer())
+        {
+            SCR_RSS_Settings settings = GetSettings();
+            if (settings)
+                return settings.m_bDataExportEnabled;
+            return false;
+        }
+        return m_bServerDataExportEnabled;
+    }
+
     // 注册配置变更监听器
     static void RegisterConfigChangeListener(IEntity listener)
     {
@@ -894,7 +915,7 @@ class SCR_RSS_ConfigManager
         return hasChanged;
     }
     
-    // 通知配置变更（仅调用第一个监听器广播，避免重复 RPC）
+    // 通知配置变更：对每个监听器点对点推送，每个控制器只发给自己的 Owner
     static void NotifyConfigChanges()
     {
         for (int i = 0; i < m_aConfigChangeListeners.Count(); i++)
@@ -904,10 +925,7 @@ class SCR_RSS_ConfigManager
             {
                 SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(listener.FindComponent(SCR_CharacterControllerComponent));
                 if (controller)
-                {
                     controller.OnConfigChanged();
-                    break;
-                }
             }
         }
     }

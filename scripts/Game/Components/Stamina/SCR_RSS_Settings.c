@@ -1019,6 +1019,9 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 
         // 数据导出开关仅服务器生效，客户端收到配置后强制关闭，避免客户端写文件
         if (!Replication.IsServer())
+        {
+            SCR_RSS_ConfigManager.SetServerDataExportEnabled(s.m_bDataExportEnabled);  // 先保存服务器意图，再关闭本地导出
             s.m_bDataExportEnabled = false;
+        }
     }
 }
