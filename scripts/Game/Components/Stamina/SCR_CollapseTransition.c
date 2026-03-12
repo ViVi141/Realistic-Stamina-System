@@ -78,7 +78,7 @@ class CollapseTransition
         float smoothProgress = transitionProgress * transitionProgress * (3.0 - 2.0 * transitionProgress);
         
         // 计算目标速度（阻尼过渡开始时的速度）和结束速度（5%体力时的速度）
-        // 开始速度：25%体力时的速度（TARGET_RUN_SPEED_MULTIPLIER = 3.7 m/s对应的倍数）
+        // 开始速度：25%体力时的速度（TARGET_RUN_SPEED_MULTIPLIER = 3.8 m/s 对应倍数）
         float startSpeedMultiplier = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
         
         // 结束速度：5%体力时的速度（大约80%过渡位置）
@@ -86,7 +86,7 @@ class CollapseTransition
         float minSpeedMultiplier = RealisticStaminaSpeedSystem.MIN_LIMP_SPEED_MULTIPLIER;
         float endSpeedMultiplier = minSpeedMultiplier + (startSpeedMultiplier - minSpeedMultiplier) * 0.8;
         
-        // 在5秒内平滑插值速度（从3.7 m/s逐渐降到约2.2 m/s）
+        // 在5秒内平滑插值速度（从3.8 m/s逐渐降到约2.2 m/s）
         float transitionSpeedMultiplier = startSpeedMultiplier + (endSpeedMultiplier - startSpeedMultiplier) * smoothProgress;
         
         return transitionSpeedMultiplier;

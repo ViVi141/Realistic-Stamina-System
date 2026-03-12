@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 用数字孪生验证 tools/optimized_rss_config_realism_super.json 的 30kg 600m/1000m 剩余体力。
-条件：移动速度 3.7 m/s，气温 32°C，风 NE 5.7 m/s（逆风按风阻计入）。
+条件：移动速度 3.8 m/s，气温 32°C，风 NE 5.7 m/s（逆风按风阻计入）。
 硬约束：600m 剩余 >= 50%，1000m 剩余 >= 40%。若孪生通过而游戏不通过，说明 C 与孪生需对齐。
 """
 
@@ -34,13 +34,13 @@ def main():
         return
     constants = load_json_constants(str(json_path))
     twin = RSSDigitalTwin(constants)
-    run_speed = 3.7
+    run_speed = 3.8
     load_kg = 28.87
     weight_total = 90.0 + load_kg
     temperature_celsius = 32.0
     wind_speed_mps = 5.7
 
-    # 28.87kg 600m（32°C，NE 5.7 m/s，速度 3.7 m/s）
+    # 28.87kg 600m（32°C，NE 5.7 m/s，速度 3.8 m/s）
     duration_600 = 600.0 / run_speed
     res_600 = twin.simulate_scenario(
         speed_profile=[(0, run_speed), (duration_600, run_speed)],

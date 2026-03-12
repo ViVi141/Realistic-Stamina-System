@@ -115,16 +115,16 @@
 class StaminaConstants
 {
     // ==================== [HARD] 游戏配置常量 ====================
-    // 游戏最大速度（m/s）- 由游戏引擎提供
-    static const float GAME_MAX_SPEED = 5.2; // m/s
+    // 0kg 下实测：Sprint 最大 5.5 m/s，Run 最大 3.8 m/s
+    static const float GAME_MAX_SPEED = 5.5; // m/s（0kg 冲刺最大速度）
     
     // ==================== [SOFT via Settings] 军事体力系统模型常量（基于速度阈值）====================
     // 基于速度阈值的分段消耗率系统 - 以下阈值为游戏设计参数，可通过预设间接影响
     // 参考：Military Stamina System Model (90kg Male / 22yo)
     
-    // 速度阈值（m/s）
-    static const float SPRINT_VELOCITY_THRESHOLD = 5.2; // m/s，Sprint速度阈值
-    static const float RUN_VELOCITY_THRESHOLD = 3.7; // m/s，Run速度阈值（匹配15:27的2英里配速）
+    // 速度阈值（m/s）- 0kg 下实测 Sprint 5.5 / Run 3.8
+    static const float SPRINT_VELOCITY_THRESHOLD = 5.5; // m/s，Sprint速度阈值
+    static const float RUN_VELOCITY_THRESHOLD = 3.8; // m/s，Run速度阈值
     static const float WALK_VELOCITY_THRESHOLD = 3.2; // m/s，Walk速度阈值
     
     // 基于负重的动态速度阈值（m/s）
@@ -165,10 +165,9 @@ class StaminaConstants
     // 2英里 ≈ 3218.7米，时间927秒，平均速度 ≈ 3.47 m/s
     static const float TARGET_AVERAGE_SPEED = 3.47; // m/s
     
-    // 目标Run速度（m/s）- 双稳态-应激性能模型的核心目标速度
-    // 对应游戏倍率约为 0.71 (3.7 / 5.2)
-    static const float TARGET_RUN_SPEED = 3.7; // m/s
-    static const float TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED; // 0.7115
+    // 目标Run速度（m/s）- 0kg 下实测 Run 最大 3.8 m/s
+    static const float TARGET_RUN_SPEED = 3.8; // m/s
+    static const float TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED;
     
     // 意志力平台期阈值（体力百分比）
     // 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
@@ -181,7 +180,7 @@ class StaminaConstants
     static const float SMOOTH_TRANSITION_END = 0.05; // 5%，平滑过渡结束点（真正的力竭点）
     
     // 跛行速度倍数（最低速度）
-    static const float MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED; // 1.0 m/s / 5.2 = 0.1923
+    static const float MIN_LIMP_SPEED_MULTIPLIER = 1.0 / GAME_MAX_SPEED;
     
     // ==================== [HARD] 医学模型参数 ====================
     
@@ -983,7 +982,7 @@ class StaminaConstants
             if (params)
                 return params.sprint_velocity_threshold;
         }
-        return 5.2; // 默认值（m/s）
+        return GAME_MAX_SPEED;
     }
 
     // 获取Sprint速度加成（从配置管理器）

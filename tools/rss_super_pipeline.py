@@ -34,7 +34,15 @@ from typing import List, Dict, Tuple, Optional, Callable
 from dataclasses import dataclass, asdict
 
 # 导入修复版数字孪生仿真器
-from rss_digital_twin_fix import RSSDigitalTwin, MovementType, Stance, RSSConstants
+from rss_digital_twin_fix import (
+    RSSDigitalTwin,
+    MovementType,
+    Stance,
+    RSSConstants,
+    run_speed_at_weight,
+    walk_speed_at_weight,
+    sprint_speed_at_weight,
+)
 
 # -----------------------------------------------------------------------------
 # Performance / determinism switches
@@ -178,143 +186,175 @@ class Scenario:
 # 场景库
 class ScenarioLibrary:
     @staticmethod
-    def create_acft_2mile_scenario(load_weight=0.0):
-        """创建ACFT 2英里测试场景
-        
-        现实 ACFT：2 mile = 3.218 km，目标时间 15:27 = 927s → 速度 3.218/927 ≈ 3.47 m/s。
-        Args:
-            load_weight: 负载重量（kg），ACFT标准测试应为0.0或最小装备约1.36kg
-        """
-        acft_distance_m = 3218.0  # 2 mile = 3.218 km
+    def create_acft_2mile_scenario(load_weight=0.0, constants=None):
+        """创建ACFT 2英里测试场景。constants 不为 None 时固定为 1kg 负重下的 run 速度（总重 91kg）。"""
         target_duration_s = 927.0  # 15分27秒
-        target_speed = acft_distance_m / target_duration_s  # ≈ 3.47 m/s
+        if constants is not None:
+            current_weight = 90.0 + 1.0  # 固定 1kg 负载
+            target_speed = run_speed_at_weight(constants, current_weight)
+        else:
+            current_weight = 90.0 + load_weight
+            acft_distance_m = 3218.0
+            target_speed = acft_distance_m / target_duration_s
         return Scenario(
             speed_profile=[(0, target_speed), (target_duration_s, target_speed)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=0.0,  # 平地
-            terrain_factor=1.0,  # 普通地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
             target_finish_time=target_duration_s,
             test_type="ACFT 2英里测试",
-            standard_load=0.0  # ACFT标准测试应为0KG
+            standard_load=0.0
         )
     
     @staticmethod
-    def create_urban_combat_scenario(load_weight=30.0):
-        """创建城市战斗场景"""
-        # 城市战斗速度曲线：快走->跑步->快走->冲刺->快走
+    def create_urban_combat_scenario(load_weight=30.0, constants=None):
+        """创建城市战斗场景。constants 不为 None 时用负重下的 walk/run/sprint 速度。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            walk = walk_speed_at_weight(constants, current_weight)
+            run = run_speed_at_weight(constants, current_weight)
+            sprint = sprint_speed_at_weight(constants, current_weight)
+            speed_profile = [(0, walk), (60, run), (120, walk), (180, sprint), (210, walk), (300, walk)]
+        else:
+            speed_profile = [(0, 2.5), (60, 3.8), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)]
         return Scenario(
-            speed_profile=[(0, 2.5), (60, 3.7), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=0.0,  # 平地
-            terrain_factor=1.2,  # 城市地形（有障碍物）
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=300.0,  # 5分钟场景
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.2,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=300.0,
             test_type="城市战斗场景"
         )
     
     @staticmethod
-    def create_mountain_combat_scenario(load_weight=25.0):
-        """创建山地战斗场景"""
-        # 山地战斗速度曲线：慢走->快走->慢走
+    def create_mountain_combat_scenario(load_weight=25.0, constants=None):
+        """创建山地战斗场景。constants 不为 None 时用负重下的 walk 速度（快走=walk，慢走=0.72*walk）。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            walk = walk_speed_at_weight(constants, current_weight)
+            slow = 0.72 * walk  # 1.8/2.5
+            speed_profile = [(0, slow), (120, walk), (240, slow), (360, slow)]
+        else:
+            speed_profile = [(0, 1.8), (120, 2.5), (240, 1.8), (360, 1.8)]
         return Scenario(
-            speed_profile=[(0, 1.8), (120, 2.5), (240, 1.8), (360, 1.8)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 负载
-            grade_percent=15.0,  # 15%坡度（山地）
-            terrain_factor=1.5,  # 山地地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.WALK,  # 行走
-            target_finish_time=360.0,  # 6分钟场景
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=15.0,
+            terrain_factor=1.5,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=360.0,
             test_type="山地战斗场景"
         )
     
     @staticmethod
-    def create_evacuation_scenario(load_weight=40.0):
-        """创建撤离场景（重载）"""
-        # 撤离速度曲线：快走->跑步->快走
+    def create_evacuation_scenario(load_weight=40.0, constants=None):
+        """创建撤离场景（重载）。constants 不为 None 时用负重下的 walk/run 速度。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            walk = walk_speed_at_weight(constants, current_weight)
+            run = run_speed_at_weight(constants, current_weight)
+            speed_profile = [(0, walk), (90, run), (180, walk), (270, walk)]
+        else:
+            speed_profile = [(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)]
         return Scenario(
-            speed_profile=[(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)],
-            current_weight=90.0 + load_weight,  # 体重90kg + 重载
-            grade_percent=5.0,  # 5%坡度
-            terrain_factor=1.3,  # 复杂地形
-            stance=Stance.STAND,  # 站立
-            movement_type=MovementType.RUN,  # 跑步
-            target_finish_time=270.0,  # 4.5分钟场景
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=5.0,
+            terrain_factor=1.3,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=270.0,
             test_type="撤离场景"
         )
 
     @staticmethod
-    def create_realistic_field_patrol_scenario(load_weight=30.0):
-        """创建 realistic 野战巡逻场景（模拟游戏内典型环境压力）
-
-        目的：使优化器在更接近真实游戏条件下调参，避免理想条件优化导致游戏内消耗偏高。
-        条件：草地+缓坡+中等地形，模拟 Everon 野外常见情况。
-        """
+    def create_realistic_field_patrol_scenario(load_weight=30.0, constants=None):
+        """野战巡逻场景。constants 不为 None 时用负重下的 run 速度（0.8*run 与 run）。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            run = run_speed_at_weight(constants, current_weight)
+            slow_run = 0.8 * run  # 2.8/3.5
+            speed_profile = [(0, slow_run), (120, run), (180, slow_run)]
+        else:
+            speed_profile = [(0, 2.8), (120, 3.5), (180, 2.8)]
         return Scenario(
-            speed_profile=[(0, 2.8), (120, 3.5), (180, 2.8)],  # 巡逻速度曲线
-            current_weight=90.0 + load_weight,
-            grade_percent=5.0,   # 5%缓坡（游戏中常见）
-            terrain_factor=1.35,  # 草地+轻度越野
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=5.0,
+            terrain_factor=1.35,
             stance=Stance.STAND,
             movement_type=MovementType.RUN,
-            target_finish_time=180.0,  # 3分钟
+            target_finish_time=180.0,
             test_type="野战巡逻场景"
         )
 
     @staticmethod
-    def create_run_sprint_boundary_scenario(load_weight=30.0):
-        """Run 与 Sprint 边界区测试（fast jog / tactical sprint）
-
-        速度 4.2 m/s 落在 3.8–4.6 m/s 边界，检测能量曲线不连续、stamina drop 突变；
-        避免优化器利用 Run/Sprint 分界空隙。60s 持续。
-        """
-        speed_m_s = 4.2
+    def create_run_sprint_boundary_scenario(load_weight=30.0, constants=None):
+        """Run 与 Sprint 边界区测试。constants 不为 None 时用 run 与 sprint 的中间速度。"""
+        current_weight = 90.0 + load_weight
         duration_s = 60.0
+        if constants is not None:
+            run = run_speed_at_weight(constants, current_weight)
+            sprint = sprint_speed_at_weight(constants, current_weight)
+            speed_m_s = run + 0.3 * (sprint - run)  # 边界介于 run 与 sprint 之间
+        else:
+            speed_m_s = 4.2
         return Scenario(
             speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
-            current_weight=90.0 + load_weight,
+            current_weight=current_weight,
             grade_percent=0.0,
             terrain_factor=1.0,
             stance=Stance.STAND,
-            movement_type=MovementType.RUN,  # 边界区可能被引擎判 Run 或 Sprint，用 RUN 作为基准
+            movement_type=MovementType.RUN,
             target_finish_time=duration_s,
             test_type="Run/Sprint边界60s"
         )
 
     @staticmethod
-    def create_heavy_load_scenario(load_weight=45.0):
-        """重量极端测试（长程/ T1 风格）
-
-        45kg、2.5 m/s、10 分钟；与 Chaos 坡度极端互补，避免模型仅在 30kg 区间最优。
-        任务参考：长程 40–50kg。
+    def create_heavy_load_scenario(load_weight=45.0, constants=None):
         """
-        speed_m_s = 2.5
-        duration_s = 600.0  # 10 min
+        重量极端测试（45kg、10 分钟）。
+        拟真修正：人类背 40kg+ 无法长途「跑」，用游骑兵 Ruck 标准 1.8 m/s 快走（WALK），
+        避免优化器为满足「重载跑 10 分钟」而把回血拉满、负重惩罚压到超人类。
+        """
+        current_weight = 90.0 + load_weight
+        duration_s = 600.0
+        if constants is not None:
+            speed_m_s = 1.8  # 游骑兵 Ruck March 战术快走配速，非跑
+            movement_type = MovementType.WALK
+        else:
+            speed_m_s = 2.5
+            movement_type = MovementType.RUN
         return Scenario(
             speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
-            current_weight=90.0 + load_weight,
+            current_weight=current_weight,
             grade_percent=0.0,
             terrain_factor=1.0,
             stance=Stance.STAND,
-            movement_type=MovementType.RUN,
+            movement_type=movement_type,
             target_finish_time=duration_s,
             test_type="重载45kg_10min"
         )
 
     @staticmethod
-    def create_long_duration_tactical_scenario(load_weight=30.0):
-        """长距离连续机动测试（最重要之一）
-
-        30kg、3.2 m/s、20 分钟；模拟真实战术中「持续 15–30 分钟中速机动」，
-        对 stamina 系统影响极大，避免仅短时场景最优。
-        """
-        speed_m_s = 3.2
-        duration_s = 1200.0  # 20 min
+    def create_long_duration_tactical_scenario(load_weight=30.0, constants=None, run_speed=None):
+        """长距离连续机动测试（30kg、20 分钟）。constants 或 run_speed 提供时用负重 run 速度。"""
+        current_weight = 90.0 + load_weight
+        duration_s = 1200.0
+        if run_speed is not None:
+            speed_m_s = run_speed
+        elif constants is not None:
+            speed_m_s = run_speed_at_weight(constants, current_weight)
+        else:
+            speed_m_s = 3.2
         return Scenario(
             speed_profile=[(0, speed_m_s), (duration_s, speed_m_s)],
-            current_weight=90.0 + load_weight,
+            current_weight=current_weight,
             grade_percent=0.0,
             terrain_factor=1.0,
             stance=Stance.STAND,
@@ -324,10 +364,15 @@ class ScenarioLibrary:
         )
 
     @staticmethod
-    def create_run_600m_flat_scenario(load_weight=30.0):
-        """30kg 平地跑道 600m（文献：剩余 70–76%，约束目标带 50–76%，<25% 跛行惩罚）"""
-        run_speed = 3.2  # m/s
-        duration_s = 600.0 / run_speed  # ~187.5s
+    def create_run_600m_flat_scenario(load_weight=30.0, run_speed=None, constants=None):
+        """30kg 平地跑道 600m。run_speed 或 constants 提供时用负重 run 速度。"""
+        if run_speed is not None:
+            pass
+        elif constants is not None:
+            run_speed = run_speed_at_weight(constants, 90.0 + load_weight)
+        else:
+            run_speed = 3.8
+        duration_s = 600.0 / float(run_speed)
         return Scenario(
             speed_profile=[(0, run_speed), (duration_s, run_speed)],
             current_weight=90.0 + load_weight,
@@ -340,10 +385,15 @@ class ScenarioLibrary:
         )
 
     @staticmethod
-    def create_run_1km_flat_scenario(load_weight=30.0):
-        """30kg 平地跑道 1000m（文献：剩余 50–60%，约束目标带 40–60%，<25% 跛行惩罚）"""
-        run_speed = 3.2  # m/s
-        duration_s = 1000.0 / run_speed  # ~312.5s
+    def create_run_1km_flat_scenario(load_weight=30.0, run_speed=None, constants=None):
+        """30kg 平地跑道 1000m。run_speed 或 constants 提供时用负重 run 速度。"""
+        if run_speed is not None:
+            pass
+        elif constants is not None:
+            run_speed = run_speed_at_weight(constants, 90.0 + load_weight)
+        else:
+            run_speed = 3.8
+        duration_s = 1000.0 / float(run_speed)
         return Scenario(
             speed_profile=[(0, run_speed), (duration_s, run_speed)],
             current_weight=90.0 + load_weight,
@@ -353,6 +403,66 @@ class ScenarioLibrary:
             movement_type=MovementType.RUN,
             target_finish_time=duration_s,
             test_type="30kg跑道1km"
+        )
+
+    @staticmethod
+    def create_cqb_stealth_scenario(load_weight=30.0, constants=None):
+        """CQB 低姿态清理场景（蹲姿 WALK）。constants 不为 None 时用负重下的 walk 速度比例。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            walk = walk_speed_at_weight(constants, current_weight)
+            speed_profile = [(0, 0.6 * walk), (60, walk), (120, 0.4 * walk), (180, walk)]  # 1.5/2.5, 1.0/2.5
+        else:
+            speed_profile = [(0, 1.5), (60, 2.5), (120, 1.0), (180, 2.5)]
+        return Scenario(
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.CROUCH,
+            movement_type=MovementType.WALK,
+            target_finish_time=180.0,
+            test_type="CQB低姿突击"
+        )
+
+    @staticmethod
+    def create_extreme_load_scenario(load_weight=55.0, constants=None):
+        """极限重载机动场景（55kg WALK）。constants 不为 None 时用该负重下的 walk 速度。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            speed_m_s = walk_speed_at_weight(constants, current_weight)
+            speed_profile = [(0, speed_m_s), (120, speed_m_s)]
+        else:
+            speed_profile = [(0, 1.5), (120, 1.5)]
+        return Scenario(
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.3,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=120.0,
+            test_type="极限55kg重载"
+        )
+
+    @staticmethod
+    def create_florida_swamp_scenario(load_weight=35.0, constants=None):
+        """佛罗里达热应激场景（35kg WALK）。constants 不为 None 时用该负重下的 walk 速度。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            speed_m_s = walk_speed_at_weight(constants, current_weight)
+            speed_profile = [(0, speed_m_s), (300, speed_m_s)]
+        else:
+            speed_profile = [(0, 2.0), (300, 2.0)]
+        return Scenario(
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=5.0,
+            terrain_factor=2.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.WALK,
+            target_finish_time=300.0,
+            test_type="佛罗里达热应激"
         )
 
 
@@ -380,26 +490,34 @@ class RSSSuperPipeline:
     例如 population=64、generation=100 → 约 6400 次评估通常已足够。
     当前默认 n_trials=500、population_size=300，可依需要增至 1000–3000。
     """
-    # 集中配置：可玩性惩罚系数与阈值（便于调参与文档）
+    # 集中配置：可玩性惩罚系数与阈值（75th Ranger Regiment 标准）
     # 生理参考见 docs/stamina_consumption_reference.md；下列为文献约束（剩余体力目标带 + 跛行惩罚）
+    # 游骑兵标准：极高的有氧/负重耐力，整体体力底线大幅上调
     PLAYABILITY = {
-        'min_stamina_threshold': 0.15,
-        'min_stamina_coeff': 1200.0,
-        'mean_stamina_threshold': 0.30,
-        'mean_stamina_coeff': 400.0,
-        'exhaustion_coeff': 1000.0,
-        'time_ratio_1_15_coeff': 250.0,
-        'time_ratio_1_30_coeff': 600.0,
-        # 30kg 600m：文献剩余 70–76%，游戏目标带 50–76%，<25% 跛行强惩罚
-        'run_600m_remaining_target_low': 0.50,
-        'run_600m_remaining_limp': 0.25,
-        'run_600m_below_target_coeff': 3500.0,
-        'run_600m_below_limp_coeff': 6000.0,
-        # 30kg 1000m：文献剩余 50–60%，游戏目标带 40–60%，<25% 跛行强惩罚
-        'run_1km_remaining_target_low': 0.40,
-        'run_1km_remaining_limp': 0.25,
-        'run_1km_below_target_coeff': 3500.0,
-        'run_1km_below_limp_coeff': 6000.0,
+        'min_stamina_threshold': 0.35,       # (原 0.15) 任何场景都不允许体力跌破 35%
+        'min_stamina_coeff': 2000.0,         # 加大惩罚力度
+        'mean_stamina_threshold': 0.55,      # (原 0.30) 整体任务平均体力维持 55% 以上
+        'mean_stamina_coeff': 800.0,
+        'exhaustion_coeff': 2000.0,
+        'time_ratio_1_15_coeff': 800.0,      # 严惩超时
+        'time_ratio_1_30_coeff': 1500.0,
+        # 30kg 600m：硬约束剪枝阈值（方案A 跑步不恢复后体力掉更多，放宽以免全部被剪枝）
+        'run_600m_remaining_target_low': 0.30,  # 剪枝线：低于此则 prune；0.75 过严导致无解
+        'run_600m_remaining_limp': 0.30,
+        'run_600m_below_target_coeff': 5000.0,
+        'run_600m_below_limp_coeff': 8000.0,
+        # 30kg 1000m：同上放宽
+        'run_1km_remaining_target_low': 0.25,   # 剪枝线；0.60 过严
+        'run_1km_remaining_limp': 0.30,
+        'run_1km_below_target_coeff': 5000.0,
+        'run_1km_below_limp_coeff': 8000.0,
+        # 29kg 3.8m/s 连续跑 300s 后体力下限（方案A 下掉得更狠，放宽以免全部剪枝）
+        'ranger_29kg_38ms_duration_s': 300,
+        'ranger_29kg_38ms_min_stamina': 0.05,  # 原 0.20；跑步不恢复后改为 0.05，仅过滤极端烂解
+        # 铺装路面跑步必须有净消耗（方案A 下恢复=0 自然满足，此项易过）
+        'flat_paved_run_duration_s': 300,
+        'flat_paved_run_load_kg': 29.0,
+        'flat_paved_run_max_stamina_after': 0.90,
     }
     # 集中配置：软约束惩罚系数（恢复顺序、姿态倍数等）
     CONSTRAINT = {
@@ -443,9 +561,9 @@ class RSSSuperPipeline:
         enable_joint_sprint_energy_constraint: bool = True,  # 是否启用冲刺-能量耦合软约束
         joint_sprint_energy_penalty_scale: float = 8000.0,  # 联合惩罚规模（线性系数）
         joint_sprint_energy_target_coeff: float = 1e-06,  # 目标 energy_to_stamina_coeff（与 C 预设 7-9e-7 对齐）
-        prune_on_critical_bug: bool = True,  # 关键 BUG（负体力/NaN/崩溃）时剪枝
-        prune_on_basic_fitness_fail: bool = True,  # 基础体能未通过时剪枝
-        basic_fitness_time_ratio_max: float = 1.45,  # 基础体能通过条件：actual_time/target_time <= 此值（放宽以配合新孪生逻辑）
+        prune_on_critical_bug: bool = False,  # 关键 BUG 时改为大惩罚不剪枝，避免帕累托为空
+        prune_on_basic_fitness_fail: bool = False,  # 基础体能未通过时改为惩罚不剪枝
+        basic_fitness_time_ratio_max: float = 1.30,  # 游骑兵标准：超时不超过 30%（比原 1.45 更严格，比 1.15 留有余量）
     ): 
         """
         初始化流水线
@@ -525,22 +643,26 @@ class RSSSuperPipeline:
         # C 端 EliteStandard/StandardMilsim/TacticalAction: 7e-7 ~ 9e-7
         # C 端 Custom 默认: 3.5e-5
         # 搜索范围覆盖 C 预设与 Custom，避免优化器与游戏参数尺度脱节
+        # 游骑兵版：上界收紧至 5e-6，防止搜索空间落入 >5e-6 的"普通大兵"耗能区间
+        # 保持下界 5e-7 不变，防止 1e-7 产生近零消耗的退化解（会被 physiological_realism 扣分）
         energy_to_stamina_coeff = trial.suggest_float(
-            'energy_to_stamina_coeff', 5e-07, 2e-05, log=True
+            'energy_to_stamina_coeff', 5e-07, 5e-06, log=True
         )
         
         # 恢复系统相关
         # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
         # 允许范围覆盖默认0.00035以上，否则默认值永远不可达
+        # 游骑兵版：提高下界至 1.5e-4，保证搜索空间内的参数具备足够的静态恢复能力
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1e-5, 8e-4, log=True  # 兼顾静止恢复与 Walk 30kg 净恢复
+            'base_recovery_rate', 1.5e-4, 8e-4, log=True  # 游骑兵底线：静止恢复不低于此水平
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
             'prone_recovery_multiplier', 1.5, 3.5  # 更宽松，下界1.5覆盖代码默认1.8
         )
+        # 游骑兵版：上界扩展至 2.5，允许优化器发现「边行军边恢复」的参数组合
         standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.3, 1.8  # 提高下界，确保>medium
+            'standing_recovery_multiplier', 1.3, 2.5  # 游骑兵：行军中快速呼吸调整恢复能力强
         )
         # 30kg Walk 需净恢复：penalty 过大会扼杀恢复。1e-3 时 penalty≈0.0016>>base_recovery
         load_recovery_penalty_coeff = trial.suggest_float(
@@ -551,25 +673,30 @@ class RSSSuperPipeline:
         )
         
         # 负重系统相关（改进：允许更低负重惩罚以通过30KG测试）
+        # 游骑兵版：上界收紧至 0.16，模拟背部核心肌群特化训练导致的极低负重掉速
         encumbrance_speed_penalty_coeff = trial.suggest_float(
-            'encumbrance_speed_penalty_coeff', 0.1, 0.22  # 降低上界，减轻速度限制
+            'encumbrance_speed_penalty_coeff', 0.10, 0.16  # 游骑兵：重装掉速极小
         )
         # [DEPRECATED] C 端负重速度惩罚改为“分段非线性 + 软阈值”，不再使用 exponent 参与曲线形状。
         # 仍保留该字段写入 JSON/C 端结构体以兼容旧配置，但优化器不再搜索该维度。
         encumbrance_speed_penalty_exponent = 1.5
+        # 游骑兵版：上界收紧至 0.70，防止极端负重（55kg）造成近乎定身（>70% 速度惩罚）
         encumbrance_speed_penalty_max = trial.suggest_float(
-            'encumbrance_speed_penalty_max', 0.4, 0.95
+            'encumbrance_speed_penalty_max', 0.40, 0.70
         )
+        # 游骑兵版：上界收紧至 1.25，模拟核心肌群负重耐力训练导致的极低额外耗能
+        # 放宽上限，让重装「跑」必须付出代价，避免优化器压到超人类（原 0.8–1.25）
         encumbrance_stamina_drain_coeff = trial.suggest_float(
-            'encumbrance_stamina_drain_coeff', 0.8, 1.6
+            'encumbrance_stamina_drain_coeff', 1.0, 1.6
         )
         
         # [DEPRECATED] 已统一 Pandolf 公式，C/Python 不再使用 Sprint 倍数；保留供 JSON 兼容
         sprint_stamina_drain_multiplier = 3.5
         
         # 疲劳系统相关
+        # 游骑兵版：上界收紧至 0.015，极难积累永久体力上限扣除（Tier-1 神经疲劳抗性）
         fatigue_accumulation_coeff = trial.suggest_float(
-            'fatigue_accumulation_coeff', 0.005, 0.03, log=True
+            'fatigue_accumulation_coeff', 0.005, 0.015, log=True
         )
         fatigue_max_factor = trial.suggest_float(
             'fatigue_max_factor', 1.5, 3.0
@@ -621,11 +748,14 @@ class RSSSuperPipeline:
         # 修复：与游戏 SCR_StaminaConsumption 语义一致，游戏将其作为消耗倍数使用
         # posture_crouch: 蹲姿行走消耗倍数 1.2~2.2（站立=1.0）
         # posture_prone: 趴姿匍匐消耗倍数 2.0~4.0
+        # 游骑兵版：范围收紧至 C 端配置文件的有效区间内，保证 JSON 嵌入后游戏内一致
+        # 蹲姿：1.5~2.0（C 端 Optuna 范围 1.8~2.3 的下半区，体现低姿肌肉耐力特化）
+        # 趴姿：2.0~2.8（C 端 Optuna 范围 2.2~2.8，仅微扩下界给游骑兵少量喘息空间）
         posture_crouch_multiplier = trial.suggest_float(
-            'posture_crouch_multiplier', 1.2, 2.2
+            'posture_crouch_multiplier', 1.5, 2.0
         )
         posture_prone_multiplier = trial.suggest_float(
-            'posture_prone_multiplier', max(posture_crouch_multiplier + 0.01, 2.3), 4.0
+            'posture_prone_multiplier', max(posture_crouch_multiplier + 0.01, 2.0), 2.8
         )
         
         # 动作消耗参数
@@ -743,6 +873,12 @@ class RSSSuperPipeline:
         # ==================== 4. 基础体能检查（ACFT 2英里测试，空载）====================
         # 这是最低标准，不是优化目标
         basic_fitness_passed = self._check_basic_fitness(twin)
+
+        # ==================== 4.5 硬约束：29kg 3.8m/s 连续跑 5 分钟后体力 ≥20%（工作台 ETA 约束）====================
+        self._check_ranger_29kg_38ms_eta(twin)
+
+        # ==================== 4.6 硬约束：铺装路面跑步必须有净消耗（避免「恢复≈消耗」不现实解）====================
+        self._check_flat_paved_net_drain(twin)
         
         # ==================== 5. 目标1：评估30KG可玩性（Playability Burden）====================
         
@@ -1113,10 +1249,10 @@ class RSSSuperPipeline:
 
         penalty = 0.0
 
-        # 1) Run：60秒 3.7m/s 空载
+        # 1) Run：60秒 3.8 m/s 空载
         # 期望：5% ≤ 消耗 ≤ 15%（避免消耗过大导致可玩性差）
         run_delta = simulate_fixed_speed(
-            speed=3.7,
+            speed=3.8,
             duration_seconds=60.0,
             current_weight=90.0,
             movement_type=MovementType.RUN,
@@ -1142,6 +1278,12 @@ class RSSSuperPipeline:
         actual_sprint_drop = max(0.0, -sprint_delta)
         # 与全局 sprint_drop_target 一致（默认 0.15~0.40），避免移动平衡与冲刺剩余/联合约束两套标准
         required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.15, 0.40))
+        # 硬约束：冲刺压降不得超过上限（例如 ≤40%）
+        # 目的：即便是帕累托前沿中最差的“踩线”解，也必须满足该生理底线。
+        if actual_sprint_drop > required_sprint_drop_max:
+            raise optuna.exceptions.TrialPruned(
+                f"Sprint Drop {actual_sprint_drop:.2%} 低于硬约束上限 {required_sprint_drop_max:.0%}"
+            )
         if actual_sprint_drop < required_sprint_drop_min:
             # 连续惩罚：低于下限按距离线性惩罚（可调系数）
             penalty += (required_sprint_drop_min - actual_sprint_drop) * getattr(self, 'sprint_drop_penalty_below', 4000.0)
@@ -1177,7 +1319,7 @@ class RSSSuperPipeline:
         检查基础体能标准（ACFT 2英里测试，空载）
         
         设计标准（与游戏时间缩放 tickScale=0.25 一致）：
-        - 0kg 负重，3.5km 用时 15分27秒（927秒），速度 3.776 m/s
+        - 0kg 负重，3.5km 用时 15分27秒（927秒），速度约 3.8 m/s
         - 体力最低不能跌破 20%
         - 平均体力应 > 25%
 
@@ -1187,8 +1329,8 @@ class RSSSuperPipeline:
         Returns:
             是否通过基础体能测试
         """
-        # 使用标准ACFT 2英里测试（空载）
-        scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0)
+        # 使用标准ACFT 2英里测试（空载），速度用当前负重下的 run 速度
+        scenario = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0, constants=twin.constants)
         
         try:
             results = twin.simulate_scenario(
@@ -1222,6 +1364,69 @@ class RSSSuperPipeline:
 
         except Exception:
             return False
+
+    def _check_ranger_29kg_38ms_eta(self, twin: RSSDigitalTwin) -> None:
+        """
+        硬约束：29kg 负重、3.8 m/s 奔跑在指定时长后体力不得低于阈值。
+        用于保证工作台中 ETA 明显高于 3min38s（当前反馈的“只能 3min38s”）。
+        不通过则剪枝。
+        """
+        pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
+        duration_s = float(pcfg.get('ranger_29kg_38ms_duration_s', 300))
+        min_stamina_req = float(pcfg.get('ranger_29kg_38ms_min_stamina', 0.20))
+        load_kg = 29.0
+        current_weight = 90.0 + load_kg
+        speed_profile = [(0.0, 3.8), (duration_s, 3.8)]
+        scenario_twin = RSSDigitalTwin(twin.constants)
+        results = scenario_twin.simulate_scenario(
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+        )
+        min_stamina = float(results['min_stamina'])
+        if min_stamina < min_stamina_req:
+            raise optuna.exceptions.TrialPruned(
+                f"29kg 3.8m/s 连续跑 {duration_s:.0f}s 后体力不足 {min_stamina_req:.0%}（当前最低 {min_stamina:.2%}）"
+            )
+
+    def _check_flat_paved_net_drain(self, twin: RSSDigitalTwin) -> None:
+        """
+        硬约束：铺装路面（grade=0, terrain=1.0）跑步必须有净消耗，不能出现「恢复≈消耗」体力持平。
+        避免优化器选出不现实参数导致平地跑不掉体力的现象。
+        不通过则剪枝。
+        """
+        pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
+        duration_s = float(pcfg.get('flat_paved_run_duration_s', 300))
+        load_kg = float(pcfg.get('flat_paved_run_load_kg', 29.0))
+        max_stamina_after = float(pcfg.get('flat_paved_run_max_stamina_after', 0.90))
+        current_weight = 90.0 + load_kg
+        run_speed = run_speed_at_weight(twin.constants, current_weight)
+        scenario_twin = RSSDigitalTwin(twin.constants)
+        scenario_twin.reset()
+        dt = 0.2
+        t = 0.0
+        while t < duration_s:
+            scenario_twin.step(
+                run_speed,
+                current_weight,
+                0.0,
+                1.0,
+                Stance.STAND,
+                MovementType.RUN,
+                t + dt,
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                wind_drag=0.0,
+            )
+            t += dt
+        stamina_after = float(scenario_twin.stamina)
+        if stamina_after > max_stamina_after:
+            raise optuna.exceptions.TrialPruned(
+                f"铺装路面跑步无净消耗（{duration_s:.0f}s 后体力={stamina_after:.2%} > {max_stamina_after:.0%}），不符合现实"
+            )
     
     def _evaluate_30kg_playability(self, twin: RSSDigitalTwin) -> float:
         """
@@ -1233,17 +1438,22 @@ class RSSSuperPipeline:
         Returns:
             可玩性负担（越小越好）
         """
-        # 多负载 + 边界/重载/长时 + 文献约束(600m/1km)：见 stamina_consumption_reference.md
+        # 所有场景速度均按当前参数下的负重速度计算（run/walk/sprint_at_weight）
+        c = twin.constants
+        run_speed_30kg = run_speed_at_weight(c, 90.0 + 30.0)
         scenarios = [
-            ScenarioLibrary.create_acft_2mile_scenario(load_weight=1.36),
-            ScenarioLibrary.create_urban_combat_scenario(load_weight=35.0),
-            ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0),
-            ScenarioLibrary.create_realistic_field_patrol_scenario(load_weight=30.0),
-            ScenarioLibrary.create_run_sprint_boundary_scenario(load_weight=30.0),
-            ScenarioLibrary.create_heavy_load_scenario(load_weight=45.0),
-            ScenarioLibrary.create_long_duration_tactical_scenario(load_weight=30.0),
-            ScenarioLibrary.create_run_600m_flat_scenario(load_weight=30.0),
-            ScenarioLibrary.create_run_1km_flat_scenario(load_weight=30.0),
+            ScenarioLibrary.create_acft_2mile_scenario(load_weight=1.36, constants=c),
+            ScenarioLibrary.create_urban_combat_scenario(load_weight=35.0, constants=c),
+            ScenarioLibrary.create_mountain_combat_scenario(load_weight=25.0, constants=c),
+            ScenarioLibrary.create_realistic_field_patrol_scenario(load_weight=30.0, constants=c),
+            ScenarioLibrary.create_run_sprint_boundary_scenario(load_weight=30.0, constants=c),
+            ScenarioLibrary.create_heavy_load_scenario(load_weight=45.0, constants=c),
+            ScenarioLibrary.create_long_duration_tactical_scenario(load_weight=30.0, constants=c, run_speed=run_speed_30kg),
+            ScenarioLibrary.create_run_600m_flat_scenario(load_weight=30.0, run_speed=run_speed_30kg, constants=c),
+            ScenarioLibrary.create_run_1km_flat_scenario(load_weight=30.0, run_speed=run_speed_30kg, constants=c),
+            ScenarioLibrary.create_cqb_stealth_scenario(load_weight=30.0, constants=c),
+            ScenarioLibrary.create_extreme_load_scenario(load_weight=55.0, constants=c),
+            ScenarioLibrary.create_florida_swamp_scenario(load_weight=35.0, constants=c),
         ]
         
         # 使用并行处理提高性能
@@ -1254,6 +1464,9 @@ class RSSSuperPipeline:
                 scenario_twin = RSSDigitalTwin(twin.constants)
                 # 重置twin状态
                 scenario_twin.reset()
+                # 为"佛罗里达热应激"场景注入 35°C，激活 heat_stress 计算路径
+                # 其余所有场景不传入温度，使用孪生体默认行为（无热应激）
+                temp_celsius = 35.0 if getattr(scenario, 'test_type', '') == '佛罗里达热应激' else None
                 results = scenario_twin.simulate_scenario(
                     speed_profile=scenario.speed_profile,
                     current_weight=scenario.current_weight,
@@ -1261,7 +1474,8 @@ class RSSSuperPipeline:
                     terrain_factor=scenario.terrain_factor,
                     stance=scenario.stance,
                     movement_type=scenario.movement_type,
-                    enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
+                    enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                    temperature_celsius=temp_celsius
                 )
                 
                 # 计算当前场景的可玩性负担（连续型，避免大量解被压成同一常数）
@@ -1341,14 +1555,27 @@ class RSSSuperPipeline:
                         f"30kg 600m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
                     )
             elif test_type == '30kg跑道1km':
-                thr = pcfg.get('run_1km_remaining_target_low', 0.40)
+                thr = pcfg.get('run_1km_remaining_target_low', 0.60)
                 if min_stamina < thr:
                     raise optuna.exceptions.TrialPruned(
                         f"30kg 1000m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
                     )
         
         total_burden = 0.0
-        weights = [0.22, 0.16, 0.12, 0.12, 0.10, 0.08, 0.07, 0.07, 0.06]  # +30kg600m、30kg1km（文献约束）
+        weights = [
+            0.05,  # 0: ACFT 2英里（基础体能，不需占比过高）
+            0.05,  # 1: 城市战斗 35kg
+            0.05,  # 2: 山地战斗 25kg
+            0.10,  # 3: 野战巡逻 30kg
+            0.05,  # 4: Run/Sprint 边界 30kg
+            0.15,  # 5: 重载 45kg 10min（核心重装越野测试）
+            0.15,  # 6: 持续 20min 30kg（核心持久力测试）
+            0.05,  # 7: 600m 30kg（文献硬约束）
+            0.05,  # 8: 1000m 30kg（文献硬约束）
+            0.10,  # 9: CQB 低姿突击（蹲姿参数盲区修复）
+            0.10,  # 10: 极限 55kg 重载（encumbrance_speed_penalty_max 压力测试）
+            0.10,  # 11: 佛罗里达热应激（热应激参数盲区修复）
+        ]  # 合计：1.00；游骑兵场景（9-11）占比 30%，重装/持久力（5-6）占比 30%
 
         for i, (scenario_burden, scenario, _) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
@@ -1870,10 +2097,10 @@ class RSSSuperPipeline:
         sprint_profile = [(0, 5.0), (30, 0.0), (90, 0.0)]
         sprint_res = run_sample(90.0, sprint_profile, 90.0)
 
-        # 3) ACFT 验证样本（空载）
+        # 3) ACFT 验证样本（空载，速度用负重下的 run）
         acft_res = None
         try:
-            acft = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0)
+            acft = ScenarioLibrary.create_acft_2mile_scenario(load_weight=0.0, constants=twin.constants)
             acft_res = twin.simulate_scenario(
                 speed_profile=acft.speed_profile,
                 current_weight=acft.current_weight,
@@ -1955,7 +2182,7 @@ class RSSSuperPipeline:
         twin.reset()
         twin.stamina = 1.0
         for i in range(300):
-            twin.step(3.7, 90.0, 0.0, 1.0, 0, MovementType.RUN, i * 0.2, False)
+            twin.step(3.8, 90.0, 0.0, 1.0, 0, MovementType.RUN, i * 0.2, False)
         run_drop = 1.0 - twin.stamina
         twin.reset()
         twin.stamina = 1.0
@@ -2269,7 +2496,7 @@ def main():
     # 设置为500次迭代以快速验证优化效果
     # use_database=False 使用内存存储以提高性能（默认）
     # 如果需要后续诊断，可以设置 use_database=True（但会降低性能）
-    pipeline = RSSSuperPipeline(n_trials=500, n_jobs=n_jobs, use_database=False)
+    pipeline = RSSSuperPipeline(n_trials=1000, n_jobs=n_jobs, use_database=False)
     
     # 如果使用GUI，设置回调函数
     if use_gui:

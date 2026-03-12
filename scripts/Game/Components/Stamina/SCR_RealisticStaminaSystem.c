@@ -116,7 +116,7 @@ class RealisticStaminaSpeedSystem
     //
     // 速度性能分段（Performance Plateau）：
     // 1. 平台期（Willpower Zone, Stamina 25% - 100%）：
-    //    只要体力高于25%，士兵可以强行维持设定的目标速度（3.7 m/s）。
+    //    只要体力高于25%，士兵可以强行维持设定的目标速度（3.8 m/s）。
     //    这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
     // 2. 衰减期（Failure Zone, Stamina 0% - 25%）：
     //    只有当体力掉入最后25%时，生理机能开始真正崩塌，速度迅速线性下降到跛行。
@@ -132,7 +132,7 @@ class RealisticStaminaSpeedSystem
         
         if (staminaPercent >= SMOOTH_TRANSITION_START)
         {
-            // 意志力平台期（25%-100%）：保持恒定目标速度（3.7 m/s）
+            // 意志力平台期（25%-100%）：保持恒定目标速度（3.8 m/s）
             // 模拟士兵通过意志力克服早期疲劳，维持恒定性能
             baseSpeedMultiplier = TARGET_RUN_SPEED_MULTIPLIER;
         }
@@ -147,7 +147,7 @@ class RealisticStaminaSpeedSystem
             float smoothT = t * t * (3.0 - 2.0 * t); // smoothstep函数
             
             // 在目标速度和跛行速度之间平滑过渡
-            // 当体力从25%降到5%时，速度从3.7m/s平滑降到跛行速度
+            // 当体力从25%降到5%时，速度从3.8 m/s平滑降到跛行速度
             baseSpeedMultiplier = MIN_LIMP_SPEED_MULTIPLIER + (TARGET_RUN_SPEED_MULTIPLIER - MIN_LIMP_SPEED_MULTIPLIER) * smoothT;
         }
         else
@@ -963,11 +963,11 @@ class RealisticStaminaSpeedSystem
     // 公式：W = 6 · e^(-3.5 · |S + 0.05|)，其中 W 为步行速度 (km/h)，S 为坡度 (tan θ)
     // 特点：最大速度出现在约 -3° 到 -5° 的小下坡上（约 6 km/h），上坡或过陡下坡都会快速衰减
     //
-    // 归一化：以平地 (S=0) 为 1.0，使 0 kg 平地下能达到引擎最大速度 (5.2 m/s)。
-    // 早期开发已验证引擎最大速度为 5.2 m/s；此前用 6 km/h 归一化导致平地仅 ~84%。
+    // 归一化：以平地 (S=0) 为 1.0，使 0 kg 平地下能达到引擎最大速度 (5.5 m/s)。
+    // 0kg 下实测：Sprint 最大 5.5 m/s，Run 最大 3.8 m/s。
     // 平地参考值：W(0) = 6·e^(-0.175) ≈ 5.04 km/h
     //
-    // @param baseTargetSpeed 基础目标速度（m/s），例如 3.7 m/s
+    // @param baseTargetSpeed 基础目标速度（m/s），例如 3.8 m/s
     // @param slopeAngleDegrees 坡度角度（度），正数=上坡，负数=下坡
     // @return 坡度自适应后的目标速度（m/s）
     static float CalculateSlopeAdjustedTargetSpeed(float baseTargetSpeed, float slopeAngleDegrees)
@@ -981,7 +981,7 @@ class RealisticStaminaSpeedSystem
         float exponent = -3.5 * Math.AbsFloat(S + 0.05);
         float W_kmh = 6.0 * Math.Pow(2.718281828, exponent);
 
-        // 以平地 (S=0) 为 1.0，使平地下满速（引擎 5.2 m/s）
+        // 以平地 (S=0) 为 1.0，使平地下满速（引擎 5.5 m/s）
         float toblerMultiplier = W_kmh / TOBLER_W_AT_FLAT_KMH;
         // 设置下限，避免陡坡时速度过慢
         toblerMultiplier = Math.Max(toblerMultiplier, 0.15);

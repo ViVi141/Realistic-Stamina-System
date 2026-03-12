@@ -15,7 +15,7 @@ from typing import List, Dict, Tuple, Optional
 import random
 
 # Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 一致
-# 公式形状保留（上坡/陡下坡减速），归一化以平地=1.0，使 0 kg 平地下达引擎最大 5.2 m/s
+# 公式形状保留（上坡/陡下坡减速），归一化以平地=1.0，使 0 kg 平地下达引擎最大 5.5 m/s
 
 
 def tobler_speed_multiplier(angle_deg: float, w_max_kmh: float = 6.0,
@@ -36,7 +36,7 @@ def tobler_speed_multiplier(angle_deg: float, w_max_kmh: float = 6.0,
 class RSSConstants:
     """RSS 常量，与 C 端 SCR_StaminaConstants.c 一一对应"""
 
-    GAME_MAX_SPEED = 5.2
+    GAME_MAX_SPEED = 5.5
     CHARACTER_WEIGHT = 90.0
     REFERENCE_WEIGHT = 90.0
     BASE_WEIGHT = 1.36
@@ -101,13 +101,13 @@ class RSSConstants:
     LOAD_RECOVERY_PENALTY_COEFF = 0.0001
     LOAD_RECOVERY_PENALTY_EXPONENT = 2.0
 
-    SPRINT_VELOCITY_THRESHOLD = 5.2
+    SPRINT_VELOCITY_THRESHOLD = 5.5
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] C 端已统一公式，Python twin 不应用此倍数
-    TARGET_RUN_SPEED = 3.7
-    TARGET_RUN_SPEED_MULTIPLIER = 3.7 / 5.2  # 0.7115
+    TARGET_RUN_SPEED = 3.8
+    TARGET_RUN_SPEED_MULTIPLIER = 3.8 / 5.5
     SMOOTH_TRANSITION_START = 0.25
     SMOOTH_TRANSITION_END = 0.05
-    MIN_LIMP_SPEED_MULTIPLIER = 1.0 / 5.2  # 1.0 m/s
+    MIN_LIMP_SPEED_MULTIPLIER = 1.0 / 5.5
     EXHAUSTION_THRESHOLD = 0.0
     SPRINT_ENABLE_THRESHOLD = 0.15
     SPRINT_SPEED_BOOST = 0.30  # 从配置获取，默认 0.30
@@ -152,6 +152,91 @@ class RSSConstants:
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
+
+
+def encumbrance_speed_penalty_base(constants, current_weight: float) -> float:
+    """
+    与 RSSDigitalTwin._encumbrance_speed_penalty_base 一致，基于常量与总重计算负重速度惩罚基数。
+    用于在无孪生实例时计算「当前负重下的 run 速度」。
+    """
+    base_w = getattr(constants, 'BASE_WEIGHT', 1.36)
+    bw = getattr(constants, 'CHARACTER_WEIGHT', 90.0)
+    coeff = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_COEFF', 0.20)
+    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+    effective_load = max(0.0, current_weight - bw - base_w)
+    ratio = effective_load / bw if bw > 0.0 else 0.0
+    ratio = float(np.clip(ratio, 0.0, 2.0))
+    raw = 0.0
+    if ratio <= 0.3:
+        raw = 0.15 * ratio
+    elif ratio <= 0.6:
+        seg = ratio - 0.3
+        raw = 0.045 + 0.35 * (seg ** 1.5)
+    else:
+        seg = ratio - 0.6
+        raw = 0.25 + 0.65 * (seg * seg)
+    if 0.20 > 0.0:
+        raw = raw * (coeff / 0.20)
+    return float(np.clip(raw, 0.0, max_pen))
+
+
+def run_speed_at_weight(constants, current_weight: float) -> float:
+    """
+    返回在给定总重（body+equipment）下、满体力时的 RUN 速度 (m/s)。
+    与 C 端一致：Run 时 enc_penalty = base_pen * (1 + currentSpeed/GAME_MAX_SPEED)，再 clamp 到 max_pen；
+    不动点 v = target_run * (1 - enc_penalty(v)) 解得
+    v = target_run*(1-base_pen)/(1 + target_run*base_pen/game_max)，若 enc>max_pen 则 v = target_run*(1-max_pen)。
+    """
+    game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
+    target_run = getattr(constants, 'TARGET_RUN_SPEED', 3.8)
+    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
+    denom = 1.0 + target_run * base_pen / game_max
+    v = target_run * (1.0 - base_pen) / denom
+    enc_at_v = base_pen * (1.0 + v / game_max)
+    if enc_at_v > max_pen:
+        v = target_run * (1.0 - max_pen)
+    return float(np.clip(v, 0.15 * game_max, target_run))
+
+
+def walk_speed_at_weight(constants, current_weight: float) -> float:
+    """
+    返回在给定总重下、满体力时的 WALK 速度 (m/s)。
+    与 C 端 WALK 逻辑一致：mult = (walk_base*0.8)*(1 - enc_penalty)，speed_ratio 取 0.8。
+    """
+    game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
+    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
+    speed_ratio = 0.8
+    enc_penalty = base_pen * (1.0 + speed_ratio)
+    enc_penalty = float(np.clip(enc_penalty, 0.0, max_pen))
+    return float(game_max * 0.8 * (1.0 - enc_penalty))
+
+
+def sprint_speed_at_weight(constants, current_weight: float) -> float:
+    """
+    返回在给定总重下、满体力时的 SPRINT 速度 (m/s)。
+    与 C 端 SPRINT 逻辑一致：
+    - 先计算该负重下的 Run 速度（已包含 encumbrance 减速）
+    - 再在 Run 基础上乘以 (1 + sprint_boost)
+    - 然后应用 Sprint 额外的 encumbrance 惩罚（base_pen * 1.5），并 clamp 到 max_pen
+    - 最终速度 clamp 到 GAME_MAX_SPEED（引擎最大 5.5 m/s）
+    """
+    game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
+    sprint_boost = getattr(constants, 'SPRINT_SPEED_BOOST', 0.30)
+    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
+    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
+
+    # 先得到该负重下的 Run 速度（已包含基础 encumbrance 惩罚）
+    run_speed = run_speed_at_weight(constants, current_weight)
+
+    # Sprint 额外 encumbrance 惩罚（C 端：Run 基础 enc_penalty 再乘 1.5）
+    enc_penalty = float(np.clip(base_pen * 1.5, 0.0, max_pen))
+
+    # 在 Run 速度上应用 Sprint 提升与额外惩罚，并限制到引擎最大速度
+    sprint_speed = run_speed * (1.0 + sprint_boost) * (1.0 - enc_penalty)
+    sprint_speed = float(np.clip(sprint_speed, 0.0, game_max))
+    return sprint_speed
 
 
 class EnvironmentFactor:
@@ -377,7 +462,7 @@ class RSSDigitalTwin:
         base_for_recovery 用于恢复计算中减去静态消耗。
         """
         bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
-        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         rest_per_tick = getattr(self.constants, 'REST_RECOVERY_PER_TICK', 0.0005)
 
         # 1. 基础消耗率 (C: StaminaUpdateCoordinator.CalculateLandBaseDrainRate)
@@ -505,11 +590,11 @@ class RSSDigitalTwin:
 
         recovery_rate = max(recovery_rate, 0.0)
 
-        # 速度调整 (SCR_StaminaRecovery 136-150)
+        # 速度调整（方案A：跑步/冲刺彻底不恢复，与 C 端一致，避免 0.81 卡线）
         if current_speed >= 5.0:
-            recovery_rate *= 0.1
+            recovery_rate *= 0.0
         elif current_speed >= 3.2:
-            recovery_rate *= 0.3
+            recovery_rate *= 0.0
         elif current_speed >= 0.1:
             recovery_rate *= 0.8
 
@@ -588,17 +673,12 @@ class RSSDigitalTwin:
 
             if self.is_in_epoc_delay:
                 epoc_rate = self.constants.EPOC_DRAIN_RATE * (
-                    1.0 + np.clip(self.speed_before_stop / 5.2, 0.0, 1.0) * 0.5)
+                    1.0 + np.clip(self.speed_before_stop / 5.5, 0.0, 1.0) * 0.5)
                 total_drain = total_drain + epoc_rate
 
             recovery_rate = self._calculate_recovery_rate(
                 self.stamina, self.rest_duration_minutes, self.exercise_duration_minutes,
                 current_weight, base_for_rec, False, stance, self.environment_factor, speed)
-
-            # Run/Sprint 时仍计算恢复，但保证整体净消耗（恢复率不超过消耗，避免净恢复）
-            if (movement_type == MovementType.RUN or movement_type == MovementType.SPRINT) and speed >= 0.1:
-                if recovery_rate > total_drain:
-                    recovery_rate = float(total_drain)
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
             net_change = recovery_rate - total_drain
@@ -635,8 +715,8 @@ class RSSDigitalTwin:
         stamina_percent = np.clip(float(stamina_percent), 0.0, 1.0)
         start = getattr(self.constants, 'SMOOTH_TRANSITION_START', 0.25)
         end = getattr(self.constants, 'SMOOTH_TRANSITION_END', 0.05)
-        target_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.7 / 5.2)
-        min_limp = getattr(self.constants, 'MIN_LIMP_SPEED_MULTIPLIER', 1.0 / 5.2)
+        target_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
+        min_limp = getattr(self.constants, 'MIN_LIMP_SPEED_MULTIPLIER', 1.0 / 5.5)
         if stamina_percent >= start:
             return target_mult
         if stamina_percent >= end:
@@ -657,7 +737,7 @@ class RSSDigitalTwin:
     ) -> float:
         """与 C CalculateFinalSpeedMultiplier 一致，返回 m/s。平地，无坡度。"""
         c = self.constants
-        game_max = getattr(c, 'GAME_MAX_SPEED', 5.2)
+        game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
         bw = getattr(c, 'CHARACTER_WEIGHT', 90.0)
         base_w = getattr(c, 'BASE_WEIGHT', 1.36)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
@@ -822,7 +902,7 @@ class RSSDigitalTwin:
         current_time = 0.0
         total_distance = 0.0
         nominal_distance = 0.0
-        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.2)
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(stance, 1.0)
 
@@ -881,6 +961,6 @@ if __name__ == '__main__':
     # 30kg 城市战斗
     twin.reset()
     results = twin.simulate_scenario(
-        [(0, 2.5), (60, 3.7), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)],
+        [(0, 2.5), (60, 3.8), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)],
         120.0, 0.0, 1.2, Stance.STAND, MovementType.RUN, enable_randomness=False)
     print(f"Urban 30kg: min_stamina={results['min_stamina']:.4f}")

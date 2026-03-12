@@ -63,7 +63,7 @@ class StaminaRecoveryCalculator
     static float CalculateEpocDrainRate(float speedBeforeStop)
     {
         float epocDrainRate = StaminaConstants.EPOC_DRAIN_RATE;
-        float speedRatioForEpoc = Math.Clamp(speedBeforeStop / 5.2, 0.0, 1.0);
+        float speedRatioForEpoc = Math.Clamp(speedBeforeStop / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
         epocDrainRate = epocDrainRate * (1.0 + speedRatioForEpoc * 0.5); // 最多增加50%
         return epocDrainRate;
     }
@@ -126,27 +126,24 @@ class StaminaRecoveryCalculator
             recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
         }
         
-        // ==================== 运动状态恢复率调整 ====================
-        
-        // 根据当前速度调整恢复率
-        // - 静止时：正常恢复率
-        // - Walk状态：适当恢复率，允许净恢复
-        // - Run状态：大幅降低恢复率，确保消耗率大于恢复率
-        // - Sprint状态：几乎不恢复
+        // ==================== 运动状态恢复率调整（方案A：跑步/冲刺彻底不恢复，避免 0.81 卡线）====================
+        //
+        // - 静止：正常恢复
+        // - Walk：0.8 倍，允许净恢复
+        // - Run / Sprint：0，跑步时仅消耗不恢复，体力单调下降无平衡点
         float speedBasedRecoveryMultiplier = 1.0;
         if (currentSpeed >= 5.0) // Sprint
         {
-            speedBasedRecoveryMultiplier = 0.1; // 几乎不恢复
+            speedBasedRecoveryMultiplier = 0.0;
         }
         else if (currentSpeed >= 3.2) // Run
         {
-            speedBasedRecoveryMultiplier = 0.3; // 大幅降低恢复率
+            speedBasedRecoveryMultiplier = 0.0;
         }
         else if (currentSpeed >= 0.1) // Walk
         {
-            speedBasedRecoveryMultiplier = 0.8; // 适当降低恢复率，允许净恢复
+            speedBasedRecoveryMultiplier = 0.8;
         }
-        // 静止时：speedBasedRecoveryMultiplier = 1.0（正常恢复）
         
         // 应用速度基于的恢复率调整
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;

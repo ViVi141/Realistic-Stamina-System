@@ -134,9 +134,9 @@ python rss_super_pipeline.py
 **主要常数**:
 ```python
 # 游戏常数
-GAME_MAX_SPEED = 5.2  # m/s
+GAME_MAX_SPEED = 5.5  # m/s（0kg 冲刺最大）
 CHARACTER_WEIGHT = 90.0  # kg
-TARGET_RUN_SPEED = 3.7  # m/s
+TARGET_RUN_SPEED = 3.8  # m/s（0kg Run 最大）
 
 # 医学模型
 PANDOLF_VELOCITY_COEFF = 0.6

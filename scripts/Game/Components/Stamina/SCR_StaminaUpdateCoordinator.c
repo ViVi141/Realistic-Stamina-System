@@ -569,20 +569,6 @@ class StaminaUpdateCoordinator
                 environmentFactor,
                 currentSpeed);
 
-            // Run/Sprint 时仍计算恢复，但保证整体净消耗（恢复率不超过总消耗，避免净恢复）
-            int movementPhase = -1;
-            bool isSprintingNow = false;
-            if (controller)
-            {
-                movementPhase = controller.GetCurrentMovementPhase();
-                isSprintingNow = controller.IsSprinting();
-            }
-            bool isHighEffortMove = (isSprintingNow || movementPhase == 2 || movementPhase == 3);
-            if (isHighEffortMove && currentSpeed >= 0.1 && recoveryRate > totalDrainRate)
-            {
-                recoveryRate = totalDrainRate;
-            }
-            
             // ==================== 热应激对恢复的影响（模块化）====================
             // 生理学依据：高温不仅让人动起来累，更让人休息不回来
             // 热应激越大，恢复倍数越小（恢复速度越慢）
@@ -711,20 +697,6 @@ class StaminaUpdateCoordinator
                 staminaPercent, restDurationMinutes, exerciseDurationMinutes,
                 currentWeightForRecovery, staticDrainForRecovery, false, stanceInt,
                 envFactor, speedForRecovery);
-
-            if (!inVehicle)
-            {
-                int movementPhase = -1;
-                bool isSprintingNow = false;
-                if (controller)
-                {
-                    movementPhase = controller.GetCurrentMovementPhase();
-                    isSprintingNow = controller.IsSprinting();
-                }
-                bool isHighEffortMove = (isSprintingNow || movementPhase == 2 || movementPhase == 3);
-                if (isHighEffortMove && currentSpeed >= 0.1 && recoveryRate > totalDrainRate)
-                    recoveryRate = totalDrainRate;
-            }
 
             recoveryRate = recoveryRate * heatPenalty;
         }

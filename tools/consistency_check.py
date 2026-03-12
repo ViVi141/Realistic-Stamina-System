@@ -55,14 +55,14 @@ def main():
 
     twin.reset()
     print('[consistency_check] 场景2：匀速跑 10 分钟（Run）')
-    run_scenario(twin, duration_s=600.0, speed_m_s=3.7, weight=30.0, stance=Stance.STAND, movement_type=MovementType.RUN)
+    run_scenario(twin, duration_s=600.0, speed_m_s=3.8, weight=30.0, stance=Stance.STAND, movement_type=MovementType.RUN)
     res = analyze_history(twin.stamina_history)
     print('  ->', res)
     checks.append(('run_10min', res))
 
     twin.reset()
     print('[consistency_check] 场景3：冲刺短时 60 秒（Sprint）')
-    run_scenario(twin, duration_s=60.0, speed_m_s=5.2, weight=20.0, stance=Stance.STAND, movement_type=MovementType.SPRINT)
+    run_scenario(twin, duration_s=60.0, speed_m_s=5.5, weight=20.0, stance=Stance.STAND, movement_type=MovementType.SPRINT)
     res = analyze_history(twin.stamina_history)
     print('  ->', res)
     checks.append(('sprint_60s', res))

@@ -848,6 +848,8 @@ modded class SCR_CharacterControllerComponent
                     vehicleTimeToFullSec = (targetStamina - vehicleStaminaPercent) / vehicleNetRatePerSec;
                     if (vehicleTimeToFullSec < 0.5)
                         vehicleTimeToFullSec = 0.5;  // 避免 HUD 因 <0.5 显示黑色
+                    if (vehicleTimeToFullSec > 7200.0)
+                        vehicleTimeToFullSec = 7200.0;
                 }
                 
                 float vehicleDebugWeight = 0.0;
@@ -1229,8 +1231,8 @@ modded class SCR_CharacterControllerComponent
         
         // 计算体力消耗率（基于精确 Pandolf 模型）
         // 使用绝对速度（m/s），而不是相对速度，以符合医学模型
-        // GAME_MAX_SPEED = 5.2 m/s（游戏最大速度）
-        float speedRatio = Math.Clamp(currentSpeed / 5.2, 0.0, 1.0);
+        // GAME_MAX_SPEED = 5.5 m/s（0kg 冲刺最大），Run 3.8 m/s
+        float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
         
         // ==================== 融合模型：基于速度阈值的分段消耗率 + 多维度特性 ====================
         // 融合两种模型：
@@ -1238,9 +1240,9 @@ modded class SCR_CharacterControllerComponent
         // 2. 多维度特性（健康状态、累积疲劳、代谢适应）
         // 
         // 基础消耗率基于速度阈值：
-        // - Sprint (V ≥ 5.2 m/s): 0.480 pts/s
-        // - Run (3.7 ≤ V < 5.2 m/s): 0.105 pts/s
-        // - Walk (3.2 ≤ V < 3.7 m/s): 0.060 pts/s
+        // - Sprint (V ≥ 5.5 m/s): 0.480 pts/s
+        // - Run (3.8 ≤ V < 5.5 m/s): 0.105 pts/s
+        // - Walk (3.2 ≤ V < 3.8 m/s): 0.060 pts/s
         // - Rest (V < 3.2 m/s): -0.250 pts/s（恢复）
         //
         // 然后应用多维度修正：
@@ -1521,10 +1523,19 @@ modded class SCR_CharacterControllerComponent
                     float targetStamina = 1.0;
                     if (m_pFatigueSystem)
                         targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
-                    if (netRate < -0.0001)
+                    // ETA 基于当前净率与当前体力，净率与 UpdateStaminaValue 一致（每 0.2s 率×5 为/秒）
+                if (netRate < -0.0001)
+                    {
                         timeToDepleteSec = staminaPercent / Math.AbsFloat(netRate);
+                        if (timeToDepleteSec > 7200.0)
+                            timeToDepleteSec = 7200.0;  // 上限 2h，避免净率接近 0 时显示异常大值
+                    }
                     else if (netRate > 0.0001 && staminaPercent < targetStamina)
+                    {
                         timeToFullSec = (targetStamina - staminaPercent) / netRate;
+                        if (timeToFullSec > 7200.0)
+                            timeToFullSec = 7200.0;
+                    }
                 }
 
                 string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);

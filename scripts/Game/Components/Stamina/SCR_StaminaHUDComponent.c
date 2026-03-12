@@ -247,18 +247,23 @@ class SCR_StaminaHUDComponent
         int wetKg = Math.Round(s_fCachedWetWeight * 10.0);  // 保留一位小数
         
         // 构建耗尽/回满时间显示字符串（净消耗显示耗尽时间，净恢复显示回满时间，平衡/已耗尽/已回满显示 0）
+        // 耗尽 ETA 按显示体力/缓存体力比例缩放，使倒计时与 HUD 体力条一致；回满 ETA 不缩放（目标可能为疲劳上限）
         string timeStr = "0";
         bool showBlackZero = false;
+        float displayTimeToDepleteSec = s_fCachedTimeToDepleteSec;
+        if (s_fCachedTimeToDepleteSec >= 0.0 && s_fCachedStaminaPercent > 0.001)
+            displayTimeToDepleteSec = s_fCachedTimeToDepleteSec * (s_fDisplayStaminaPercent / s_fCachedStaminaPercent);
+
         if (s_fCachedTimeToDepleteSec >= 0.0)
         {
-            if (s_fCachedTimeToDepleteSec < 0.5)
+            if (displayTimeToDepleteSec < 0.5)
             {
                 timeStr = "0";
                 showBlackZero = true;
             }
             else
             {
-                int sec = Math.Round(s_fCachedTimeToDepleteSec);
+                int sec = Math.Round(displayTimeToDepleteSec);
                 if (sec >= 60)
                 {
                     int m = sec / 60;

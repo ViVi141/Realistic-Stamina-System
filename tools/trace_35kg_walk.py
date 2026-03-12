@@ -64,7 +64,7 @@ print()
 
 # ========== 2. 消耗: 姿态、效率、疲劳、负重 ==========
 posture_mult = 1.0  # 站立
-speed_ratio = walk_speed / 5.2
+speed_ratio = walk_speed / 5.5
 # AEROBIC 0.6, ANAEROBIC 0.8
 if speed_ratio < 0.6:
     metabolic_eff = 0.9
