@@ -309,8 +309,8 @@ class StaminaUpdateCoordinator
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
         float sprintStartTime = controller.GetSprintStartTime();
         
-        // 计算最终速度倍数
-        float finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+        // 计算最终绝对速度（仅在Run和Sprint模式下）
+        float finalAbsoluteSpeed = SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
             encumbranceSpeedPenalty,
             isSprinting,
@@ -321,6 +321,45 @@ class StaminaUpdateCoordinator
             currentSpeed,
             currentWorldTime,
             sprintStartTime);
+        
+        float finalSpeedMultiplier;
+        
+        if (finalAbsoluteSpeed > 0.0)
+        {
+            // 有绝对速度，直接接管 - 使用固定的理论基准速度
+            // 忽略引擎因负重而降低的原始速度，始终以理论计算的空载速度为基准
+            float theoreticalBaseSpeed;
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                // Sprint模式使用GAME_MAX_SPEED (5.5 m/s)作为理论基准
+                theoreticalBaseSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            }
+            else
+            {
+                // Run模式使用TARGET_RUN_SPEED (3.8 m/s)作为理论基准
+                theoreticalBaseSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED;
+            }
+            
+            // 基于理论基准速度计算正确的倍数
+            // 倍数 = 目标绝对速度 / 理论基准速度
+            finalSpeedMultiplier = finalAbsoluteSpeed / theoreticalBaseSpeed;
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.01, 1.0);
+        }
+        else
+        {
+            // 非Run/Sprint模式，使用原来的速度倍数方法保持向后兼容
+            finalSpeedMultiplier = SpeedCalculator.CalculateFinalSpeedMultiplier(
+                runBaseSpeedMultiplier,
+                encumbranceSpeedPenalty,
+                isSprinting,
+                currentMovementPhase,
+                isExhausted,
+                canSprint,
+                staminaPercent,
+                currentSpeed,
+                currentWorldTime,
+                sprintStartTime);
+        }
         
         // 应用速度倍数
         controller.OverrideMaxSpeed(finalSpeedMultiplier);

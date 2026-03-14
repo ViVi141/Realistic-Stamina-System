@@ -104,6 +104,11 @@ modded class SCR_CharacterControllerComponent
     protected float m_fAnimSpeedCompensation = 1.0;
     protected float m_fLastAnimCompensationUpdateTime = -1.0;
     protected static const float ANIM_COMPENSATION_UPDATE_INTERVAL = 2.0;
+    
+    // ==================== 引擎原始最大速度获取 ====================
+    // 动态获取引擎的真实原始最大速度，用于正确计算速度倍数
+    // 每次需要时先临时重置为1.0获取真实引擎速度，然后再应用我们的速度控制
+    // 这样可以正确处理装备改变导致引擎原始速度变化的情况
 
     // ==================== 战术冲刺爆发（短时全速）====================
     protected float m_fSprintStartTime = -1.0;       // 本次冲刺开始时间（世界时间秒），-1 表示未在爆发/已进入平稳期
@@ -1062,40 +1067,9 @@ modded class SCR_CharacterControllerComponent
         float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
         float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
 
-        // ==================== 引擎动画速度补偿（周期性更新）====================
-        // 引擎的 OverrideMaxSpeed(fraction) 以"当前动画最大速度"为基数；
-        // 装备动画属性会降低这个基数（如 5.5→4.77），导致实际速度低于预期。
-        // 通过 GetMaxSpeed API 检测实际基数，反向补偿 fraction。
-        if (currentTime - m_fLastAnimCompensationUpdateTime >= ANIM_COMPENSATION_UPDATE_INTERVAL)
-        {
-            m_fLastAnimCompensationUpdateTime = currentTime;
-            if (m_pAnimComponent)
-            {
-                float animSprintMax = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
-                float animRunMax = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
-                if (animSprintMax > 0.1)
-                {
-                    float engineFactor = animSprintMax / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-                    if (engineFactor < 0.97)
-                    {
-                        m_fAnimSpeedCompensation = 1.0 / engineFactor;
-                    }
-                    else
-                    {
-                        m_fAnimSpeedCompensation = 1.0;
-                    }
-                    if (IsRssDebugEnabled())
-                    {
-                        Print(string.Format(
-                            "[RSS] AnimSpeed: sprint=%1 run=%2 factor=%3 comp=%4",
-                            Math.Round(animSprintMax * 100.0) / 100.0,
-                            Math.Round(animRunMax * 100.0) / 100.0,
-                            Math.Round(engineFactor * 1000.0) / 1000.0,
-                            Math.Round(m_fAnimSpeedCompensation * 1000.0) / 1000.0));
-                    }
-                }
-            }
-        }
+        // ==================== 已移除引擎动画速度补偿 ====================
+        // 由于现在模组完全直接控制绝对速度，不再需要动画速度补偿
+        // 直接计算目标绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数即可
 
         // ==================== 速度倍率应用 ====================
         // 玩家：客户端本地计算；导出开启时采用服务器校验速度（平滑值）；AI：服务器端计算
@@ -1105,8 +1079,10 @@ modded class SCR_CharacterControllerComponent
             m_pNetworkSyncManager.GetTargetSpeedMultiplier(finalSpeedMultiplier);
             speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
         }
-        float compensatedSpeedToApply = Math.Clamp(speedToApply * m_fAnimSpeedCompensation, 0.01, 1.0);
-        OverrideMaxSpeed(compensatedSpeedToApply);
+        // 由于我们现在直接计算绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数，
+        // 不需要动画速度补偿，因为我们的计算已经基于真实目标速度，不再依赖引擎的动画速度
+        float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
+        OverrideMaxSpeed(finalSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -2030,6 +2006,44 @@ modded class SCR_CharacterControllerComponent
     EnvironmentFactor GetRssEnvironmentFactor()
     {
         return m_pEnvironmentFactor;
+    }
+    
+    // 动态获取引擎原始最大速度（Run模式）
+    float GetOriginalEngineMaxSpeed_Run()
+    {
+        return GetDynamicOriginalEngineMaxSpeed(2);
+    }
+    
+    // 动态获取引擎原始最大速度（Sprint模式）
+    float GetOriginalEngineMaxSpeed_Sprint()
+    {
+        return GetDynamicOriginalEngineMaxSpeed(3);
+    }
+    
+    // 内部方法：动态获取引擎原始最大速度
+    protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
+    {
+        if (!m_pAnimComponent)
+        {
+            if (movementPhase == 3)
+                return RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            else
+                return RealisticStaminaSpeedSystem.GAME_MAX_SPEED * RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+        }
+        
+        // 临时保存当前的速度倍数
+        float currentMultiplier = m_fLastSpeedMultiplier;
+        
+        // 临时重置为1.0以获取真实的引擎原始速度
+        OverrideMaxSpeed(1.0);
+        
+        // 获取真实的引擎原始速度
+        float realOriginalSpeed = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, movementPhase);
+        
+        // 恢复原来的速度倍数
+        OverrideMaxSpeed(currentMultiplier);
+        
+        return realOriginalSpeed;
     }
 
 }

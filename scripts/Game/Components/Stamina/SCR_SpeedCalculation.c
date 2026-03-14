@@ -47,7 +47,109 @@ class SpeedCalculator
         return RealisticStaminaSpeedSystem.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
     }
     
-    // 计算最终速度倍数（根据移动类型）
+    // 计算最终绝对速度（米/秒）- 仅在Run和Sprint模式下
+    // @param runBaseSpeedMultiplier Run的基础速度倍数
+    // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）
+    // @param isSprinting 是否正在Sprint
+    // @param currentMovementPhase 当前移动阶段 (0=idle, 1=walk, 2=run, 3=sprint)
+    // @param isExhausted 是否精疲力尽
+    // @param canSprint 是否可以Sprint
+    // @param staminaPercent 当前体力百分比
+    // @param currentSpeed 当前速度 (m/s)
+    // @param currentWorldTime 当前世界时间（秒），用于战术冲刺爆发期判断，-1 表示不参与
+    // @param sprintStartTime 本次冲刺开始时间（秒），-1 表示未在冲刺
+    // @return 最终绝对速度（米/秒），非Run/Sprint模式返回-1
+    static float CalculateFinalAbsoluteSpeed(
+        float runBaseSpeedMultiplier,
+        float encumbranceSpeedPenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        bool isExhausted,
+        bool canSprint,
+        float staminaPercent,
+        float currentSpeed = 0.0,
+        float currentWorldTime = -1.0,
+        float sprintStartTime = -1.0)
+    {
+        // 如果精疲力尽，禁用Sprint
+        if (isExhausted || !canSprint)
+        {
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                currentMovementPhase = 2; // 强制切换到Run
+                isSprinting = false;
+            }
+        }
+        
+        // 只处理Run和Sprint模式，其他模式返回-1表示不接管
+        if (currentMovementPhase != 2 && currentMovementPhase != 3 && !isSprinting)
+        {
+            return -1.0;
+        }
+        
+        // runBaseSpeedMultiplier 已由调用方按坡度完成缩放，此处无需再次应用坡度
+        float scaledRunSpeed = runBaseSpeedMultiplier;
+        
+        float finalAbsoluteSpeed = 0.0;
+
+        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）
+        float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
+        float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
+        if (isSprinting || currentMovementPhase == 3)
+            encumbrancePenalty = encumbrancePenalty * 1.5;
+        float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
+        
+        // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
+        if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
+        {
+            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
+            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float elapsed = currentWorldTime - sprintStartTime;
+            if (burstDuration > 0.0 && elapsed <= burstDuration)
+            {
+                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                encumbrancePenalty = encumbrancePenalty * burstFactor;
+            }
+            else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
+            {
+                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float t = (elapsed - burstDuration) / bufferDuration;
+                t = Math.Clamp(t, 0.0, 1.0);
+                float blendFactor = burstFactor + (1.0 - burstFactor) * t;
+                encumbrancePenalty = encumbrancePenalty * blendFactor;
+            }
+        }
+        
+        if (isSprinting || currentMovementPhase == 3) // Sprint
+        {
+            // Sprint绝对速度 = 引擎最大速度 × scaledRunSpeed × (1 + 30%) × (1 - 负重惩罚)
+            // 注意：scaledRunSpeed 已经是相对于 GAME_MAX_SPEED 的倍数
+            float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
+            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 + sprintSpeedBoost) * (1.0 - encumbrancePenalty);
+            // 限制速度在合理范围内
+            finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.GAME_MAX_SPEED);
+        }
+        else if (currentMovementPhase == 2) // Run
+        {
+            // Run绝对速度 = 引擎最大速度 × scaledRunSpeed × (1 - 负重惩罚)
+            // 注意：scaledRunSpeed 已经是相对于 GAME_MAX_SPEED 的倍数
+            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 - encumbrancePenalty);
+            // 限制速度在合理范围内
+            finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.GAME_MAX_SPEED);
+        }
+        
+        // 静止起步检测：如果当前速度很低但处于移动阶段，给予起步补偿
+        if (currentSpeed < 0.5)
+        {
+            // 给予起步补偿，防止瞬时限速导致的起步无力
+            finalAbsoluteSpeed = Math.Max(finalAbsoluteSpeed, 2.5);
+        }
+        
+        return finalAbsoluteSpeed;
+    }
+    
+    // 计算最终速度倍数（根据移动类型）- 保持向后兼容
     // @param runBaseSpeedMultiplier Run的基础速度倍数
     // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）
     // @param isSprinting 是否正在Sprint
