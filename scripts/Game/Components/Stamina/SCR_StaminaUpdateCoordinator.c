@@ -310,7 +310,8 @@ class StaminaUpdateCoordinator
         float sprintStartTime = controller.GetSprintStartTime();
         
         // 计算最终绝对速度（仅在Run和Sprint模式下）
-        float finalAbsoluteSpeed = SpeedCalculator.CalculateFinalAbsoluteSpeed(
+        // 注意：这个函数现在返回的是不含负重惩罚的理论速度
+        float finalAbsoluteSpeedNoEncumbrance = SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
             encumbranceSpeedPenalty,
             isSprinting,
@@ -324,26 +325,73 @@ class StaminaUpdateCoordinator
         
         float finalSpeedMultiplier;
         
-        if (finalAbsoluteSpeed > 0.0)
+        if (finalAbsoluteSpeedNoEncumbrance > 0.0)
         {
-            // 有绝对速度，直接接管 - 使用固定的理论基准速度
-            // 忽略引擎因负重而降低的原始速度，始终以理论计算的空载速度为基准
-            float theoreticalBaseSpeed;
+            // 先计算负重惩罚（与原来的逻辑一致）
+            float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
+            float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
+            if (isSprinting || currentMovementPhase == 3)
+                encumbrancePenalty = encumbrancePenalty * 1.5;
+            float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+            encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
+            
+            // 战术冲刺爆发期处理
+            if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
+            {
+                float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
+                float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+                float elapsed = currentWorldTime - sprintStartTime;
+                if (burstDuration > 0.0 && elapsed <= burstDuration)
+                {
+                    float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                    encumbrancePenalty = encumbrancePenalty * burstFactor;
+                }
+                else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
+                {
+                    float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                    float t = (elapsed - burstDuration) / bufferDuration;
+                    t = Math.Clamp(t, 0.0, 1.0);
+                    float blendFactor = burstFactor + (1.0 - burstFactor) * t;
+                    encumbrancePenalty = encumbrancePenalty * blendFactor;
+                }
+            }
+            
+            // 应用负重惩罚得到最终的理论目标速度
+            float theoreticalTargetSpeed = finalAbsoluteSpeedNoEncumbrance * (1.0 - encumbrancePenalty);
+            
+            // 动态获取引擎当前的原始速度（已被负重降低后的速度）
+            float currentEngineOriginalSpeed;
             if (isSprinting || currentMovementPhase == 3)
             {
-                // Sprint模式使用GAME_MAX_SPEED (5.5 m/s)作为理论基准
-                theoreticalBaseSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+                currentEngineOriginalSpeed = controller.GetOriginalEngineMaxSpeed_Sprint();
             }
             else
             {
-                // Run模式使用TARGET_RUN_SPEED (3.8 m/s)作为理论基准
-                theoreticalBaseSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED;
+                currentEngineOriginalSpeed = controller.GetOriginalEngineMaxSpeed_Run();
             }
             
-            // 基于理论基准速度计算正确的倍数
-            // 倍数 = 目标绝对速度 / 理论基准速度
-            finalSpeedMultiplier = finalAbsoluteSpeed / theoreticalBaseSpeed;
-            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.01, 1.0);
+            // 计算需要的补偿倍数：
+            // 最终速度 = 引擎原始速度 × 倍数
+            // 我们希望最终速度 = theoreticalTargetSpeed（理论计算速度）
+            // 所以：倍数 = theoreticalTargetSpeed / 引擎原始速度
+            if (currentEngineOriginalSpeed > 0.1)
+            {
+                finalSpeedMultiplier = theoreticalTargetSpeed / currentEngineOriginalSpeed;
+            }
+            else
+            {
+                // 回退方案：使用理论基准速度
+                float theoreticalBaseSpeed;
+                if (isSprinting || currentMovementPhase == 3)
+                    theoreticalBaseSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+                else
+                    theoreticalBaseSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED;
+                finalSpeedMultiplier = theoreticalTargetSpeed / theoreticalBaseSpeed;
+            }
+            
+            // 允许倍数大于1.0来补偿引擎的速度降低
+            // 设置一个合理的上限，防止数值爆炸
+            finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.01, 3.0);
         }
         else
         {

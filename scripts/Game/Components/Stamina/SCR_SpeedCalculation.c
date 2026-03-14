@@ -123,20 +123,23 @@ class SpeedCalculator
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
-            // Sprint绝对速度 = 引擎最大速度 × scaledRunSpeed × (1 + 30%) × (1 - 负重惩罚)
-            // 注意：scaledRunSpeed 已经是相对于 GAME_MAX_SPEED 的倍数
+            // Sprint理论目标速度（不含负重惩罚）= GAME_MAX_SPEED × scaledRunSpeed × (1 + 30%)
+            // 注意：scaledRunSpeed 相对于 GAME_MAX_SPEED 的倍数
+            // 负重惩罚将在 UpdateSpeed 中通过补偿倍数的方式应用
             float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
-            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 + sprintSpeedBoost) * (1.0 - encumbrancePenalty);
+            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 + sprintSpeedBoost);
             // 限制速度在合理范围内
             finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.GAME_MAX_SPEED);
         }
         else if (currentMovementPhase == 2) // Run
         {
-            // Run绝对速度 = 引擎最大速度 × scaledRunSpeed × (1 - 负重惩罚)
-            // 注意：scaledRunSpeed 已经是相对于 GAME_MAX_SPEED 的倍数
-            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 - encumbrancePenalty);
+            // Run理论目标速度（不含负重惩罚）= TARGET_RUN_SPEED × (scaledRunSpeed / TARGET_RUN_SPEED_MULTIPLIER)
+            // 注意：scaledRunSpeed 原本相对于 GAME_MAX_SPEED，需要转换为相对于 TARGET_RUN_SPEED
+            // 负重惩罚将在 UpdateSpeed 中通过补偿倍数的方式应用
+            float normalizedScaledRunSpeed = scaledRunSpeed / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+            finalAbsoluteSpeed = RealisticStaminaSpeedSystem.TARGET_RUN_SPEED * normalizedScaledRunSpeed;
             // 限制速度在合理范围内
-            finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.GAME_MAX_SPEED);
+            finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.TARGET_RUN_SPEED);
         }
         
         // 静止起步检测：如果当前速度很低但处于移动阶段，给予起步补偿
