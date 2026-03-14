@@ -2123,11 +2123,14 @@ class EnvironmentFactor
         // Dot > 0 为顺风, Dot < 0 为逆风
         float windProjection = vector.Dot(playerVel.Normalized(), windDirVec);
         
-        // 只计算逆风阻力
-        if (windProjection >= 0)
-            return 0.0; // 顺风，无阻力
+        if (windProjection > 0)
+        {
+            // 顺风：减少消耗（返回负值，让 1+drag < 1）
+            float tailwindBenefit = windProjection * m_fCachedWindSpeed * StaminaConstants.ENV_WIND_TAILWIND_BONUS;
+            return -Math.Clamp(tailwindBenefit, 0.0, 0.15);
+        }
         
-        // 计算风阻系数：逆风越强，阻力越大
+        // 逆风：增加消耗
         float windResistance = Math.AbsFloat(windProjection) * m_fCachedWindSpeed * StaminaConstants.ENV_WIND_RESISTANCE_COEFF;
         
         return Math.Clamp(windResistance, 0.0, 1.0);

@@ -14,19 +14,32 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import random
 
-# Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 一致
-# 公式形状保留（上坡/陡下坡减速），归一化以平地=1.0，使 0 kg 平地下达引擎最大 5.5 m/s
+# Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 完全一致
+# W = 6 * exp(-3.5 * |S + 0.05|), TOBLER_W_AT_FLAT_KMH = 5.039
+TOBLER_W_AT_FLAT_KMH = 5.039
 
 
-def tobler_speed_multiplier(angle_deg: float, w_max_kmh: float = 6.0,
-                            exp_coeff: float = 3.5, s_offset: float = 0.05,
+def tobler_speed_multiplier(angle_deg: float,
+                            uphill_boost: float = 1.15,
+                            downhill_boost: float = 1.15,
+                            downhill_max: float = 1.25,
+                            dampening: float = 0.7,
                             min_mult: float = 0.15) -> float:
-    """托布勒徒步函数：根据坡度角（度）返回速度乘数 [0.15, 1.0]。以平地=1.0 归一化，与 C 端一致。"""
+    """与 C 端 CalculateSlopeAdjustedTargetSpeed 完全一致。
+    返回速度乘数 [0.15, downhill_max]。下坡可大于 1.0。
+    """
     s = math.tan(math.radians(angle_deg))
-    w_kmh = w_max_kmh * math.exp(-exp_coeff * abs(s + s_offset))
-    flat = w_max_kmh * math.exp(-exp_coeff * s_offset)
-    mult = w_kmh / flat if flat > 0 else min_mult
-    return max(min_mult, min(1.0, mult))
+    s = max(-1.0, min(1.0, s))
+    w_kmh = 6.0 * math.exp(-3.5 * abs(s + 0.05))
+    mult = w_kmh / TOBLER_W_AT_FLAT_KMH
+    mult = max(mult, min_mult)
+    if angle_deg > 0.0:
+        mult = mult * uphill_boost
+    elif angle_deg < 0.0:
+        mult = mult * downhill_boost
+        mult = min(mult, downhill_max)
+    mult = 1.0 + dampening * (mult - 1.0)
+    return max(min_mult, min(mult, downhill_max))
 
 
 # =============================================================================
@@ -112,6 +125,11 @@ class RSSConstants:
     SPRINT_ENABLE_THRESHOLD = 0.15
     SPRINT_SPEED_BOOST = 0.30  # 从配置获取，默认 0.30
 
+    TACTICAL_SPRINT_BURST_DURATION = 8.0
+    TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0
+    TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 0.2
+    TACTICAL_SPRINT_COOLDOWN = 15.0
+
     FATIGUE_START_TIME_MINUTES = 5.0
     FATIGUE_ACCUMULATION_COEFF = 0.015
     FATIGUE_MAX_FACTOR = 2.0
@@ -142,7 +160,22 @@ class RSSConstants:
 
     ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02
     ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = 0.05
+    ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03
     ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15
+    ENV_WIND_RESISTANCE_COEFF = 0.05
+    ENV_WIND_TAILWIND_BONUS = 0.02
+    ENV_WIND_TAILWIND_MAX = 0.15
+
+    # Tobler 坡度速度常量（SCR_StaminaConstants.c:466-468）
+    UPHILL_SPEED_BOOST = 1.15
+    DOWNHILL_SPEED_BOOST = 1.15
+    DOWNHILL_SPEED_MAX_MULTIPLIER = 1.25
+    TOBLER_DAMPENING = 0.7
+
+    # T1 负重代谢阻尼：训练有素操作员只承受负重额外代谢的 70%
+    LOAD_METABOLIC_DAMPENING = 0.70
+    # 恢复速率上限（每 tick），防止过快回血
+    MAX_RECOVERY_PER_TICK = 0.0004
 
     # [DEPRECATED] C 端 CalculateSlopeStaminaDrainMultiplier 未被调用，坡度由 Pandolf grade 承担
     SLOPE_UPHILL_COEFF = 0.08
@@ -244,7 +277,28 @@ class EnvironmentFactor:
         self.constants = constants
         self.heat_stress = 0.0
         self.cold_stress = 0.0
+        self.cold_static_penalty = 0.0
         self.surface_wetness = 0.0
+        self.temperature = 20.0
+        self.wind_speed = 0.0
+
+    def adjust_energy_for_temperature(self, base_drain: float) -> float:
+        """与 C 端 AdjustEnergyForTemperature (SCR_EnvironmentFactor.c:2298-2330) 一致。
+        在消耗端加入温度热调节额外功耗。
+        """
+        t_eff = self.temperature - 1.35 * math.sqrt(max(0.0, self.wind_speed))
+        extra_watts = 0.0
+        t_low = 18.0
+        t_high = 27.0
+        if t_eff < t_low:
+            dt_cold = t_low - t_eff
+            extra_watts = 0.15 * (dt_cold * dt_cold)
+        elif t_eff > t_high:
+            dt_hot = t_eff - t_high
+            extra_watts = 2.0 * (dt_hot * dt_hot)
+        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 9e-7)
+        extra_per_tick = extra_watts * coeff * 0.2
+        return base_drain + extra_per_tick
 
 
 class MovementType:
@@ -284,8 +338,11 @@ class RSSDigitalTwin:
         self.last_movement_time = 0.0
         self.max_history_length = 5000
         self._scenario_wind_drag = 0.0
+        self._sprint_start_time = -1.0
+        self._sprint_cooldown_until = -1.0
         self.environment_factor.heat_stress = 0.0
         self.environment_factor.cold_stress = 0.0
+        self.environment_factor.cold_static_penalty = 0.0
 
     # -------------------------------------------------------------------------
     # CalculateStaticStandingCost - SCR_RealisticStaminaSystem.c 1135-1168
@@ -465,20 +522,33 @@ class RSSDigitalTwin:
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         rest_per_tick = getattr(self.constants, 'REST_RECOVERY_PER_TICK', 0.0005)
 
+        wind_mult = 1.0 + wind_drag
+
         # 1. 基础消耗率 (C: StaminaUpdateCoordinator.CalculateLandBaseDrainRate)
+        load_dampening = getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70)
+
         if movement_type == MovementType.IDLE:
             if speed < 0.1:
                 raw = -rest_per_tick
             else:
                 pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
-                raw = pandolf_per_s * (1.0 + wind_drag) * 0.2
+                if current_weight > bw and load_dampening < 1.0:
+                    unloaded_per_s = self._pandolf_expenditure(speed, bw, grade_percent, terrain_factor)
+                    load_extra = pandolf_per_s - unloaded_per_s
+                    pandolf_per_s = unloaded_per_s + load_extra * load_dampening
+                raw = pandolf_per_s * wind_mult * 0.2
         elif speed < 0.1:
-            # 静态负重站立
             load_weight = max(0.0, current_weight - bw)
             static_per_s = self._static_standing_cost(bw, load_weight)
             raw = static_per_s * 0.2
         else:
             pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
+
+            # T1 负重代谢阻尼：只承受负重额外代谢的 dampening 比例
+            if current_weight > bw and load_dampening < 1.0:
+                unloaded_per_s = self._pandolf_expenditure(speed, bw, grade_percent, terrain_factor)
+                load_extra = pandolf_per_s - unloaded_per_s
+                pandolf_per_s = unloaded_per_s + load_extra * load_dampening
 
             # 负重限速努力补偿（与 C 端 SCR_StaminaUpdateCoordinator 一致）
             if movement_type == MovementType.RUN or movement_type == MovementType.SPRINT:
@@ -493,17 +563,26 @@ class RSSDigitalTwin:
                     denom = max(1.0 - enc_pen, 0.15)
                     unenc_speed = min(speed / denom, 7.0)
                     effort_per_s = self._pandolf_expenditure(unenc_speed, current_weight, grade_percent, terrain_factor)
+                    if current_weight > bw and load_dampening < 1.0:
+                        unloaded_effort = self._pandolf_expenditure(unenc_speed, bw, grade_percent, terrain_factor)
+                        effort_extra = effort_per_s - unloaded_effort
+                        effort_per_s = unloaded_effort + effort_extra * load_dampening
                     if effort_per_s > pandolf_per_s:
                         blend = float(np.clip(enc_pen / 0.5, 0.0, 1.0))
                         pandolf_per_s = pandolf_per_s + (effort_per_s - pandolf_per_s) * blend
 
-            raw = pandolf_per_s * (1.0 + wind_drag) * 0.2
+            raw = pandolf_per_s * wind_mult * 0.2
 
         base_for_recovery = max(0.0, raw) if raw > 0 else 0.0
 
-        # 2. 负数为恢复，不应用消耗链
+        # 2. 负数为恢复，传入 recovery_rate 计算而非作为负 drain 双重计入
         if raw <= 0.0:
-            return (0.0, raw)
+            return (raw, 0.0)
+
+        # 2.5 温度热调节补偿 (C: SCR_StaminaConsumption.c:128-132, 在 posture 之前)
+        if environment_factor is not None and raw > 0.0:
+            raw = environment_factor.adjust_energy_for_temperature(raw)
+        base_for_recovery = max(0.0, raw)
 
         # 3. 应用 posture、efficiency、fatigue (SCR_StaminaConsumption)
         posture = self._posture_consumption_multiplier(speed, stance)
@@ -518,10 +597,6 @@ class RSSDigitalTwin:
         # 5. 应用负重消耗倍数 (C: totalDrainRate *= encumbranceStaminaDrainMultiplier)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
         total_drain = base * enc_mult
-        # 6. 热应激：消耗倍数 (C: ENV_TEMPERATURE_HEAT_THRESHOLD 30°C 以上)
-        if environment_factor is not None:
-            heat = getattr(environment_factor, 'heat_stress', 0.0)
-            total_drain = total_drain * (1.0 + heat)
 
         return (base_for_recovery, float(max(0.0, total_drain)))
 
@@ -531,7 +606,8 @@ class RSSDigitalTwin:
     def _calculate_recovery_rate(self, stamina_percent: float, rest_duration_minutes: float,
                                  exercise_duration_minutes: float, current_weight: float,
                                  base_drain_rate: float, disable_positive_recovery: bool,
-                                 stance: int, environment_factor, current_speed: float) -> float:
+                                 stance: int, environment_factor, current_speed: float,
+                                 movement_type: int = MovementType.IDLE) -> float:
         c = self.constants
         stamina_percent_clamped = np.clip(stamina_percent, 0.0, 1.0)
 
@@ -571,30 +647,52 @@ class RSSDigitalTwin:
         elif stance == Stance.PRONE:
             recovery_rate *= c.PRONE_RECOVERY_MULTIPLIER
 
-        # 负重剥夺
+        # 边际效应衰减 (C: productBeforeLoad 包含 marginalDecayMultiplier)
+        if stamina_percent_clamped > c.MARGINAL_DECAY_THRESHOLD:
+            marginal_mult = np.clip(c.MARGINAL_DECAY_COEFF - stamina_percent_clamped, 0.2, 1.0)
+            recovery_rate *= marginal_mult
+
+        # 负重剥夺 (C: loadFactor = max(0, 1 - penalty/productBeforeLoad), total = product * loadFactor)
         weight_for_rec = c.CHARACTER_WEIGHT if stance == Stance.PRONE else current_weight
         if weight_for_rec > 0:
             load_ratio = np.clip(weight_for_rec / c.BODY_TOLERANCE_BASE, 0.0, 2.0)
             penalty = (load_ratio ** c.LOAD_RECOVERY_PENALTY_EXPONENT) * c.LOAD_RECOVERY_PENALTY_COEFF
-            recovery_rate -= penalty
+            if recovery_rate > 0.0:
+                load_factor = max(0.0, 1.0 - penalty / recovery_rate)
+                recovery_rate *= load_factor
+            else:
+                recovery_rate = 0.0
 
-        # 边际效应衰减
-        if stamina_percent_clamped > c.MARGINAL_DECAY_THRESHOLD:
-            marginal_mult = np.clip(c.MARGINAL_DECAY_COEFF - stamina_percent_clamped, 0.2, 1.0)
-            recovery_rate *= marginal_mult
+        # 热应激：恢复率惩罚 (C: recoveryRate *= (1.0 - heatStressPenalty))
+        if environment_factor is not None:
+            heat = getattr(environment_factor, 'heat_stress', 0.0)
+            if heat > 0.0:
+                recovery_rate *= (1.0 - heat)
 
         # 冷应激：恢复率惩罚 (C: ENV_TEMPERATURE_COLD_THRESHOLD 0°C 以下)
         if environment_factor is not None:
             cold = getattr(environment_factor, 'cold_stress', 0.0)
             recovery_rate *= max(0.0, 1.0 - cold)
 
+        # 地表湿度惩罚：趴姿时 (C: SCR_StaminaRecovery.c:124-128)
+        if stance == Stance.PRONE and environment_factor is not None:
+            wetness = getattr(environment_factor, 'surface_wetness', 0.0)
+            if wetness > 0.0:
+                recovery_rate *= (1.0 - wetness)
+
         recovery_rate = max(recovery_rate, 0.0)
 
-        # 速度调整（方案A：跑步/冲刺彻底不恢复，与 C 端一致，避免 0.81 卡线）
+        # 速度 + 移动意图联合判断恢复倍数
+        # 基于速度阈值的原始逻辑（C 端 SCR_StaminaRecovery.c:134-146）
+        # 叠加移动意图：坡度减速后仍在 RUN，不应按 Walk 恢复
         if current_speed >= 5.0:
             recovery_rate *= 0.0
         elif current_speed >= 3.2:
             recovery_rate *= 0.0
+        elif movement_type == MovementType.SPRINT and current_speed >= 0.1:
+            recovery_rate *= 0.0
+        elif movement_type == MovementType.RUN and current_speed >= 0.1:
+            recovery_rate *= 0.25
         elif current_speed >= 0.1:
             recovery_rate *= 0.8
 
@@ -613,6 +711,10 @@ class RSSDigitalTwin:
 
         if current_speed < 0.1 and current_weight < 40.0 and recovery_rate < 0.00005:
             recovery_rate = 0.0001
+
+        max_cap = getattr(c, 'MAX_RECOVERY_PER_TICK', 0.0004)
+        if max_cap > 0.0:
+            recovery_rate = min(recovery_rate, max_cap)
 
         return float(max(recovery_rate, 0.0))
 
@@ -652,6 +754,20 @@ class RSSDigitalTwin:
             self.is_in_epoc_delay = False
             self.epoc_delay_start_time = -1.0
 
+        # 战术冲刺爆发期追踪 (C: PlayerBase.c:984-991)
+        is_sprinting = (movement_type == MovementType.SPRINT)
+        if is_sprinting and self._sprint_start_time < 0.0:
+            if self._sprint_cooldown_until < 0.0 or current_time >= self._sprint_cooldown_until:
+                self._sprint_start_time = current_time
+        elif not is_sprinting and self._sprint_start_time >= 0.0:
+            burst_dur = getattr(self.constants, 'TACTICAL_SPRINT_BURST_DURATION', 8.0)
+            buffer_dur = getattr(self.constants, 'TACTICAL_SPRINT_BURST_BUFFER_DURATION', 5.0)
+            cooldown = getattr(self.constants, 'TACTICAL_SPRINT_COOLDOWN', 15.0)
+            elapsed = current_time - self._sprint_start_time
+            if elapsed >= burst_dur + buffer_dur:
+                self._sprint_cooldown_until = current_time + cooldown
+            self._sprint_start_time = -1.0
+
         self.last_speed = speed
         if len(self.speed_history) < self.max_history_length:
             self.speed_history.append(speed)
@@ -678,7 +794,8 @@ class RSSDigitalTwin:
 
             recovery_rate = self._calculate_recovery_rate(
                 self.stamina, self.rest_duration_minutes, self.exercise_duration_minutes,
-                current_weight, base_for_rec, False, stance, self.environment_factor, speed)
+                current_weight, base_for_rec, False, stance, self.environment_factor, speed,
+                movement_type=movement_type)
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
             net_change = recovery_rate - total_drain
@@ -734,12 +851,12 @@ class RSSDigitalTwin:
         current_weight: float,
         movement_phase: int,
         last_speed: float,
+        grade_percent: float = 0.0,
+        current_time: float = -1.0,
     ) -> float:
-        """与 C CalculateFinalSpeedMultiplier 一致，返回 m/s。平地，无坡度。"""
+        """与 C CalculateFinalSpeedMultiplier + CalculateSlopeAdjustedTargetSpeed 一致，返回 m/s。"""
         c = self.constants
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
-        bw = getattr(c, 'CHARACTER_WEIGHT', 90.0)
-        base_w = getattr(c, 'BASE_WEIGHT', 1.36)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         sprint_boost = getattr(c, 'SPRINT_SPEED_BOOST', 0.30)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
@@ -751,7 +868,14 @@ class RSSDigitalTwin:
                 phase = MovementType.RUN
 
         run_base = self.calculate_speed_multiplier_by_stamina(stamina_percent)
-        slope_mult = 1.0
+        angle_deg = math.degrees(math.atan(grade_percent / 100.0)) if abs(grade_percent) > 0.01 else 0.0
+        slope_mult = tobler_speed_multiplier(
+            angle_deg,
+            uphill_boost=getattr(c, 'UPHILL_SPEED_BOOST', 1.15),
+            downhill_boost=getattr(c, 'DOWNHILL_SPEED_BOOST', 1.15),
+            downhill_max=getattr(c, 'DOWNHILL_SPEED_MAX_MULTIPLIER', 1.25),
+            dampening=getattr(c, 'TOBLER_DAMPENING', 0.7),
+        )
         scaled_run = run_base * slope_mult
 
         base_penalty = self._encumbrance_speed_penalty_base(current_weight)
@@ -760,6 +884,19 @@ class RSSDigitalTwin:
         if phase == MovementType.SPRINT:
             enc_penalty *= 1.5
         enc_penalty = np.clip(enc_penalty, 0.0, max_pen)
+
+        # 战术冲刺爆发期：前 N 秒减轻负重惩罚，之后线性过渡 (C: SCR_SpeedCalculation.c:98-116)
+        if phase == MovementType.SPRINT and self._sprint_start_time >= 0.0 and current_time >= 0.0:
+            burst_dur = getattr(c, 'TACTICAL_SPRINT_BURST_DURATION', 8.0)
+            buffer_dur = getattr(c, 'TACTICAL_SPRINT_BURST_BUFFER_DURATION', 5.0)
+            burst_factor = getattr(c, 'TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR', 0.2)
+            elapsed = current_time - self._sprint_start_time
+            if burst_dur > 0.0 and elapsed <= burst_dur:
+                enc_penalty = enc_penalty * burst_factor
+            elif buffer_dur > 0.0 and elapsed > burst_dur and elapsed <= burst_dur + buffer_dur:
+                t = float(np.clip((elapsed - burst_dur) / buffer_dur, 0.0, 1.0))
+                blend = burst_factor + (1.0 - burst_factor) * t
+                enc_penalty = enc_penalty * blend
 
         if phase == MovementType.SPRINT:
             mult = (scaled_run * (1.0 + sprint_boost)) * (1.0 - enc_penalty)
@@ -832,7 +969,9 @@ class RSSDigitalTwin:
         for _ in range(steps):
             intent_phase = int(movement_intent)
             actual_speed = self.calculate_actual_speed(
-                self.stamina, current_weight, intent_phase, last_speed
+                self.stamina, current_weight, intent_phase, last_speed,
+                grade_percent=grade_percent,
+                current_time=current_time,
             )
             exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
             can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.15)
@@ -877,6 +1016,7 @@ class RSSDigitalTwin:
         heat_threshold = 30.0
         cold_threshold = 0.0
         if temperature_celsius is not None:
+            self.environment_factor.temperature = float(temperature_celsius)
             if temperature_celsius > heat_threshold:
                 coeff = getattr(c, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
                 max_add = getattr(c, 'ENV_HEAT_STRESS_MAX_MULTIPLIER', 1.5) - 1.0
@@ -888,11 +1028,19 @@ class RSSDigitalTwin:
                 cold_coeff = getattr(c, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05)
                 self.environment_factor.cold_stress = (
                     cold_threshold - temperature_celsius) * cold_coeff
+                cold_static = getattr(c, 'ENV_TEMPERATURE_COLD_STATIC_PENALTY', 0.03)
+                self.environment_factor.cold_static_penalty = (
+                    cold_threshold - temperature_celsius) * cold_static
             else:
                 self.environment_factor.cold_stress = 0.0
-        if wind_speed_mps is not None and wind_speed_mps >= 1.0:
-            wind_coeff = getattr(c, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
-            self._scenario_wind_drag = min(1.0, wind_speed_mps * wind_coeff)
+                self.environment_factor.cold_static_penalty = 0.0
+        if wind_speed_mps is not None:
+            self.environment_factor.wind_speed = float(wind_speed_mps)
+            if wind_speed_mps >= 1.0:
+                wind_coeff = getattr(c, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
+                self._scenario_wind_drag = min(1.0, wind_speed_mps * wind_coeff)
+            else:
+                self._scenario_wind_drag = 0.0
         else:
             self._scenario_wind_drag = 0.0
 

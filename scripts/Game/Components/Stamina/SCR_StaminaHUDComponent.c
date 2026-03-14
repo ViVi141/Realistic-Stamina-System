@@ -239,7 +239,7 @@ class SCR_StaminaHUDComponent
         // 计算各项数值（体力、速度使用平滑后的显示值，避免瞬时跳变）
         int staminaPct = Math.Clamp(Math.Round(s_fDisplayStaminaPercent * 100.0), 0, 100);
         int speedPct = Math.Round(s_fDisplaySpeedMultiplier * 100.0);
-        int speedMs = Math.Round(s_fDisplayCurrentSpeed * 10.0);  // 保留一位小数（乘10存储）
+        int speedMs = Math.Round(s_fDisplayCurrentSpeed * 100.0);  // 保留两位小数（乘100存储）
         int weightKg = Math.Round(s_fCachedWeight);
         int slopeAngle = Math.Round(s_fCachedSlopeAngle);
         int tempC = Math.Round(s_fCachedTemperature);  // 虚拟气温（°C）
@@ -355,7 +355,7 @@ class SCR_StaminaHUDComponent
         // 更新速度（显示实际速度 m/s，颜色基于速度倍数）
         if (m_wTextSpeed)
         {
-            float speedDisplay = speedMs / 10.0;  // 还原小数
+            float speedDisplay = speedMs / 100.0;  // 还原两位小数
             m_wTextSpeed.SetText("SPD " + speedDisplay.ToString() + "m/s");
             m_wTextSpeed.SetColor(speedColor);
         }

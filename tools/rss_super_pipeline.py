@@ -494,27 +494,27 @@ class RSSSuperPipeline:
     # 生理参考见 docs/stamina_consumption_reference.md；下列为文献约束（剩余体力目标带 + 跛行惩罚）
     # 游骑兵标准：极高的有氧/负重耐力，整体体力底线大幅上调
     PLAYABILITY = {
-        'min_stamina_threshold': 0.35,       # (原 0.15) 任何场景都不允许体力跌破 35%
-        'min_stamina_coeff': 2000.0,         # 加大惩罚力度
-        'mean_stamina_threshold': 0.55,      # (原 0.30) 整体任务平均体力维持 55% 以上
+        'min_stamina_threshold': 0.35,
+        'min_stamina_coeff': 2000.0,
+        'mean_stamina_threshold': 0.55,
         'mean_stamina_coeff': 800.0,
         'exhaustion_coeff': 2000.0,
-        'time_ratio_1_15_coeff': 800.0,      # 严惩超时
+        'time_ratio_1_15_coeff': 800.0,
         'time_ratio_1_30_coeff': 1500.0,
-        # 30kg 600m：硬约束剪枝阈值（方案A 跑步不恢复后体力掉更多，放宽以免全部被剪枝）
-        'run_600m_remaining_target_low': 0.30,  # 剪枝线：低于此则 prune；0.75 过严导致无解
-        'run_600m_remaining_limp': 0.30,
-        'run_600m_below_target_coeff': 5000.0,
-        'run_600m_below_limp_coeff': 8000.0,
-        # 30kg 1000m：同上放宽
-        'run_1km_remaining_target_low': 0.25,   # 剪枝线；0.60 过严
-        'run_1km_remaining_limp': 0.30,
-        'run_1km_below_target_coeff': 5000.0,
-        'run_1km_below_limp_coeff': 8000.0,
-        # 29kg 3.8m/s 连续跑 300s 后体力下限（方案A 下掉得更狠，放宽以免全部剪枝）
+        # T1 对齐：30kg 600m 剩余 70-76%（文献），硬约束 ≥68%
+        'run_600m_remaining_target_low': 0.68,
+        'run_600m_remaining_limp': 0.55,
+        'run_600m_below_target_coeff': 8000.0,
+        'run_600m_below_limp_coeff': 12000.0,
+        # T1 对齐：30kg 1000m 剩余 50-60%（文献），硬约束 ≥48%
+        'run_1km_remaining_target_low': 0.48,
+        'run_1km_remaining_limp': 0.35,
+        'run_1km_below_target_coeff': 8000.0,
+        'run_1km_below_limp_coeff': 12000.0,
+        # T1 对齐：29kg 3.8m/s 连续跑 300s 后体力 ≥20%
         'ranger_29kg_38ms_duration_s': 300,
-        'ranger_29kg_38ms_min_stamina': 0.05,  # 原 0.20；跑步不恢复后改为 0.05，仅过滤极端烂解
-        # 铺装路面跑步必须有净消耗（方案A 下恢复=0 自然满足，此项易过）
+        'ranger_29kg_38ms_min_stamina': 0.20,
+        # 铺装路面跑步必须有净消耗
         'flat_paved_run_duration_s': 300,
         'flat_paved_run_load_kg': 29.0,
         'flat_paved_run_max_stamina_after': 0.90,
@@ -684,10 +684,9 @@ class RSSSuperPipeline:
         encumbrance_speed_penalty_max = trial.suggest_float(
             'encumbrance_speed_penalty_max', 0.40, 0.70
         )
-        # 游骑兵版：上界收紧至 1.25，模拟核心肌群负重耐力训练导致的极低额外耗能
-        # 放宽上限，让重装「跑」必须付出代价，避免优化器压到超人类（原 0.8–1.25）
+        # T1 对齐：下界放宽至 0.8，允许游骑兵级别的低负重消耗倍数
         encumbrance_stamina_drain_coeff = trial.suggest_float(
-            'encumbrance_stamina_drain_coeff', 1.0, 1.6
+            'encumbrance_stamina_drain_coeff', 0.8, 1.6
         )
         
         # [DEPRECATED] 已统一 Pandolf 公式，C/Python 不再使用 Sprint 倍数；保留供 JSON 兼容
@@ -805,7 +804,15 @@ class RSSSuperPipeline:
         env_temperature_cold_recovery_penalty_coeff = trial.suggest_float(
             'env_temperature_cold_recovery_penalty_coeff', 0.04, 0.06
         )
-        
+
+        # T1 模型层面参数
+        load_metabolic_dampening = trial.suggest_float(
+            'load_metabolic_dampening', 0.50, 0.85
+        )
+        max_recovery_per_tick = trial.suggest_float(
+            'max_recovery_per_tick', 0.0002, 0.0006
+        )
+
         # ==================== 2. 创建参数对象并更新常量 ====================
         
         # 创建新的常量实例（不修改原始类）
@@ -865,6 +872,8 @@ class RSSSuperPipeline:
         constants.ENV_MUD_PENALTY_MAX = env_mud_penalty_max
         constants.ENV_TEMPERATURE_HEAT_PENALTY_COEFF = env_temperature_heat_penalty_coeff
         constants.ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = env_temperature_cold_recovery_penalty_coeff
+        constants.LOAD_METABOLIC_DAMPENING = load_metabolic_dampening
+        constants.MAX_RECOVERY_PER_TICK = max_recovery_per_tick
         
         # ==================== 3. 创建数字孪生仿真器 ====================
         
@@ -1250,7 +1259,7 @@ class RSSSuperPipeline:
         penalty = 0.0
 
         # 1) Run：60秒 3.8 m/s 空载
-        # 期望：5% ≤ 消耗 ≤ 15%（避免消耗过大导致可玩性差）
+        # 放宽约束：大多数游戏场景负重 20kg+，空载不做严格限制
         run_delta = simulate_fixed_speed(
             speed=3.8,
             duration_seconds=60.0,
@@ -1259,12 +1268,12 @@ class RSSSuperPipeline:
             initial_stamina=1.0,
         )
         actual_run_drop = max(0.0, -run_delta)
-        required_run_drop_min = 0.005  # 修正后Pandolf(2.7/3.2) coeff=2e-7: ~1.3%
-        required_run_drop_max = 0.04   # 消耗上限，避免"消耗非常大"
+        required_run_drop_min = 0.003
+        required_run_drop_max = 0.10
         if actual_run_drop < required_run_drop_min:
-            penalty += (required_run_drop_min - actual_run_drop) * 3000.0
+            penalty += (required_run_drop_min - actual_run_drop) * 1000.0
         elif actual_run_drop > required_run_drop_max:
-            penalty += (actual_run_drop - required_run_drop_max) * 4000.0
+            penalty += (actual_run_drop - required_run_drop_max) * 2000.0
 
         # 2) Sprint：30秒 5.0m/s 空载
         # 期望：在目标区间内（例如 15%~40%）
@@ -1561,21 +1570,51 @@ class RSSSuperPipeline:
                         f"30kg 1000m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
                     )
         
+        # ======== T1 耐力检查点（软约束）：30kg 连续跑 5min 后体力 ≥25% ========
+        t1_endurance_penalty = 0.0
+        t1_twin = RSSDigitalTwin(twin.constants)
+        t1_twin.reset()
+        t1_weight = 90.0 + 30.0
+        t1_speed = run_speed_at_weight(twin.constants, t1_weight)
+        t1_t = 0.0
+        while t1_t < 300.0:
+            t1_twin.step(t1_speed, t1_weight, 0.0, 1.0, Stance.STAND,
+                         MovementType.RUN, t1_t + 0.2, enable_randomness=False)
+            t1_t += 0.2
+        t1_5min = t1_twin.stamina
+        if t1_5min < 0.25:
+            t1_endurance_penalty += (0.25 - t1_5min) * 8000.0
+        if t1_5min < 0.15:
+            raise optuna.exceptions.TrialPruned(
+                f"30kg 5min 连续跑后体力 {t1_5min:.2%} 低于 T1 硬约束 15%"
+            )
+
+        # ======== T1 恢复速度约束（软约束）：跑 5min 后站立休息 3min 恢复不超 35% ========
+        t1_recov_penalty = 0.0
+        rest_t = t1_t
+        while rest_t < t1_t + 180.0:
+            t1_twin.step(0.0, t1_weight, 0.0, 1.0, Stance.STAND,
+                         MovementType.IDLE, rest_t + 0.2, enable_randomness=False)
+            rest_t += 0.2
+        recov_gain = t1_twin.stamina - t1_5min
+        if recov_gain > 0.35:
+            t1_recov_penalty += (recov_gain - 0.35) * 6000.0
+
         total_burden = 0.0
         weights = [
-            0.05,  # 0: ACFT 2英里（基础体能，不需占比过高）
+            0.02,  # 0: ACFT 2英里（空载，低优先级）
             0.05,  # 1: 城市战斗 35kg
             0.05,  # 2: 山地战斗 25kg
-            0.10,  # 3: 野战巡逻 30kg
+            0.12,  # 3: 野战巡逻 30kg
             0.05,  # 4: Run/Sprint 边界 30kg
             0.15,  # 5: 重载 45kg 10min（核心重装越野测试）
             0.15,  # 6: 持续 20min 30kg（核心持久力测试）
-            0.05,  # 7: 600m 30kg（文献硬约束）
-            0.05,  # 8: 1000m 30kg（文献硬约束）
+            0.08,  # 7: 600m 30kg（T1 核心指标）
+            0.08,  # 8: 1000m 30kg（T1 核心指标）
             0.10,  # 9: CQB 低姿突击（蹲姿参数盲区修复）
             0.10,  # 10: 极限 55kg 重载（encumbrance_speed_penalty_max 压力测试）
             0.10,  # 11: 佛罗里达热应激（热应激参数盲区修复）
-        ]  # 合计：1.00；游骑兵场景（9-11）占比 30%，重装/持久力（5-6）占比 30%
+        ]
 
         for i, (scenario_burden, scenario, _) in enumerate(results_list):
             # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
@@ -1586,8 +1625,10 @@ class RSSSuperPipeline:
         # 参数多样性惩罚：降低权重，避免与可玩性目标冲突
         param_variation_score = 0.0
         key_params = [
-            ('BASE_RECOVERY_RATE', 4e-5, 8e-5, 15.0),  # Walk 可净恢复
-            ('ENCUMBRANCE_STAMINA_DRAIN_COEFF', 0.9, 1.5, 15.0),
+            ('BASE_RECOVERY_RATE', 4e-5, 8e-5, 15.0),
+            ('ENCUMBRANCE_STAMINA_DRAIN_COEFF', 0.8, 1.5, 15.0),
+            ('LOAD_METABOLIC_DAMPENING', 0.50, 0.85, 10.0),
+            ('MAX_RECOVERY_PER_TICK', 0.0002, 0.0006, 10.0),
         ]
         for param_name, min_val, max_val, penalty in key_params:
             if hasattr(twin.constants, param_name):
@@ -1598,7 +1639,8 @@ class RSSSuperPipeline:
                     param_variation_score += penalty
 
         total_burden += param_variation_score
-        
+        total_burden += t1_endurance_penalty + t1_recov_penalty
+
         # 添加场景结果多样性惩罚
         # 如果所有场景的负担都非常接近，说明参数变化影响不大
         if len(results_list) >= 2:

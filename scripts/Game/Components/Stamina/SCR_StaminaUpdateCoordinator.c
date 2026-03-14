@@ -67,6 +67,16 @@ class StaminaUpdateCoordinator
                         gradePercent,
                         terrainFactor,
                         true);
+
+                    float bodyWeightIdle = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
+                    if (currentWeightWithWet > bodyWeightIdle && StaminaConstants.LOAD_METABOLIC_DAMPENING < 1.0)
+                    {
+                        float unloadedPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                            currentSpeed, bodyWeightIdle, gradePercent, terrainFactor, true);
+                        float loadExtra = pandolfPerS - unloadedPerS;
+                        pandolfPerS = unloadedPerS + loadExtra * StaminaConstants.LOAD_METABOLIC_DAMPENING;
+                    }
+
                     pandolfPerS = pandolfPerS * (1.0 + windDrag);
                     baseDrainRate = pandolfPerS * 0.2;
                 }
@@ -80,6 +90,16 @@ class StaminaUpdateCoordinator
                     gradePercent,
                     terrainFactor,
                     true);
+
+                // T1 负重代谢阻尼
+                float bodyWeightWRS = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
+                if (currentWeightWithWet > bodyWeightWRS && StaminaConstants.LOAD_METABOLIC_DAMPENING < 1.0)
+                {
+                    float unloadedPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                        currentSpeed, bodyWeightWRS, gradePercent, terrainFactor, true);
+                    float loadExtra = pandolfPerS - unloadedPerS;
+                    pandolfPerS = unloadedPerS + loadExtra * StaminaConstants.LOAD_METABOLIC_DAMPENING;
+                }
 
                 // 负重限速努力补偿（生理学近似）：当负重显著压低“跑/冲刺”的实际速度时，
                 // 单纯用实际速度会低估局部肌肉招募与步态低效带来的代谢成本。
@@ -105,6 +125,14 @@ class StaminaUpdateCoordinator
                         gradePercent,
                         terrainFactor,
                         true);
+
+                    if (currentWeightWithWet > bodyWeightWRS && StaminaConstants.LOAD_METABOLIC_DAMPENING < 1.0)
+                    {
+                        float unloadedEffort = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                            unencumberedSpeedEstimate, bodyWeightWRS, gradePercent, terrainFactor, true);
+                        float effortExtra = effortPandolfPerS - unloadedEffort;
+                        effortPandolfPerS = unloadedEffort + effortExtra * StaminaConstants.LOAD_METABOLIC_DAMPENING;
+                    }
 
                     if (effortPandolfPerS > pandolfPerS)
                     {

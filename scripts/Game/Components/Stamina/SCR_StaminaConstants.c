@@ -676,8 +676,13 @@ class StaminaConstants
     static const float ENV_SURFACE_WETNESS_SOAK_RATE = 1.0; // kg/秒，趴下时的湿重增加速率
     static const float ENV_SURFACE_WETNESS_THRESHOLD = 0.1; // 积水阈值（高于此值触发湿重增加）
     static const float ENV_SURFACE_WETNESS_MARGINAL_DECAY_ADVANCE = 0.1; // 边际效应衰减提前触发比例
-    static const float ENV_SURFACE_WETNESS_PRONE_PENALTY = 0.15; // 湿地趴下时的恢复惩罚
-    
+    static const float ENV_SURFACE_WETNESS_PRONE_PENALTY = 0.15;
+
+    // T1 负重代谢阻尼：训练有素操作员只承受负重额外代谢的此比例
+    static const float LOAD_METABOLIC_DAMPENING = 0.70;
+    // 恢复速率上限（每 tick），防止过快回血
+    static const float MAX_RECOVERY_PER_TICK = 0.0004;
+
     // ==================== 配置系统桥接方法 ====================
     
     // 获取能量到体力转换系数（从配置管理器）

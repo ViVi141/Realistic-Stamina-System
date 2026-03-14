@@ -98,6 +98,13 @@ modded class SCR_CharacterControllerComponent
     protected CompartmentAccessComponent m_pCompartmentAccess;
     protected CharacterAnimationComponent m_pAnimComponent;
 
+    // ==================== 引擎动画速度补偿 ====================
+    // 引擎会因装备动画属性降低角色的基础最大速度，导致 OverrideMaxSpeed 的乘数
+    // 作用在一个更低的基数上。此模块检测引擎实际最大速度并补偿。
+    protected float m_fAnimSpeedCompensation = 1.0;
+    protected float m_fLastAnimCompensationUpdateTime = -1.0;
+    protected static const float ANIM_COMPENSATION_UPDATE_INTERVAL = 2.0;
+
     // ==================== 战术冲刺爆发（短时全速）====================
     protected float m_fSprintStartTime = -1.0;       // 本次冲刺开始时间（世界时间秒），-1 表示未在爆发/已进入平稳期
     protected bool m_bLastWasSprinting = false;       // 上一帧是否处于 Sprint 状态，用于检测进入/离开冲刺
@@ -119,7 +126,7 @@ modded class SCR_CharacterControllerComponent
             // 服务器注册为配置变更监听器
             SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
             // 服务器检测到玩家（本控制器）：主动推送配置，直到收到客户端回执
-            if (IsPlayerControlled())
+            if (IsPlayerControlled() && GetGame() && GetGame().GetCallqueue())
                 GetGame().GetCallqueue().CallLater(ServerPushConfigToOwner, 3000, false);
 
             // debug: 输出当前的能量转体力系数
@@ -162,7 +169,12 @@ modded class SCR_CharacterControllerComponent
         // 初始化运动持续时间跟踪模块
         m_pExerciseTracker = new ExerciseTracker();
         if (m_pExerciseTracker)
-            m_pExerciseTracker.Initialize(GetGame().GetWorld().GetWorldTime()); 
+        {
+            float initTime = 0.0;
+            if (GetGame() && GetGame().GetWorld())
+                initTime = GetGame().GetWorld().GetWorldTime();
+            m_pExerciseTracker.Initialize(initTime);
+        } 
         
         // 初始化"撞墙"阻尼过渡模块
         m_pCollapseTransition = new CollapseTransition();
@@ -182,7 +194,9 @@ modded class SCR_CharacterControllerComponent
         m_pEnvironmentFactor = new EnvironmentFactor();
         if (m_pEnvironmentFactor)
         {
-            World world = GetGame().GetWorld();
+            World world = null;
+            if (GetGame())
+                world = GetGame().GetWorld();
             if (world)
             {
                 m_pEnvironmentFactor.Initialize(world, owner);
@@ -196,7 +210,9 @@ modded class SCR_CharacterControllerComponent
         m_pFatigueSystem = new FatigueSystem();
         if (m_pFatigueSystem)
         {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+            float currentTime = 0.0;
+            if (GetGame() && GetGame().GetWorld())
+                currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
             m_pFatigueSystem.Initialize(currentTime);
         }
         
@@ -917,7 +933,8 @@ modded class SCR_CharacterControllerComponent
         {
             // 计算动态跛行倍率
             float limpSpeedMultiplier = RealisticStaminaSpeedSystem.GetDynamicLimpMultiplier(encumbranceSpeedPenalty);
-            OverrideMaxSpeed(limpSpeedMultiplier);
+            float compensatedLimpMultiplier = Math.Clamp(limpSpeedMultiplier * m_fAnimSpeedCompensation, 0.01, 1.0);
+            OverrideMaxSpeed(compensatedLimpMultiplier);
             
             // 调试信息：精疲力尽状态
             if (!lastExhaustedState && IsRssDebugEnabled())
@@ -1045,6 +1062,41 @@ modded class SCR_CharacterControllerComponent
         float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
         float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
 
+        // ==================== 引擎动画速度补偿（周期性更新）====================
+        // 引擎的 OverrideMaxSpeed(fraction) 以"当前动画最大速度"为基数；
+        // 装备动画属性会降低这个基数（如 5.5→4.77），导致实际速度低于预期。
+        // 通过 GetMaxSpeed API 检测实际基数，反向补偿 fraction。
+        if (currentTime - m_fLastAnimCompensationUpdateTime >= ANIM_COMPENSATION_UPDATE_INTERVAL)
+        {
+            m_fLastAnimCompensationUpdateTime = currentTime;
+            if (m_pAnimComponent)
+            {
+                float animSprintMax = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
+                float animRunMax = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
+                if (animSprintMax > 0.1)
+                {
+                    float engineFactor = animSprintMax / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+                    if (engineFactor < 0.97)
+                    {
+                        m_fAnimSpeedCompensation = 1.0 / engineFactor;
+                    }
+                    else
+                    {
+                        m_fAnimSpeedCompensation = 1.0;
+                    }
+                    if (IsRssDebugEnabled())
+                    {
+                        Print(string.Format(
+                            "[RSS] AnimSpeed: sprint=%1 run=%2 factor=%3 comp=%4",
+                            Math.Round(animSprintMax * 100.0) / 100.0,
+                            Math.Round(animRunMax * 100.0) / 100.0,
+                            Math.Round(engineFactor * 1000.0) / 1000.0,
+                            Math.Round(m_fAnimSpeedCompensation * 1000.0) / 1000.0));
+                    }
+                }
+            }
+        }
+
         // ==================== 速度倍率应用 ====================
         // 玩家：客户端本地计算；导出开启时采用服务器校验速度（平滑值）；AI：服务器端计算
         float speedToApply = finalSpeedMultiplier;
@@ -1053,7 +1105,8 @@ modded class SCR_CharacterControllerComponent
             m_pNetworkSyncManager.GetTargetSpeedMultiplier(finalSpeedMultiplier);
             speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
         }
-        OverrideMaxSpeed(speedToApply);
+        float compensatedSpeedToApply = Math.Clamp(speedToApply * m_fAnimSpeedCompensation, 0.01, 1.0);
+        OverrideMaxSpeed(compensatedSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -1808,15 +1861,37 @@ modded class SCR_CharacterControllerComponent
                     serverWeight = inventoryComponent.GetTotalWeight();
             }
 
-            // 计算速度惩罚（基于服务器重量）
-            // serverWeight 为装备/背包重量，不含身体重量
-            float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
-            float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
-            float encPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-            float exp = StaminaConstants.GetEncumbranceSpeedPenaltyExponent();
-            float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
-            float encPenalty = encPenaltyCoeff * Math.Pow(bodyMassPercent, exp);
-            encPenalty = Math.Clamp(encPenalty, 0.0, max_pen);
+            // 速度惩罚：优先使用 EncumbranceCache 的三段分段多项式（与客户端一致）
+            float encPenalty = 0.0;
+            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            {
+                encPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+            }
+            else
+            {
+                float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
+                float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
+                float ratio = Math.Clamp(bodyMassPercent, 0.0, 2.0);
+                float rawPenalty = 0.0;
+                if (ratio <= 0.3)
+                {
+                    rawPenalty = 0.15 * ratio;
+                }
+                else if (ratio <= 0.6)
+                {
+                    float segment = ratio - 0.3;
+                    rawPenalty = 0.045 + 0.35 * Math.Pow(segment, 1.5);
+                }
+                else
+                {
+                    float segment = ratio - 0.6;
+                    rawPenalty = 0.25 + 0.65 * (segment * segment);
+                }
+                float coeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+                rawPenalty = rawPenalty * (coeff / 0.20);
+                float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+                encPenalty = Math.Clamp(rawPenalty, 0.0, max_pen);
+            }
 
             // 获取服务器端的移动状态（权威）
             bool isSprinting = IsSprinting();

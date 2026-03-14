@@ -443,7 +443,7 @@ class DebugDisplay
         
         string statusMessage = string.Format(
             "[RSS] 状态: 速度%1m/s 体力%2%% 倍率%3x 类型%4",
-            Math.Round(lastSecondSpeed * 10.0) / 10.0,
+            Math.Round(lastSecondSpeed * 100.0) / 100.0,
             Math.Round(lastStaminaPercent * 100.0),
             Math.Round(lastSpeedMultiplier * 100.0) / 100.0,
             movementTypeStr);

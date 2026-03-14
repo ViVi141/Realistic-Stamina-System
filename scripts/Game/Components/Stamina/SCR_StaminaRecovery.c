@@ -90,7 +90,8 @@ class StaminaRecoveryCalculator
         bool disablePositiveRecovery,
         int stance = 0,
         EnvironmentFactor environmentFactor = null,
-        float currentSpeed = 0.0)
+        float currentSpeed = 0.0,
+        int movementPhase = 0)
     {
         float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
             staminaPercent, 
@@ -126,19 +127,28 @@ class StaminaRecoveryCalculator
             recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
         }
         
-        // ==================== 运动状态恢复率调整（方案A：跑步/冲刺彻底不恢复，避免 0.81 卡线）====================
+        // ==================== 运动状态恢复率调整（方案B：速度 + 移动意图联合判断）====================
         //
         // - 静止：正常恢复
-        // - Walk：0.8 倍，允许净恢复
-        // - Run / Sprint：0，跑步时仅消耗不恢复，体力单调下降无平衡点
+        // - Walk（意图或速度）：0.8 倍，允许净恢复
+        // - Run（速度>=3.2 或意图为RUN且速度>=0.1）：极低恢复(0.15)，防止坡度减速后无限跑
+        // - Sprint（速度>=5.0 或意图为SPRINT且速度>=0.1）：0，彻底不恢复
         float speedBasedRecoveryMultiplier = 1.0;
-        if (currentSpeed >= 5.0) // Sprint
+        if (currentSpeed >= 5.0)
         {
             speedBasedRecoveryMultiplier = 0.0;
         }
-        else if (currentSpeed >= 3.2) // Run
+        else if (currentSpeed >= 3.2)
         {
             speedBasedRecoveryMultiplier = 0.0;
+        }
+        else if (movementPhase == 3 && currentSpeed >= 0.1) // SPRINT intent
+        {
+            speedBasedRecoveryMultiplier = 0.0;
+        }
+        else if (movementPhase == 2 && currentSpeed >= 0.1) // RUN intent
+        {
+            speedBasedRecoveryMultiplier = 0.25;
         }
         else if (currentSpeed >= 0.1) // Walk
         {
@@ -218,8 +228,13 @@ class StaminaRecoveryCalculator
             currentWeightForRecovery < 40.0 && // 重量在合理范围内
             recoveryRate < 0.00005) // 只有当恢复率过低时才触发（绝境保护后recoveryRate>=0.0001，不会触发）
         {
-            // 强制设置为一个小的正值（每0.2秒恢复0.01%，每秒恢复0.05%）
             recoveryRate = 0.0001;
+        }
+
+        float maxRecoveryPerTick = StaminaConstants.MAX_RECOVERY_PER_TICK;
+        if (maxRecoveryPerTick > 0.0 && recoveryRate > maxRecoveryPerTick)
+        {
+            recoveryRate = maxRecoveryPerTick;
         }
         
         return recoveryRate;
