@@ -58,8 +58,18 @@ class NetworkSyncManager
     }
 
     // 验证并接受客户端报告（速率限制）
-    bool AcceptClientReport(float currentTime)
+    // @param currentTime 当前服务器时间
+    // @param isCriticalData 是否为关键数据（关键数据允许即时上报）
+    // @return true表示接受报告，false表示拒绝
+    bool AcceptClientReport(float currentTime, bool isCriticalData = false)
     {
+        // 关键数据允许即时上报（体力耗尽、突发状态等）
+        if (isCriticalData)
+        {
+            m_fLastClientReportTime = currentTime;
+            return true;
+        }
+
         if (currentTime - m_fLastClientReportTime >= MIN_CLIENT_REPORT_INTERVAL)
         {
             m_fLastClientReportTime = currentTime;

@@ -19,21 +19,28 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastSpeedMultiplier = 1.0;
     protected float m_fLastStaminaUpdateTime = -1.0; // 上次体力更新时间（秒，GetWorldTime），用于按时间计算 timeDelta
     protected SCR_CharacterStaminaComponent m_pStaminaComponent; // 体力组件引用
+    protected bool m_bLastExhaustedState = false; // 上次精疲力尽状态，用于状态切换日志
     
     // 网络同步相关
     protected ref NetworkSyncManager m_pNetworkSyncManager;
     protected string m_sLastSpeedSource = "";  // 调试用：上次速度计算来源（Server/Client）
     protected static ref array<string> s_aAIDebugLines = new array<string>();  // AI 调试行缓存
-    protected float m_fLastServerSyncTime = 0.0; // 上次服务器同步时间
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 未收到配置时的重试间隔（秒），收到后不再请求
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
     protected const float CONFIG_FETCH_TIMEOUT_SEC = 30.0; // 配置获取超时（秒），超时后每 30 秒打印一次警告
     protected bool m_bIsConnected = false; // 网络连接状态
-    protected bool m_bLoggedInitialConfigRequest = false; // 是否已记录初次同步请求
     protected float m_fFirstConfigRequestTime = -1.0; // 首次请求配置时间（秒），-1 表示未在等待
     protected float m_fLastConfigTimeoutWarningTime = -1.0; // 上次打印超时警告时间，避免刷屏
-    protected bool m_bClientAckedConfig = false;  // 服务器：该客户端是否已回执“已收到配置”，收到后不再推送
+    protected bool m_bClientAckedConfig = false;  // 服务器：该客户端是否已回执"已收到配置"，收到后不再推送
+    protected float m_fLastHeartbeatTime = 0.0; // 上次心跳时间
+    protected int m_iPlayerId = 0; // 玩家ID缓存
+    protected int m_iConfigRetryCount = 0; // 配置请求重试次数
+    protected const int MAX_CONFIG_RETRY_COUNT = 3; // 最大配置重试次数，超过后请求广播配置
+    protected float m_fLastHeartbeatSendTime = 0.0; // 上次发送心跳时间
+    protected const float HEARTBEAT_INTERVAL = 5.0; // 心跳发送间隔（秒）
+    protected const float HEARTBEAT_TIMEOUT = 15.0; // 心跳超时阈值（秒）
+    protected string m_sLastAppliedConfigHash = ""; // 上次应用的配置哈希值，用于检测内容变化
 
     // ==================== "撞墙"阻尼过渡模块 ====================
     // 模块化拆分：使用独立的 CollapseTransition 类管理"撞墙"临界点的5秒阻尼过渡逻辑
@@ -89,7 +96,7 @@ modded class SCR_CharacterControllerComponent
 
     // ==================== 速度差分缓存（用于游泳/命令位移测速）====================
     // 说明：游泳命令通过 PrePhys_SetTranslation 直接改变位移，GetVelocity() 可能不更新
-    // 因此通过“位置差分/时间步长”计算速度向量，作为消耗模型的速度输入
+    // 因此通过"位置差分/时间步长"计算速度向量，作为消耗模型的速度输入
     
     // ==================== 游泳状态缓存（用于调试显示）====================
     protected vector m_vLastPositionSample = vector.Zero;
@@ -269,6 +276,7 @@ modded class SCR_CharacterControllerComponent
             // 客户端不再主动请求；等待服务器推送，收到后回执
             m_bIsConnected = true;
             GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
+            GetGame().GetCallqueue().CallLater(UpdateHeartbeat, HEARTBEAT_INTERVAL * 1000, true);
         }
     }
     
@@ -283,12 +291,13 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             return;
-        array<float> combinedPresetParams = new array<float>();
-        array<float> floatSettings = new array<float>();
-        array<int> intSettings = new array<int>();
-        array<bool> boolSettings = new array<bool>();
-        BuildCombinedPresetArray(settings, combinedPresetParams);
-        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+        array<float> combinedPresetParams;
+        array<float> floatSettings;
+        array<int> intSettings;
+        array<bool> boolSettings;
+        BuildConfigArrays(combinedPresetParams, floatSettings, intSettings, boolSettings);
+
         Rpc(RPC_SendFullConfigOwner,
             settings.m_sConfigVersion,
             settings.m_sSelectedPreset,
@@ -369,6 +378,23 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings.WriteSettingsToArrays(s, floatSettings, intSettings, boolSettings);
     }
 
+    // 统一的配置数组构建方法（减少重复代码）
+    // 自动构建预设数组和设置数组
+    protected void BuildConfigArrays(out array<float> combinedPresetParams, out array<float> floatSettings, out array<int> intSettings, out array<bool> boolSettings)
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        combinedPresetParams = new array<float>();
+        floatSettings = new array<float>();
+        intSettings = new array<int>();
+        boolSettings = new array<bool>();
+
+        BuildCombinedPresetArray(settings, combinedPresetParams);
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+    }
+
     // 将 4 个预设数组合并为 1 个，用于 RPC（Enfusion Rpc 有参数数量限制）
     protected void BuildCombinedPresetArray(SCR_RSS_Settings s, array<float> outCombined)
     {
@@ -421,14 +447,17 @@ modded class SCR_CharacterControllerComponent
         if (!settings)
             settings = new SCR_RSS_Settings();
 
-        // 配置未变化时跳过应用，避免每 5 秒重复 Save 和日志刷屏
+        // 计算配置哈希值（基于关键配置参数）
+        string newConfigHash = CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings);
+
+        // 配置未变化时跳过应用（基于哈希值，而非仅版本/预设名）
         // 必须已应用过服务器配置才可跳过：首次连接时客户端默认值可能与服务器版本/预设名相同，若直接跳过会导致预设参数从未被应用
-        if (SCR_RSS_ConfigManager.IsServerConfigApplied()
-            && settings.m_sConfigVersion == configVersion
-            && settings.m_sSelectedPreset == selectedPreset)
+        if (SCR_RSS_ConfigManager.IsServerConfigApplied() && m_sLastAppliedConfigHash != "" && newConfigHash == m_sLastAppliedConfigHash)
         {
             m_fFirstConfigRequestTime = -1.0;
             m_fLastConfigTimeoutWarningTime = -1.0;
+            if (IsRssDebugEnabled())
+                Print("[RSS] Config unchanged (hash match), skipping apply");
             return;
         }
 
@@ -451,13 +480,51 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
         m_fFirstConfigRequestTime = -1.0;  // 收到配置，清除超时计时
         m_fLastConfigTimeoutWarningTime = -1.0;
-        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2", selectedPreset, configVersion);
+        m_sLastAppliedConfigHash = newConfigHash; // 更新配置哈希
+        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2, hash=%3", selectedPreset, configVersion, newConfigHash);
 
         // 服务器配置应用后，根据 hint 开关创建或销毁 HUD（修复：配置晚于 InitStaminaHUD 到达时 HUD 未创建的问题）
         if (settings.m_bHintDisplayEnabled)
             SCR_StaminaHUDComponent.Init();
         else
             SCR_StaminaHUDComponent.Destroy();
+    }
+
+    // 计算配置哈希值（基于关键配置参数）
+    // 用于检测配置内容变化，避免重复应用相同配置
+    protected string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings)
+    {
+        string hashString = configVersion + "|" + selectedPreset + "|";
+
+        // 合并关键浮点数设置到哈希字符串
+        if (floatSettings && floatSettings.Count() > 0)
+        {
+            for (int i = 0; i < floatSettings.Count(); i++)
+            {
+                // 四舍五入到3位小数，避免浮点精度差异
+                int roundedValue = Math.Round(floatSettings[i] * 1000);
+                hashString += string.ToString(roundedValue) + ",";
+            }
+        }
+
+        // 合并关键整数设置到哈希字符串
+        if (intSettings && intSettings.Count() > 0)
+        {
+            for (int j = 0; j < intSettings.Count(); j++)
+            {
+                hashString += string.ToString(intSettings[j]) + ",";
+            }
+        }
+
+        // 使用简单的字符串哈希（EnforceScript无内置哈希函数）
+        int hash = 0;
+        for (int k = 0; k < hashString.Length(); k++)
+        {
+            hash = ((hash << 5) - hash) + hashString.ToAscii(k);
+            hash = hash & 0x7FFFFFFF; // 限制为正整数
+        }
+
+        return string.ToString(hash);
     }
 
     // RPC: 服务器发送完整配置给客户端（目标客户端）
@@ -527,35 +594,84 @@ modded class SCR_CharacterControllerComponent
     void MonitorNetworkConnection()
     {
         if (Replication.IsServer()) return;
-        
-        // 检测网络连接状态
-        // 在EnforceScript中，使用Replication.IsServer()来间接判断连接状态
-        // 客户端如果能执行到这里，说明已经连接到服务器
-        bool isConnected = true;
-        
-        // 检测重连
+
+        if (!GetGame()) return;
+        PlayerManager playerManager = GetGame().GetPlayerManager();
+        if (!playerManager) return;
+
+        // 获取当前时间（秒）
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        // 方法1：使用 PlayerManager 检测玩家ID
+        int playerId = playerManager.GetPlayerIdFromControlledEntity(GetOwner());
+        bool hasValidPlayerId = (playerId != 0);
+
+        // 方法2：心跳检测（补充验证）
+        // 如果玩家ID存在，检查心跳超时（防止静默断开）
+        bool isHeartbeatActive = false;
+        if (hasValidPlayerId && m_fLastHeartbeatTime > 0.0)
+        {
+            float heartbeatTimeout = 10.0; // 心跳超时阈值（秒）
+            isHeartbeatActive = ((currentTime - m_fLastHeartbeatTime) < heartbeatTimeout);
+        }
+
+        // 综合判断连接状态
+        // 条件：有效的玩家ID AND（未启动心跳 或 心跳活跃）
+        bool isConnected = hasValidPlayerId && (m_fLastHeartbeatTime == 0.0 || isHeartbeatActive);
+
+        // 检测PlayerID变化（重连/重新连接）
+        bool playerIdChanged = (m_iPlayerId != 0 && playerId != 0 && m_iPlayerId != playerId);
+
+        // 更新玩家ID缓存
+        if (hasValidPlayerId && m_iPlayerId != playerId)
+        {
+            if (m_iPlayerId != 0)
+            {
+                PrintFormat("[RSS] 检测到玩家ID变化: %1 -> %2 (可能是重连)", m_iPlayerId, playerId);
+            }
+            else
+            {
+                PrintFormat("[RSS] 检测到玩家ID: %1", playerId);
+            }
+            m_iPlayerId = playerId;
+        }
+
+        // 检测首次连接（初始化时触发）
         if (!m_bIsConnected && isConnected)
+        {
+            m_fLastHeartbeatTime = currentTime; // 初始化心跳
+            m_bIsConnected = true;
+            m_fLastReconnectTime = currentTime;
+            Print("[RSS] 网络已连接，等待服务器推送配置");
+            // 发起配置请求
+            RequestServerConfig();
+        }
+        // 检测断线重连（通过PlayerID变化检测）
+        else if (m_bIsConnected && playerIdChanged && isConnected)
         {
             // 网络重连：立即重置配置状态，避免使用旧服务器配置；重置超时计时以便重新计时
             SCR_RSS_ConfigManager.ResetClientConfigAwaitingSync();
+            m_iConfigRetryCount = 0; // 重置重试计数
             m_fFirstConfigRequestTime = -1.0;
             m_fLastConfigTimeoutWarningTime = -1.0;
-            m_bIsConnected = true;
-            m_fLastReconnectTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            m_fLastReconnectTime = currentTime;
             Print("[RSS] 网络已重连，等待服务器推送配置");
-            // 若服务器复用同一控制器则不会再次主动推送，延迟一次请求作为兜底
+            // 延迟请求配置（避免服务器推送冲突）
             GetGame().GetCallqueue().CallLater(RequestServerConfig, RECONNECT_SYNC_DELAY * 1000, false);
         }
+        // 检测断线
         else if (m_bIsConnected && !isConnected)
         {
-            // 网络断开
             m_bIsConnected = false;
+            m_iPlayerId = 0;
+            m_fLastHeartbeatTime = 0.0;
             Print("[RSS] 网络连接已断开");
         }
-        else
+
+        // 更新心跳时间（如果连接正常）
+        if (isConnected)
         {
-            // 网络状态未变化
-            m_bIsConnected = isConnected;
+            m_fLastHeartbeatTime = currentTime;
         }
     }
     
@@ -698,7 +814,7 @@ modded class SCR_CharacterControllerComponent
     }
     
     // 姿态切换锁定说明：Override SetStanceChange/CanChangeStance 会与基类或合并模组产生 Multiple declaration，
-    // 无法在本 addon 中通过拦截上述接口实现“动画未完成时禁止再次切换”。反复蹲起仍由 StanceTransitionManager
+    // 无法在本 addon 中通过拦截上述接口实现"动画未完成时禁止再次切换"。反复蹲起仍由 StanceTransitionManager
     // 的疲劳堆积与单次消耗计费约束。
     
     // 判断当前角色是否应参与体力系统更新
@@ -933,30 +1049,29 @@ modded class SCR_CharacterControllerComponent
         // ==================== 精疲力尽逻辑（融合模型）====================
         // 如果体力 ≤ 0，强制速度为当前最大Walk速度（考虑负重）
         bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(staminaPercent);
-        static bool lastExhaustedState = false;
         if (isExhausted)
         {
             // 计算动态跛行倍率
             float limpSpeedMultiplier = RealisticStaminaSpeedSystem.GetDynamicLimpMultiplier(encumbranceSpeedPenalty);
             float compensatedLimpMultiplier = Math.Clamp(limpSpeedMultiplier * m_fAnimSpeedCompensation, 0.01, 1.0);
             OverrideMaxSpeed(compensatedLimpMultiplier);
-            
+
             // 调试信息：精疲力尽状态
-            if (!lastExhaustedState && IsRssDebugEnabled())
+            if (!m_bLastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RSS] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
-                lastExhaustedState = true;
+                m_bLastExhaustedState = true;
             }
-            
+
             // 继续执行后续逻辑（但速度已被限制）
             // 注意：即使精疲力尽，仍然需要更新体力值（恢复）
         }
         else
         {
-            if (lastExhaustedState && IsRssDebugEnabled())
+            if (m_bLastExhaustedState && IsRssDebugEnabled())
             {
                 Print("[RSS] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
-                lastExhaustedState = false;
+                m_bLastExhaustedState = false;
             }
         }
         
@@ -1088,9 +1203,19 @@ modded class SCR_CharacterControllerComponent
         else
             m_sLastSpeedSource = "Server";
 
-        // 仅当服务器开启数据导出时向服务器上报体力与负重（节流由 NetworkSyncManager.ShouldSync 控制）
-        if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && m_pNetworkSyncManager.ShouldSync(currentTime) && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
-            Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight);
+        // 仅当服务器开启数据导出时向服务器上报体力与负重
+        // 关键数据（体力耗尽等）允许即时上报，绕过速率限制
+        bool isCriticalData = (staminaPercent <= 0.05 || (m_pNetworkSyncManager && m_pNetworkSyncManager.GetLastReportedStaminaPercent() > 0.5 && staminaPercent <= 0.1));
+        if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
+        {
+            bool shouldSync = m_pNetworkSyncManager.ShouldSync(currentTime);
+            if (shouldSync || isCriticalData)
+            {
+                Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight, currentTime, isCriticalData);
+                if (isCriticalData && IsRssDebugEnabled())
+                    PrintFormat("[RSS] Critical stamina event reported (stamina=%1)", staminaPercent);
+            }
+        }
 
         // ==================== 检测游泳状态（游泳体力管理）====================
         // 模块化：使用 SwimmingStateManager 管理游泳状态和湿重
@@ -1519,7 +1644,7 @@ modded class SCR_CharacterControllerComponent
                 s_aAIDebugLines = new array<string>();
             s_aAIDebugLines.Insert(aiLine);
             if (s_aAIDebugLines.Count() > 15)
-                s_aAIDebugLines.RemoveItem(s_aAIDebugLines.Get(0));
+                s_aAIDebugLines.RemoveOrdered(0);
         }
         
         // ==================== 调试输出与 HUD 实时更新 =====================
@@ -1717,7 +1842,7 @@ modded class SCR_CharacterControllerComponent
     }
     
     // 客户端请求服务器配置（连接/重连后推送到收到为止，收到后不再请求；配置启动后不变）
-    void RequestServerConfig()
+    void RequestServerConfig(bool forceBroadcast = false)
     {
         if (!Replication.IsServer())
         {
@@ -1728,21 +1853,39 @@ modded class SCR_CharacterControllerComponent
             if (m_fFirstConfigRequestTime < 0.0)
                 m_fFirstConfigRequestTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
             float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (nowSec - m_fFirstConfigRequestTime >= CONFIG_FETCH_TIMEOUT_SEC)
+            float elapsed = nowSec - m_fFirstConfigRequestTime;
+
+            // 超时检测：超过30秒且重试次数达到上限，请求广播配置
+            if (elapsed >= CONFIG_FETCH_TIMEOUT_SEC)
             {
+                m_iConfigRetryCount++;
+
                 if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
                 {
                     m_fLastConfigTimeoutWarningTime = nowSec;
-                    Print("[RSS] 配置获取超时，继续使用默认配置并重试。若持续无响应请检查服务器或网络。");
+
+                    if (m_iConfigRetryCount >= MAX_CONFIG_RETRY_COUNT)
+                    {
+                        PrintFormat("[RSS] 配置获取超时（重试 %1/%2），请求服务器广播配置", m_iConfigRetryCount, MAX_CONFIG_RETRY_COUNT);
+                        // 强制请求广播配置（超时后使用广播兜底）
+                        forceBroadcast = true;
+                    }
+                    else
+                    {
+                        PrintFormat("[RSS] 配置获取超时（重试 %1/%2），继续重试。若持续无响应请检查服务器或网络。", m_iConfigRetryCount, MAX_CONFIG_RETRY_COUNT);
+                    }
                 }
             }
-            if (!m_bLoggedInitialConfigRequest)
-            {
-                Print("[RSS] Client requesting server config");
-                m_bLoggedInitialConfigRequest = true;
-            }
             // 发送RPC请求服务器配置（必须用 Rpc() 发送，直接调用仅在本地执行）
-            Rpc(RPC_ServerRequestConfig);
+            if (forceBroadcast)
+            {
+                // 超时后使用广播请求，避免点对点推送失败
+                Rpc(RPC_ServerRequestBroadcastConfig);
+            }
+            else
+            {
+                Rpc(RPC_ServerRequestConfig);
+            }
         }
     }
     
@@ -1776,25 +1919,68 @@ modded class SCR_CharacterControllerComponent
             boolSettings
         );
     }
-    
-    // 仅在未收到配置时按间隔重试请求，收到后不再请求（类 TCP：连接后推送直到收到，重连再发）
-    void UpdateServerConfigSync()
+
+    // RPC: 客户端请求广播配置（超时兜底）
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ServerRequestBroadcastConfig()
     {
-        if (Replication.IsServer()) return;
-        if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+        if (!Replication.IsServer())
             return;
 
+        // 服务器向所有客户端广播配置（超时兜底机制）
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        PrintFormat("[RSS] Broadcast config to all clients (timeout fallback): %1", GetPlayerLabel(GetOwner()));
+
+        array<float> combinedPresetParams = new array<float>();
+        array<float> floatSettings = new array<float>();
+        array<int> intSettings = new array<int>();
+        array<bool> boolSettings = new array<bool>();
+        BuildCombinedPresetArray(settings, combinedPresetParams);
+        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+
+        Rpc(RPC_SendFullConfigBroadcast,
+            settings.m_sConfigVersion,
+            settings.m_sSelectedPreset,
+            combinedPresetParams,
+            floatSettings,
+            intSettings,
+            boolSettings
+        );
+    }
+    
+    // 心跳管理（客户端定时发送）
+    void UpdateHeartbeat()
+    {
+        if (Replication.IsServer()) return;
+
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        if (currentTime - m_fLastServerSyncTime >= SERVER_CONFIG_SYNC_INTERVAL)
+
+        // 定时发送心跳
+        if (currentTime - m_fLastHeartbeatSendTime >= HEARTBEAT_INTERVAL)
         {
-            m_fLastServerSyncTime = currentTime;
-            RequestServerConfig();
+            m_fLastHeartbeatSendTime = currentTime;
+            Rpc(RPC_ClientHeartbeat, GetGame().GetWorld().GetWorldTime() / 1000.0);
+        }
+
+        // 检测心跳超时（静默断开检测）
+        if (m_fLastHeartbeatTime > 0.0 && (currentTime - m_fLastHeartbeatTime) > HEARTBEAT_TIMEOUT)
+        {
+            // 心跳超时：认为网络已断开
+            if (m_bIsConnected)
+            {
+                m_bIsConnected = false;
+                m_iPlayerId = 0;
+                Print("[RSS] 心跳超时，判定网络已断开");
+            }
         }
     }
 
     // RPC: 客户端向服务器上报体力与负重（周期性）
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ClientReportStamina(float staminaPercent, float weight)
+    void RPC_ClientReportStamina(float staminaPercent, float weight, float clientTimestamp, bool isCriticalData)
     {
         if (Replication.IsServer())
         {
@@ -1803,8 +1989,29 @@ modded class SCR_CharacterControllerComponent
 
             float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
-            // 速率限制：拒绝过于频繁的客户端上报（防止恶意刷频）
-            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime))
+            // 时间戳校验：检测异常延迟或时间回退
+            if (clientTimestamp > 0.0)
+            {
+                float timestampDelta = currentTime - clientTimestamp;
+                // 允许的最大往返延迟（秒），超过此值认为数据过期
+                const float MAX_VALID_RTT = 2.0;
+                if (timestampDelta > MAX_VALID_RTT)
+                {
+                    if (IsRssDebugEnabled())
+                        PrintFormat("[RSS] Stale stamina report ignored (timestamp delta: %1s)", timestampDelta);
+                    return;
+                }
+                else if (timestampDelta < -0.5)
+                {
+                    // 时间回退：可能客户端时钟异常
+                    if (IsRssDebugEnabled())
+                        PrintFormat("[RSS] Stale stamina report ignored (time regression: %1s)", timestampDelta);
+                    return;
+                }
+            }
+
+            // 速率限制：关键数据允许即时上报
+            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime, isCriticalData))
             {
                 if (IsRssDebugEnabled())
                     PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
@@ -1915,7 +2122,7 @@ modded class SCR_CharacterControllerComponent
                 if (!m_pNetworkSyncManager.HasServerValidation())
                 {
                     m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                    Rpc(RPC_ServerSyncSpeedMultiplier, validated);
+                    Rpc(RPC_ServerSyncSpeedMultiplier, validated, currentTime);
                 }
                 else
                 {
@@ -1923,7 +2130,7 @@ modded class SCR_CharacterControllerComponent
                     if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
                     {
                         m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                        Rpc(RPC_ServerSyncSpeedMultiplier, validated);
+                        Rpc(RPC_ServerSyncSpeedMultiplier, validated, currentTime);
                     }
                     else
                     {
@@ -1936,12 +2143,62 @@ modded class SCR_CharacterControllerComponent
 
     // RPC: 服务器将验证后的速度同步回客户端（目标客户端）
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier)
+    void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, float serverTimestamp)
     {
         if (!Replication.IsServer())
         {
             if (m_pNetworkSyncManager)
+            {
+                // 时间戳校验：检查数据是否过期
+                if (serverTimestamp > 0.0)
+                {
+                    float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+                    float timestampDelta = currentTime - serverTimestamp;
+
+                    // 允许的最大单向延迟（秒），超过此值认为验证值已过期
+                    const float MAX_VALID_ONE_WAY_LATENCY = 1.0;
+                    if (timestampDelta > MAX_VALID_ONE_WAY_LATENCY)
+                    {
+                        if (IsRssDebugEnabled())
+                            PrintFormat("[RSS] Stale speed validation ignored (latency: %1s)", timestampDelta);
+                        return; // 拒绝应用过期的验证值
+                    }
+                }
+
                 m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
+            }
+        }
+    }
+
+    // RPC: 客户端心跳（服务器端检测超时断开）
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_ClientHeartbeat(int clientTimestamp)
+    {
+        if (Replication.IsServer())
+        {
+            // 服务器端记录心跳时间（用于后续超时检测）
+            m_fLastHeartbeatTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+            // 心跳响应：回传服务器时间戳用于客户端延迟计算
+            Rpc(RPC_ServerHeartbeatAck, GetGame().GetWorld().GetWorldTime() / 1000.0);
+        }
+    }
+
+    // RPC: 服务器心跳确认（客户端计算往返延迟）
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    void RPC_ServerHeartbeatAck(float serverTimestamp)
+    {
+        if (!Replication.IsServer())
+        {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float rtt = currentTime - serverTimestamp;
+
+            // 更新心跳时间
+            m_fLastHeartbeatTime = currentTime;
+
+            // 可选：输出延迟信息用于调试
+            if (IsRssDebugEnabled() && rtt > 0.5)
+                PrintFormat("[RSS] High latency detected (RTT: %1s)", rtt);
         }
     }
 
