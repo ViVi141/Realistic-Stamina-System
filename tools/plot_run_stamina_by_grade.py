@@ -41,10 +41,21 @@ SPEED_VALUES = {
 
 def get_speed(load_kg, speed_type):
     """获取指定负载下的速度值"""
-    # 找到最接近的负载级别
+    if load_kg in SPEED_VALUES:
+        return SPEED_VALUES[load_kg][speed_type]
+
     load_levels = sorted(SPEED_VALUES.keys())
-    closest_load = min(load_levels, key=lambda x: abs(x - load_kg))
-    return SPEED_VALUES[closest_load][speed_type]
+    if load_kg <= load_levels[0]:
+        return SPEED_VALUES[load_levels[0]][speed_type]
+    if load_kg >= load_levels[-1]:
+        return SPEED_VALUES[load_levels[-1]][speed_type]
+
+    lower = max(x for x in load_levels if x < load_kg)
+    upper = min(x for x in load_levels if x > load_kg)
+    low_v = SPEED_VALUES[lower][speed_type]
+    high_v = SPEED_VALUES[upper][speed_type]
+    t = (float(load_kg) - float(lower)) / float(upper - lower)
+    return low_v + (high_v - low_v) * t
 
 LOAD_KG = 30
 CHARACTER_WEIGHT = 90.0

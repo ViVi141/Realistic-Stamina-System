@@ -773,6 +773,9 @@ class RSSDigitalTwin:
         else:
             self.rest_duration_minutes += time_delta / 60.0
 
+        # 预置默认值，防止异常分支引用未初始化变量
+        recovery_rate = 0.0
+        total_drain = 0.0
         try:
             base_for_rec, total_drain = self._calculate_drain_rate_c_aligned(
                 speed, current_weight, grade_percent, terrain_factor,
@@ -819,8 +822,8 @@ class RSSDigitalTwin:
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)
-                self.recovery_rate_history.append(recovery_rate)
-                self.drain_rate_history.append(total_drain)
+                self.recovery_rate_history.append(float(recovery_rate))
+                self.drain_rate_history.append(float(total_drain))
 
     # -------------------------------------------------------------------------
     # 闭环仿真：体力→速度→消耗，与 C 端 UpdateSpeedBasedOnStamina 一致
