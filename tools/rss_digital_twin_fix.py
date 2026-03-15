@@ -682,19 +682,10 @@ class RSSDigitalTwin:
 
         recovery_rate = max(recovery_rate, 0.0)
 
-        # 速度 + 移动意图联合判断恢复倍数
-        # 基于速度阈值的原始逻辑（C 端 SCR_StaminaRecovery.c:134-146）
-        # 叠加移动意图：坡度减速后仍在 RUN，不应按 Walk 恢复
-        if current_speed >= 5.0:
-            recovery_rate *= 0.0
-        elif current_speed >= 3.2:
-            recovery_rate *= 0.0
-        elif movement_type == MovementType.SPRINT and current_speed >= 0.1:
-            recovery_rate *= 0.0
-        elif movement_type == MovementType.RUN and current_speed >= 0.1:
-            recovery_rate *= 0.25
-        elif current_speed >= 0.1:
-            recovery_rate *= 0.8
+        # 移除基于速度的恢复率惩罚，保持正常恢复率
+        # 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
+        # 通过消耗率大于恢复率来实现净消耗
+        pass
 
         if stamina_percent < 0.02:
             recovery_rate = max(recovery_rate, 0.0001)

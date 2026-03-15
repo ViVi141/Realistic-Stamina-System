@@ -132,30 +132,12 @@ class StaminaRecoveryCalculator
         // - 静止：正常恢复
         // - Walk（意图或速度）：0.8 倍，允许净恢复
         // - Run（速度>=3.2 或意图为RUN且速度>=0.1）：极低恢复(0.15)，防止坡度减速后无限跑
-        // - Sprint（速度>=5.0 或意图为SPRINT且速度>=0.1）：0，彻底不恢复
+        // 移除基于速度的恢复率惩罚，保持正常恢复率
+        // 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
+        // 通过消耗率大于恢复率来实现净消耗
         float speedBasedRecoveryMultiplier = 1.0;
-        if (currentSpeed >= 5.0)
-        {
-            speedBasedRecoveryMultiplier = 0.0;
-        }
-        else if (currentSpeed >= 3.2)
-        {
-            speedBasedRecoveryMultiplier = 0.0;
-        }
-        else if (movementPhase == 3 && currentSpeed >= 0.1) // SPRINT intent
-        {
-            speedBasedRecoveryMultiplier = 0.0;
-        }
-        else if (movementPhase == 2 && currentSpeed >= 0.1) // RUN intent
-        {
-            speedBasedRecoveryMultiplier = 0.25;
-        }
-        else if (currentSpeed >= 0.1) // Walk
-        {
-            speedBasedRecoveryMultiplier = 0.8;
-        }
         
-        // 应用速度基于的恢复率调整
+        // 应用速度基于的恢复率调整（保持1.0，无惩罚）
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
