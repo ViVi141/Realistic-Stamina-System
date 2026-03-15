@@ -678,10 +678,9 @@ class StaminaConstants
     static const float ENV_SURFACE_WETNESS_MARGINAL_DECAY_ADVANCE = 0.1; // 边际效应衰减提前触发比例
     static const float ENV_SURFACE_WETNESS_PRONE_PENALTY = 0.15;
 
-    // T1 负重代谢阻尼：训练有素操作员只承受负重额外代谢的此比例
-    static const float LOAD_METABOLIC_DAMPENING = 0.70;
-    // 恢复速率上限（每 tick），防止过快回血
-    static const float MAX_RECOVERY_PER_TICK = 0.0004;
+    // T1 负重代谢阻尼 / 恢复上限：fallback 仅在没有配置时使用，运行时从预设读取以与优化器同步
+    static const float LOAD_METABOLIC_DAMPENING_FALLBACK = 0.70;
+    static const float MAX_RECOVERY_PER_TICK_FALLBACK = 0.0004;
 
     // ==================== 配置系统桥接方法 ====================
     
@@ -793,6 +792,32 @@ class StaminaConstants
                 return params.encumbrance_stamina_drain_coeff;
         }
         return 1.5; // 默认值
+    }
+
+    // 获取负重代谢阻尼（与 Python 优化器同步，避免测试与游戏表现差异）
+    static float GetLoadMetabolicDampening()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return Math.Clamp(params.load_metabolic_dampening, 0.0, 1.0);
+        }
+        return LOAD_METABOLIC_DAMPENING_FALLBACK;
+    }
+
+    // 获取每 tick 恢复率上限（与 Python 优化器同步）
+    static float GetMaxRecoveryPerTick()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return Math.Max(params.max_recovery_per_tick, 0.0);
+        }
+        return MAX_RECOVERY_PER_TICK_FALLBACK;
     }
 
     // 获取负重速度惩罚指数（从配置管理器）

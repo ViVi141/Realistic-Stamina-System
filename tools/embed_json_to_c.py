@@ -37,6 +37,8 @@ class JsonToCEmbedder:
             'encumbrance_speed_penalty_exponent': 'encumbrance_speed_penalty_exponent',
             'encumbrance_speed_penalty_max': 'encumbrance_speed_penalty_max',
             'encumbrance_stamina_drain_coeff': 'encumbrance_stamina_drain_coeff',
+            'load_metabolic_dampening': 'load_metabolic_dampening',
+            'max_recovery_per_tick': 'max_recovery_per_tick',
             # sprint_stamina_drain_multiplier: [HARD] 固定=3.5，不写入 JSON，不嵌入
             # aerobic_efficiency_factor:       [HARD] 固定=0.9，不写入 JSON，不嵌入
             # anaerobic_efficiency_factor:     [HARD] 固定=1.2，不写入 JSON，不嵌入

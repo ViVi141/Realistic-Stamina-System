@@ -208,8 +208,7 @@ def encumbrance_speed_penalty_base(constants, current_weight: float) -> float:
     else:
         seg = ratio - 0.6
         raw = 0.25 + 0.65 * (seg * seg)
-    if 0.20 > 0.0:
-        raw = raw * (coeff / 0.20)
+    raw = raw * (coeff / 0.20)
     return float(np.clip(raw, 0.0, max_pen))
 
 
@@ -463,10 +462,7 @@ class RSSDigitalTwin:
             seg = ratio - 0.6
             raw = 0.25 + 0.65 * (seg * seg)
 
-        scale = 1.0
-        if 0.20 > 0.0:
-            scale = coeff / 0.20
-        raw = raw * scale
+        raw = raw * (coeff / 0.20)
         return float(np.clip(raw, 0.0, max_pen))
 
     # -------------------------------------------------------------------------
@@ -598,7 +594,7 @@ class RSSDigitalTwin:
 
         # 5. 应用负重消耗倍数 (C: totalDrainRate *= encumbranceStaminaDrainMultiplier)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
-        total_drain = base * enc_mult * 0.3
+        total_drain = base * enc_mult
 
         return (base_for_recovery, float(max(0.0, total_drain)))
 

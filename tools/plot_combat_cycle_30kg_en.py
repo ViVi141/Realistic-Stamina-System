@@ -359,7 +359,13 @@ def main():
     # Simulate
     time_list, stamina_list, recovery_rate_list, drain_rate_list, speed_list, grade_list, distance_list, phase_labels = \
         simulate_combat_cycle(twin, speed_profile, current_weight)
-    
+
+    min_stamina = min(stamina_list)
+    if min_stamina < 0.23:
+        print("\n[WARNING] Combat cycle minimum stamina {:.1%} is below optimizer constraint (23%). "
+              "This config may have been exported before the digital-twin 0.3 drain fix. "
+              "Re-run the optimizer (e.g. rss_super_pipeline) with current code to get a preset that satisfies the constraint.\n".format(min_stamina))
+
     # Plot
     out_path = SCRIPT_DIR / "combat_cycle_30kg_en.png"
     plot_combat_cycle(time_list, stamina_list, recovery_rate_list, drain_rate_list, speed_list, grade_list, distance_list,

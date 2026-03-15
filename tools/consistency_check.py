@@ -42,27 +42,32 @@ def analyze_history(hist):
 def main():
     print('[consistency_check] 加载参数...')
     params = load_params()
-    rc = RSSConstants(**{k: v for k, v in params.items() if isinstance(k, str)})
+    # JSON 键为 snake_case，RSSConstants 属性为 UPPER_CASE，需转换否则参数不会生效
+    rc = RSSConstants()
+    for k, v in params.items():
+        if isinstance(k, str) and hasattr(rc, k.upper()):
+            setattr(rc, k.upper(), v)
     twin = RSSDigitalTwin(rc)
 
     checks = []
+    BW = 90.0  # 角色体重，与数字孪生一致
 
-    print('[consistency_check] 场景1：静止 120 秒（验证静态恢复）')
-    run_scenario(twin, duration_s=120.0, speed_m_s=0.0, weight=30.0, stance=Stance.STAND, movement_type=MovementType.IDLE)
+    print('[consistency_check] 场景1：静止 120 秒（验证静态恢复，30kg 负重）')
+    run_scenario(twin, duration_s=120.0, speed_m_s=0.0, weight=BW + 30.0, stance=Stance.STAND, movement_type=MovementType.IDLE)
     res = analyze_history(twin.stamina_history)
     print('  ->', res)
     checks.append(('idle_120s', res))
 
     twin.reset()
-    print('[consistency_check] 场景2：匀速跑 10 分钟（Run）')
-    run_scenario(twin, duration_s=600.0, speed_m_s=3.8, weight=30.0, stance=Stance.STAND, movement_type=MovementType.RUN)
+    print('[consistency_check] 场景2：匀速跑 10 分钟（Run，30kg 负重）')
+    run_scenario(twin, duration_s=600.0, speed_m_s=3.8, weight=BW + 30.0, stance=Stance.STAND, movement_type=MovementType.RUN)
     res = analyze_history(twin.stamina_history)
     print('  ->', res)
     checks.append(('run_10min', res))
 
     twin.reset()
-    print('[consistency_check] 场景3：冲刺短时 60 秒（Sprint）')
-    run_scenario(twin, duration_s=60.0, speed_m_s=5.5, weight=20.0, stance=Stance.STAND, movement_type=MovementType.SPRINT)
+    print('[consistency_check] 场景3：冲刺短时 60 秒（Sprint，20kg 负重）')
+    run_scenario(twin, duration_s=60.0, speed_m_s=5.5, weight=BW + 20.0, stance=Stance.STAND, movement_type=MovementType.SPRINT)
     res = analyze_history(twin.stamina_history)
     print('  ->', res)
     checks.append(('sprint_60s', res))

@@ -95,6 +95,15 @@ class SCR_RSS_Params
     [Attribute(defvalue: "1.5", desc: "Encumbrance stamina drain coefficient.\nStamina drain bonus coefficient for load (based on body mass percentage).\nFormula: drain_multiplier = 1 + coeff * (load_weight / body_weight).\nOptimized range: 1.0 - 2.5.\nHigher value = faster stamina drain under load.\n负重体力消耗系数。\n负重对体力消耗的加成系数（基于体重百分比）。\n公式：drain_multiplier = 1 + coeff * (load_weight / body_weight)。\nOptuna 优化范围：1.0 - 2.5。\n值越大，负重时体力消耗越快。")]
     float encumbrance_stamina_drain_coeff;
 
+    // T1 负重代谢阻尼：训练有素操作员只承受负重额外代谢的该比例（0~1）
+    // 与 Python 数字孪生/优化器同步，避免测试脚本与游戏表现差异
+    [Attribute(defvalue: "0.70", desc: "Load metabolic dampening. Only this fraction of extra load metabolic cost applies. Sync with optimizer. | 负重代谢阻尼")]
+    float load_metabolic_dampening;
+
+    // 恢复速率上限（每 0.2s tick），防止过快回血；与 Python 数字孪生同步
+    [Attribute(defvalue: "0.0004", desc: "Max recovery per tick. Sync with optimizer. | 每 tick 恢复上限")]
+    float max_recovery_per_tick;
+
     // Sprint体力消耗倍数
     // Sprint 时的体力消耗倍数（相对于 Run）
     // Optuna 优化范围：2.0 - 4.0
@@ -348,7 +357,7 @@ class SCR_RSS_Params
 class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
-    static const int PARAMS_ARRAY_SIZE = 41;  // 必须与 WriteParamsToArray/ApplyParamsFromArray 字段数一致
+    static const int PARAMS_ARRAY_SIZE = 43;  // 必须与 WriteParamsToArray/ApplyParamsFromArray 字段数一致
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
     static const int SETTINGS_BOOLS_SIZE = 15;
@@ -610,6 +619,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.encumbrance_speed_penalty_exponent = 1.5;
         m_Custom.encumbrance_speed_penalty_max = 0.75;
         m_Custom.encumbrance_stamina_drain_coeff = 1.5;
+        m_Custom.load_metabolic_dampening = 0.70;
+        m_Custom.max_recovery_per_tick = 0.0004;
         m_Custom.sprint_stamina_drain_multiplier = 3.5;
         m_Custom.fatigue_accumulation_coeff = 0.015;
         m_Custom.fatigue_max_factor = 2.0;
@@ -829,6 +840,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outArr.Insert(p.encumbrance_speed_penalty_exponent);
         outArr.Insert(p.encumbrance_speed_penalty_max);
         outArr.Insert(p.encumbrance_stamina_drain_coeff);
+        outArr.Insert(p.load_metabolic_dampening);
+        outArr.Insert(p.max_recovery_per_tick);
         outArr.Insert(p.sprint_stamina_drain_multiplier);
         outArr.Insert(p.fatigue_accumulation_coeff);
         outArr.Insert(p.fatigue_max_factor);
@@ -878,6 +891,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         p.encumbrance_speed_penalty_exponent = values[i++];
         p.encumbrance_speed_penalty_max = values[i++];
         p.encumbrance_stamina_drain_coeff = values[i++];
+        p.load_metabolic_dampening = values[i++];
+        p.max_recovery_per_tick = values[i++];
         p.sprint_stamina_drain_multiplier = values[i++];
         p.fatigue_accumulation_coeff = values[i++];
         p.fatigue_max_factor = values[i++];

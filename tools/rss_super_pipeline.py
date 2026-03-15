@@ -85,7 +85,7 @@ class ParallelWorker:
                 max_workers = multiprocessing.cpu_count()
                 if max_workers > 1:
                     max_workers -= 1  # 预留一个核心给系统
-            except:
+            except Exception:
                 max_workers = 1
         
         self.max_workers = max_workers
@@ -632,7 +632,7 @@ class RSSSuperPipeline:
                 # 预留一个核心给系统
                 if n_jobs > 1:
                     n_jobs -= 1
-            except:
+            except Exception:
                 n_jobs = 1
         
         self.n_trials = n_trials
@@ -1187,7 +1187,10 @@ class RSSSuperPipeline:
             session_penalty = scfg['session_penalty_all']
 
         # Sprint-drop 目标缩放并作为独立目标（仅在启用时包含于返回值中）
-        scaled_sprint = sprint_obj * 0.1 if getattr(self, 'enable_sprint_objective', False) else None
+        if getattr(self, 'enable_sprint_objective', False):
+            scaled_sprint = sprint_obj * 0.1
+        else:
+            scaled_sprint = None
 
         # 根据配置返回目标向量（长度需与创建研究时的 directions 一致）
         # 统一为 4 基目标（playability, stability, realism, engagement）+ 可选 sprint / sprint_remaining
@@ -1527,7 +1530,10 @@ class RSSSuperPipeline:
                 scenario_twin.reset()
                 # 为"佛罗里达热应激"场景注入 35°C，激活 heat_stress 计算路径
                 # 其余所有场景不传入温度，使用孪生体默认行为（无热应激）
-                temp_celsius = 35.0 if getattr(scenario, 'test_type', '') == '佛罗里达热应激' else None
+                if getattr(scenario, 'test_type', '') == '佛罗里达热应激':
+                    temp_celsius = 35.0
+                else:
+                    temp_celsius = None
                 results = scenario_twin.simulate_scenario(
                     speed_profile=scenario.speed_profile,
                     current_weight=scenario.current_weight,
@@ -1593,7 +1599,10 @@ class RSSSuperPipeline:
                                 f"战术战斗周期全流程体力不足 {min_stamina_req:.0%}（当前最低 {min_stamina:.2%}）"
                             )
 
-                min_stamina_out = float(min(stamina_history)) if stamina_history else None
+                if stamina_history:
+                    min_stamina_out = float(min(stamina_history))
+                else:
+                    min_stamina_out = None
                 return (float(scenario_burden), scenario, min_stamina_out)
             except Exception as e:
                 # 如果仿真失败，返回大惩罚值
@@ -1635,7 +1644,7 @@ class RSSSuperPipeline:
         t1_twin = RSSDigitalTwin(twin.constants)
         t1_twin.reset()
         t1_weight = 90.0 + 30.0
-        t1_speed = get_speed(45.0, "run")
+        t1_speed = get_speed(30.0, "run")
         t1_t = 0.0
         while t1_t < 300.0:
             t1_twin.step(t1_speed, t1_weight, 0.0, 1.0, Stance.STAND,
@@ -1764,7 +1773,10 @@ class RSSSuperPipeline:
             # ==================== BUG检测逻辑 ====================
             
             # 1. 检测负数体力（重大BUG）
-            min_stamina = min(stamina_history) if len(stamina_history) > 0 else 0.0
+            if len(stamina_history) > 0:
+                min_stamina = min(stamina_history)
+            else:
+                min_stamina = 0.0
             if min_stamina < -0.01:  # 允许小的数值误差，但负数明显是BUG
                 stability_risk += 1000.0
                 bug_reports.append(BugReport(
@@ -1797,7 +1809,10 @@ class RSSSuperPipeline:
                     break
             
             # 3. 检测数值溢出（体力值超过合理范围）
-            max_stamina = max(stamina_history) if len(stamina_history) > 0 else 0.0
+            if len(stamina_history) > 0:
+                max_stamina = max(stamina_history)
+            else:
+                max_stamina = 0.0
             if max_stamina > 1.5:  # 体力不应该超过150%
                 stability_risk += 500.0
                 bug_reports.append(BugReport(
@@ -1947,7 +1962,7 @@ class RSSSuperPipeline:
                 # 尝试加载现有研究
                 self.study = optuna.load_study(study_name=study_name, storage=storage_url)
                 print(f"已加载现有研究：{study_name}（从数据库）")
-            except:
+            except Exception:
                 # 创建新研究
                 self.study = optuna.create_study(
                     study_name=study_name,
@@ -2141,7 +2156,10 @@ class RSSSuperPipeline:
             print(f"    {bug_type}: {count}")
         
         # 自动导出JSON配置文件
-        archetypes = self.extract_archetypes() if len(self.best_trials) > 0 else {}
+        if len(self.best_trials) > 0:
+            archetypes = self.extract_archetypes()
+        else:
+            archetypes = {}
         print("\n" + "=" * 80)
         print("开始自动导出JSON配置文件...")
         print("=" * 80)
@@ -2221,24 +2239,40 @@ class RSSSuperPipeline:
             return 100.0, True  # 样本仿真失败，视为会话不可接受
         patrol_hist = patrol_res.get('stamina_history', [1.0])
         sprint_hist = sprint_res.get('stamina_history', [1.0])
-        acft_hist = acft_res.get('stamina_history', [1.0]) if acft_res else [1.0]
+        if acft_res:
+            acft_hist = acft_res.get('stamina_history', [1.0])
+        else:
+            acft_hist = [1.0]
 
         stamina_lists = [patrol_hist, sprint_hist, acft_hist]
-        min_stamina_overall = min(min(s) for s in stamina_lists if s) if stamina_lists else 1.0
+        if stamina_lists:
+            min_stamina_overall = min(min(s) for s in stamina_lists if s)
+        else:
+            min_stamina_overall = 1.0
         no_permanent_incapacitation = min_stamina_overall > 0.01
 
         # ACFT 通过：空载 ACFT 最低体力 > 1%
         acft_ok = acft_res is not None and min(acft_hist) > 0.01
         # 恢复窗通过：30s 冲刺后 60s 恢复，末端体力应 > 5%（放宽自 15%，避免与低 base_recovery_rate 采样冲突导致 0 解）
-        recovery_ok = sprint_res is not None and (sprint_hist[-1] > 0.05 if sprint_hist else True)
+        if sprint_hist:
+            recovery_end_ok = sprint_hist[-1] > 0.05
+        else:
+            recovery_end_ok = True
+        recovery_ok = sprint_res is not None and recovery_end_ok
 
         # low_events：巡逻样本中低于10%的次数（按分钟标准化）
         patrol_low_count = sum(1 for s in patrol_hist if s < 0.10)
-        patrol_minutes = len(patrol_hist) * 0.2 / 60.0 if len(patrol_hist) > 0 else 1.0
+        if len(patrol_hist) > 0:
+            patrol_minutes = len(patrol_hist) * 0.2 / 60.0
+        else:
+            patrol_minutes = 1.0
         low_events_per_min = patrol_low_count / max(1.0, patrol_minutes)
 
         # 最终体力（估算）：使用巡逻样本末端体力作为会话估算（保守）
-        final_stamina_est = patrol_hist[-1] if len(patrol_hist) > 0 else 1.0
+        if len(patrol_hist) > 0:
+            final_stamina_est = patrol_hist[-1]
+        else:
+            final_stamina_est = 1.0
 
         # engagement_score 计算：优先保证 player 在 20%-80% 区间内的时间占比
         time_in_window_est = sum(1 for s in patrol_hist if 0.2 <= s <= 0.8) / max(len(patrol_hist), 1)
@@ -2331,7 +2365,11 @@ class RSSSuperPipeline:
 
         # 判断当前帕累托解是否含有第四个目标（engagement_loss）
         # 以实际存在的目标为准：有些 trial 可能没有第四个目标
-        num_objectives = max((len(t.values) for t in self.best_trials), default=(len(self.study.directions) if hasattr(self, 'study') else 3))
+        if hasattr(self, 'study'):
+            default_obj = len(self.study.directions)
+        else:
+            default_obj = 3
+        num_objectives = max((len(t.values) for t in self.best_trials), default=default_obj)
         engagement_values = [t.values[3] for t in self.best_trials if len(t.values) >= 4]
         if not engagement_values:
             engagement_values = [0.0 for _ in self.best_trials]
@@ -2352,8 +2390,12 @@ class RSSSuperPipeline:
             else:
                 engagement_values = [0.0 for _ in valid_indices]
         # 不跨预设交换参数（避免产生不一致的 param 组合）
-        candidates = valid_trial_list if valid_trials else self.best_trials
-        cand_indices = valid_indices if valid_trials else list(range(len(self.best_trials)))
+        if valid_trials:
+            candidates = valid_trial_list
+            cand_indices = valid_indices
+        else:
+            candidates = self.best_trials
+            cand_indices = list(range(len(self.best_trials)))
 
         def energy_coeff(t):
             return t.params.get('energy_to_stamina_coeff', 0)
