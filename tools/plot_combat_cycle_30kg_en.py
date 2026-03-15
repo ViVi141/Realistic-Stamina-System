@@ -20,11 +20,26 @@ from rss_digital_twin_fix import (
     RSSConstants,
     MovementType,
     Stance,
-    run_speed_at_weight,
-    walk_speed_at_weight,
-    sprint_speed_at_weight,
     tobler_speed_multiplier,
 )
+
+# 硬编码速度值（m/s）
+SPEED_VALUES = {
+    0: {"walk": 3.02, "run": 3.81, "sprint": 5.08},    # 0kg
+    10: {"walk": 2.94, "run": 3.79, "sprint": 5.04},   # 10kg
+    20: {"walk": 2.87, "run": 3.81, "sprint": 5.01},   # 20kg
+    30: {"walk": 2.81, "run": 3.81, "sprint": 4.96},   # 30kg
+    40: {"walk": 2.32, "run": 3.22, "sprint": 4.39},   # 40kg
+    50: {"walk": 1.82, "run": 2.64, "sprint": 3.80},   # 50kg
+    55: {"walk": 1.56, "run": 2.35, "sprint": 3.40}    # 55kg
+}
+
+def get_speed(load_kg, speed_type):
+    """获取指定负载下的速度值"""
+    # 找到最接近的负载级别
+    load_levels = sorted(SPEED_VALUES.keys())
+    closest_load = min(load_levels, key=lambda x: abs(x - load_kg))
+    return SPEED_VALUES[closest_load][speed_type]
 
 LOAD_KG = 30
 CHARACTER_WEIGHT = 90.0
@@ -133,20 +148,20 @@ def simulate_combat_cycle(twin, speed_profile, current_weight, terrain_factor=1.
 def create_tactical_cycle(load_kg, flat_run_speed, flat_walk_speed, sprint_speed):
     """
     Create tactical cycle based on user-provided phases:
-    I. Infiltration: Walk 1200s (Standing, +2°)
-    II. Approach: Walk 900s (Crouch, +5°)
-    III. Standby: Rest 300s (Prone, 0°)
-    IV. Assault: Sprint 60s (Standing, 0°)
-    V. Maneuver: Run 240s (Standing, -2°)
-    VI. Withdrawal: Walk 900s (Standing, 0°)
+    P1: 渗透 0-1200 Walk Stand 低 保持体力在 80% 以上，寻找掩体
+    P2: 接近 1200-1800 Run Stand 中 快速穿过非交战风险区
+    P3: 观察 1800-2100 Idle/Walk Prone 极低 核心恢复期：强制趴下侦察，体力回充
+    P4: 突入 2100-2200 Sprint Stand 爆发 战术冲击，跨越暴露区
+    P5: 交火 2200-2700 Run/Walk Stand/Crouch 高 持续运动射击，体力压榨
+    P6: 撤离 2700-3600 Walk Stand 中 撤出战斗，利用残余体力保持机动
     """
     return [
-        (1200.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Infiltration", 2.0),  # 1200s, +2°
-        (900.0, flat_walk_speed, MovementType.WALK, Stance.CROUCH, "Approach", 5.0),  # 900s, +5°
-        (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "Standby", 0.0),  # 300s, 0°
-        (60.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "Assault", 0.0),  # 60s, 0°
-        (240.0, flat_run_speed, MovementType.RUN, Stance.STAND, "Maneuver", -2.0),  # 240s, -2°
-        (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Withdrawal", 0.0),  # 900s, 0°
+        (1200.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "渗透", 0.0),  # 0-1200s, 平地
+        (600.0, flat_run_speed, MovementType.RUN, Stance.STAND, "接近", 0.0),  # 1200-1800s, 平地
+        (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "观察", 0.0),  # 1800-2100s, 平地
+        (100.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "突入", 0.0),  # 2100-2200s, 平地
+        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "交火", 0.0),  # 2200-2700s, 平地
+        (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "撤离", 0.0),  # 2700-3600s, 平地
     ]
 
 
@@ -294,15 +309,10 @@ def main():
     
     current_weight = CHARACTER_WEIGHT + float(LOAD_KG)
     
-    # Calculate Walk, Run, and Sprint speeds
-    # For 30KG load (actual game values):
-    # - Walk: 2.78 m/s (maximum walk speed)
-    # - Run: 3.78 m/s (maximum run speed)
-    # - Sprint (burst): 4.98 m/s
-    # - Sprint (stable): 4.60 m/s
-    flat_walk_speed = 2.78
-    flat_run_speed = 3.78  # Hardcoded for 30KG load as per game values
-    flat_sprint_speed = 4.60  # Using stable sprint speed for combat scenarios
+    # Get Walk, Run, and Sprint speeds from hardcoded values
+    flat_walk_speed = get_speed(LOAD_KG, "walk")
+    flat_run_speed = get_speed(LOAD_KG, "run")
+    flat_sprint_speed = get_speed(LOAD_KG, "sprint")
     
     print(f"30kg Speeds:")
     print(f"  Walk:  {flat_walk_speed:.2f} m/s")

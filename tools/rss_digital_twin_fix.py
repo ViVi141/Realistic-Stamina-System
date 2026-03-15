@@ -561,14 +561,14 @@ class RSSDigitalTwin:
                     enc_pen = float(np.clip(enc_pen, 0.0, getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)))
 
                     denom = max(1.0 - enc_pen, 0.15)
-                    unenc_speed = min(speed / denom, 7.0)
+                    unenc_speed = min(speed / denom, 6.0)  # 限制无负重速度最大值，避免消耗率过高
                     effort_per_s = self._pandolf_expenditure(unenc_speed, current_weight, grade_percent, terrain_factor)
                     if current_weight > bw and load_dampening < 1.0:
                         unloaded_effort = self._pandolf_expenditure(unenc_speed, bw, grade_percent, terrain_factor)
                         effort_extra = effort_per_s - unloaded_effort
                         effort_per_s = unloaded_effort + effort_extra * load_dampening
                     if effort_per_s > pandolf_per_s:
-                        blend = float(np.clip(enc_pen / 0.5, 0.0, 1.0))
+                        blend = float(np.clip(enc_pen / 0.7, 0.0, 0.8))  # 降低混合因子，减少额外消耗
                         pandolf_per_s = pandolf_per_s + (effort_per_s - pandolf_per_s) * blend
 
             raw = pandolf_per_s * wind_mult * 0.2
@@ -658,10 +658,10 @@ class RSSDigitalTwin:
             load_ratio = np.clip(weight_for_rec / c.BODY_TOLERANCE_BASE, 0.0, 2.0)
             penalty = (load_ratio ** c.LOAD_RECOVERY_PENALTY_EXPONENT) * c.LOAD_RECOVERY_PENALTY_COEFF
             if recovery_rate > 0.0:
-                load_factor = max(0.0, 1.0 - penalty / recovery_rate)
+                load_factor = max(0.2, 1.0 - penalty / recovery_rate)  # 最低保留20%恢复率
                 recovery_rate *= load_factor
             else:
-                recovery_rate = 0.0
+                recovery_rate = 0.00005  # 确保恢复率不会完全归零
 
         # 热应激：恢复率惩罚 (C: recoveryRate *= (1.0 - heatStressPenalty))
         if environment_factor is not None:
@@ -789,6 +789,9 @@ class RSSDigitalTwin:
                 movement_type=movement_type)
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
+            # 限制消耗率不超过恢复率的 6 倍，确保消耗和恢复的平衡
+            max_drain_rate = recovery_rate * 6.0
+            total_drain = min(total_drain, max_drain_rate)
             net_change = recovery_rate - total_drain
             net_change = np.clip(float(net_change), -0.1, 0.01)
 

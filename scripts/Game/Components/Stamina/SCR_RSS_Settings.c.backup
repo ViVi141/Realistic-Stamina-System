@@ -444,6 +444,7 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.load_recovery_penalty_coeff = 2.1524245152256242e-05;
 	m_EliteStandard.load_recovery_penalty_exponent = 1.8652295958604461;
 	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.15402713270272494;
+	m_EliteStandard.encumbrance_speed_penalty_exponent = 1.5;
 	m_EliteStandard.encumbrance_speed_penalty_max = 0.5543056483458749;
 	m_EliteStandard.encumbrance_stamina_drain_coeff = 0.819961507574174;
 	m_EliteStandard.fatigue_accumulation_coeff = 0.005615296613635597;
@@ -498,6 +499,7 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.load_recovery_penalty_coeff = 1.9226493631394653e-05;
 	m_StandardMilsim.load_recovery_penalty_exponent = 1.3996758904418702;
 	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.14330858775314304;
+	m_StandardMilsim.encumbrance_speed_penalty_exponent = 1.5;
 	m_StandardMilsim.encumbrance_speed_penalty_max = 0.6859012465629161;
 	m_StandardMilsim.encumbrance_stamina_drain_coeff = 1.4028468677913009;
 	m_StandardMilsim.fatigue_accumulation_coeff = 0.006089600125080997;
@@ -552,6 +554,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.load_recovery_penalty_coeff = 1.0591190805866779e-04;
 	m_TacticalAction.load_recovery_penalty_exponent = 1.1520485674244918;
 	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.12749941567525452;
+	m_TacticalAction.encumbrance_speed_penalty_exponent = 1.5;
 	m_TacticalAction.encumbrance_speed_penalty_max = 0.5053658162046343;
 	m_TacticalAction.encumbrance_stamina_drain_coeff = 0.8750212210056132;
 	m_TacticalAction.fatigue_accumulation_coeff = 0.00852929609833381;

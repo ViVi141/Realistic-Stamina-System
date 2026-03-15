@@ -117,7 +117,7 @@ class StaminaUpdateCoordinator
                     float denom = 1.0 - encPenalty;
                     denom = Math.Max(denom, 0.15);
                     float unencumberedSpeedEstimate = currentSpeed / denom;
-                    unencumberedSpeedEstimate = Math.Min(unencumberedSpeedEstimate, 7.0);
+                    unencumberedSpeedEstimate = Math.Min(unencumberedSpeedEstimate, 6.0); // 限制无负重速度最大值，避免消耗率过高
 
                     float effortPandolfPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                         unencumberedSpeedEstimate,
@@ -136,7 +136,7 @@ class StaminaUpdateCoordinator
 
                     if (effortPandolfPerS > pandolfPerS)
                     {
-                        float blend = Math.Clamp(encPenalty / 0.5, 0.0, 1.0);
+                        float blend = Math.Clamp(encPenalty / 0.7, 0.0, 0.8); // 降低混合因子，减少额外消耗
                         pandolfPerS = pandolfPerS + (effortPandolfPerS - pandolfPerS) * blend;
                     }
                 }

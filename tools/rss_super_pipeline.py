@@ -39,10 +39,25 @@ from rss_digital_twin_fix import (
     MovementType,
     Stance,
     RSSConstants,
-    run_speed_at_weight,
-    walk_speed_at_weight,
-    sprint_speed_at_weight,
 )
+
+# 硬编码速度值（m/s）
+SPEED_VALUES = {
+    0: {"walk": 3.02, "run": 3.81, "sprint": 5.08},    # 0kg
+    10: {"walk": 2.94, "run": 3.79, "sprint": 5.04},   # 10kg
+    20: {"walk": 2.87, "run": 3.81, "sprint": 5.01},   # 20kg
+    30: {"walk": 2.81, "run": 3.81, "sprint": 4.96},   # 30kg
+    40: {"walk": 2.32, "run": 3.22, "sprint": 4.39},   # 40kg
+    50: {"walk": 1.82, "run": 2.64, "sprint": 3.80},   # 50kg
+    55: {"walk": 1.56, "run": 2.35, "sprint": 3.40}    # 55kg
+}
+
+def get_speed(load_kg, speed_type):
+    """获取指定负载下的速度值"""
+    # 找到最接近的负载级别
+    load_levels = sorted(SPEED_VALUES.keys())
+    closest_load = min(load_levels, key=lambda x: abs(x - load_kg))
+    return SPEED_VALUES[closest_load][speed_type]
 
 # -----------------------------------------------------------------------------
 # Performance / determinism switches
@@ -191,7 +206,7 @@ class ScenarioLibrary:
         target_duration_s = 927.0  # 15分27秒
         if constants is not None:
             current_weight = 90.0 + 1.0  # 固定 1kg 负载
-            target_speed = run_speed_at_weight(constants, current_weight)
+            target_speed = get_speed(1.0, "run")
         else:
             current_weight = 90.0 + load_weight
             acft_distance_m = 3218.0
@@ -213,9 +228,9 @@ class ScenarioLibrary:
         """创建城市战斗场景。constants 不为 None 时用负重下的 walk/run/sprint 速度。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            walk = walk_speed_at_weight(constants, current_weight)
-            run = run_speed_at_weight(constants, current_weight)
-            sprint = sprint_speed_at_weight(constants, current_weight)
+            walk = get_speed(load_weight, "walk")
+            run = get_speed(load_weight, "run")
+            sprint = get_speed(load_weight, "sprint")
             speed_profile = [(0, walk), (60, run), (120, walk), (180, sprint), (210, walk), (300, walk)]
         else:
             speed_profile = [(0, 2.5), (60, 3.8), (120, 2.5), (180, 5.0), (210, 2.5), (300, 2.5)]
@@ -235,7 +250,7 @@ class ScenarioLibrary:
         """创建山地战斗场景。constants 不为 None 时用负重下的 walk 速度（快走=walk，慢走=0.72*walk）。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            walk = walk_speed_at_weight(constants, current_weight)
+            walk = get_speed(load_weight, "walk")
             slow = 0.72 * walk  # 1.8/2.5
             speed_profile = [(0, slow), (120, walk), (240, slow), (360, slow)]
         else:
@@ -256,8 +271,8 @@ class ScenarioLibrary:
         """创建撤离场景（重载）。constants 不为 None 时用负重下的 walk/run 速度。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            walk = walk_speed_at_weight(constants, current_weight)
-            run = run_speed_at_weight(constants, current_weight)
+            walk = get_speed(load_weight, "walk")
+            run = get_speed(load_weight, "run")
             speed_profile = [(0, walk), (90, run), (180, walk), (270, walk)]
         else:
             speed_profile = [(0, 2.5), (90, 3.2), (180, 2.5), (270, 2.5)]
@@ -277,7 +292,7 @@ class ScenarioLibrary:
         """野战巡逻场景。constants 不为 None 时用负重下的 run 速度（0.8*run 与 run）。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            run = run_speed_at_weight(constants, current_weight)
+            run = get_speed(load_weight, "run")
             slow_run = 0.8 * run  # 2.8/3.5
             speed_profile = [(0, slow_run), (120, run), (180, slow_run)]
         else:
@@ -299,8 +314,8 @@ class ScenarioLibrary:
         current_weight = 90.0 + load_weight
         duration_s = 60.0
         if constants is not None:
-            run = run_speed_at_weight(constants, current_weight)
-            sprint = sprint_speed_at_weight(constants, current_weight)
+            run = get_speed(load_weight, "run")
+            sprint = get_speed(load_weight, "sprint")
             speed_m_s = run + 0.3 * (sprint - run)  # 边界介于 run 与 sprint 之间
         else:
             speed_m_s = 4.2
@@ -349,7 +364,7 @@ class ScenarioLibrary:
         if run_speed is not None:
             speed_m_s = run_speed
         elif constants is not None:
-            speed_m_s = run_speed_at_weight(constants, current_weight)
+            speed_m_s = get_speed(load_weight, "run")
         else:
             speed_m_s = 3.2
         return Scenario(
@@ -369,7 +384,7 @@ class ScenarioLibrary:
         if run_speed is not None:
             pass
         elif constants is not None:
-            run_speed = run_speed_at_weight(constants, 90.0 + load_weight)
+            run_speed = get_speed(load_weight, "run")
         else:
             run_speed = 3.8
         duration_s = 600.0 / float(run_speed)
@@ -390,7 +405,7 @@ class ScenarioLibrary:
         if run_speed is not None:
             pass
         elif constants is not None:
-            run_speed = run_speed_at_weight(constants, 90.0 + load_weight)
+            run_speed = get_speed(load_weight, "run")
         else:
             run_speed = 3.8
         duration_s = 1000.0 / float(run_speed)
@@ -410,7 +425,7 @@ class ScenarioLibrary:
         """CQB 低姿态清理场景（蹲姿 WALK）。constants 不为 None 时用负重下的 walk 速度比例。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            walk = walk_speed_at_weight(constants, current_weight)
+            walk = get_speed(load_weight, "walk")
             speed_profile = [(0, 0.6 * walk), (60, walk), (120, 0.4 * walk), (180, walk)]  # 1.5/2.5, 1.0/2.5
         else:
             speed_profile = [(0, 1.5), (60, 2.5), (120, 1.0), (180, 2.5)]
@@ -430,7 +445,7 @@ class ScenarioLibrary:
         """极限重载机动场景（55kg WALK）。constants 不为 None 时用该负重下的 walk 速度。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            speed_m_s = walk_speed_at_weight(constants, current_weight)
+            speed_m_s = get_speed(load_weight, "walk")
             speed_profile = [(0, speed_m_s), (120, speed_m_s)]
         else:
             speed_profile = [(0, 1.5), (120, 1.5)]
@@ -450,7 +465,7 @@ class ScenarioLibrary:
         """佛罗里达热应激场景（35kg WALK）。constants 不为 None 时用该负重下的 walk 速度。"""
         current_weight = 90.0 + load_weight
         if constants is not None:
-            speed_m_s = walk_speed_at_weight(constants, current_weight)
+            speed_m_s = get_speed(load_weight, "walk")
             speed_profile = [(0, speed_m_s), (300, speed_m_s)]
         else:
             speed_profile = [(0, 2.0), (300, 2.0)]
@@ -1413,7 +1428,7 @@ class RSSSuperPipeline:
         load_kg = float(pcfg.get('flat_paved_run_load_kg', 29.0))
         max_stamina_after = float(pcfg.get('flat_paved_run_max_stamina_after', 0.90))
         current_weight = 90.0 + load_kg
-        run_speed = run_speed_at_weight(twin.constants, current_weight)
+        run_speed = get_speed(load_kg, "run")
         scenario_twin = RSSDigitalTwin(twin.constants)
         scenario_twin.reset()
         dt = 0.2
@@ -1449,7 +1464,7 @@ class RSSSuperPipeline:
         """
         # 所有场景速度均按当前参数下的负重速度计算（run/walk/sprint_at_weight）
         c = twin.constants
-        run_speed_30kg = run_speed_at_weight(c, 90.0 + 30.0)
+        run_speed_30kg = get_speed(30.0, "run")
         scenarios = [
             ScenarioLibrary.create_acft_2mile_scenario(load_weight=1.36, constants=c),
             ScenarioLibrary.create_urban_combat_scenario(load_weight=35.0, constants=c),
@@ -1575,7 +1590,7 @@ class RSSSuperPipeline:
         t1_twin = RSSDigitalTwin(twin.constants)
         t1_twin.reset()
         t1_weight = 90.0 + 30.0
-        t1_speed = run_speed_at_weight(twin.constants, t1_weight)
+        t1_speed = get_speed(45.0, "run")
         t1_t = 0.0
         while t1_t < 300.0:
             t1_twin.step(t1_speed, t1_weight, 0.0, 1.0, Stance.STAND,

@@ -585,11 +585,11 @@ class RealisticStaminaSpeedSystem
         if (productBeforeLoad > 0.0)
         {
             float penaltyRatio = loadRecoveryPenalty / productBeforeLoad;
-            loadFactor = Math.Max(0.0, 1.0 - penaltyRatio);
+            loadFactor = Math.Max(0.2, 1.0 - penaltyRatio); // 最低保留20%恢复率
         }
         else
         {
-            loadFactor = 0.0;
+            loadFactor = 0.00005; // 确保恢复率不会完全归零
         }
         float totalRecoveryRate = productBeforeLoad * loadFactor;
 

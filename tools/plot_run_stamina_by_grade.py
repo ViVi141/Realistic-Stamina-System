@@ -25,14 +25,31 @@ from rss_digital_twin_fix import (
     RSSConstants,
     MovementType,
     Stance,
-    run_speed_at_weight,
     tobler_speed_multiplier,
 )
+
+# 硬编码速度值（m/s）
+SPEED_VALUES = {
+    0: {"walk": 3.02, "run": 3.81, "sprint": 5.08},    # 0kg
+    10: {"walk": 2.94, "run": 3.79, "sprint": 5.04},   # 10kg
+    20: {"walk": 2.87, "run": 3.81, "sprint": 5.01},   # 20kg
+    30: {"walk": 2.81, "run": 3.81, "sprint": 4.96},   # 30kg
+    40: {"walk": 2.32, "run": 3.22, "sprint": 4.39},   # 40kg
+    50: {"walk": 1.82, "run": 2.64, "sprint": 3.80},   # 50kg
+    55: {"walk": 1.56, "run": 2.35, "sprint": 3.40}    # 55kg
+}
+
+def get_speed(load_kg, speed_type):
+    """获取指定负载下的速度值"""
+    # 找到最接近的负载级别
+    load_levels = sorted(SPEED_VALUES.keys())
+    closest_load = min(load_levels, key=lambda x: abs(x - load_kg))
+    return SPEED_VALUES[closest_load][speed_type]
 
 LOAD_KG = 30
 CHARACTER_WEIGHT = 90.0
 DT = 0.2
-MAX_DURATION_S = 7200.0
+MAX_DURATION_S = 1800.0  # 最多仿真 30 分钟，以便看到体力耗尽情况
 STAMINA_DEPLETED_THRESHOLD = 0.005
 
 
@@ -400,7 +417,7 @@ def main():
     twin = RSSDigitalTwin(constants)
 
     current_weight = CHARACTER_WEIGHT + float(LOAD_KG)
-    flat_run_speed = run_speed_at_weight(constants, current_weight)
+    flat_run_speed = get_speed(LOAD_KG, "run")
     print(f"Load: {LOAD_KG} kg, total weight: {current_weight:.0f} kg,"
           f" flat run speed: {flat_run_speed:.3f} m/s\n")
 
