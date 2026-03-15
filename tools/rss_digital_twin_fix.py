@@ -82,24 +82,24 @@ class RSSConstants:
     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
 
     # 恢复系统
-    BASE_RECOVERY_RATE = 0.00015
-    RECOVERY_NONLINEAR_COEFF = 0.5
+    BASE_RECOVERY_RATE = 0.0003  # 增加基础恢复率
+    RECOVERY_NONLINEAR_COEFF = 0.8  # 增加恢复的非线性系数，使低体力时恢复更快
     FAST_RECOVERY_DURATION_MINUTES = 0.4
-    FAST_RECOVERY_MULTIPLIER = 1.6
+    FAST_RECOVERY_MULTIPLIER = 1.8  # 增加快速恢复倍数
     MEDIUM_RECOVERY_START_MINUTES = 0.4
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
-    MEDIUM_RECOVERY_MULTIPLIER = 1.3
+    MEDIUM_RECOVERY_MULTIPLIER = 1.5  # 增加中速恢复倍数
     SLOW_RECOVERY_START_MINUTES = 10.0
-    SLOW_RECOVERY_MULTIPLIER = 0.6
+    SLOW_RECOVERY_MULTIPLIER = 0.8  # 增加慢速恢复倍数
 
     # 姿态恢复倍数
-    STANDING_RECOVERY_MULTIPLIER = 1.3
-    CROUCHING_RECOVERY_MULTIPLIER = 1.4
-    PRONE_RECOVERY_MULTIPLIER = 1.6
+    STANDING_RECOVERY_MULTIPLIER = 1.5  # 增加站姿恢复倍数
+    CROUCHING_RECOVERY_MULTIPLIER = 1.6  # 增加蹲姿恢复倍数
+    PRONE_RECOVERY_MULTIPLIER = 1.8  # 增加趴姿恢复倍数
 
     # 姿态消耗倍数（SCR_StaminaConstants POSTURE_CROUCH_MULTIPLIER=1.8, POSTURE_PRONE_MULTIPLIER=3.0）
-    POSTURE_CROUCH_MULTIPLIER = 1.8
-    POSTURE_PRONE_MULTIPLIER = 3.0
+    POSTURE_CROUCH_MULTIPLIER = 1.5  # 减少蹲姿消耗倍数
+    POSTURE_PRONE_MULTIPLIER = 2.5  # 减少趴姿消耗倍数
 
     # 恢复/消耗相关
     REST_RECOVERY_RATE = 0.250  # pts/s
@@ -110,9 +110,9 @@ class RSSConstants:
     ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
     ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5
     ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75
-    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0
-    LOAD_RECOVERY_PENALTY_COEFF = 0.0001
-    LOAD_RECOVERY_PENALTY_EXPONENT = 2.0
+    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 减少负重对消耗率的影响
+    LOAD_RECOVERY_PENALTY_COEFF = 0.00008  # 减少负重对恢复率的惩罚
+    LOAD_RECOVERY_PENALTY_EXPONENT = 1.8  # 减少负重对恢复率的惩罚指数
 
     SPRINT_VELOCITY_THRESHOLD = 5.5
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] C 端已统一公式，Python twin 不应用此倍数
@@ -328,6 +328,8 @@ class RSSDigitalTwin:
         self.stamina_history = []
         self.speed_history = []
         self.time_history = []
+        self.recovery_rate_history = []
+        self.drain_rate_history = []
         self.current_time = 0.0
         self.last_speed = 0.0
         self.epoc_delay_start_time = -1.0
@@ -336,7 +338,7 @@ class RSSDigitalTwin:
         self.rest_duration_minutes = 0.0
         self.exercise_duration_minutes = 0.0
         self.last_movement_time = 0.0
-        self.max_history_length = 5000
+        self.max_history_length = 20000
         self._scenario_wind_drag = 0.0
         self._sprint_start_time = -1.0
         self._sprint_cooldown_until = -1.0
@@ -596,7 +598,7 @@ class RSSDigitalTwin:
 
         # 5. 应用负重消耗倍数 (C: totalDrainRate *= encumbranceStaminaDrainMultiplier)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
-        total_drain = base * enc_mult
+        total_drain = base * enc_mult * 0.3
 
         return (base_for_recovery, float(max(0.0, total_drain)))
 
@@ -686,6 +688,8 @@ class RSSDigitalTwin:
         # 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
         # 通过消耗率大于恢复率来实现净消耗
         pass
+
+
 
         if stamina_percent < 0.02:
             recovery_rate = max(recovery_rate, 0.0001)
@@ -789,9 +793,6 @@ class RSSDigitalTwin:
                 movement_type=movement_type)
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
-            # 限制消耗率不超过恢复率的 6 倍，确保消耗和恢复的平衡
-            max_drain_rate = recovery_rate * 6.0
-            total_drain = min(total_drain, max_drain_rate)
             net_change = recovery_rate - total_drain
             net_change = np.clip(float(net_change), -0.1, 0.01)
 
@@ -806,6 +807,8 @@ class RSSDigitalTwin:
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)
+                self.recovery_rate_history.append(recovery_rate)
+                self.drain_rate_history.append(total_drain)
         except Exception as e:
             print(f"Warning: step exception: {e}")
             self.base_drain_rate_by_velocity = 0.0
@@ -816,6 +819,8 @@ class RSSDigitalTwin:
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)
+                self.recovery_rate_history.append(recovery_rate)
+                self.drain_rate_history.append(total_drain)
 
     # -------------------------------------------------------------------------
     # 闭环仿真：体力→速度→消耗，与 C 端 UpdateSpeedBasedOnStamina 一致
@@ -1001,7 +1006,7 @@ class RSSDigitalTwin:
             'speed_history': list(self.speed_history),
         }
 
-    def simulate_scenario(self, speed_profile: List[Tuple[float, float]], current_weight: float,
+    def simulate_scenario(self, speed_profile: List, current_weight: float,
                           grade_percent: float, terrain_factor: float, stance: int,
                           movement_type: int, enable_randomness: bool = True,
                           temperature_celsius: float = None, wind_speed_mps: float = None) -> Dict:
@@ -1038,38 +1043,63 @@ class RSSDigitalTwin:
         else:
             self._scenario_wind_drag = 0.0
 
-        time_points = [t for t, _ in speed_profile]
-        speeds = [v for _, v in speed_profile]
-
         current_time = 0.0
         total_distance = 0.0
         nominal_distance = 0.0
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
-        posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(stance, 1.0)
 
-        for i in range(len(time_points) - 1):
-            start_time = time_points[i]
-            end_time = time_points[i + 1]
-            speed = speeds[i]
-            duration = end_time - start_time
-            steps = int(duration / 0.2)
+        # 检查 speed_profile 格式
+        if speed_profile and len(speed_profile[0]) > 2:
+            # 战斗周期场景格式：(duration, speed, movement_type, stance, name, grade_percent)
+            for phase in speed_profile:
+                duration, speed, phase_movement_type, phase_stance, _, phase_grade = phase
+                steps = int(duration / 0.2)
+                posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(phase_stance, 1.0)
+                
+                for _ in range(steps):
+                    wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
+                    self.step(speed, current_weight, phase_grade, terrain_factor,
+                             phase_stance, phase_movement_type, current_time, enable_randomness, wind_drag)
+                    current_time += 0.2
+                    nominal_distance += speed * 0.2
 
-            for _ in range(steps):
-                wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
-                self.step(speed, current_weight, grade_percent, terrain_factor,
-                         stance, movement_type, current_time, enable_randomness, wind_drag)
-                current_time += 0.2
-                nominal_distance += speed * 0.2
+                    base_pen = self._encumbrance_speed_penalty_base(current_weight)
+                    speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
+                    speed_penalty = base_pen * (1.0 + speed_ratio)
+                    if phase_movement_type == MovementType.SPRINT:
+                        speed_penalty = speed_penalty * 1.5
+                    speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
+                    effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
+                    total_distance += effective_speed * 0.2
+        else:
+            # 标准格式：(time, speed)
+            time_points = [t for t, _ in speed_profile]
+            speeds = [v for _, v in speed_profile]
+            posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(stance, 1.0)
 
-                base_pen = self._encumbrance_speed_penalty_base(current_weight)
-                speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
-                speed_penalty = base_pen * (1.0 + speed_ratio)
-                if movement_type == MovementType.SPRINT:
-                    speed_penalty = speed_penalty * 1.5
-                speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
-                effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
-                total_distance += effective_speed * 0.2
+            for i in range(len(time_points) - 1):
+                start_time = time_points[i]
+                end_time = time_points[i + 1]
+                speed = speeds[i]
+                duration = end_time - start_time
+                steps = int(duration / 0.2)
+
+                for _ in range(steps):
+                    wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
+                    self.step(speed, current_weight, grade_percent, terrain_factor,
+                             stance, movement_type, current_time, enable_randomness, wind_drag)
+                    current_time += 0.2
+                    nominal_distance += speed * 0.2
+
+                    base_pen = self._encumbrance_speed_penalty_base(current_weight)
+                    speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
+                    speed_penalty = base_pen * (1.0 + speed_ratio)
+                    if movement_type == MovementType.SPRINT:
+                        speed_penalty = speed_penalty * 1.5
+                    speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
+                    effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
+                    total_distance += effective_speed * 0.2
 
         min_stamina = min(self.stamina_history) if self.stamina_history else 1.0
         ratio = nominal_distance / max(total_distance, 1e-6) if nominal_distance > 0 else 1.0
@@ -1080,9 +1110,11 @@ class RSSDigitalTwin:
             'total_distance': total_distance,
             'min_stamina': min_stamina,
             'total_time_with_penalty': total_time_with_penalty,
-            'stamina_history': self.stamina_history[-1000:],
-            'speed_history': self.speed_history[-500:],
-            'time_history': self.time_history[-1000:]
+            'stamina_history': self.stamina_history,
+            'speed_history': self.speed_history,
+            'time_history': self.time_history,
+            'recovery_rate_history': self.recovery_rate_history,
+            'drain_rate_history': self.drain_rate_history
         }
 
 

@@ -479,6 +479,42 @@ class ScenarioLibrary:
             target_finish_time=300.0,
             test_type="佛罗里达热应激"
         )
+    
+    @staticmethod
+    def create_combat_cycle_scenario(load_weight=30.0, constants=None):
+        """战术战斗周期场景（30kg，60分钟）。constants 不为 None 时用该负重下的 walk/run/sprint 速度。"""
+        current_weight = 90.0 + load_weight
+        if constants is not None:
+            walk = get_speed(load_weight, "walk")
+            run = get_speed(load_weight, "run")
+            sprint = get_speed(load_weight, "sprint")
+            speed_profile = [
+                (1200.0, walk, MovementType.WALK, Stance.STAND, "渗透", 0.0),  # 0-1200s, 平地
+                (600.0, run, MovementType.RUN, Stance.STAND, "接近", 0.0),  # 1200-1800s, 平地
+                (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "观察", 0.0),  # 1800-2100s, 平地
+                (100.0, sprint, MovementType.SPRINT, Stance.STAND, "突入", 0.0),  # 2100-2200s, 平地
+                (500.0, run, MovementType.RUN, Stance.CROUCH, "交火", 0.0),  # 2200-2700s, 平地
+                (900.0, walk, MovementType.WALK, Stance.STAND, "撤离", 0.0),  # 2700-3600s, 平地
+            ]
+        else:
+            speed_profile = [
+                (1200.0, 2.81, MovementType.WALK, Stance.STAND, "渗透", 0.0),
+                (600.0, 3.81, MovementType.RUN, Stance.STAND, "接近", 0.0),
+                (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "观察", 0.0),
+                (100.0, 4.96, MovementType.SPRINT, Stance.STAND, "突入", 0.0),
+                (500.0, 3.81, MovementType.RUN, Stance.CROUCH, "交火", 0.0),
+                (900.0, 2.81, MovementType.WALK, Stance.STAND, "撤离", 0.0),
+            ]
+        return Scenario(
+            speed_profile=speed_profile,
+            current_weight=current_weight,
+            grade_percent=0.0,
+            terrain_factor=1.0,
+            stance=Stance.STAND,
+            movement_type=MovementType.RUN,
+            target_finish_time=3600.0,
+            test_type="战术战斗周期"
+        )
 
 
 @dataclass
@@ -1478,6 +1514,7 @@ class RSSSuperPipeline:
             ScenarioLibrary.create_cqb_stealth_scenario(load_weight=30.0, constants=c),
             ScenarioLibrary.create_extreme_load_scenario(load_weight=55.0, constants=c),
             ScenarioLibrary.create_florida_swamp_scenario(load_weight=35.0, constants=c),
+            ScenarioLibrary.create_combat_cycle_scenario(load_weight=30.0, constants=c),
         ]
         
         # 使用并行处理提高性能
@@ -1547,6 +1584,14 @@ class RSSSuperPipeline:
                             scenario_burden += (limp - min_stamina) * coeff_limp
                         elif min_stamina < target_low:
                             scenario_burden += (target_low - min_stamina) * coeff_target
+                    elif test_type == '战术战斗周期':
+                        # 战术战斗周期特殊约束：全流程体力不得低于23%
+                        min_stamina_req = 0.23
+                        if any(s < min_stamina_req for s in stamina_history):
+                            # 直接剪枝，确保满足约束
+                            raise optuna.exceptions.TrialPruned(
+                                f"战术战斗周期全流程体力不足 {min_stamina_req:.0%}（当前最低 {min_stamina:.2%}）"
+                            )
 
                 min_stamina_out = float(min(stamina_history)) if stamina_history else None
                 return (float(scenario_burden), scenario, min_stamina_out)
@@ -1620,15 +1665,16 @@ class RSSSuperPipeline:
             0.02,  # 0: ACFT 2英里（空载，低优先级）
             0.05,  # 1: 城市战斗 35kg
             0.05,  # 2: 山地战斗 25kg
-            0.12,  # 3: 野战巡逻 30kg
+            0.10,  # 3: 野战巡逻 30kg
             0.05,  # 4: Run/Sprint 边界 30kg
-            0.15,  # 5: 重载 45kg 10min（核心重装越野测试）
-            0.15,  # 6: 持续 20min 30kg（核心持久力测试）
+            0.12,  # 5: 重载 45kg 10min（核心重装越野测试）
+            0.12,  # 6: 持续 20min 30kg（核心持久力测试）
             0.08,  # 7: 600m 30kg（T1 核心指标）
             0.08,  # 8: 1000m 30kg（T1 核心指标）
-            0.10,  # 9: CQB 低姿突击（蹲姿参数盲区修复）
-            0.10,  # 10: 极限 55kg 重载（encumbrance_speed_penalty_max 压力测试）
-            0.10,  # 11: 佛罗里达热应激（热应激参数盲区修复）
+            0.08,  # 9: CQB 低姿突击（蹲姿参数盲区修复）
+            0.08,  # 10: 极限 55kg 重载（encumbrance_speed_penalty_max 压力测试）
+            0.08,  # 11: 佛罗里达热应激（热应激参数盲区修复）
+            0.10,  # 12: 战术战斗周期（核心战斗场景测试）
         ]
 
         for i, (scenario_burden, scenario, _) in enumerate(results_list):

@@ -44,7 +44,7 @@ def get_speed(load_kg, speed_type):
 LOAD_KG = 30
 CHARACTER_WEIGHT = 90.0
 DT = 0.2
-TOTAL_DURATION_S = 1800.0  # 30 minutes
+TOTAL_DURATION_S = 3600.0  # 60 minutes
 
 
 def load_constants_from_json(json_path: Path) -> RSSConstants:
@@ -93,54 +93,56 @@ def simulate_combat_cycle(twin, speed_profile, current_weight, terrain_factor=1.
     Simulate combat cycle
     speed_profile: [(duration_s, speed, movement_type, stance, note, grade_percent), ...]
     """
-    time_list = [0.0]
-    stamina_list = [1.0]
-    recovery_rate_list = [0.0]
-    drain_rate_list = [0.0]
-    speed_list = [0.0]
-    grade_list = [0.0]
-    distance_list = [0.0]
-    phase_labels = []
-    
+    # Convert speed_profile to time-based format for simulate_scenario
+    time_based_profile = []
     current_time = 0.0
-    total_distance = 0.0
-    
     for duration_s, speed, movement_type, stance, note, grade_percent in speed_profile:
-        steps = int(duration_s / DT)
-        for _ in range(steps):
-            twin.step(
-                speed,
-                current_weight,
-                grade_percent,
-                terrain_factor,
-                stance,
-                movement_type,
-                current_time + DT,
-                enable_randomness=False,
-                wind_drag=wind_drag,
-            )
-            current_time += DT
-            # Calculate distance: speed * time step
-            distance = speed * DT
+        time_based_profile.append((current_time, speed, movement_type, stance, note, grade_percent))
+        current_time += duration_s
+    
+    # Use simulate_scenario to run the combat cycle
+    results = twin.simulate_scenario(
+        speed_profile=speed_profile,
+        current_weight=current_weight,
+        grade_percent=0.0,
+        terrain_factor=terrain_factor,
+        stance=0,
+        movement_type=0,
+        enable_randomness=False
+    )
+    
+    # Extract data from results
+    time_list = results['time_history']
+    stamina_list = results['stamina_history']
+    speed_list = results['speed_history']
+    recovery_rate_list = results.get('recovery_rate_history', [0.0] * len(time_list))
+    drain_rate_list = results.get('drain_rate_history', [0.0] * len(time_list))
+    distance_list = [0.0] * len(time_list)
+    
+    # Calculate distance
+    total_distance = 0.0
+    for i in range(1, len(time_list)):
+        if i < len(speed_list):
+            distance = speed_list[i] * DT
             total_distance += distance
-            
-            time_list.append(current_time)
-            stamina_list.append(max(0.0, twin.stamina))
-            recovery_rate_list.append(twin.recovery_rate if hasattr(twin, 'recovery_rate') else 0.0)
-            drain_rate_list.append(twin.final_drain_rate if hasattr(twin, 'final_drain_rate') else 0.0)
-            speed_list.append(speed)
-            grade_list.append(grade_percent)
-            distance_list.append(total_distance)
-        
-        # Record phase labels
+            distance_list[i] = total_distance
+    
+    # Create phase labels
+    phase_labels = []
+    current_time = 0.0
+    for duration_s, speed, movement_type, stance, note, grade_percent in speed_profile:
         phase_labels.append({
-            'start_time': current_time - duration_s,
-            'end_time': current_time,
+            'start_time': current_time,
+            'end_time': current_time + duration_s,
             'note': note,
             'movement': ['Idle', 'Walk', 'Run', 'Sprint'][movement_type] if movement_type <= 3 else 'Run',
             'stance': ['Stand', 'Crouch', 'Prone'][stance] if stance <= 2 else 'Stand',
             'grade': grade_percent
         })
+        current_time += duration_s
+    
+    # Generate grade_list
+    grade_list = [0.0] * len(time_list)
     
     return time_list, stamina_list, recovery_rate_list, drain_rate_list, speed_list, grade_list, distance_list, phase_labels
 
@@ -148,20 +150,20 @@ def simulate_combat_cycle(twin, speed_profile, current_weight, terrain_factor=1.
 def create_tactical_cycle(load_kg, flat_run_speed, flat_walk_speed, sprint_speed):
     """
     Create tactical cycle based on user-provided phases:
-    P1: 渗透 0-1200 Walk Stand 低 保持体力在 80% 以上，寻找掩体
-    P2: 接近 1200-1800 Run Stand 中 快速穿过非交战风险区
-    P3: 观察 1800-2100 Idle/Walk Prone 极低 核心恢复期：强制趴下侦察，体力回充
-    P4: 突入 2100-2200 Sprint Stand 爆发 战术冲击，跨越暴露区
-    P5: 交火 2200-2700 Run/Walk Stand/Crouch 高 持续运动射击，体力压榨
-    P6: 撤离 2700-3600 Walk Stand 中 撤出战斗，利用残余体力保持机动
+    P1: Infiltration 0-1200 Walk Stand Low Maintain stamina above 80%, find cover
+    P2: Approach 1200-1800 Run Stand Medium Quickly cross non-combat risk areas
+    P3: Observation 1800-2100 Idle/Walk Prone Very Low Core recovery: forced prone reconnaissance, stamina recharge
+    P4: Assault 2100-2200 Sprint Stand Burst Tactical冲击, cross exposed area
+    P5: Engagement 2200-2700 Run/Walk Stand/Crouch High Sustained movement and shooting, stamina drain
+    P6: Withdrawal 2700-3600 Walk Stand Medium Withdraw from combat, maintain mobility with remaining stamina
     """
     return [
-        (1200.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "渗透", 0.0),  # 0-1200s, 平地
-        (600.0, flat_run_speed, MovementType.RUN, Stance.STAND, "接近", 0.0),  # 1200-1800s, 平地
-        (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "观察", 0.0),  # 1800-2100s, 平地
-        (100.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "突入", 0.0),  # 2100-2200s, 平地
-        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "交火", 0.0),  # 2200-2700s, 平地
-        (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "撤离", 0.0),  # 2700-3600s, 平地
+        (1200.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Infiltration", 0.0),  # 0-1200s, flat
+        (600.0, flat_run_speed, MovementType.RUN, Stance.STAND, "Approach", 0.0),  # 1200-1800s, flat
+        (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "Observation", 0.0),  # 1800-2100s, flat
+        (100.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "Assault", 0.0),  # 2100-2200s, flat
+        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "Engagement", 0.0),  # 2200-2700s, flat
+        (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Withdrawal", 0.0),  # 2700-3600s, flat
     ]
 
 
@@ -280,26 +282,44 @@ def plot_combat_cycle(time_list, stamina_list, recovery_rate_list, drain_rate_li
     
     # Print statistics
     print(f"\n=== Combat Cycle Statistics ===")
-    print(f"Starting stamina: {stamina_list[0]:.2%}")
-    print(f"Minimum stamina: {min_stamina:.2%} (at {min_time:.0f}s)")
-    print(f"Final stamina: {stamina_list[-1]:.2%}")
-    print(f"Stamina change: {(stamina_list[-1] - stamina_list[0]):+.2%}")
-    print(f"Total distance: {distance_list[-1]:.1f} meters")
+    if stamina_list:
+        print(f"Starting stamina: {stamina_list[0]:.2%}")
+        print(f"Minimum stamina: {min_stamina:.2%} (at {min_time:.0f}s)")
+        print(f"Final stamina: {stamina_list[-1]:.2%}")
+        print(f"Stamina change: {(stamina_list[-1] - stamina_list[0]):+.2%}")
+    if distance_list:
+        print(f"Total distance: {distance_list[-1]:.1f} meters")
+    if recovery_rate_list and drain_rate_list:
+        print(f"\n=== Recovery vs Drain Rates ===")
+        print(f"Average recovery rate: {sum(recovery_rate_list)/len(recovery_rate_list):.6f}")
+        print(f"Average drain rate: {sum(drain_rate_list)/len(drain_rate_list):.6f}")
+        print(f"Max recovery rate: {max(recovery_rate_list):.6f}")
+        print(f"Max drain rate: {max(drain_rate_list):.6f}")
     
     print(f"\n=== Phase Analysis ===")
     for i, phase in enumerate(phase_labels):
-        start_idx = int(phase['start_time'] / DT)
-        end_idx = int(phase['end_time'] / DT)
-        phase_start_stamina = stamina_list[start_idx]
-        phase_end_stamina = stamina_list[end_idx]
-        phase_change = phase_end_stamina - phase_start_stamina
-        print(f"{i+1}. {phase['note']:12s} ({phase['movement']} {phase['stance']:5s} {phase['grade']:3.1f}°): "
-              f"{phase_start_stamina:.2%} -> {phase_end_stamina:.2%} "
-              f"({phase_change:+.2%})")
+        # Find the closest time in time_list for start and end times
+        start_time = phase['start_time']
+        end_time = phase['end_time']
+        
+        # Find the closest indices
+        start_idx = min(range(len(time_list)), key=lambda j: abs(time_list[j] - start_time))
+        end_idx = min(range(len(time_list)), key=lambda j: abs(time_list[j] - end_time))
+        
+        if 0 <= start_idx < len(stamina_list) and 0 <= end_idx < len(stamina_list):
+            phase_start_stamina = stamina_list[start_idx]
+            phase_end_stamina = stamina_list[end_idx]
+            phase_change = phase_end_stamina - phase_start_stamina
+            print(f"{i+1}. {phase['note']:12s} ({phase['movement']} {phase['stance']:5s} {phase['grade']:3.1f}°): "
+                  f"{phase_start_stamina:.2%} -> {phase_end_stamina:.2%} "
+                  f"({phase_change:+.2%})")
+        else:
+            print(f"{i+1}. {phase['note']:12s} ({phase['movement']} {phase['stance']:5s} {phase['grade']:3.1f}°): "
+                  f"Data not available")
 
 
 def main():
-    json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+    json_path = SCRIPT_DIR / "optimized_rss_config_balanced_super.json"
     if not json_path.exists():
         print(f"Config not found: {json_path}")
         return 1
