@@ -703,19 +703,20 @@ class RSSSuperPipeline:
         )
         
         # 恢复系统相关
-        # 调整：适当收紧上界，避免移动中"回血"过强导致 Run/Sprint 净消耗过低。
-        # 允许范围覆盖默认0.00035以上，否则默认值永远不可达
-        # 游骑兵版：提高下界至 1.5e-4，保证搜索空间内的参数具备足够的静态恢复能力
+        # 调整：收紧上界，避免移动中"回血"过强导致 Run/Sprint 净消耗过低。
+        # 当前问题：0.000268 * 1.4(standing) ≈ 0.000375/0.2s，600秒Run恢复1.1+，导致Run无净消耗
+        # 新范围：0.5e-4 ~ 3e-4，确保恢复速度不会过度抵消运动消耗
         base_recovery_rate = trial.suggest_float(
-            'base_recovery_rate', 1.5e-4, 8e-4, log=True  # 游骑兵底线：静止恢复不低于此水平
+            'base_recovery_rate', 5e-5, 3e-4, log=True  # 收紧范围，避免Run阶段无净消耗
         )
         # 约束：prone恢复应该快于standing恢复，所以prone应该有更高的下界
         prone_recovery_multiplier = trial.suggest_float(
             'prone_recovery_multiplier', 1.5, 3.5  # 更宽松，下界1.5覆盖代码默认1.8
         )
-        # 游骑兵版：上界扩展至 2.5，允许优化器发现「边行军边恢复」的参数组合
+        # 调整：收紧上界，避免站立恢复过快导致Run阶段无净消耗
+        # 当前问题：1.408 * 0.000268 ≈ 0.00038/0.2s，恢复过快
         standing_recovery_multiplier = trial.suggest_float(
-            'standing_recovery_multiplier', 1.3, 2.5  # 游骑兵：行军中快速呼吸调整恢复能力强
+            'standing_recovery_multiplier', 1.0, 1.8  # 收紧范围，确保Run有净消耗
         )
         # 30kg Walk 需净恢复：penalty 过大会扼杀恢复。1e-3 时 penalty≈0.0016>>base_recovery
         load_recovery_penalty_coeff = trial.suggest_float(
@@ -1656,6 +1657,24 @@ class RSSSuperPipeline:
         t1_twin = RSSDigitalTwin(twin.constants)
         t1_twin.reset()
         t1_weight = 90.0 + 30.0
+        # ======== 合理性约束：30kg Run 60秒必须有净消耗 ========
+        # 避免"恢复速度过快导致Run无消耗"的异常参数组合
+        run_test_twin = RSSDigitalTwin(twin.constants)
+        run_test_twin.reset()
+        run_test_weight = 90.0 + 30.0
+        run_test_speed = get_speed(30.0, "run")
+        run_test_t = 0.0
+        while run_test_t < 60.0:
+            run_test_twin.step(run_test_speed, run_test_weight, 0.0, 1.0, Stance.STAND,
+                               MovementType.RUN, run_test_t + 0.2, enable_randomness=False)
+            run_test_t += 0.2
+        run_60s_remaining = run_test_twin.stamina
+        # 60秒Run应该有显著消耗（至少消耗10%体力）
+        if run_60s_remaining > 0.90:
+            raise optuna.exceptions.TrialPruned(
+                f"30kg Run 60秒剩余体力 {run_60s_remaining:.2%} > 90%，不合理（恢复速度过快）"
+            )
+
         t1_speed = get_speed(30.0, "run")
         t1_t = 0.0
         while t1_t < 300.0:
