@@ -119,7 +119,9 @@ def simulate_combat_cycle(twin, speed_profile, current_weight, terrain_factor=1.
         terrain_factor=terrain_factor,
         stance=0,
         movement_type=0,
-        enable_randomness=False
+        enable_randomness=False,
+        temperature_celsius=20.0,
+        wind_speed_mps=0.0
     )
     
     # Extract data from results

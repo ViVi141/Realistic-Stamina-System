@@ -1008,7 +1008,8 @@ class RSSDigitalTwin:
     def simulate_scenario(self, speed_profile: List, current_weight: float,
                           grade_percent: float, terrain_factor: float, stance: int,
                           movement_type: int, enable_randomness: bool = True,
-                          temperature_celsius: float = None, wind_speed_mps: float = None) -> Dict:
+                          temperature_celsius: float = None, wind_speed_mps: float = None,
+                          fast_mode: bool = False) -> Dict:
         self.reset()
         c = self.constants
         heat_threshold = 30.0
@@ -1048,20 +1049,23 @@ class RSSDigitalTwin:
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
 
+        # 加速模式：使用更大的时间步长（0.4s vs 0.2s），速度提升约2倍
+        dt = 0.4 if fast_mode else 0.2
+
         # 检查 speed_profile 格式
         if speed_profile and len(speed_profile[0]) > 2:
             # 战斗周期场景格式：(duration, speed, movement_type, stance, name, grade_percent)
             for phase in speed_profile:
                 duration, speed, phase_movement_type, phase_stance, _, phase_grade = phase
-                steps = int(duration / 0.2)
+                steps = int(duration / dt)
                 posture_speed_mult = {Stance.STAND: 1.0, Stance.CROUCH: 0.7, Stance.PRONE: 0.3}.get(phase_stance, 1.0)
-                
+
                 for _ in range(steps):
                     wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
                     self.step(speed, current_weight, phase_grade, terrain_factor,
                              phase_stance, phase_movement_type, current_time, enable_randomness, wind_drag)
-                    current_time += 0.2
-                    nominal_distance += speed * 0.2
+                    current_time += dt
+                    nominal_distance += speed * dt
 
                     base_pen = self._encumbrance_speed_penalty_base(current_weight)
                     speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
@@ -1070,7 +1074,7 @@ class RSSDigitalTwin:
                         speed_penalty = speed_penalty * 1.5
                     speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
                     effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
-                    total_distance += effective_speed * 0.2
+                    total_distance += effective_speed * dt
         else:
             # 标准格式：(time, speed)
             time_points = [t for t, _ in speed_profile]
@@ -1082,14 +1086,14 @@ class RSSDigitalTwin:
                 end_time = time_points[i + 1]
                 speed = speeds[i]
                 duration = end_time - start_time
-                steps = int(duration / 0.2)
+                steps = int(duration / dt)
 
                 for _ in range(steps):
                     wind_drag = getattr(self, '_scenario_wind_drag', 0.0)
                     self.step(speed, current_weight, grade_percent, terrain_factor,
                              stance, movement_type, current_time, enable_randomness, wind_drag)
-                    current_time += 0.2
-                    nominal_distance += speed * 0.2
+                    current_time += dt
+                    nominal_distance += speed * dt
 
                     base_pen = self._encumbrance_speed_penalty_base(current_weight)
                     speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
@@ -1098,7 +1102,7 @@ class RSSDigitalTwin:
                         speed_penalty = speed_penalty * 1.5
                     speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
                     effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
-                    total_distance += effective_speed * 0.2
+                    total_distance += effective_speed * dt
 
         min_stamina = min(self.stamina_history) if self.stamina_history else 1.0
         ratio = nominal_distance / max(total_distance, 1e-6) if nominal_distance > 0 else 1.0

@@ -599,6 +599,7 @@ class RSSSuperPipeline:
         n_jobs: int = -1,  # -1表示自动检测CPU核心数
         use_database: bool = False,  # 是否使用数据库存储（默认False以提高性能）
         batch_size: int = 5,  # 批处理大小
+        fast_mode: bool = False,  # 加速模式：使用更大时间步长(0.4s vs 0.2s)提速约2倍
         sprint_range: Tuple[float, float] = (2.5, 4.5),  # legacy, no longer used (Pandolf covers sprint)
         sprint_drop_target: Tuple[float, float] = (0.15, 0.40),  # Sprint drop target range (min,max)
         sprint_drop_penalty_below: float = 4000.0,  # penalty scale when below target
@@ -634,10 +635,11 @@ class RSSSuperPipeline:
                     n_jobs -= 1
             except Exception:
                 n_jobs = 1
-        
+
         self.n_trials = n_trials
         self.n_jobs = n_jobs
         self.batch_size = batch_size
+        self.fast_mode = fast_mode  # 加速模式
         self.use_database = use_database
         self.study = None
         self.best_trials = []
@@ -701,7 +703,7 @@ class RSSSuperPipeline:
         )
         
         # 恢复系统相关
-        # 调整：适当收紧上界，避免移动中“回血”过强导致 Run/Sprint 净消耗过低。
+        # 调整：适当收紧上界，避免移动中"回血"过强导致 Run/Sprint 净消耗过低。
         # 允许范围覆盖默认0.00035以上，否则默认值永远不可达
         # 游骑兵版：提高下界至 1.5e-4，保证搜索空间内的参数具备足够的静态恢复能力
         base_recovery_rate = trial.suggest_float(
@@ -728,7 +730,7 @@ class RSSSuperPipeline:
         encumbrance_speed_penalty_coeff = trial.suggest_float(
             'encumbrance_speed_penalty_coeff', 0.10, 0.16  # 游骑兵：重装掉速极小
         )
-        # [DEPRECATED] C 端负重速度惩罚改为“分段非线性 + 软阈值”，不再使用 exponent 参与曲线形状。
+        # [DEPRECATED] C 端负重速度惩罚改为"分段非线性 + 软阈值"，不再使用 exponent 参与曲线形状。
         # 仍保留该字段写入 JSON/C 端结构体以兼容旧配置，但优化器不再搜索该维度。
         encumbrance_speed_penalty_exponent = 1.5
         # 游骑兵版：上界收紧至 0.70，防止极端负重（55kg）造成近乎定身（>70% 速度惩罚）
@@ -1024,8 +1026,8 @@ class RSSSuperPipeline:
         
         # ==================== 7. 软约束检查（参数合理性惩罚） ====================
         # 目标：
-        # - Sprint / Run 必须“净消耗”且消耗不应过低
-        # - Walk 必须“缓慢净恢复”（不应快到像静止趴下回血）
+        # - Sprint / Run 必须"净消耗"且消耗不应过低
+        # - Walk 必须"缓慢净恢复"（不应快到像静止趴下回血）
         movement_balance_penalty, actual_sprint_drop = self._evaluate_movement_balance_penalty(constants)
         if movement_balance_penalty > 0.0:
             constraint_penalty += movement_balance_penalty
@@ -1270,7 +1272,7 @@ class RSSSuperPipeline:
         return realism_score
     
     def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> Tuple[float, float]:
-        """基于短时段“移动净值”行为的软硬约束惩罚。
+        """基于短时段"移动净值"行为的软硬约束惩罚。
         Returns:
             (penalty, actual_sprint_drop)
         """
@@ -1342,7 +1344,7 @@ class RSSSuperPipeline:
         # 与全局 sprint_drop_target 一致（默认 0.15~0.40），避免移动平衡与冲刺剩余/联合约束两套标准
         required_sprint_drop_min, required_sprint_drop_max = getattr(self, 'sprint_drop_target', (0.15, 0.40))
         # 硬约束：冲刺压降不得超过上限（例如 ≤40%）
-        # 目的：即便是帕累托前沿中最差的“踩线”解，也必须满足该生理底线。
+        # 目的：即便是帕累托前沿中最差的"踩线"解，也必须满足该生理底线。
         if actual_sprint_drop > required_sprint_drop_max:
             raise optuna.exceptions.TrialPruned(
                 f"Sprint Drop {actual_sprint_drop:.2%} 低于硬约束上限 {required_sprint_drop_max:.0%}"
@@ -1403,7 +1405,8 @@ class RSSSuperPipeline:
                 terrain_factor=scenario.terrain_factor,
                 stance=scenario.stance,
                 movement_type=scenario.movement_type,
-                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                fast_mode=getattr(self, 'fast_mode', False)
             )
             
             # 检查是否通过基础体能测试
@@ -1431,7 +1434,7 @@ class RSSSuperPipeline:
     def _check_ranger_29kg_38ms_eta(self, twin: RSSDigitalTwin) -> None:
         """
         硬约束：29kg 负重、3.8 m/s 奔跑在指定时长后体力不得低于阈值。
-        用于保证工作台中 ETA 明显高于 3min38s（当前反馈的“只能 3min38s”）。
+        用于保证工作台中 ETA 明显高于 3min38s（当前反馈的"只能 3min38s"）。
         不通过则剪枝。
         """
         pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
@@ -1449,6 +1452,7 @@ class RSSSuperPipeline:
             stance=Stance.STAND,
             movement_type=MovementType.RUN,
             enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+            fast_mode=getattr(self, 'fast_mode', False)
         )
         min_stamina = float(results['min_stamina'])
         if min_stamina < min_stamina_req:
@@ -1542,7 +1546,8 @@ class RSSSuperPipeline:
                     stance=scenario.stance,
                     movement_type=scenario.movement_type,
                     enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
-                    temperature_celsius=temp_celsius
+                    temperature_celsius=temp_celsius,
+                    fast_mode=getattr(self, 'fast_mode', False)
                 )
                 
                 # 计算当前场景的可玩性负担（连续型，避免大量解被压成同一常数）
@@ -1573,19 +1578,20 @@ class RSSSuperPipeline:
                     # 文献约束：30kg 600m/1000m 剩余体力目标带 + 跛行惩罚（见 stamina_consumption_reference.md）
                     test_type = getattr(scenario, 'test_type', '')
                     if test_type == '30kg跑道600m':
-                        target_low = pcfg.get('run_600m_remaining_target_low', 0.50)
-                        limp = pcfg.get('run_600m_remaining_limp', 0.25)
-                        coeff_target = pcfg.get('run_600m_below_target_coeff', 3500.0)
-                        coeff_limp = pcfg.get('run_600m_below_limp_coeff', 6000.0)
+                        target_low = pcfg.get('run_600m_remaining_target_low', 0.68)
+                        limp = pcfg.get('run_600m_remaining_limp', 0.55)
+                        coeff_target = pcfg.get('run_600m_below_target_coeff', 8000.0)
+                        coeff_limp = pcfg.get('run_600m_below_limp_coeff', 12000.0)
                         if min_stamina < limp:
                             scenario_burden += (limp - min_stamina) * coeff_limp
                         elif min_stamina < target_low:
                             scenario_burden += (target_low - min_stamina) * coeff_target
                     elif test_type == '30kg跑道1km':
-                        target_low = pcfg.get('run_1km_remaining_target_low', 0.40)
-                        limp = pcfg.get('run_1km_remaining_limp', 0.25)
-                        coeff_target = pcfg.get('run_1km_below_target_coeff', 3500.0)
-                        coeff_limp = pcfg.get('run_1km_below_limp_coeff', 6000.0)
+                        # 1km跑更久(约262s vs 157s)，允许剩余体力低于600m
+                        target_low = pcfg.get('run_1km_remaining_target_low', 0.48)
+                        limp = pcfg.get('run_1km_remaining_limp', 0.35)
+                        coeff_target = pcfg.get('run_1km_below_target_coeff', 8000.0)
+                        coeff_limp = pcfg.get('run_1km_below_limp_coeff', 12000.0)
                         if min_stamina < limp:
                             scenario_burden += (limp - min_stamina) * coeff_limp
                         elif min_stamina < target_low:
@@ -1604,17 +1610,22 @@ class RSSSuperPipeline:
                 else:
                     min_stamina_out = None
                 return (float(scenario_burden), scenario, min_stamina_out)
+            except optuna.exceptions.TrialPruned:
+                # 已经包含 TrialPruned 异常，直接重新抛出
+                raise
             except Exception as e:
-                # 如果仿真失败，返回大惩罚值
+                # 如果仿真失败，视为被剪枝（避免异常trial被记录到帕累托解中）
                 print(f"场景评估失败: {e}")
-                return (2000.0, None, None)
+                raise optuna.exceptions.TrialPruned(f"场景评估失败: {e}")
         
         # 使用自定义并行工作器并行评估场景
         try:
             # 确保并行工作器已启动
             if not hasattr(self.parallel_worker, 'executor') or self.parallel_worker.executor is None:
                 self.parallel_worker.start()
-            results_list = self.parallel_worker.map(evaluate_scenario, scenarios, batch_size=1)
+            # 使用更大的batch_size提高并行效率
+            eval_batch_size = max(self.batch_size, 4)
+            results_list = self.parallel_worker.map(evaluate_scenario, scenarios, batch_size=eval_batch_size)
         except Exception as e:
             # 如果并行处理失败，回退到串行处理
             print(f"并行处理失败，回退到串行: {e}")
@@ -1627,13 +1638,14 @@ class RSSSuperPipeline:
                 continue
             test_type = getattr(scenario, 'test_type', '')
             if test_type == '30kg跑道600m':
-                thr = pcfg.get('run_600m_remaining_target_low', 0.50)
+                thr = pcfg.get('run_600m_remaining_target_low', 0.68)
                 if min_stamina < thr:
                     raise optuna.exceptions.TrialPruned(
                         f"30kg 600m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
                     )
             elif test_type == '30kg跑道1km':
-                thr = pcfg.get('run_1km_remaining_target_low', 0.60)
+                # 1km跑更久(约262s vs 157s)，允许剩余体力低于600m
+                thr = pcfg.get('run_1km_remaining_target_low', 0.48)
                 if min_stamina < thr:
                     raise optuna.exceptions.TrialPruned(
                         f"30kg 1000m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
@@ -1687,9 +1699,9 @@ class RSSSuperPipeline:
         ]
 
         for i, (scenario_burden, scenario, _) in enumerate(results_list):
-            # 如果场景仿真失败，返回极大惩罚值（但不要“夹紧”成常数，否则会让目标函数失去区分度）
+            # 如果场景仿真失败（scenario为None），视为被剪枝
             if scenario is None:
-                return 2_000_000.0
+                raise optuna.exceptions.TrialPruned("场景评估失败，scenario为None")
             total_burden += float(scenario_burden) * weights[i]
         
         # 参数多样性惩罚：降低权重，避免与可玩性目标冲突
@@ -1764,7 +1776,8 @@ class RSSSuperPipeline:
                 terrain_factor=1.5,  # 困难地形
                 stance=Stance.STAND,
                 movement_type=MovementType.RUN,
-                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                fast_mode=getattr(self, 'fast_mode', False)
             )
             
             stamina_history = chaos_results['stamina_history']
@@ -1870,9 +1883,9 @@ class RSSSuperPipeline:
                         }
                     ))
 
-            # ==================== 连续型“风险评分”（让稳定性目标有梯度）====================
-            # 仅靠“是否触发BUG”会导致稳定性目标大面积为 0，从而退化为单目标优化。
-            # 这里加入“接近崩溃”的软风险：在极端场景下体力越接近耗尽，风险越高。
+            # ==================== 连续型"风险评分"（让稳定性目标有梯度）====================
+            # 仅靠"是否触发BUG"会导致稳定性目标大面积为 0，从而退化为单目标优化。
+            # 这里加入"接近崩溃"的软风险：在极端场景下体力越接近耗尽，风险越高。
             if stamina_history:
                 min_stamina = float(min(stamina_history))
                 final_stamina = float(stamina_history[-1])
@@ -2203,7 +2216,8 @@ class RSSSuperPipeline:
                     terrain_factor=1.0,
                     stance=Stance.STAND,
                     movement_type=MovementType.RUN,
-                    enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
+                    enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                    fast_mode=getattr(self, 'fast_mode', False)
                 )
                 return results
             except Exception as e:
@@ -2229,7 +2243,8 @@ class RSSSuperPipeline:
                 terrain_factor=acft.terrain_factor,
                 stance=acft.stance,
                 movement_type=acft.movement_type,
-                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION
+                enable_randomness=ENABLE_RANDOMNESS_IN_SIMULATION,
+                fast_mode=getattr(self, 'fast_mode', False)
             )
         except Exception:
             acft_res = None
@@ -2621,11 +2636,17 @@ def main():
     # 使用CPU核心数作为默认线程数
     import multiprocessing
     n_jobs = multiprocessing.cpu_count()
-    
-    # 询问是否启动GUI
+
+    # 快速模式：使用更大时间步长提速约2倍
     import sys
+    fast_mode = "--fast" in sys.argv
+
+    # 询问是否启动GUI
     use_gui = "--gui" in sys.argv or "--no-gui" not in sys.argv
-    
+
+    if fast_mode:
+        print("[快速模式] 已启用：使用更大时间步长(0.4s)，提速约2倍")
+
     if use_gui:
         print("正在启动GUI优化器...")
         
@@ -2641,7 +2662,7 @@ def main():
     # 设置为500次迭代以快速验证优化效果
     # use_database=False 使用内存存储以提高性能（默认）
     # 如果需要后续诊断，可以设置 use_database=True（但会降低性能）
-    pipeline = RSSSuperPipeline(n_trials=1000, n_jobs=n_jobs, use_database=False)
+    pipeline = RSSSuperPipeline(n_trials=1000, n_jobs=n_jobs, use_database=False, fast_mode=fast_mode)
     
     # 如果使用GUI，设置回调函数
     if use_gui:
