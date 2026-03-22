@@ -657,6 +657,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_Custom.posture_crouch_multiplier = 2.0;
         m_Custom.posture_prone_multiplier = 2.5;
         m_Custom.jump_efficiency = 0.22; // [HARD] Margaria 1963
+        m_Custom.jump_height_guess = 0.5;
+        m_Custom.jump_horizontal_speed_guess = 0.0;
         m_Custom.climb_iso_efficiency = 0.12; // [HARD] Margaria 1963
         m_Custom.slope_uphill_coeff = 0.08;
         m_Custom.slope_downhill_coeff = 0.03;
