@@ -175,7 +175,7 @@ def create_tactical_cycle(load_kg, flat_run_speed, flat_walk_speed, sprint_speed
         (600.0, flat_run_speed, MovementType.RUN, Stance.STAND, "Approach", 0.0),  # 1200-1800s, flat
         (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "Observation", 0.0),  # 1800-2100s, flat
         (100.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "Assault", 0.0),  # 2100-2200s, flat
-        (500.0, flat_run_speed, MovementType.RUN, Stance.STAND, "Engagement", 0.0),  # 2200-2700s, flat
+        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "Engagement", 0.0),  # 与 rss_super_pipeline 交火段一致
         (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Withdrawal", 0.0),  # 2700-3600s, flat
     ]
 
@@ -364,9 +364,13 @@ def main():
 
     min_stamina = min(stamina_list)
     if min_stamina < 0.23:
-        print("\n[WARNING] Combat cycle minimum stamina {:.1%} is below optimizer constraint (23%). "
-              "This config may have been exported before the digital-twin 0.3 drain fix. "
-              "Re-run the optimizer (e.g. rss_super_pipeline) with current code to get a preset that satisfies the constraint.\n".format(min_stamina))
+        print(
+            "\n[WARNING] 战术战斗周期最低体力 {:.1%}，低于建议底线 23%。\n"
+            "  若已用新版 rss_super_pipeline：EliteStandard 会优先选 combat_cycle≥23% 的帕累托解；"
+            "若仍不达标，请增大 n_trials、略降 combat_cycle_min_stamina_req，或提高 combat_cycle_below_penalty_coeff 后重跑。\n".format(
+                min_stamina
+            )
+        )
 
     # Plot
     out_path = SCRIPT_DIR / "combat_cycle_30kg_en.png"

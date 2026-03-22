@@ -6,6 +6,8 @@ RSS Digital Twin - 从 C 源文件完全重写
 SCR_StaminaRecovery.c、SCR_StaminaUpdateCoordinator.c、SCR_EncumbranceCache.c 实现。
 
 时间步长：dt=0.2s，与游戏 UpdateSpeedBasedOnStamina 每 0.2s 调用一致。
+simulate_scenario 的 fast_mode（dt=0.4）在 step 内按 time_delta 与 STAMINA_TICK_SEC 的比例
+缩放体力增量，使同一墙钟时长与 dt=0.2 逐步积分一致。
 """
 
 import numpy as np
@@ -17,6 +19,9 @@ import random
 # Tobler 徒步函数：与 C 端 SCR_RealisticStaminaSystem.CalculateSlopeAdjustedTargetSpeed 完全一致
 # W = 6 * exp(-3.5 * |S + 0.05|), TOBLER_W_AT_FLAT_KMH = 5.039
 TOBLER_W_AT_FLAT_KMH = 5.039
+
+# 体力净变化率按该秒长定义（与 _calculate_drain_rate_c_aligned 注释「每 0.2s」一致）
+STAMINA_TICK_SEC = 0.2
 
 
 def tobler_speed_multiplier(angle_deg: float,
@@ -721,7 +726,9 @@ class RSSDigitalTwin:
         terrain_factor = np.clip(float(terrain_factor), 0.5, 3.0)
         current_time = max(0.0, float(current_time))
 
-        time_delta = current_time - self.current_time if self.current_time > 0 else 0.2
+        time_delta = current_time - self.current_time
+        if time_delta <= 0.0:
+            time_delta = STAMINA_TICK_SEC
         time_delta = max(time_delta, 0.01)
         self.current_time = current_time
 
@@ -795,13 +802,15 @@ class RSSDigitalTwin:
             net_change = recovery_rate - total_drain
             net_change = np.clip(float(net_change), -0.1, 0.01)
 
-            self.stamina += net_change
+            tick_scale = time_delta / STAMINA_TICK_SEC
+            stamina_delta = float(net_change) * tick_scale
+            self.stamina += stamina_delta
             self.stamina = np.clip(self.stamina, 0.0, 1.0)
 
             self.base_drain_rate_by_velocity = base_for_rec
             self.final_drain_rate = total_drain
             self.recovery_rate = recovery_rate
-            self.net_change = net_change
+            self.net_change = stamina_delta
 
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
@@ -813,8 +822,9 @@ class RSSDigitalTwin:
             self.base_drain_rate_by_velocity = 0.0
             self.final_drain_rate = 0.01
             self.recovery_rate = 0.001
-            self.net_change = -0.001
-            self.stamina = np.clip(self.stamina - 0.001, 0.0, 1.0)
+            fallback_drain = 0.001 * (time_delta / STAMINA_TICK_SEC)
+            self.net_change = -fallback_drain
+            self.stamina = np.clip(self.stamina - fallback_drain, 0.0, 1.0)
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)

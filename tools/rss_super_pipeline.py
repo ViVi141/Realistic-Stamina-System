@@ -114,46 +114,52 @@ class ParallelWorker:
     
     def map(self, func: Callable, tasks: List, batch_size: int = 1):
         """
-        并行映射任务
-        
+        并行映射任务。返回列表与 tasks 顺序一致（as_completed 仅用于等待，结果按索引写回）。
+
         Args:
             func: 任务函数
             tasks: 任务列表
             batch_size: 批处理大小
-        
+
         Returns:
-            任务结果列表
+            与 tasks 等长、顺序一致的结果列表
         """
+        if not tasks:
+            return []
+
         if not self.executor:
             self.start()
-        
-        # 批处理任务以减少进程间通信开销
+
+        # 批处理任务以减少线程切换开销；每批内顺序固定，批与批之间按 batch_idx 排序再拼接
         if batch_size > 1:
             batches = []
             for i in range(0, len(tasks), batch_size):
                 batches.append(tasks[i:i + batch_size])
-            
-            future_to_batch = {}
-            for i, batch in enumerate(batches):
-                future = self.executor.submit(self._process_batch, func, batch, i)
-                future_to_batch[future] = i
-            
+
+            future_to_batch_idx = {}
+            for batch_idx, batch in enumerate(batches):
+                future = self.executor.submit(self._process_batch, func, batch, batch_idx)
+                future_to_batch_idx[future] = batch_idx
+
+            batch_by_idx = {}
+            for future in concurrent.futures.as_completed(future_to_batch_idx):
+                batch_idx = future_to_batch_idx[future]
+                batch_by_idx[batch_idx] = future.result()
+
             results = []
-            for future in concurrent.futures.as_completed(future_to_batch):
-                batch_results = future.result()
-                results.extend(batch_results)
+            for batch_idx in range(len(batches)):
+                results.extend(batch_by_idx[batch_idx])
         else:
-            # 单个任务处理
-            future_to_task = {}
+            future_to_index = {}
             for i, task in enumerate(tasks):
                 future = self.executor.submit(func, task)
-                future_to_task[future] = i
-            
-            results = []
-            for future in concurrent.futures.as_completed(future_to_task):
-                result = future.result()
-                results.append(result)
-        
+                future_to_index[future] = i
+
+            results = [None] * len(tasks)
+            for future in concurrent.futures.as_completed(future_to_index):
+                i = future_to_index[future]
+                results[i] = future.result()
+
         return results
     
     def _process_batch(self, func: Callable, batch: List, batch_idx: int):
@@ -562,9 +568,20 @@ class RSSSuperPipeline:
         'run_1km_remaining_limp': 0.35,
         'run_1km_below_target_coeff': 8000.0,
         'run_1km_below_limp_coeff': 12000.0,
-        # T1 对齐：29kg 3.8m/s 连续跑 300s 后体力 ≥20%
+        # T1 对齐：29kg 3.8m/s 连续跑 300s 后体力 ≥20%（未达标时软惩罚，避免全 trial 剪枝无 COMPLETE）
         'ranger_29kg_38ms_duration_s': 300,
         'ranger_29kg_38ms_min_stamina': 0.20,
+        'ranger_29kg_38ms_below_penalty_coeff': 35000.0,
+        # 战术战斗周期底线（软惩罚系数，与硬剪枝二选一：默认软惩罚）
+        'combat_cycle_min_stamina_req': 0.23,
+        'combat_cycle_below_penalty_coeff': 55000.0,
+        # 600m/1000m 未达文献带时软惩罚（原硬剪枝易导致无可行解）
+        'run_600m_shortfall_penalty_coeff': 22000.0,
+        'run_1km_shortfall_penalty_coeff': 22000.0,
+        # 30kg Run 60s 仍高于 90% 体力 → 惩罚「无净消耗」
+        'flat_run_60s_recovery_penalty_coeff': 18000.0,
+        # 30kg 跑 5min 后体力低于 15% 的额外惩罚（原硬剪枝）
+        't1_5min_floor_penalty_coeff': 18000.0,
         # 铺装路面跑步必须有净消耗
         'flat_paved_run_duration_s': 300,
         'flat_paved_run_load_kg': 29.0,
@@ -937,8 +954,8 @@ class RSSSuperPipeline:
         # 这是最低标准，不是优化目标
         basic_fitness_passed = self._check_basic_fitness(twin)
 
-        # ==================== 4.5 硬约束：29kg 3.8m/s 连续跑 5 分钟后体力 ≥20%（工作台 ETA 约束）====================
-        self._check_ranger_29kg_38ms_eta(twin)
+        # ==================== 4.5 游骑兵 ETA：29kg 3.8m/s 连续跑 300s 底线（软惩罚计入可玩性）====================
+        ranger_penalty = self._check_ranger_29kg_38ms_eta(twin)
 
         # ==================== 4.6 硬约束：铺装路面跑步必须有净消耗（避免「恢复≈消耗」不现实解）====================
         self._check_flat_paved_net_drain(twin)
@@ -946,8 +963,12 @@ class RSSSuperPipeline:
         # ==================== 5. 目标1：评估30KG可玩性（Playability Burden）====================
         
         # 专门针对30KG负载进行测试
-        playability_burden = self._evaluate_30kg_playability(twin)
-        
+        playability_burden = self._evaluate_30kg_playability(twin) + ranger_penalty
+        trial.set_user_attr(
+            'combat_cycle_min_stamina',
+            float(getattr(self, '_last_combat_cycle_min_stamina', 0.0)),
+        )
+
         # ==================== 6. 目标2：评估稳定性风险（Stability Risk / BUG检测）====================
         
         # 地狱级压力测试
@@ -1432,15 +1453,15 @@ class RSSSuperPipeline:
         except Exception:
             return False
 
-    def _check_ranger_29kg_38ms_eta(self, twin: RSSDigitalTwin) -> None:
+    def _check_ranger_29kg_38ms_eta(self, twin: RSSDigitalTwin) -> float:
         """
-        硬约束：29kg 负重、3.8 m/s 奔跑在指定时长后体力不得低于阈值。
-        用于保证工作台中 ETA 明显高于 3min38s（当前反馈的"只能 3min38s"）。
-        不通过则剪枝。
+        游骑兵 ETA：29kg 负重、3.8 m/s 奔跑在指定时长后体力不得低于阈值。
+        未达标时返回软惩罚（不剪枝），以便多目标优化仍能产生 COMPLETE trial。
         """
         pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
         duration_s = float(pcfg.get('ranger_29kg_38ms_duration_s', 300))
         min_stamina_req = float(pcfg.get('ranger_29kg_38ms_min_stamina', 0.20))
+        coeff = float(pcfg.get('ranger_29kg_38ms_below_penalty_coeff', 35000.0))
         load_kg = 29.0
         current_weight = 90.0 + load_kg
         speed_profile = [(0.0, 3.8), (duration_s, 3.8)]
@@ -1457,9 +1478,8 @@ class RSSSuperPipeline:
         )
         min_stamina = float(results['min_stamina'])
         if min_stamina < min_stamina_req:
-            raise optuna.exceptions.TrialPruned(
-                f"29kg 3.8m/s 连续跑 {duration_s:.0f}s 后体力不足 {min_stamina_req:.0%}（当前最低 {min_stamina:.2%}）"
-            )
+            return float((min_stamina_req - min_stamina) * coeff)
+        return 0.0
 
     def _check_flat_paved_net_drain(self, twin: RSSDigitalTwin) -> None:
         """
@@ -1598,13 +1618,13 @@ class RSSSuperPipeline:
                         elif min_stamina < target_low:
                             scenario_burden += (target_low - min_stamina) * coeff_target
                     elif test_type == '战术战斗周期':
-                        # 战术战斗周期特殊约束：全流程体力不得低于23%
-                        min_stamina_req = 0.23
+                        min_stamina_req = float(
+                            pcfg.get('combat_cycle_min_stamina_req', 0.23))
+                        cc_coeff = float(
+                            pcfg.get('combat_cycle_below_penalty_coeff', 55000.0))
                         if any(s < min_stamina_req for s in stamina_history):
-                            # 直接剪枝，确保满足约束
-                            raise optuna.exceptions.TrialPruned(
-                                f"战术战斗周期全流程体力不足 {min_stamina_req:.0%}（当前最低 {min_stamina:.2%}）"
-                            )
+                            scenario_burden += float(
+                                max(0.0, min_stamina_req - min_stamina) * cc_coeff)
 
                 if stamina_history:
                     min_stamina_out = float(min(stamina_history))
@@ -1627,30 +1647,30 @@ class RSSSuperPipeline:
             # 使用更大的batch_size提高并行效率
             eval_batch_size = max(self.batch_size, 4)
             results_list = self.parallel_worker.map(evaluate_scenario, scenarios, batch_size=eval_batch_size)
+        except optuna.exceptions.TrialPruned:
+            raise
         except Exception as e:
-            # 如果并行处理失败，回退到串行处理
+            # 仅基础设施/意外错误时回退串行；TrialPruned 已在上方重抛
             print(f"并行处理失败，回退到串行: {e}")
             results_list = [evaluate_scenario(scenario) for scenario in scenarios]
 
         pcfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
-        # 硬约束：30kg 600m/1000m 未达目标带则直接剪枝（见 stamina_consumption_reference.md）
+        # 600m/1000m 文献带：软惩罚（硬剪枝易使无可行 COMPLETE trial）
+        milestone_penalty = 0.0
         for scenario_burden, scenario, min_stamina in results_list:
             if scenario is None or min_stamina is None:
                 continue
             test_type = getattr(scenario, 'test_type', '')
             if test_type == '30kg跑道600m':
                 thr = pcfg.get('run_600m_remaining_target_low', 0.68)
+                coeff = float(pcfg.get('run_600m_shortfall_penalty_coeff', 22000.0))
                 if min_stamina < thr:
-                    raise optuna.exceptions.TrialPruned(
-                        f"30kg 600m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
-                    )
+                    milestone_penalty += float((thr - min_stamina) * coeff)
             elif test_type == '30kg跑道1km':
-                # 1km跑更久(约262s vs 157s)，允许剩余体力低于600m
                 thr = pcfg.get('run_1km_remaining_target_low', 0.48)
+                coeff = float(pcfg.get('run_1km_shortfall_penalty_coeff', 22000.0))
                 if min_stamina < thr:
-                    raise optuna.exceptions.TrialPruned(
-                        f"30kg 1000m 剩余体力 {min_stamina:.2%} 低于硬约束 {thr:.0%}"
-                    )
+                    milestone_penalty += float((thr - min_stamina) * coeff)
         
         # ======== T1 耐力检查点（软约束）：30kg 连续跑 5min 后体力 ≥25% ========
         t1_endurance_penalty = 0.0
@@ -1669,11 +1689,11 @@ class RSSSuperPipeline:
                                MovementType.RUN, run_test_t + 0.2, enable_randomness=False)
             run_test_t += 0.2
         run_60s_remaining = run_test_twin.stamina
-        # 60秒Run应该有显著消耗（至少消耗10%体力）
+        run_60s_penalty = 0.0
         if run_60s_remaining > 0.90:
-            raise optuna.exceptions.TrialPruned(
-                f"30kg Run 60秒剩余体力 {run_60s_remaining:.2%} > 90%，不合理（恢复速度过快）"
-            )
+            run_60s_penalty = float(
+                (run_60s_remaining - 0.90) * float(
+                    pcfg.get('flat_run_60s_recovery_penalty_coeff', 18000.0)))
 
         t1_speed = get_speed(30.0, "run")
         t1_t = 0.0
@@ -1685,9 +1705,9 @@ class RSSSuperPipeline:
         if t1_5min < 0.25:
             t1_endurance_penalty += (0.25 - t1_5min) * 8000.0
         if t1_5min < 0.15:
-            raise optuna.exceptions.TrialPruned(
-                f"30kg 5min 连续跑后体力 {t1_5min:.2%} 低于 T1 硬约束 15%"
-            )
+            t1_endurance_penalty += float(
+                (0.15 - t1_5min) * float(
+                    pcfg.get('t1_5min_floor_penalty_coeff', 18000.0)))
 
         # ======== T1 恢复速度约束（软约束）：跑 5min 后站立休息 3min 恢复不超 35% ========
         t1_recov_penalty = 0.0
@@ -1707,14 +1727,14 @@ class RSSSuperPipeline:
             0.05,  # 2: 山地战斗 25kg
             0.10,  # 3: 野战巡逻 30kg
             0.05,  # 4: Run/Sprint 边界 30kg
-            0.12,  # 5: 重载 45kg 10min（核心重装越野测试）
-            0.12,  # 6: 持续 20min 30kg（核心持久力测试）
+            0.10,  # 5: 重载 45kg 10min（略降以平衡战术周期权重）
+            0.10,  # 6: 持续 20min 30kg
             0.08,  # 7: 600m 30kg（T1 核心指标）
             0.08,  # 8: 1000m 30kg（T1 核心指标）
             0.08,  # 9: CQB 低姿突击（蹲姿参数盲区修复）
             0.08,  # 10: 极限 55kg 重载（encumbrance_speed_penalty_max 压力测试）
             0.08,  # 11: 佛罗里达热应激（热应激参数盲区修复）
-            0.10,  # 12: 战术战斗周期（核心战斗场景测试）
+            0.14,  # 12: 战术战斗周期（提高权重，与 plot_combat_cycle 验收对齐）
         ]
 
         for i, (scenario_burden, scenario, _) in enumerate(results_list):
@@ -1740,7 +1760,9 @@ class RSSSuperPipeline:
                     param_variation_score += penalty
 
         total_burden += param_variation_score
-        total_burden += t1_endurance_penalty + t1_recov_penalty
+        total_burden += (
+            t1_endurance_penalty + t1_recov_penalty + milestone_penalty + run_60s_penalty
+        )
 
         # 添加场景结果多样性惩罚
         # 如果所有场景的负担都非常接近，说明参数变化影响不大
@@ -1750,7 +1772,15 @@ class RSSSuperPipeline:
                 burden_diff = max(burdens) - min(burdens)
                 if burden_diff < 100.0:
                     total_burden += 100.0  # 惩罚结果过于一致的参数组合
-        
+
+        cc_min = 0.0
+        for _, scenario, min_stamina_out in results_list:
+            if scenario is not None and getattr(scenario, 'test_type', '') == '战术战斗周期':
+                if min_stamina_out is not None:
+                    cc_min = float(min_stamina_out)
+                break
+        self._last_combat_cycle_min_stamina = cc_min
+
         return float(total_burden)
     
     def _evaluate_stability_risk(
@@ -2434,9 +2464,49 @@ class RSSSuperPipeline:
         def energy_coeff(t):
             return t.params.get('energy_to_stamina_coeff', 0)
 
+        pccfg = getattr(self, 'PLAYABILITY', RSSSuperPipeline.PLAYABILITY)
+        cc_req = float(pccfg.get('combat_cycle_min_stamina_req', 0.23))
+
+        def _combat_min_from_trial(trial):
+            v = trial.user_attrs.get('combat_cycle_min_stamina')
+            if v is None:
+                return -1.0
+            return float(v)
+
+        realism_pool = [
+            i for i in cand_indices
+            if _combat_min_from_trial(self.best_trials[i]) >= cc_req
+        ]
+        if realism_pool:
+            realism_indices = realism_pool
+            print(
+                f"  EliteStandard：战术战斗周期最低体力≥{cc_req:.0%} 的候选 {len(realism_pool)} 个"
+            )
+        else:
+            has_metric = any(
+                _combat_min_from_trial(self.best_trials[i]) >= 0.0 for i in cand_indices
+            )
+            if has_metric:
+                realism_indices = sorted(
+                    cand_indices,
+                    key=lambda i: _combat_min_from_trial(self.best_trials[i]),
+                    reverse=True,
+                )
+                print(
+                    f"  警告：无 trial 达到战术战斗周期≥{cc_req:.0%}；"
+                    "EliteStandard 取 combat_cycle_min_stamina 最大者（请重跑优化或放宽底线）"
+                )
+            else:
+                realism_indices = cand_indices
+                print(
+                    "  提示：trial 缺少 combat_cycle_min_stamina（旧研究？）；"
+                    "EliteStandard 仍按稳定性×能耗选解，导出后请用 plot_combat_cycle_30kg_en.py 自测"
+                )
+
         # 1. Realism (EliteStandard): 稳定性好的 trial 中选 energy_coeff 最高的
-        stability_ordered = sorted(cand_indices, key=lambda i: self.best_trials[i].values[1])
-        top_stability = stability_ordered[: max(3, len(cand_indices) // 3)]
+        stability_ordered = sorted(realism_indices, key=lambda i: self.best_trials[i].values[1])
+        top_n = max(3, len(realism_indices) // 3)
+        top_stability = stability_ordered[:top_n]
         realism_idx = max(top_stability, key=lambda i: energy_coeff(self.best_trials[i]))
         realism_trial = self.best_trials[realism_idx]
 
