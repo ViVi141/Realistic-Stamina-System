@@ -122,6 +122,13 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bLastWasSprinting = false;       // 上一帧是否处于 Sprint 状态，用于检测进入/离开冲刺
     protected float m_fSprintCooldownUntil = -1.0;    // 冷却结束时间（世界时间秒），此时间前再次冲刺不触发爆发，直接平稳期
     
+    // 泥泞滑倒：状态与每帧判定（独立文件以控制 PlayerBase 单文件体积）
+    protected ref RSS_MudSlipRunner m_pMudSlipRunner;
+    // 泥泞失稳镜头预警强度 0~1（由 RSS_MudSlipRunner 每帧写入，供 CharacterCamera1stPerson 读取）
+    protected float m_fRssMudSlipCameraShake01 = 0.0;
+    // 本帧 UpdateSpeedBasedOnStamina 主路径已应用的 RSS 速度倍率（供 AI 泥泞预警二次 OverrideMaxSpeed）
+    protected float m_fLastRssSpeedMultiplierApplied = 1.0;
+    
     // 在组件初始化后
     override void OnInit(IEntity owner)
     {
@@ -202,6 +209,8 @@ modded class SCR_CharacterControllerComponent
         if (m_pTerrainDetector)
             m_pTerrainDetector.Initialize();
         
+        m_pMudSlipRunner = new RSS_MudSlipRunner();
+
         // 初始化环境因子模块
         m_pEnvironmentFactor = new EnvironmentFactor();
         if (m_pEnvironmentFactor)
@@ -865,6 +874,117 @@ modded class SCR_CharacterControllerComponent
         return m_fSprintCooldownUntil;
     }
 
+    // 泥泞滑倒：启动引擎 Ragdoll，并在短延迟后混合回动画（供 RSS_MudSlipRunner 调用，勿改为 protected）
+    void RSS_TriggerMudSlipRagdoll()
+    {
+        if (m_pAnimComponent && m_pAnimComponent.IsRagdollActive())
+            return;
+        Ragdoll();
+        // 必须延长 warmup，否则引擎会因“骨骼已静止”立刻结束布娃娃，肉眼几乎无反馈
+        RefreshRagdoll(StaminaConstants.ENV_MUD_SLIP_RAGDOLL_WARMUP_SEC);
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(RSS_MudSlip_FinishRagdoll, StaminaConstants.ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS, false);
+    }
+
+    protected void RSS_MudSlip_FinishRagdoll()
+    {
+        RefreshRagdoll(0.0);
+    }
+
+    void RSS_SetMudSlipCameraShake01(float value)
+    {
+        if (value < 0.0)
+            value = 0.0;
+        if (value > 1.0)
+            value = 1.0;
+        m_fRssMudSlipCameraShake01 = value;
+    }
+
+    float RSS_GetMudSlipCameraShake01()
+    {
+        return m_fRssMudSlipCameraShake01;
+    }
+
+    bool RSS_IsRagdollActiveForCamera()
+    {
+        if (m_pAnimComponent && m_pAnimComponent.IsRagdollActive())
+            return true;
+        return false;
+    }
+
+    // AI「危险上下文」：交战/高优先级或明显受伤 → 不限速，且允许泥泞滑倒 Ragdoll（与下方 Allow 一致）
+    protected bool RSS_ShouldAiIgnoreMudSlipSpeedCap(IEntity owner)
+    {
+        if (!owner)
+            return false;
+
+        SCR_AIUtilityComponent aiUtil = SCR_AIUtilityComponent.Cast(owner.FindComponent(SCR_AIUtilityComponent));
+        if (aiUtil)
+        {
+            AIActionBase act = aiUtil.GetExecutedAction();
+            if (!act)
+                act = aiUtil.GetCurrentAction();
+            SCR_AIActionBase scrAct = SCR_AIActionBase.Cast(act);
+            if (scrAct)
+            {
+                float pr = scrAct.EvaluatePriorityLevel();
+                if (pr >= StaminaConstants.ENV_MUD_SLIP_AI_UNSAFE_PRIORITY_MIN)
+                    return true;
+            }
+        }
+
+        SCR_CharacterDamageManagerComponent dmg = SCR_CharacterDamageManagerComponent.Cast(owner.FindComponent(SCR_CharacterDamageManagerComponent));
+        if (dmg)
+        {
+            float hs = dmg.GetHealthScaled();
+            if (hs >= 0.0)
+            {
+                if (hs < StaminaConstants.ENV_MUD_SLIP_AI_UNSAFE_HEALTH_SCALED)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    // AI 安全（巡逻等）：泥泞 Poisson 与 Ragdoll 在 Runner 内完全不执行；与限速无关，限速仅为预计区预警
+    bool RSS_IsAiMudSlipBlockedBySafety(IEntity owner)
+    {
+        if (IsPlayerControlled())
+            return false;
+        if (!owner)
+            return true;
+        if (RSS_ShouldAiIgnoreMudSlipSpeedCap(owner))
+            return false;
+        return true;
+    }
+
+    // 是否允许执行泥泞滑倒掷骰；玩家恒真，AI 仅危险上下文为真（与 RSS_IsAiMudSlipBlockedBySafety 互斥）
+    bool RSS_ShouldAiAllowMudSlipRagdoll(IEntity owner)
+    {
+        if (RSS_IsAiMudSlipBlockedBySafety(owner))
+            return false;
+        return true;
+    }
+
+    // 仅服务器 AI：安全且已进入预计区（应力阈值）时压速作预警；危险上下文不限速
+    protected void RSS_MaybeApplyAiMudSlipSpeedCap(IEntity owner)
+    {
+        if (!owner)
+            return;
+        if (IsPlayerControlled())
+            return;
+        if (!Replication.IsServer())
+            return;
+        float mudStress = RSS_GetMudSlipCameraShake01();
+        if (mudStress < StaminaConstants.ENV_MUD_SLIP_AI_WARN_STRESS_MIN)
+            return;
+        if (RSS_ShouldAiIgnoreMudSlipSpeedCap(owner))
+            return;
+        float capMul = StaminaConstants.ENV_MUD_SLIP_MIN_SPEED_MS / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+        if (m_fLastRssSpeedMultiplierApplied > capMul)
+            OverrideMaxSpeed(capMul);
+    }
+
     // 根据体力更新速度（玩家每 50ms，AI 每 100ms）
     void UpdateSpeedBasedOnStamina()
     {
@@ -883,6 +1003,7 @@ modded class SCR_CharacterControllerComponent
         // 仅对本地玩家或服务器端 AI 处理
         if (!ShouldProcessStaminaUpdate())
         {
+            RSS_SetMudSlipCameraShake01(0.0);
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, intervalMs, false);
             return;
         }
@@ -1020,6 +1141,7 @@ modded class SCR_CharacterControllerComponent
             }
             
             // 继续调度下一次更新，但不进行速度更新和体力消耗计算
+            RSS_SetMudSlipCameraShake01(0.0);
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
             return;
         }
@@ -1197,6 +1319,7 @@ modded class SCR_CharacterControllerComponent
         // 由于我们现在直接计算绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数，
         // 不需要动画速度补偿，因为我们的计算已经基于真实目标速度，不再依赖引擎的动画速度
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
+        m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
         OverrideMaxSpeed(finalSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
@@ -1456,6 +1579,27 @@ modded class SCR_CharacterControllerComponent
             velocityForDrain);
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
+
+        if (m_pMudSlipRunner)
+        {
+            m_pMudSlipRunner.ProcessAfterSlope(
+                this,
+                useSwimmingModel,
+                isSwimming,
+                m_pEnvironmentFactor,
+                m_pStaminaComponent,
+                currentSpeed,
+                isSprintActive,
+                currentWeight,
+                staminaPercent,
+                velocity,
+                slopeAngleDegrees,
+                timeDeltaSec,
+                currentTime,
+                IsRssDebugEnabled());
+        }
+
+        RSS_MaybeApplyAiMudSlipSpeedCap(owner);
         
         // 获取当前移动状态（用于计算冲刺倍数）
         bool isSprinting = IsSprinting();

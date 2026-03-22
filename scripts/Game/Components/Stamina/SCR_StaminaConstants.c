@@ -663,7 +663,75 @@ class StaminaConstants
     static const float ENV_MUD_PENALTY_MAX = 0.4; // 最大泥泞惩罚（40%地形阻力增加）
     static const float ENV_MUD_SLIPPERY_THRESHOLD = 0.3; // 积水阈值（高于此值触发滑倒风险）
     static const float ENV_MUD_SPRINT_PENALTY = 0.1; // 泥泞时Sprint速度惩罚
-    static const float ENV_MUD_SLIP_RISK_BASE = 0.001; // 基础滑倒风险（每0.2秒）
+    static const float ENV_MUD_SLIP_RISK_BASE = 0.005; // 基础滑倒风险（每0.2秒，与 EnvironmentFactor.CalculateSlipRisk 一致）
+    // 泥泞滑倒游戏效果（短 Ragdoll + 体力惩罚），由 MudSlipEffects + PlayerBase 消费
+    static const float ENV_MUD_SLIP_GLOBAL_SCALE = 1.5; // 总强度倍率（Poisson λ）；由 2.5×0.6 下调以压低 1s 复合触发率
+    static const float ENV_MUD_SLIP_MIN_SPEED_MS = 1.6; // 低于此水平速度不判滑倒（m/s）；AI 预警限速与此对齐
+    // AI 预计区：镜头应力≥此值时（仅安全 AI）OverrideMaxSpeed 压速作预警；防滑倒靠脚本层不调用 TryRoll，非本阈值
+    static const float ENV_MUD_SLIP_AI_WARN_STRESS_MIN = 0.015;
+    // 低于此生命比例视为危险上下文：不限速且允许泥泞 Ragdoll
+    static const float ENV_MUD_SLIP_AI_UNSAFE_HEALTH_SCALED = 0.92;
+    // EvaluatePriorityLevel()≥此视为危险上下文：不限速且允许泥泞 Ragdoll（对照 MOVE=30、SUPPRESS≈63）
+    static const float ENV_MUD_SLIP_AI_UNSAFE_PRIORITY_MIN = 50.0;
+    // 以下为旧版乘法模型遗留，滑倒判定已改为 ACOF/RCOF（见 MudSlipEffects）
+    static const float ENV_MUD_SLIP_SPEED_COEFF = 0.14; // 未使用
+    static const float ENV_MUD_SLIP_SPRINT_MULT = 2.3; // 未使用
+    static const float ENV_MUD_SLIP_WEIGHT_COEFF = 0.014; // 未使用
+    // 摩擦阈值模型（无量纲，与 μ 同量级）：RCOF > ACOF 时才有可能滑倒
+    static const float ENV_SLIP_ACOF_DRY_BASE = 0.52; // 干燥铺装近似可用摩擦系数上限
+    static const float ENV_SLIP_ACOF_OFFROAD_DROP = 0.07; // 地形系数高于 1 时干摩擦上界降低（松软地面）
+    static const float ENV_SLIP_LUBRICATION_MAX = 0.62; // 泥泞润滑使 ACOF 最多降到约 (1-max)*μ_dry
+    static const float ENV_SLIP_ACOF_MIN = 0.07;
+    static const float ENV_SLIP_ACOF_MAX = 0.58;
+    static const float ENV_SLIP_RCOF_BASE = 0.13; // 低速行走所需摩擦（相对 v_min 以上）
+    static const float ENV_SLIP_RCOF_VSQ = 0.0055; // 速度平方项（原 0.011 减半，缓和高速 RCOF 飙升）
+    static const float ENV_SLIP_RCOF_SPRINT = 0.0406; // 冲刺固定加项（原 0.058 的 70%，拉近走/冲滑倒差距）
+    static const float ENV_SLIP_RCOF_WEIGHT = 0.065; // 满负重时额外需求（0~55kg）
+    static const float ENV_SLIP_RCOF_CROUCH_MULT = 0.86; // 蹲姿步幅小，降低 RCOF
+    // 坡度：先按 |α| 得 slopeAdd，再乘以下坡/上坡系数（GetSlopeAngle：正=上坡，负=下坡）
+    static const float ENV_SLIP_RCOF_SLOPE_PER_DEG = 0.0026;
+    static const float ENV_SLIP_RCOF_SLOPE_MAX = 0.095;
+    static const float ENV_SLIP_RCOF_SLOPE_DOWNHILL_MULT = 1.14; // 下坡略增需求（重心前移）
+    static const float ENV_SLIP_RCOF_SLOPE_UPHILL_MULT = 0.98; // 上坡略低于同倾角下坡
+    // 急转弯：ω(rad/s) 与水平速 v(m/s) 耦合 turnAdd = min(ω·v·k, T_max)，与 F∝mvω 量级一致（高速急转更危险）
+    static const float ENV_SLIP_TURN_MIN_HORIZ_MS = 0.2; // 本帧与上一帧水平速均高于此才计 ω
+    static const float ENV_SLIP_RCOF_TURN_OMEGA_V_COEFF = 0.0030; // 原仅 ω·k_ω 已弃用，见 git 历史
+    static const float ENV_SLIP_RCOF_TURN_MAX = 0.07;
+    static const float ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC = 12.0; // 防止单帧数值爆炸
+    // 低体力：平衡能力下降 → RCOF 基线上升 + 小幅随机抖动 σ
+    static const float ENV_SLIP_RCOF_BALANCE_STAMINA = 0.085; // 与 (1−stamina) 成正比
+    static const float ENV_SLIP_RCOF_BALANCE_JITTER = 0.045; // RandomFloat01()×此项×(1−stamina)
+    // 落地/坠地瞬间：上一帧明显下落、本帧已接近接地 → 重心不稳
+    static const float ENV_SLIP_RCOF_LANDING = 0.11;
+    static const float ENV_SLIP_LANDING_VY_PREV = -1.15;
+    static const float ENV_SLIP_LANDING_VY_CUR = -0.42;
+    // 起跳蹬地瞬间（垂直上速较大）
+    static const float ENV_SLIP_RCOF_JUMP_UP_VY = 1.65;
+    static const float ENV_SLIP_RCOF_JUMP_UP = 0.042;
+    // 摩擦缺口 gap=RCOF−ACOF（无量纲）：镜头用较小 ε，掷骰用较大 ε，使「先晃后摔」有缓冲带
+    static const float ENV_SLIP_GAP_EPSILON_CAMERA = 0.004; // 镜头应力：gap>此值才开始有预警（再经疲劳缩小 ε_eff）
+    static const float ENV_SLIP_GAP_EPSILON_DICE = 0.008;   // 掷骰：gap≤此值不进入 Poisson（仅镜头仍可预警）
+    // λ∝gap（线性标度）；单步 P 经约 20 次/秒复合后体感见 docs/泥泞滑倒判定模型.md §6.1
+    static const float ENV_MUD_SLIP_PHYS_SCALE = 2.2; // 与 ENV_MUD_SLIP_GLOBAL_SCALE 联调（原 gap² 时代为 20）
+    static const float ENV_MUD_SLIP_COOLDOWN_SEC = 9.0; // 两次滑倒之间的最短间隔（秒），从「趴→蹲/站」锚定时刻起算（见 RSS_MudSlipRunner）
+    // 滑倒后若从未趴下：布娃娃已结束且姿态为蹲/站、且自滑倒事件起已满此秒数，则锚定 9s 冷却起点（避免永不趴地时无法进入冷却）
+    static const float ENV_MUD_SLIP_COOLDOWN_ANCHOR_FALLBACK_SEC = 3.0;
+    static const float ENV_MUD_SLIP_STAMINA_FRAC = 0.065; // 触发时额外扣除体力比例（0~1）
+    // Ragdoll() 后必须 RefreshRagdoll(>0)，否则骨骼很快静止会立即混合结束，几乎看不到布娃娃（见引擎 CharacterControllerComponent 文档）
+    static const float ENV_MUD_SLIP_RAGDOLL_WARMUP_SEC = 2.2; // 首次 Refresh：保持布娃娃至少若干秒内不因“静止”被关掉
+    static const int ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS = 1200; // 此后延迟再 Refresh(0) 开始混合回动画（毫秒）
+    // 泥泞失稳：第一人称镜头角抖动预警（无踉跄动画时的主要反馈）；与 gap 映射，与滑倒 Poisson 独立
+    static const float ENV_MUD_SLIP_CAM_SHAKE_GAP_SPAN = 0.14; // gap 从 ε 拉到 1.0 应力的跨度（无量纲）
+    // 低体力：镜头应力映射用更小有效 ε（仅 ComputeSlipCameraStress01），更易「提前发虚」；与掷骰 ε 无关
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_STAMINA_THRESHOLD = 0.2; // 低于此体力开始收紧 ε_eff
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_EPS_SCALE = 0.35; // stamina→0 时 ε_eff = ε·scale；→threshold 时回到 ε
+    static const float ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG = 6.0;   // 应力=1 时横滚峰值（度）；Roll 对「失稳」暗示强且较不易晕
+    static const float ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG = 3.4;  // 俯仰峰值（度）
+    static const float ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG = 2.9;    // 偏航峰值（度）
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE = 9.0;  // 基础角频率 Hz 量级
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS = 12.0; // 应力越高频率越快
+    static const float ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE = 16.0; // 应力平滑（越大越快跟上目标）
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG = 0.35; // 极力克制：FOV 高频抖易诱发晕动症，优先靠 Roll
     
     // 气温相关常量
     static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值

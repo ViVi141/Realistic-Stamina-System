@@ -645,6 +645,12 @@ class EnvironmentFactor
     {
         return m_fSlipRisk;
     }
+
+    // 最近一次 UpdateEnvironmentFactors 传入的地形系数（用于滑倒 ACOF 等）
+    float GetCachedTerrainFactor()
+    {
+        return m_fCachedTerrainFactor;
+    }
     
     // 获取热应激惩罚
     // @return 热应激惩罚（0.0-1.0）

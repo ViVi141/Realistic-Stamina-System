@@ -33,6 +33,7 @@ class SCR_StaminaHUDComponent
     protected static float s_fCachedWindDirection = 0.0; // 风向（度）
     protected static bool s_bCachedIsIndoor = false;     // 是否室内
     protected static float s_fCachedTerrainDensity = -1.0; // 地面密度
+    protected static string s_sCachedGroundMaterialLabel = ""; // 射线材质通用名（优先于密度推断）
     protected static float s_fCachedWetWeight = 0.0;
     protected static bool s_bCachedIsSwimming = false; // 是否在游泳
     protected static float s_fCachedTimeToDepleteSec = -1.0;  // 按当前净消耗，耗尽所需秒数（-1=恢复中）
@@ -65,6 +66,7 @@ class SCR_StaminaHUDComponent
         float windDirection,
         bool isIndoor,
         float terrainDensity,
+        string groundMaterialLabel,
         float wetWeight,
         bool isSwimming,
         float timeToDepleteSec = -1.0,
@@ -84,6 +86,10 @@ class SCR_StaminaHUDComponent
         s_fCachedWindDirection = windDirection;
         s_bCachedIsIndoor = isIndoor;
         s_fCachedTerrainDensity = terrainDensity;
+        if (groundMaterialLabel == "")
+            s_sCachedGroundMaterialLabel = "";
+        else
+            s_sCachedGroundMaterialLabel = groundMaterialLabel;
         s_fCachedWetWeight = wetWeight;
         s_bCachedIsSwimming = isSwimming;
         s_fCachedTimeToDepleteSec = timeToDepleteSec;
@@ -136,6 +142,7 @@ class SCR_StaminaHUDComponent
             s_fDisplayStaminaPercent = 1.0;  // 重置平滑值，便于下次初始化
             s_fDisplaySpeedMultiplier = 1.0;
             s_fDisplayCurrentSpeed = 0.0;
+            s_sCachedGroundMaterialLabel = "";
         }
     }
     
@@ -317,7 +324,7 @@ class SCR_StaminaHUDComponent
         string fullText = staminaPct.ToString() + speedMs.ToString() + weightKg.ToString() + 
                           s_sCachedMoveType + slopeAngle.ToString() + tempC.ToString() + 
                           windSpeedInt.ToString() + indoorStr + 
-                          s_fCachedTerrainDensity.ToString() + wetKg.ToString() + timeStr;
+                          s_fCachedTerrainDensity.ToString() + s_sCachedGroundMaterialLabel + wetKg.ToString() + timeStr;
         
         // 如果没有变化，不更新
         if (fullText == m_sLastDisplayedText)
@@ -479,8 +486,16 @@ class SCR_StaminaHUDComponent
             }
             else
             {
-                groundType = GetGroundTypeStr(s_fCachedTerrainDensity);
-                groundColor = GetGroundColor(s_fCachedTerrainDensity);
+                if (s_sCachedGroundMaterialLabel != "")
+                {
+                    groundType = s_sCachedGroundMaterialLabel;
+                    groundColor = GetGroundColor(s_fCachedTerrainDensity);
+                }
+                else
+                {
+                    groundType = GetGroundTypeStr(s_fCachedTerrainDensity);
+                    groundColor = GetGroundColor(s_fCachedTerrainDensity);
+                }
             }
             
             m_wTextGround.SetText(groundType);
@@ -539,53 +554,55 @@ class SCR_StaminaHUDComponent
             return "NW";
     }
     
-    // 获取地面类型字符串（基于物理密度）
-    // 密度值来自 BallisticInfo.GetDensity()，范围约 0.5-3.0
-    // 参考：木箱(0.65), 室内地板(1.13), 草地(1.2), 土质(1.33), 
-    //       床垫(1.55), 鹅卵石(1.6), 沥青(2.24), 混凝土(2.3), 
-    //       沙地(2.7), 碎石(2.94)
+    // 获取地面类型字符串（基于物理密度，与 tools/EST_AllGameMaterialDensities.csv 对齐）
+    // 典型：snow≤0.36 | 木/矮草 0.36~0.72 | 地板≤1.13 | grass_lush 1.2 | dirt/soil 1.33 |
+    //       sand/gravel/pebbles 1.55~1.86 | 铺装 2.2~2.42 | cobble/stone 2.75 | tiles ~2.94
     protected string GetGroundTypeStr(float density)
     {
         if (density < 0)
             return "Unknown";
-        else if (density <= 0.7)
-            return "Wood";       // 木质表面
-        else if (density <= 1.15)
-            return "Floor";      // 室内地板
+        else if (density <= 0.36)
+            return "SnowIce";    // 雪/极松软地表（CSV snow 0.35, ice 0.93 走其他段）
+        else if (density <= 0.72)
+            return "WoodVeg";    // 木箱/矮草/植被混叠（0.5~0.65）
+        else if (density <= 1.13)
+            return "Floor";      // 室内地坪、地毯前缘
         else if (density <= 1.25)
-            return "Grass";      // 草地
-        else if (density <= 1.4)
-            return "Dirt";       // 土质
-        else if (density <= 1.65)
-            return "Gravel";     // 鹅卵石/碎石路
-        else if (density <= 2.4)
-            return "Paved";      // 沥青/混凝土
-        else if (density <= 2.8)
-            return "Sand";       // 沙地
+            return "Grass";      // grass_lush* 1.2
+        else if (density <= 1.45)
+            return "Dirt";       // 土、泥、作物（~1.33~1.44）
+        else if (density <= 1.9)
+            return "SandGrvl";   // 沙/砾/卵石（sand 1.63, gravel 1.682, pebbles ~1.79）
+        else if (density <= 2.42)
+            return "Paved";      // 沥青/混凝土 2.24~2.3
+        else if (density <= 2.94)
+            return "CobbleTile"; // 块石/石材砖 2.75, tiles_stone 2.94（非“沙地”）
         else
-            return "Rock";       // 岩石/碎石
+            return "Rock";
     }
     
     // 获取地面颜色（基于物理密度）
-    // 绿色=良好（铺装路面），白色=普通，橙色=困难
+    // 绿色=省力，白色=普通，橙色=费力
     protected Color GetGroundColor(float density)
     {
         if (density < 0)
             return GUIColors.DEFAULT;
-        else if (density <= 0.7)
-            return Color.FromRGBA(100, 200, 100, 255);  // 木质 - 绿色（良好）
-        else if (density <= 1.15)
-            return Color.FromRGBA(100, 200, 100, 255);  // 地板 - 绿色（良好）
+        else if (density <= 0.36)
+            return GUIColors.ORANGE_BRIGHT2;            // 雪泥 - 费力
+        else if (density <= 0.72)
+            return Color.FromRGBA(100, 200, 100, 255);  // 木/矮草 - 相对省力
+        else if (density <= 1.13)
+            return Color.FromRGBA(100, 200, 100, 255);  // 地板 - 省力
         else if (density <= 1.25)
-            return GUIColors.DEFAULT;                   // 草地 - 白色（普通）
-        else if (density <= 1.4)
-            return GUIColors.DEFAULT;                   // 土质 - 白色（普通）
-        else if (density <= 1.65)
-            return GUIColors.ORANGE_BRIGHT2;            // 鹅卵石 - 橙色（困难）
-        else if (density <= 2.4)
-            return Color.FromRGBA(100, 200, 100, 255);  // 铺装 - 绿色（良好）
-        else if (density <= 2.8)
-            return GUIColors.ORANGE_BRIGHT2;            // 沙地 - 橙色（困难）
+            return GUIColors.DEFAULT;                   // 草丛 - 普通
+        else if (density <= 1.45)
+            return GUIColors.DEFAULT;                   // 土质 - 普通
+        else if (density <= 1.9)
+            return GUIColors.ORANGE_BRIGHT2;            // 沙砾卵石 - 费力
+        else if (density <= 2.42)
+            return Color.FromRGBA(100, 200, 100, 255);  // 铺装 - 省力
+        else if (density <= 2.94)
+            return GUIColors.ORANGE_BRIGHT2;            // 块石/砖 - 费力
         else
             return GUIColors.RED_BRIGHT2;               // 岩石 - 红色（非常困难）
     }

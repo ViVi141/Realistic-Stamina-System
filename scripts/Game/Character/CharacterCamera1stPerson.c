@@ -1,9 +1,12 @@
 // 冲刺视野变化（Sprint FOV）
 // 仅保留冲刺时的 FOV 变化（Burst/Cruise/Limp），已移除镜头摇晃（起步/急停惯性、步伐颠簸、上坡摇摆）。
+// 泥泞失稳：无踉跄动画时，用 gap 驱动的角抖动 + 小幅 FOV 抖动作预警（与 Ragdoll 滑倒区分：仅高摩擦缺口时强）。
 
 modded class CharacterCamera1stPerson
 {
     protected float m_fSprintFovBonusCurrent = 0.0; // 当前 FOV 加成（度），平滑趋近目标 Burst/Cruise/Limp
+    protected float m_fMudSlipShakeSmoothed01 = 0.0;
+    protected float m_fMudSlipShakePhaseRad = 0.0;
 
     override void OnUpdate(float pDt, out ScriptedCameraItemResult pOutResult)
     {
@@ -45,8 +48,47 @@ modded class CharacterCamera1stPerson
         }
         else
             m_fSprintFovBonusCurrent = newValue;
-        if (Math.AbsFloat(m_fSprintFovBonusCurrent) > 0.001)
-            pOutResult.m_fFOV = pOutResult.m_fFOV + m_fSprintFovBonusCurrent;
+
+        float fovOut = pOutResult.m_fFOV + m_fSprintFovBonusCurrent;
+        ApplyMudSlipCameraShake(pDt, rssController, fovOut, pOutResult);
+    }
+
+    protected void ApplyMudSlipCameraShake(float pDt, SCR_CharacterControllerComponent rssController, float fovBase, out ScriptedCameraItemResult pOutResult)
+    {
+        float targetStress = rssController.RSS_GetMudSlipCameraShake01();
+        float smoothRate = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
+        float blend = smoothRate * pDt;
+        if (blend > 1.0)
+            blend = 1.0;
+        m_fMudSlipShakeSmoothed01 = m_fMudSlipShakeSmoothed01 + (targetStress - m_fMudSlipShakeSmoothed01) * blend;
+
+        float stress = m_fMudSlipShakeSmoothed01;
+        if (stress < 0.002)
+        {
+            pOutResult.m_fFOV = fovBase;
+            return;
+        }
+
+        float freq = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
+        freq = freq + stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
+        m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad + pDt * 2.0 * Math.PI * freq;
+        if (m_fMudSlipShakePhaseRad > 100000.0)
+            m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad - 100000.0;
+
+        float ph = m_fMudSlipShakePhaseRad;
+        float sYaw = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
+        float sPitch = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
+        float sRoll = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
+        vector ypr = "0 0 0";
+        ypr[0] = sYaw;
+        ypr[1] = sPitch;
+        ypr[2] = sRoll;
+        vector rotMat[4];
+        Math3D.AnglesToMatrix(ypr, rotMat);
+        Math3D.MatrixMultiply4(rotMat, pOutResult.m_CameraTM, pOutResult.m_CameraTM);
+
+        float fovJit = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
+        pOutResult.m_fFOV = fovBase + fovJit;
     }
 
     protected float ComputeTargetSprintFovBonus(SCR_CharacterControllerComponent rssController, float worldTimeSec, float staminaPercent)

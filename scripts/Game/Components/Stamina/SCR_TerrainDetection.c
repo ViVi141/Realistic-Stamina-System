@@ -6,6 +6,7 @@ class TerrainDetector
 {
     // ==================== 状态变量 ====================
     protected float m_fCachedTerrainDensity = -1.0; // 缓存的地面密度值
+    protected string m_sCachedGroundMaterialLabel = ""; // 射线材质通用显示名（如 metal）
     protected float m_fCachedTerrainFactor = 1.0; // 缓存的地形系数
     protected float m_fLastTerrainCheckTime = 0.0; // 上次地形检测时间
     protected float m_fLastMovementTime = 0.0; // 上次移动时间（用于优化静止时的检测）
@@ -20,6 +21,7 @@ class TerrainDetector
     void Initialize()
     {
         m_fCachedTerrainDensity = -1.0;
+        m_sCachedGroundMaterialLabel = "";
         m_fCachedTerrainFactor = 1.0;
         m_fLastTerrainCheckTime = 0.0;
         m_fLastMovementTime = 0.0;
@@ -97,7 +99,10 @@ class TerrainDetector
     float GetTerrainDensity(IEntity owner)
     {
         if (!owner)
+        {
+            m_sCachedGroundMaterialLabel = "";
             return -1.0;
+        }
         
         if (!m_pTraceParamGround)
             m_pTraceParamGround = new TraceParam();
@@ -118,15 +123,21 @@ class TerrainDetector
         // 获取表面材质
         GameMaterial material = m_pTraceParamGround.SurfaceProps;
         if (!material)
+        {
+            m_sCachedGroundMaterialLabel = "";
             return -1.0;
-        
+        }
+
+        m_sCachedGroundMaterialLabel = MaterialTerrainTable.GetGenericMaterialLabel(material);
+
         // 获取弹道信息（包含密度）
         BallisticInfo ballisticInfo = material.GetBallisticInfo();
         if (!ballisticInfo)
             return -1.0;
-        
-        // 返回密度值
+
+        // 优先使用内置 CSV 表（MaterialTerrainTable），与原版材质 basename 对齐；否则用弹道密度
         float density = ballisticInfo.GetDensity();
+        density = MaterialTerrainTable.ResolveDensity(material, density);
         return density;
     }
     
@@ -145,6 +156,12 @@ class TerrainDetector
     float GetCachedTerrainDensity()
     {
         return m_fCachedTerrainDensity;
+    }
+
+    // 上次射线解析的材质通用名（与密度缓存同步更新频率）
+    string GetCachedGroundMaterialLabel()
+    {
+        return m_sCachedGroundMaterialLabel;
     }
     
     // 获取缓存的地形系数

@@ -143,11 +143,20 @@ class DebugDisplay
         }
         
         float cachedDensity = terrainDetector.GetCachedTerrainDensity();
+        string matLabel = terrainDetector.GetCachedGroundMaterialLabel();
         if (cachedDensity >= 0.0)
         {
+            if (matLabel != "")
+            {
+                return string.Format(" | 地面: %1 | ρ≈%2", 
+                    matLabel,
+                    Math.Round(cachedDensity * 100.0) / 100.0);
+            }
             return string.Format(" | 地面密度: %1", 
                 Math.Round(cachedDensity * 100.0) / 100.0);
         }
+        if (matLabel != "")
+            return string.Format(" | 地面: %1", matLabel);
         
         return " | 地面密度: 未检测";
     }
@@ -607,8 +616,12 @@ class DebugDisplay
         
         // 获取地形密度（从地形检测模块）
         float terrainDensity = -1.0;
+        string groundMaterialLabel = "";
         if (params.terrainDetector)
+        {
             terrainDensity = params.terrainDetector.GetCachedTerrainDensity();
+            groundMaterialLabel = params.terrainDetector.GetCachedGroundMaterialLabel();
+        }
         
         // 更新 HUD 的所有值（会自动在右上角显示）
         SCR_StaminaHUDComponent.UpdateAllValues(
@@ -623,6 +636,7 @@ class DebugDisplay
             windDirection,
             isIndoor,
             terrainDensity,
+            groundMaterialLabel,
             totalWetWeight,
             params.isSwimming,
             params.timeToDepleteSec,

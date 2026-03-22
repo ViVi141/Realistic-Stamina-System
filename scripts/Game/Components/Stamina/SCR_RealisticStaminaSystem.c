@@ -1030,86 +1030,96 @@ class RealisticStaminaSpeedSystem
     static const float TERRAIN_FACTOR_BRUSH = 1.5;        // 重度灌木丛
     static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
     
-    // 根据密度值获取地形系数（基于实际测试数据的插值映射）
-    // 测试数据点：(0.65,1.0), (1.13,1.0), (1.2,1.2), (1.33,1.1), (1.55,1.3), 
-    //            (1.6,1.4), (2.24,1.0), (2.3,1.0), (2.7,1.5), (2.94,1.8)
-    // 见 docs/terrain_density_mapping.md 了解详细映射关系
-    // 
-    // @param density 地面材质密度值（0.5-3.0）
-    // @return 地形系数 (η)（1.0-1.8）
+    // 根据密度值获取地形系数（插值映射，与 tools/EST_AllGameMaterialDensities.csv 对齐校准）
+    // 典型 g/cm³：snow 0.35 | grass/heather 0.5 | grass_lush 1.2 | dirt/soil 1.33 | sand 1.63 |
+    //            gravel 1.682 | pebbles 1.7~1.79 | asphalt/concrete 2.243~2.3 | cobble/stone 2.75 | tiles_stone 2.94
+    // 说明：密度无法区分同区间不同材质（如木 0.65 与草 0.5），0.36~0.72 仍保持 η≈1.0 以兼容木箱等
+    // @param density BallisticInfo.GetDensity()，约 0.02~3.0
+    // @return 地形系数 η（约 1.0~1.85）
     static float GetTerrainFactorFromDensity(float density)
     {
         if (density <= 0.0)
-            return TERRAIN_FACTOR_PAVED; // 默认值
-        
-        // 特殊情况：高密度平整表面（沥青、混凝土）
-        if (density >= 2.2 && density <= 2.4)
-            return TERRAIN_FACTOR_PAVED; // 沥青(2.24)、混凝土(2.3) → 1.0
-        
-        // 特殊情况：低密度平整表面（木箱）
-        if (density <= 0.7)
-            return TERRAIN_FACTOR_PAVED; // 木箱(0.65) → 1.0
-        
-        // 区间 1: 0.7 < density <= 1.2
-        // 插值：室内地板(1.13, 1.0) → 草地(1.2, 1.2)
+            return TERRAIN_FACTOR_PAVED;
+
+        // 低密：积雪 / 极干草地（CSV snow 0.35；grass_dry 0.3）— 明显难于铺装
+        if (density <= 0.36)
+        {
+            float t = density / 0.36;
+            return 1.12 + (1.0 - t) * 0.08;
+        }
+
+        // 0.36~0.72：草地/植被/木质道具等混叠，维持与历史行为接近的 η=1.0
+        if (density <= 0.72)
+            return TERRAIN_FACTOR_PAVED;
+
+        // 0.72~1.13：室内地坪、地毯等
+        if (density <= 1.13)
+            return TERRAIN_FACTOR_PAVED;
+
+        // 1.13~1.2：地毯(1.13)→草丛(grass_lush 1.2)
         if (density <= 1.2)
         {
-            if (density <= 1.13)
-                return TERRAIN_FACTOR_PAVED; // 室内地板区间
-            // 线性插值
             float t = (density - 1.13) / (1.2 - 1.13);
-            return 1.0 + t * 0.2; // 1.0 → 1.2
+            return 1.0 + t * 0.2;
         }
-        
-        // 区间 2: 1.2 < density <= 1.33
-        // 插值：草地(1.2, 1.2) → 土质(1.33, 1.1)
+
+        // 1.2~1.33：草丛→土/泥（dirt/soil/dirt_road 1.33）
         if (density <= 1.33)
         {
             float t = (density - 1.2) / (1.33 - 1.2);
-            return 1.2 - t * 0.1; // 1.2 → 1.1
+            return 1.2 - t * 0.1;
         }
-        
-        // 区间 3: 1.33 < density <= 1.6
-        // 插值：土质(1.33, 1.1) → 床垫(1.55, 1.3) → 海岸鹅卵石(1.6, 1.4)
+
+        // 1.33~1.55：土、作物（soil_forest*、grass_crops* 等）
         if (density <= 1.55)
         {
-            // 子区间：土质 → 床垫
             float t = (density - 1.33) / (1.55 - 1.33);
-            return 1.1 + t * 0.2; // 1.1 → 1.3
+            return 1.1 + t * 0.28;
         }
-        else // density <= 1.6
+
+        // 1.55~1.86：沙/砾/卵石峰值区（sand 1.63, gravel 1.682, pebbles_* 1.7~1.79）— 对齐 TERRAIN_FACTOR_SAND 量级
+        if (density <= 1.86)
         {
-            // 子区间：床垫 → 海岸鹅卵石
-            float t = (density - 1.55) / (1.6 - 1.55);
-            return 1.3 + t * 0.1; // 1.3 → 1.4
+            if (density <= 1.63)
+            {
+                float t = (density - 1.55) / (1.63 - 1.55);
+                return 1.38 + t * 0.3;
+            }
+            if (density <= 1.79)
+            {
+                float t = (density - 1.63) / (1.79 - 1.63);
+                return 1.68 + t * 0.06;
+            }
+            float t2 = (density - 1.79) / (1.86 - 1.79);
+            return 1.74 + t2 * (1.6 - 1.74);
         }
-        
-        // 区间 4: 1.6 < density < 2.2
-        // 插值：海岸鹅卵石(1.6, 1.4) → 平滑过渡到沥青区间(2.2, 1.0)
+
+        // 1.86~2.2：过渡到铺装（沥青前缘）
         if (density < 2.2)
         {
-            float t = (density - 1.6) / (2.2 - 1.6);
-            return 1.4 - t * 0.4; // 1.4 → 1.0
+            float t = (density - 1.86) / (2.2 - 1.86);
+            return 1.6 - t * 0.6;
         }
-        
-        // 区间 5: 2.4 < density <= 2.7
-        // 插值：混凝土区间结束(2.4, 1.0) → 铁棚(2.7, 1.5)
-        if (density <= 2.7)
+
+        // 2.2~2.42：沥青、混凝土（2.243、2.3）
+        if (density <= 2.42)
+            return TERRAIN_FACTOR_PAVED;
+
+        // 2.42~2.76：块石/石材路面（cobblestone/stone 2.75）
+        if (density <= 2.76)
         {
-            float t = (density - 2.4) / (2.7 - 2.4);
-            return 1.0 + t * 0.5; // 1.0 → 1.5
+            float t = (density - 2.42) / (2.76 - 2.42);
+            return 1.0 + t * 0.48;
         }
-        
-        // 区间 6: 2.7 < density
-        // 插值：铁棚(2.7, 1.5) → 陶片屋顶(2.94, 1.8)
+
+        // 2.76~2.94：陶土/石砖等（tiles_stone 2.94）
         if (density <= 2.94)
         {
-            float t = (density - 2.7) / (2.94 - 2.7);
-            return 1.5 + t * 0.3; // 1.5 → 1.8
+            float t = (density - 2.76) / (2.94 - 2.76);
+            return 1.48 + t * 0.32;
         }
-        
-        // 外推：超出已知范围，限制在合理范围内
-        return Math.Clamp(1.8 + (density - 2.94) * 0.1, 1.8, 2.5);
+
+        return Math.Clamp(1.8 + (density - 2.94) * 0.08, 1.8, 2.5);
     }
     
     // ==================== 静态负重站立消耗（Pandolf 静态项）====================
