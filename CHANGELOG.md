@@ -6,11 +6,43 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
-## [3.16.15] - 2026-03-11
+## [3.17.0] - 2026-03-22
+
+### 📌 版本说明
+
+- **提交范围**：自 `b060b89f601eb4ad26801ff7c66673789ad9c045` 至 `245665f14ad88162371318507b20c0f564343ada`（含两端），共 18 个提交，统一归入本版本。
+
+### ✅ 新增
+
+- **增强型多目标优化与鲁棒性测试流水线** - `rss_super_pipeline.py`：扩展多目标优化、稳定性/鲁棒性测试与约束验证；可选加速模式以缩短试验耗时。
+- **战术战斗周期与可视化** - 战斗周期场景与图表：`plot_combat_cycle_30kg_en.py`；新增多组负重/地形/气温/风速等 `run_stamina_*.png` 趋势图脚本（`plot_run_stamina_by_grade.py`、`plot_run_stamina_by_weight.py` 等）。
+- **网络同步增强** - 心跳机制与关键数据即时上报（[SCR_NetworkSync.c](scripts/Game/Components/Stamina/SCR_NetworkSync.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+- **稳定性记录** - [stability_bug_report.json](stability_bug_report.json) 等与优化流程配套的稳定性输出。
+- **基准与辅助脚本** - `t1_benchmark.py`、`run_t1_optimization.py` 等工具链补充。
+
+### 🔁 变更与重构
+
+- **速度模型** - 速度计算重构为**基于绝对速度**；负重惩罚与基础速度逻辑分离（[SCR_SpeedCalculation.c](scripts/Game/Components/Stamina/SCR_SpeedCalculation.c)、[SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+- **恢复与消耗** - 移除**基于速度的体力恢复惩罚**；增强恢复参数与体力更新协调（[SCR_StaminaRecovery.c](scripts/Game/Components/Stamina/SCR_StaminaRecovery.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）；优化负重下的恢复率与速度相关逻辑。
+- **常量与 HUD** - 体力常量、撞墙过渡、HUD 显示等随新速度模型联动（[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)、[SCR_CollapseTransition.c](scripts/Game/Components/Stamina/SCR_CollapseTransition.c)、[SCR_StaminaHUDComponent.c](scripts/Game/Components/Stamina/SCR_StaminaHUDComponent.c)）。
+- **环境与设置** - [SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)、[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c) 等参数与序列化字段调整。
+- **数字孪生对齐** - [rss_digital_twin_fix.py](tools/rss_digital_twin_fix.py)、[stamina_constants.py](tools/stamina_constants.py)、三套 [optimized_rss_config_*_super.json](tools/) 与游戏内逻辑同步更新。
+- **预制体** - [Character_Base.et](Prefabs/Characters/Core/Character_Base.et) 小幅更新以配合角色控制逻辑。
+
+### 🐛 修复
+
+- **优化约束与结果** - 恢复类参数约束修正，并刷新 Optuna 输出配置（`fix(rss)` 系列提交）。
+- **体力与角色控制** - 体力系统与控制器协同修正（含调试输出等细节）。
+
+### 🗑️ 清理
+
+- 删除过时或重复的文档与配置说明（如部分 `docs/` 下已移除文件、漏洞报告相关文档）。
+- 移除未再使用的全屏特效脚本（如 `SCR_PoisonScreenEffect_AlwaysOn.c`、`SCR_RegenerationScreenEffect_Stamina.c`）。
+- 工具侧移除过时战斗周期模拟脚本并更新图表产物；[chore] 收尾提交整理仓库文件。
 
 ### 🔧 配置版本
 
-- **CURRENT_VERSION** 更新为 3.16.15（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+- **CURRENT_VERSION** 更新为 **3.17.0**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
 
 ---
 
