@@ -669,10 +669,33 @@ class StaminaConstants
     static const float ENV_MUD_SLIP_MIN_SPEED_MS = 1.6; // 低于此水平速度不判滑倒（m/s）；AI 预警限速与此对齐
     // AI 预计区：镜头应力≥此值时（仅安全 AI）OverrideMaxSpeed 压速作预警；防滑倒靠脚本层不调用 TryRoll，非本阈值
     static const float ENV_MUD_SLIP_AI_WARN_STRESS_MIN = 0.015;
-    // 低于此生命比例视为危险上下文：不限速且允许泥泞 Ragdoll
+    // 曾用于 AI 泥泞「危险上下文」生命值判定；当前桥接逻辑已取消，常量保留供其它模块或将来使用
     static const float ENV_MUD_SLIP_AI_UNSAFE_HEALTH_SCALED = 0.92;
     // EvaluatePriorityLevel()≥此视为危险上下文：不限速且允许泥泞 Ragdoll（对照 MOVE=30、SUPPRESS≈63）
     static const float ENV_MUD_SLIP_AI_UNSAFE_PRIORITY_MIN = 50.0;
+    // RSS 主循环速度/体力 tick（毫秒）：玩家≈60Hz；AI 仅在服务器上降频
+    static const int RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS = 17;
+    static const int RSS_AI_SPEED_UPDATE_INTERVAL_MS = 100;
+    // AI 徒步：当前体力低于此比例且 AI 意图为快跑时，降级为 WALK（与「撞墙」区间大致衔接）
+    static const float RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD = 0.28;
+    //! AI 群组低体力自动休整（动态防守路点等）：功能完善中，勿依赖；开启前请自行验证。当前默认关闭。
+    static const bool RSS_AI_GROUP_REST_ENABLED = false;
+    static const float RSS_AI_GROUP_REST_STAMINA_THRESHOLD = 0.25;
+    static const float RSS_AI_GROUP_REST_COOLDOWN_SEC = 90.0;
+    static const float RSS_AI_GROUP_REST_COVER_TRACE_RADIUS_M = 22.0;
+    static const float RSS_AI_GROUP_REST_COVER_OFFSET_FROM_WALL_M = 1.2;
+    static const float RSS_AI_GROUP_REST_DEFEND_HOLD_SEC = 45.0;
+    //! 进入休整路线后，体力恢复到该比例以上才解除「恢复锁定」（允许按 AI 意图快跑等）；低于此值期间强制步行
+    static const float RSS_AI_REST_RECOVERY_RESUME_STAMINA_MIN = 0.5;
+    //! 群组低体力休整：动态插入的防守路点（默认官方 AIWaypoint_Defend）
+    static const ResourceName RSS_AI_GROUP_REST_DEFEND_WAYPOINT_PREFAB = "{93291E72AC23930F}Prefabs/AI/Waypoints/AIWaypoint_Defend.et";
+    //! 为 true 时由队长用 GetBestCover 定隐蔽点再插路点；false 则仅用射线近似蔽护
+    static const bool RSS_AI_GROUP_REST_USE_ENGINE_COVER = true;
+    //! 与官方 SCR_AIFindCover 等一致，步兵寻路世界名
+    static const string RSS_AI_COVER_NAVMESH_WORLD_NAME = "Soldiers";
+    static const int RSS_AI_COVER_QUERY_MAX_COVERS = 25;
+    static const float RSS_AI_COVER_QUERY_SECTOR_DIST_MAX_M = 120.0;
+    static const float RSS_AI_COVER_NAVMESH_AREA_COST_SCALE = 0.33333334;
     // 以下为旧版乘法模型遗留，滑倒判定已改为 ACOF/RCOF（见 MudSlipEffects）
     static const float ENV_MUD_SLIP_SPEED_COEFF = 0.14; // 未使用
     static const float ENV_MUD_SLIP_SPRINT_MULT = 2.3; // 未使用

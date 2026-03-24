@@ -11,8 +11,8 @@ modded class SCR_CharacterControllerComponent
     protected const int SPEED_SAMPLE_INTERVAL_MS = 1000; // 每秒采集一次速度样本
     
     // 速度更新相关（60Hz 同步）
-    protected const int SPEED_UPDATE_INTERVAL_MS = 17; // 60Hz ≈ 16.67ms，玩家速度/体力主循环
-    protected const int SPEED_UPDATE_INTERVAL_AI_MS = 100; // AI 每 0.1 秒更新一次（性能优化）
+    // 速度更新间隔见 StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS / RSS_AI_SPEED_UPDATE_INTERVAL_MS；
+    // 查询使用 SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs。
     
     // 状态信息缓存
     protected float m_fLastStaminaPercent = 1.0;
@@ -24,7 +24,6 @@ modded class SCR_CharacterControllerComponent
     // 网络同步相关
     protected ref NetworkSyncManager m_pNetworkSyncManager;
     protected string m_sLastSpeedSource = "";  // 调试用：上次速度计算来源（Server/Client）
-    protected static ref array<string> s_aAIDebugLines = new array<string>();  // AI 调试行缓存
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 未收到配置时的重试间隔（秒），收到后不再请求
     protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
@@ -691,7 +690,7 @@ modded class SCR_CharacterControllerComponent
     void StartSystem()
     {
         // 启动速度更新循环（每0.2秒更新一次速度）
-        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS, false);
         
         // 启动速度采集循环（每秒一次）
         GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
@@ -854,12 +853,10 @@ modded class SCR_CharacterControllerComponent
         return false;
     }
 
-    // 获取当前角色的速度更新间隔（玩家 50ms，AI 100ms）
+    // 获取当前角色的速度更新间隔（玩家≈17ms，AI 100ms）
     protected int GetSpeedUpdateIntervalMs()
     {
-        if (IsPlayerControlled())
-            return SPEED_UPDATE_INTERVAL_MS;
-        return SPEED_UPDATE_INTERVAL_AI_MS;
+        return SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs(this);
     }
 
     // 获取本次冲刺开始时间（世界时间秒）；供战术冲刺爆发期判断使用
@@ -912,86 +909,24 @@ modded class SCR_CharacterControllerComponent
         return false;
     }
 
-    // AI「危险上下文」：交战/高优先级或明显受伤 → 不限速，且允许泥泞滑倒 Ragdoll（与下方 Allow 一致）
-    protected bool RSS_ShouldAiIgnoreMudSlipSpeedCap(IEntity owner)
-    {
-        if (!owner)
-            return false;
-
-        SCR_AIUtilityComponent aiUtil = SCR_AIUtilityComponent.Cast(owner.FindComponent(SCR_AIUtilityComponent));
-        if (aiUtil)
-        {
-            AIActionBase act = aiUtil.GetExecutedAction();
-            if (!act)
-                act = aiUtil.GetCurrentAction();
-            SCR_AIActionBase scrAct = SCR_AIActionBase.Cast(act);
-            if (scrAct)
-            {
-                float pr = scrAct.EvaluatePriorityLevel();
-                if (pr >= StaminaConstants.ENV_MUD_SLIP_AI_UNSAFE_PRIORITY_MIN)
-                    return true;
-            }
-        }
-
-        SCR_CharacterDamageManagerComponent dmg = SCR_CharacterDamageManagerComponent.Cast(owner.FindComponent(SCR_CharacterDamageManagerComponent));
-        if (dmg)
-        {
-            float hs = dmg.GetHealthScaled();
-            if (hs >= 0.0)
-            {
-                if (hs < StaminaConstants.ENV_MUD_SLIP_AI_UNSAFE_HEALTH_SCALED)
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    // AI 安全（巡逻等）：泥泞 Poisson 与 Ragdoll 在 Runner 内完全不执行；与限速无关，限速仅为预计区预警
+    // AI 泥泞安全 / 限速 / Ragdoll 许可：实现见 SCR_RSS_AIStaminaBridge（供 MudSlipRunner 等调用）
     bool RSS_IsAiMudSlipBlockedBySafety(IEntity owner)
     {
-        if (IsPlayerControlled())
-            return false;
-        if (!owner)
-            return true;
-        if (RSS_ShouldAiIgnoreMudSlipSpeedCap(owner))
-            return false;
-        return true;
+        return SCR_RSS_AIStaminaBridge.IsMudSlipBlockedBySafety(this, owner);
     }
 
-    // 是否允许执行泥泞滑倒掷骰；玩家恒真，AI 仅危险上下文为真（与 RSS_IsAiMudSlipBlockedBySafety 互斥）
     bool RSS_ShouldAiAllowMudSlipRagdoll(IEntity owner)
     {
-        if (RSS_IsAiMudSlipBlockedBySafety(owner))
-            return false;
-        return true;
+        return SCR_RSS_AIStaminaBridge.ShouldAllowMudSlipRagdoll(this, owner);
     }
 
-    // 仅服务器 AI：安全且已进入预计区（应力阈值）时压速作预警；危险上下文不限速
-    protected void RSS_MaybeApplyAiMudSlipSpeedCap(IEntity owner)
-    {
-        if (!owner)
-            return;
-        if (IsPlayerControlled())
-            return;
-        if (!Replication.IsServer())
-            return;
-        float mudStress = RSS_GetMudSlipCameraShake01();
-        if (mudStress < StaminaConstants.ENV_MUD_SLIP_AI_WARN_STRESS_MIN)
-            return;
-        if (RSS_ShouldAiIgnoreMudSlipSpeedCap(owner))
-            return;
-        float capMul = StaminaConstants.ENV_MUD_SLIP_MIN_SPEED_MS / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-        if (m_fLastRssSpeedMultiplierApplied > capMul)
-            OverrideMaxSpeed(capMul);
-    }
-
-    // 根据体力更新速度（玩家每 50ms，AI 每 100ms）
+    // 根据体力更新速度（玩家≈17ms，AI 100ms）
     void UpdateSpeedBasedOnStamina()
     {
         IEntity owner = GetOwner();
         if (!owner)
         {
-            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, SPEED_UPDATE_INTERVAL_MS, false);
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS, false);
             return;
         }
 
@@ -1599,8 +1534,14 @@ modded class SCR_CharacterControllerComponent
                 IsRssDebugEnabled());
         }
 
-        RSS_MaybeApplyAiMudSlipSpeedCap(owner);
-        
+        SCR_RSS_AIStaminaBridge.MaybeApplyMudSlipSpeedCap(this, owner);
+        //! 休整恢复中若变为战场危险，先于移动策略终止休整（清锁定、取消战斗移动/掩护）；定时与体力 tick 同步
+        SCR_RSS_AIStaminaBridge.TickAbortRestRecoveryIfBattlefieldDanger(owner);
+        SCR_RSS_AIStaminaBridge.ApplyOnFootMovementPolicy(this, owner, staminaPercent);
+        SCR_RSS_AIGroupRestCoordinator.TryScheduleGroupRestFromStamina(owner, staminaPercent);
+        SCR_RSS_AIGroupRestCoordinator.TryCompleteGroupRestDefendWaypointIfReady(owner);
+        SCR_RSS_AICoverSeeker.TickVerifyCombatCover(owner);
+
         // 获取当前移动状态（用于计算冲刺倍数）
         bool isSprinting = IsSprinting();
         int currentMovementPhase = GetCurrentMovementPhase();
@@ -1784,11 +1725,7 @@ modded class SCR_CharacterControllerComponent
                 Math.Round(currentSpeed * 10.0) / 10.0,
                 movementStr,
                 m_sLastSpeedSource);
-            if (!s_aAIDebugLines)
-                s_aAIDebugLines = new array<string>();
-            s_aAIDebugLines.Insert(aiLine);
-            if (s_aAIDebugLines.Count() > 15)
-                s_aAIDebugLines.RemoveOrdered(0);
+            SCR_RSS_AIStaminaBridge.AppendAIDebugLine(aiLine);
         }
         
         // ==================== 调试输出与 HUD 实时更新 =====================
@@ -1880,12 +1817,7 @@ modded class SCR_CharacterControllerComponent
                 if (needDebugOutput)
                 {
                     DebugDisplay.OutputDebugInfo(debugParams);
-                    if (s_aAIDebugLines)
-                    {
-                        for (int i = 0; i < s_aAIDebugLines.Count(); i++)
-                            StaminaConstants.AddDebugBatchLine(s_aAIDebugLines.Get(i));
-                        s_aAIDebugLines.Clear();
-                    }
+                    SCR_RSS_AIStaminaBridge.FlushAIDebugLinesToBatch();
                 }
                 if (needHintOutput)
                     DebugDisplay.OutputHintInfo(debugParams);
