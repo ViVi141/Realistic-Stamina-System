@@ -6,6 +6,26 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.19.0] - 2026-03-24
+
+### ✅ 新增
+
+- **泥泞滑倒 JSON 开关** - `m_bEnableMudSlipMechanism`（默认关闭）；服主在配置中控制是否启用滑倒机制；`SETTINGS_BOOLS_SIZE` 扩展与旧版 15/16 项布尔 RPC 兼容（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)、[SCR_RSS_AIStaminaBridge.c](scripts/Game/Components/Stamina/SCR_RSS_AIStaminaBridge.c)）。
+- **工作台泥泞滑倒默认开启** - 便于本地验证（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）。
+- **AI 体力战斗影响（可选）** - [SCR_RSS_AIStaminaCombatEffects.c](scripts/Game/Components/Stamina/SCR_RSS_AIStaminaCombatEffects.c)：服务器 AI 在开关开启时，按体力缩放 `SCR_AICombatComponent` 的感知系数、射速系数；战斗技能数值按 **`GetAISkillDefault()` × 体力比例** 映射为 `EAISkill`（满体力 `ResetAISkill()`，避免弱预设被抬强）。
+- **JSON 开关 `m_bEnableAIStaminaCombatEffects`** - 默认关闭；`StaminaConstants.IsAIStaminaCombatEffectsEnabled()` 读取（[SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c)）。
+
+### 🔁 变更
+
+- **配置哈希含全部布尔项** - `CalculateConfigHash` 纳入 `boolSettings`，避免仅改开关时客户端误判未变化（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_RSS_PlayerBaseConfigArrays.c](scripts/Game/SCR_RSS_PlayerBaseConfigArrays.c)）。
+- **配置缓存与变更检测** - [SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c) 同步新布尔字段及 `ResetToDefaults` / 首次创建默认值。
+
+### 🔧 配置版本
+
+- **CURRENT_VERSION** 更新为 **3.19.0**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.18.0] - 2026-03-24
 
 ### 📌 版本说明

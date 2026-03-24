@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.18.0
+// Realistic Stamina System (RSS) - v3.19.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -1560,6 +1560,9 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_AIGroupRestCoordinator.TryScheduleGroupRestFromStamina(owner, staminaPercent);
         SCR_RSS_AIGroupRestCoordinator.TryCompleteGroupRestDefendWaypointIfReady(owner);
         SCR_RSS_AICoverSeeker.TickVerifyCombatCover(owner);
+
+        if (Replication.IsServer() && !IsPlayerControlled())
+            SCR_RSS_AIStaminaCombatEffects.ApplyStaminaToCombat(owner, staminaPercent);
 
         // 获取当前移动状态（用于计算冲刺倍数）
         bool isSprinting = IsSprinting();

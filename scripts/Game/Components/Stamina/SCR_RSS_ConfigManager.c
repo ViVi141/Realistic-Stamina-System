@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.18.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.19.0";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -226,6 +226,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             m_Settings.m_bEnableMudSlipMechanism = false;
+            m_Settings.m_bEnableAIStaminaCombatEffects = false;
             
             // 工作台模式：默认使用 EliteStandard
             #ifdef WORKBENCH
@@ -611,6 +612,7 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_bEnableIndoorDetection = m_Settings.m_bEnableIndoorDetection;
         m_CachedSettings.m_bDataExportEnabled = m_Settings.m_bDataExportEnabled;
         m_CachedSettings.m_bEnableMudSlipMechanism = m_Settings.m_bEnableMudSlipMechanism;
+        m_CachedSettings.m_bEnableAIStaminaCombatEffects = m_Settings.m_bEnableAIStaminaCombatEffects;
         m_CachedSettings.m_iTerrainUpdateInterval = m_Settings.m_iTerrainUpdateInterval;
         m_CachedSettings.m_iEnvironmentUpdateInterval = m_Settings.m_iEnvironmentUpdateInterval;
         m_CachedSettings.m_iDataExportIntervalMs = m_Settings.m_iDataExportIntervalMs;
@@ -651,6 +653,7 @@ class SCR_RSS_ConfigManager
         #else
             m_Settings.m_bEnableMudSlipMechanism = false;
         #endif
+        m_Settings.m_bEnableAIStaminaCombatEffects = false;
         m_Settings.m_iDataExportIntervalMs = 1000;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
@@ -899,6 +902,15 @@ class SCR_RSS_ConfigManager
                 mudSlipStatus = "enabled";
             }
             Print("[RSS_ConfigManager] Config changed: Mud slip mechanic " + mudSlipStatus);
+        }
+
+        if (m_Settings.m_bEnableAIStaminaCombatEffects != m_CachedSettings.m_bEnableAIStaminaCombatEffects) {
+            hasChanged = true;
+            string aiCombatFx = "disabled";
+            if (m_Settings.m_bEnableAIStaminaCombatEffects) {
+                aiCombatFx = "enabled";
+            }
+            Print("[RSS_ConfigManager] Config changed: AI stamina combat effects " + aiCombatFx);
         }
         
         // 检测预设参数变更

@@ -696,6 +696,11 @@ class StaminaConstants
     static const int RSS_AI_COVER_QUERY_MAX_COVERS = 25;
     static const float RSS_AI_COVER_QUERY_SECTOR_DIST_MAX_M = 120.0;
     static const float RSS_AI_COVER_NAVMESH_AREA_COST_SCALE = 0.33333334;
+    //! 开关见 JSON：m_bEnableAIStaminaCombatEffects（StaminaConstants.IsAIStaminaCombatEffectsEnabled）
+    //! 体力为 0 时 SetPerceptionFactor 下限；体力为 1 时为 1.0
+    static const float RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN = 0.35;
+    //! 体力为 0 时 SetFireRateCoef 下限；体力为 1 时为 1.0
+    static const float RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN = 0.35;
     // 以下为旧版乘法模型遗留，滑倒判定已改为 ACOF/RCOF（见 MudSlipEffects）
     static const float ENV_MUD_SLIP_SPEED_COEFF = 0.14; // 未使用
     static const float ENV_MUD_SLIP_SPRINT_MULT = 2.3; // 未使用
@@ -1575,6 +1580,15 @@ class StaminaConstants
         if (!settings)
             return false;
         return settings.m_bEnableMudSlipMechanism;
+    }
+
+    //! 体力驱动 AI 感知/射速/战斗技能：由服主在 JSON 中开关，全预设生效；默认关闭。
+    static bool IsAIStaminaCombatEffectsEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        return settings.m_bEnableAIStaminaCombatEffects;
     }
     
     // 检查是否启用疲劳积累系统（仅 Custom 预设生效）

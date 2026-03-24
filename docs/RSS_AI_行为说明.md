@@ -2,7 +2,7 @@
 
 本文说明 **Realistic Stamina System (RSS)** 对 **AI 角色** 的影响范围，以及在何种条件下模组会做出何种 **额外决策**（与纯官方 AI 行为树、移动指令的差异）。
 
-实现集中在 `SCR_RSS_AIStaminaBridge.c`、`PlayerBase.c`（`SCR_CharacterControllerComponent` 模组化）、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`；数值阈值见 `SCR_StaminaConstants.c`。
+实现集中在 `SCR_RSS_AIStaminaBridge.c`、`PlayerBase.c`（`SCR_CharacterControllerComponent` 模组化）、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`；**泥泞滑倒**与 **体力→AI 战斗表现** 另见 `SCR_RSS_MudSlipRunner.c`、`SCR_RSS_AIStaminaCombatEffects.c` 与 `SCR_EnvironmentFactor.c`（滑倒风险）。服主开关见 **RSS JSON**：`m_bEnableMudSlipMechanism`、`m_bEnableAIStaminaCombatEffects`（`SCR_RSS_Settings.c`）；数值阈值见 `SCR_StaminaConstants.c`。
 
 ---
 
@@ -102,6 +102,8 @@ flowchart TD
 
 ## 3. 「危险上下文」与「安全上下文」（泥泞相关）
 
+以下 **§3～§3.3** 及 **Runner 掷骰 / Ragdoll** 仅在 **`m_bEnableMudSlipMechanism` 为 true** 时生效；关闭时无滑倒风险与相关压速逻辑（见 **§3.4**）。
+
 泥泞相关逻辑区分两类 AI 情形（由 `ShouldIgnoreMudSlipSpeedCap` / `IsMudSlipBlockedBySafety` 判定）。
 
 ### 3.1 危险上下文（更偏交战 / 高压力）
@@ -136,6 +138,14 @@ flowchart TD
 
 **危险上下文** 下 **不** 应用本条压速。
 
+### 3.4 泥泞滑倒机制总开关（JSON）
+
+- **配置项**：`m_bEnableMudSlipMechanism`（默认 **`false`**）。  
+- **判定**：`StaminaConstants.IsMudSlipMechanismEnabled()`（全预设生效，与 Custom 泥泞惩罚开关无关）。  
+- **关闭时**：不执行 `RSS_MudSlipRunner` 的滑倒/镜头应力逻辑；**不** 调用 `MaybeApplyMudSlipSpeedCap`；环境侧滑倒风险计算为 0；泥泞相关流程图（图 B～D 中与 Runner/压速/应激相关的分支）**不生效**。  
+- **开启时**：行为与第 3～4 节、Runner 实现一致。  
+- **网络**：该布尔参与 `WriteSettingsToArrays` / 客户端配置哈希（含布尔数组），避免仅改开关时客户端误判未同步。
+
 ---
 
 ## 4. 徒步 AI 的「移动类型决策」：何时降为 WALK（低体力 / 泥泞巡逻）
@@ -158,6 +168,8 @@ flowchart TD
 
 ### 4.2 泥泞滑倒预警 → 降为行走（巡逻徒步）
 
+**前提**：`m_bEnableMudSlipMechanism` 为 **`true`**（否则镜头应力为 0，**泥泞应激** 达不到阈值，本分支不触发；见 3.4）。
+
 若 **未** 因低体力触发 4.1，且 **泥泞应激** ≥ **`ENV_MUD_SLIP_AI_WARN_STRESS_MIN`（0.015）**，则还需同时满足：
 
 - **当前动作优先级** **&lt;** `ENV_MUD_SLIP_AI_UNSAFE_PRIORITY_MIN`（50.0）（高优先级行为不强制改走）；  
@@ -177,6 +189,17 @@ flowchart TD
 - 群组成功插入 **防守路点** 后，会对 **全队** 登记休整恢复（`MarkRestRecoveryForGroup`）。
 - 登记期间且体力 **仍低于** `RSS_AI_REST_RECOVERY_RESUME_STAMINA_MIN`（默认 **50%**）时，第 4 节 **`ApplyOnFootMovementPolicy`** 会 **强制 WALK**，作为「未恢复到安全体力前限制快跑意图」的手段。
 - 体力 **达到或超过** 该阈值时，从列表中 **清除** 该实体，不再因本条强制行走。
+
+### 4.5 体力与 AI 感知 / 射速 / 战斗技能（JSON，可选）
+
+- **配置项**：`m_bEnableAIStaminaCombatEffects`（默认 **`false`**）。  
+- **判定**：`StaminaConstants.IsAIStaminaCombatEffectsEnabled()`；实现类 **`SCR_RSS_AIStaminaCombatEffects`**，在 **`PlayerBase` 体力 tick** 中、**服务器**、**非玩家** 时调用。  
+- **不修改** 游戏原版 `SCR_AICombatComponent` / `SCR_AIGetAimErrorOffset` 源码，仅调用 **`SCR_AICombatComponent`** 公开 API：  
+  - **感知**：`SetPerceptionFactor`（体力越低，系数越接近 `RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN`；满体力为 `1.0`）。官方注释：主要影响 **视觉发现** 速度。  
+  - **射速**：`SetFireRateCoef`（体力越低越接近 `RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN`；满体力为 `1.0`）。  
+  - **战斗技能（影响行为树瞄准误差）**：以 **`GetAISkillDefault()`** 对应 **数值** `vRef` 为 **100% 基准**，有效值 **`vRef × 体力比例`**，再映射为 **`EAISkill`**；体力 **≥ 0.999** 时 **`ResetAISkill()`** 恢复预制体默认，**不会**把服主已设为最弱的单位抬成高档位。  
+- **与第 3～4 节关系**：与泥泞、徒步 WALK 策略 **独立**；可同时开启。  
+- **曲线参数**：`RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN`、`RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN` 在 **`SCR_StaminaConstants.c`**，不走 JSON（与体力战斗开关分离）。
 
 ---
 
@@ -247,12 +270,23 @@ flowchart TD
 
 ---
 
-## 8. 常量速查（与 AI 直接相关）
+## 8. 常量与 JSON 速查（与 AI 直接相关）
+
+### 8.1 服主 JSON（`SCR_RSS_Settings`）
+
+| 字段 | 默认 | 含义 |
+|------|------|------|
+| `m_bEnableMudSlipMechanism` | `false` | 是否启用泥泞滑倒机制（Runner、滑倒风险、AI 泥泞压速/徒步等，见 §3.4） |
+| `m_bEnableAIStaminaCombatEffects` | `false` | 是否按体力缩放 AI 感知/射速/战斗技能（见 §4.5） |
+
+### 8.2 代码常量（`SCR_StaminaConstants.c` 等）
 
 | 常量 | 含义 |
 |------|------|
 | `RSS_AI_SPEED_UPDATE_INTERVAL_MS` | AI 体力/速度主循环间隔（ms） |
 | `RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD` | 低于该体力比例时，强制 WALK |
+| `RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN` | 体力→AI 感知：`SetPerceptionFactor` 在体力为 0 时的下限系数 |
+| `RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN` | 体力→AI 射速：`SetFireRateCoef` 在体力为 0 时的下限系数 |
 | `RSS_AI_GROUP_REST_ENABLED` | 是否启用群组低体力休整（动态防守路点） |
 | `RSS_AI_GROUP_REST_STAMINA_THRESHOLD` | 任一员低于该比例时可触发全队休整调度 |
 | `RSS_AI_GROUP_REST_COOLDOWN_SEC` | 同一群组再次触发休整的最短间隔（秒） |
@@ -265,4 +299,4 @@ flowchart TD
 
 ---
 
-*文档版本与实现对齐：请以仓库内 `SCR_RSS_AIStaminaBridge.c`、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`、`SCR_StaminaConstants.c` 与 `PlayerBase.c` 为准。*
+*文档版本与实现对齐：请以仓库内 `SCR_RSS_AIStaminaBridge.c`、`SCR_RSS_AIStaminaCombatEffects.c`、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`、`SCR_StaminaConstants.c`、`SCR_RSS_Settings.c` 与 `PlayerBase.c` 为准。*
