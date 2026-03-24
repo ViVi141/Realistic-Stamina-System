@@ -6,6 +6,35 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.18.0] - 2026-03-24
+
+### 📌 版本说明
+
+- **提交范围**：自 `301d575ee23ae93c041a5053f0d9e1d6d1a94e96` 至 `3db60b723a735aea1704dab86809d601b5d4b94d`（含两端），共 4 个提交，统一归入本版本。
+
+### ✅ 新增
+
+- **体力设置扩展** - 在 [SCR_RSS_Settings.c](scripts/Game/Components/Stamina/SCR_RSS_Settings.c) 增加跳跃高度与水平速度估计相关字段，供体力与动作逻辑使用。
+- **泥泞滑倒系统** - 地形与材质联动：`SCR_MudSlipEffects.c`、`SCR_MaterialTerrainTable.c`、地形检测与 [SCR_RealisticStaminaSystem.c](scripts/Game/Components/Stamina/SCR_RealisticStaminaSystem.c) 等；HUD、调试与 [PlayerBase.c](scripts/Game/PlayerBase.c) 集成；第一人称镜头 [CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c) 配合。
+- **泥泞滑倒 Runner** - [SCR_RSS_MudSlipRunner.c](scripts/Game/Components/Stamina/SCR_RSS_MudSlipRunner.c) 独立类，封装玩家侧泥泞滑倒推进逻辑。
+- **AI 体力与泥泞协同** - [SCR_RSS_AIStaminaBridge.c](scripts/Game/Components/Stamina/SCR_RSS_AIStaminaBridge.c)、[SCR_RSS_AICoverSeeker.c](scripts/Game/Components/Stamina/SCR_RSS_AICoverSeeker.c)、[SCR_RSS_AIGroupRestCoordinator.c](scripts/Game/Components/Stamina/SCR_RSS_AIGroupRestCoordinator.c)、[SCR_RSS_AIRestRecoveryRegistry.c](scripts/Game/Components/Stamina/SCR_RSS_AIRestRecoveryRegistry.c)；精简 AI 泥泞滑倒分支并与 [PlayerBase.c](scripts/Game/PlayerBase.c) 对齐。
+
+### 🔁 变更与工具
+
+- **常量与负重缓存** - [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)、[SCR_EncumbranceCache.c](scripts/Game/Components/Stamina/SCR_EncumbranceCache.c)、[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c) 等随泥泞与 AI 逻辑更新。
+- **配置数组** - [SCR_RSS_PlayerBaseConfigArrays.c](scripts/Game/SCR_RSS_PlayerBaseConfigArrays.c) 扩展以支持新参数。
+- **工具与数据** - `EST_AllGameMaterialDensities.csv`、`generate_material_terrain_table.py`、`plot_mud_slip_probability.py` 及 `tools/figures/` 下泥泞概率可视化图。
+
+### 📄 文档
+
+- [泥泞滑倒判定模型.md](docs/泥泞滑倒判定模型.md)、[RSS_AI_行为说明.md](docs/RSS_AI_行为说明.md) 补充与修订。
+
+### 🔧 配置版本
+
+- **CURRENT_VERSION** 更新为 **3.18.0**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.17.0] - 2026-03-22
 
 ### 📌 版本说明
