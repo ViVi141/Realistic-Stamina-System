@@ -281,9 +281,14 @@ modded class SCR_CharacterControllerComponent
         
         if (!Replication.IsServer())
         {
-            // 客户端不再主动请求；等待服务器推送，收到后回执
-            m_bIsConnected = true;
+            // 客户端连接状态从 false 开始，由 MonitorNetworkConnection 统一判定首次连入并触发配置请求。
+            // 修复：此前默认 true 会跳过首次连入分支，若服务器主动推送因时序未命中，则客户端可能长期收不到配置。
+            m_bIsConnected = false;
             GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
+            // 兜底：无论连接状态判定何时成立，先发起一次请求，后续由 IsServerConfigApplied 去重。
+            GetGame().GetCallqueue().CallLater(RequestServerConfig, 1500, false);
+            // 稳态兜底：持续请求直到客户端已应用服务器配置，避免无AI场景/时序波动导致的一次性漏同步。
+            GetGame().GetCallqueue().CallLater(RequestServerConfigUntilApplied, 2500, false);
             GetGame().GetCallqueue().CallLater(UpdateHeartbeat, HEARTBEAT_INTERVAL * 1000, true);
         }
     }
@@ -1984,6 +1989,26 @@ modded class SCR_CharacterControllerComponent
             {
                 Rpc(RPC_ServerRequestConfig);
             }
+        }
+    }
+
+    // 客户端配置同步兜底循环：未应用服务器配置时按固定间隔重试，请求成功后自动停止。
+    void RequestServerConfigUntilApplied()
+    {
+        if (Replication.IsServer())
+            return;
+
+        if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+            return;
+
+        RequestServerConfig();
+
+        if (GetGame() && GetGame().GetCallqueue())
+        {
+            int retryIntervalMs = Math.Round(SERVER_CONFIG_SYNC_INTERVAL * 1000.0);
+            if (retryIntervalMs < 1000)
+                retryIntervalMs = 1000;
+            GetGame().GetCallqueue().CallLater(RequestServerConfigUntilApplied, retryIntervalMs, false);
         }
     }
     
