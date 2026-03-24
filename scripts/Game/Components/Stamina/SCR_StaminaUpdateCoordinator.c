@@ -263,10 +263,14 @@ class StaminaUpdateCoordinator
         if (!controller)
             return 1.0;
         
-        // 室内楼梯：室内且原始坡度>0 时减轻负重对速度的惩罚（不改变室内0坡度逻辑）
-        float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller, velocity);
         IEntity ownerForStairs = controller.GetOwner();
-        bool isIndoorStairs = (environmentFactor && ownerForStairs && environmentFactor.IsIndoorForEntity(ownerForStairs) && Math.AbsFloat(rawSlopeAngle) > 0.0);
+        bool shouldSuppressSlope = false;
+        if (environmentFactor && ownerForStairs)
+            shouldSuppressSlope = environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForStairs);
+
+        // 室内楼梯：有顶建筑物内且原始坡度>0 时减轻负重对速度的惩罚（与 shouldSuppressSlope 范围一致）
+        float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller, velocity);
+        bool isIndoorStairs = (shouldSuppressSlope && Math.AbsFloat(rawSlopeAngle) > 0.0);
         if (isIndoorStairs)
             encumbranceSpeedPenalty = encumbranceSpeedPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
         
@@ -291,19 +295,25 @@ class StaminaUpdateCoordinator
         // 计算速度倍数
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         
-        // 获取坡度角度，考虑室内检测（传入 velocity 用于判断上下坡）
-        float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor, velocity);
+        // 室内（含楼梯间宽松判定）时硬归零，避免任何坡度速度惩罚
+        float slopeAngleDegrees = 0.0;
+        if (!shouldSuppressSlope)
+            slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(controller, environmentFactor, velocity);
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
         
         // 计算坡度自适应目标速度倍数
-        float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
-            RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
-        float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
-        float speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
-        // 坡度变化时 5 秒平滑过渡，避免 3 m/s→1 m/s 瞬间骤降的"胶水感"
-        if (slopeSpeedTransition)
-            speedScaleFactor = slopeSpeedTransition.UpdateAndGet(currentWorldTime, speedScaleFactor);
+        float speedScaleFactor = 1.0;
+        if (!shouldSuppressSlope)
+        {
+            float slopeAdjustedTargetSpeed = SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+                RealisticStaminaSpeedSystem.TARGET_RUN_SPEED, slopeAngleDegrees);
+            float slopeAdjustedTargetMultiplier = slopeAdjustedTargetSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED;
+            speedScaleFactor = slopeAdjustedTargetMultiplier / RealisticStaminaSpeedSystem.TARGET_RUN_SPEED_MULTIPLIER;
+            // 坡度变化时 5 秒平滑过渡，避免 3 m/s→1 m/s 瞬间骤降的"胶水感"
+            if (slopeSpeedTransition)
+                speedScaleFactor = slopeSpeedTransition.UpdateAndGet(currentWorldTime, speedScaleFactor);
+        }
         runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
         
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
@@ -537,11 +547,10 @@ class StaminaUpdateCoordinator
                 totalWetWeight = environmentFactor.GetTotalWetWeight();
                 coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
 
-                // 检查是否在室内，如果是则忽略坡度影响
-                // 使用 IsIndoorForEntity(owner) 确保服务器 RPC 路径下正确检测（m_pCachedOwner 可能未更新）
-                if (owner && environmentFactor.IsIndoorForEntity(owner))
+                // 完整室内或建筑物内有顶（镂空楼梯间）：忽略地形坡度/Pandolf 坡度项
+                if (owner && environmentFactor.ShouldSuppressTerrainSlopeForEntity(owner))
                 {
-                    gradePercent = 0.0; // 室内时坡度为0
+                    gradePercent = 0.0;
                 }
                 else if (!owner && environmentFactor.IsIndoor())
                 {

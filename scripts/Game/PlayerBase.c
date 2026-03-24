@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.19.0
+// Realistic Stamina System (RSS) - v3.19.1
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -2187,13 +2187,20 @@ modded class SCR_CharacterControllerComponent
             float currentSpeed = horizontalVelocity.Length();
             currentSpeed = Math.Min(currentSpeed, 7.0);
 
+            IEntity ownerEnt = GetOwner();
+            bool shouldSuppressSlopeServer = false;
+            if (m_pEnvironmentFactor && ownerEnt)
+                shouldSuppressSlopeServer = m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt);
+
             // 获取坡度角度（服务器端计算，传入 velocity 用于判断上下坡）
-            float slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, velocity);
+            // 室内（含楼梯间宽松判定）时硬归零，确保权威校验路径不吃坡度限速
+            float slopeAngleDegrees = 0.0;
+            if (!shouldSuppressSlopeServer)
+                slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, velocity);
 
             // 室内楼梯：与 UpdateSpeed 一致，减轻负重对速度的惩罚
             float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this, velocity);
-            IEntity ownerEnt = GetOwner();
-            bool isIndoorStairsServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.IsIndoorForEntity(ownerEnt) && Math.AbsFloat(rawSlopeServer) > 0.0);
+            bool isIndoorStairsServer = (shouldSuppressSlopeServer && Math.AbsFloat(rawSlopeServer) > 0.0);
             if (isIndoorStairsServer)
                 encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
 

@@ -358,7 +358,7 @@ class SpeedCalculator
         if (environmentFactor && controller)
         {
             IEntity ownerForCheck = controller.GetOwner();
-            if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
+            if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
                 return 0.0;
         }
         return GetRawSlopeAngle(controller, velocity);
@@ -387,13 +387,15 @@ class SpeedCalculator
         s_pResultGrade.gradePercent = 0.0;
         s_pResultGrade.slopeAngleDegrees = slopeAngleDegrees;
         
-        // 检查是否在室内，如果是则返回0坡度
-        // 使用 IsIndoorForEntity(owner) 确保服务器 RPC 路径下也能正确检测（m_pCachedOwner 可能未更新）
+        // 完整室内或建筑物内有顶体积：返回零坡度（与 GetSlopeAngle 一致）
         if (environmentFactor && controller)
         {
             IEntity ownerForCheck = controller.GetOwner();
-            if (ownerForCheck && environmentFactor.IsIndoorForEntity(ownerForCheck))
+            if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
+            {
+                s_pResultGrade.slopeAngleDegrees = 0.0;
                 return s_pResultGrade;
+            }
         }
         
         // 检查是否在攀爬或跳跃状态

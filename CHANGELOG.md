@@ -6,6 +6,18 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.19.1] - 2026-03-24
+
+### 🔧 修复
+
+- **室内楼梯坡度-速度惩罚修正** - 在已判定需抑制坡度的室内场景中，速度链路与服务器权威校验链路均强制不应用坡度速度惩罚，并与坡度平滑逻辑一致处理。
+
+### 🔧 配置版本
+
+- **CURRENT_VERSION** 更新为 **3.19.1**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.19.0] - 2026-03-24
 
 ### ✅ 新增

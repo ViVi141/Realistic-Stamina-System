@@ -46,6 +46,7 @@ class EnvironmentFactor
     protected float m_fLastIndoorCheckTime = 0.0; // 上次室内检测时间
     protected const float INDOOR_CHECK_INTERVAL = 1.0; // 室内检测间隔（秒）
     protected bool m_bCachedIndoorState = false; // 缓存的室内状态
+    protected bool m_bCachedRoofedVolumeForSlopeState = false; // 建筑物内有顶（不要求水平封闭），用于压制楼梯间地形坡度
     protected ref array<IEntity> m_pCachedBuildings; // 缓存的建筑物列表（用于回调）
     protected ref TraceParam m_pTraceParamRoof; // 复用的 TraceParam（RaycastHasRoof）
     protected ref TraceParam m_pTraceParamEnclosed; // 复用的 TraceParam（IsHorizontallyEnclosed）
@@ -384,6 +385,10 @@ class EnvironmentFactor
         if (StaminaConstants.IsIndoorDetectionEnabled() && m_pCachedOwner && (currentTime - m_fLastIndoorCheckTime >= INDOOR_CHECK_INTERVAL))
         {
             m_bCachedIndoorState = IsUnderCover(m_pCachedOwner);
+            m_bCachedRoofedVolumeForSlopeState = EvaluateRoofedBuildingInterior(
+                m_pCachedOwner,
+                StaminaConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT,
+                false);
             m_fLastIndoorCheckTime = currentTime;
         }
         
@@ -1478,52 +1483,52 @@ class EnvironmentFactor
         return Math.Clamp(multiplier, 1.0, StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER);
     }
     
-    // 检测角色是否在室内（基于建筑物边界框 + 向上射线确认）
-    // 新方法：先查询周围建筑物，若角色在某建筑物的边界框内则进行向上射线检测（确认有屋顶/覆盖），
-    // 只有当边界框判定为"在内"且射线检测也确认有覆盖时，才返回 true（防止开放屋顶/天窗等假阳性）。
-    // @param owner 角色实体
-    // @return true表示在室内，false表示在室外
-    protected bool IsUnderCover(IEntity owner)
+    // 在建筑物 OBB 内且向上能命中该建筑物的遮挡时返回 true；可选要求水平封闭（完整「室内」）
+    // @param roofCheckHeightM 向上射线长度（米）
+    // @param requireHorizontalEnclosure true 时需通过 IsHorizontallyEnclosed（门廊/镂空楼梯间常为 false）
+    protected bool EvaluateRoofedBuildingInterior(IEntity owner, float roofCheckHeightM, bool requireHorizontalEnclosure)
     {
         if (!owner)
             return false;
-        
+
         World world = owner.GetWorld();
         if (!world)
             return false;
-        
+
         vector ownerPos = owner.GetOrigin();
 
-        
-        // 查询角色周围 50 米范围内的建筑物实体
         vector searchMins = ownerPos + Vector(-50, -50, -50);
         vector searchMaxs = ownerPos + Vector(50, 50, 50);
-        
-        // 清空建筑物列表
+
         if (m_pCachedBuildings)
             m_pCachedBuildings.Clear();
         else
             m_pCachedBuildings = new array<IEntity>();
-        
-        // 使用回调函数收集建筑物
+
         world.QueryEntitiesByAABB(searchMins, searchMaxs, QueryBuildingCallback);
-        
+
         int buildingCount = m_pCachedBuildings.Count();
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] IsUnderCover: ownerPos=(%1,%2,%3) buildingCount=%4", ownerPos[0], ownerPos[1], ownerPos[2], buildingCount);
+        {
+            string reqEnclStr;
+            if (requireHorizontalEnclosure)
+                reqEnclStr = "true";
+            else
+                reqEnclStr = "false";
+            PrintFormat("[RSS][IndoorDetect] EvaluateRoofedBuildingInterior: ownerPos=(%1,%2,%3) buildingCount=%4 requireEnclosed=%5",
+                ownerPos[0], ownerPos[1], ownerPos[2], buildingCount, reqEnclStr);
+        }
         if (buildingCount == 0)
             return false;
-        
-        // 检查角色是否在任何一个建筑物的边界框内，并且通过向上射线确认上方有覆盖
+
         int checkedBuildings = 0;
         foreach (IEntity building : m_pCachedBuildings)
         {
             if (!building)
                 continue;
-            
+
             checkedBuildings++;
-            
-            // 使用建筑物本地边界 + 世界变换进行 OBB 检测（考虑旋转）
+
             vector buildingMins, buildingMaxs;
             building.GetBounds(buildingMins, buildingMaxs);
 
@@ -1546,45 +1551,54 @@ class EnvironmentFactor
                     Math.Round(localPos[2] * 100.0) / 100.0,
                     buildingMins[0], buildingMins[1], buildingMins[2],
                     buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
-            
-            if (isInside)
+
+            if (!isInside)
+                continue;
+
+            bool hasRoof = RaycastHasRoof(owner, building, roofCheckHeightM);
+            if (m_bIndoorDebug)
             {
-                // 已由边界框判定为在建筑物内，进一步使用向上射线检测确认是否有屋顶覆盖
-                bool hasRoof = RaycastHasRoof(owner, building);
-                if (m_bIndoorDebug)
-                {
-                    string hasRoofStr;
-                    if (hasRoof)
-                        hasRoofStr = "true";
-                    else
-                        hasRoofStr = "false";
-                    PrintFormat("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
-                }
-                // 如果射线检测也确认被覆盖，则进一步进行水平封闭检测以减少门廊/开放屋顶假阳性
+                string hasRoofStr;
                 if (hasRoof)
-                {
-                    bool enclosed = IsHorizontallyEnclosed(owner);
-                    if (m_bIndoorDebug)
-                    {
-                        string enclosedStr;
-                        if (enclosed)
-                            enclosedStr = "true";
-                        else
-                            enclosedStr = "false";
-                        PrintFormat("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
-                    }
-                    if (enclosed)
-                        return true;
-                    // 否则继续检查其它建筑物
-                }
-                // 否则继续检查其它建筑物
+                    hasRoofStr = "true";
+                else
+                    hasRoofStr = "false";
+                PrintFormat("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
             }
+
+            if (!hasRoof)
+                continue;
+
+            if (!requireHorizontalEnclosure)
+                return true;
+
+            bool enclosed = IsHorizontallyEnclosed(owner);
+            if (m_bIndoorDebug)
+            {
+                string enclosedStr;
+                if (enclosed)
+                    enclosedStr = "true";
+                else
+                    enclosedStr = "false";
+                PrintFormat("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
+            }
+            if (enclosed)
+                return true;
         }
-        
+
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] No indoor building found after checking %1 buildings", checkedBuildings);
-        // 未找到既在建筑物内又有屋顶覆盖的情况
+            PrintFormat("[RSS][IndoorDetect] No matching building after checking %1 buildings", checkedBuildings);
         return false;
+    }
+
+    // 检测角色是否在室内（基于建筑物边界框 + 向上射线确认）
+    // 新方法：先查询周围建筑物，若角色在某建筑物的边界框内则进行向上射线检测（确认有屋顶/覆盖），
+    // 只有当边界框判定为"在内"且射线检测也确认有覆盖时，才返回 true（防止开放屋顶/天窗等假阳性）。
+    // @param owner 角色实体
+    // @return true表示在室内，false表示在室外
+    protected bool IsUnderCover(IEntity owner)
+    {
+        return EvaluateRoofedBuildingInterior(owner, StaminaConstants.ENV_INDOOR_CHECK_HEIGHT, true);
     }
 
     // 向上射线检测上方是否存在覆盖（屋顶/天花板）
@@ -1592,8 +1606,9 @@ class EnvironmentFactor
     // 仅检测当前建筑物，避免邻近物体或地形导致假阳性
     // @param owner 要检测的实体（用于获取位置/世界）
     // @param building 当前候选建筑物
+    // @param roofCheckHeightM 向上探测长度（米）
     // @return true表示所有样本点上方在检测高度内都命中遮挡物（有屋顶），false表示至少有一处无覆盖
-    protected bool RaycastHasRoof(IEntity owner, IEntity building)
+    protected bool RaycastHasRoof(IEntity owner, IEntity building, float roofCheckHeightM)
     {
         if (!owner || !building)
             return false;
@@ -1604,14 +1619,13 @@ class EnvironmentFactor
         vector basePos = owner.GetOrigin();
         // 从头部高度开始检测（单位：米），可根据需要调整
         const float HEAD_HEIGHT = 1.6;
-        const float CHECK_HEIGHT = StaminaConstants.ENV_INDOOR_CHECK_HEIGHT; // 通用配置（如 10 米）
         const float SAMPLE_OFFSET = 0.4; // 采样点水平偏移（米）
 
         array<vector> samples = { vector.Zero, vector.Forward * SAMPLE_OFFSET, -vector.Forward * SAMPLE_OFFSET, vector.Right * SAMPLE_OFFSET, -vector.Right * SAMPLE_OFFSET };
 
         if (m_bIndoorDebug)
             PrintFormat("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
-                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, CHECK_HEIGHT, samples.Count());
+                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, roofCheckHeightM, samples.Count());
 
         if (!m_pTraceParamRoof)
             m_pTraceParamRoof = new TraceParam();
@@ -1621,7 +1635,7 @@ class EnvironmentFactor
         {
             idx++;
             vector start = basePos + vector.Up * HEAD_HEIGHT + off;
-            vector end = start + vector.Up * CHECK_HEIGHT;
+            vector end = start + vector.Up * roofCheckHeightM;
 
             m_pTraceParamRoof.Start = start;
             m_pTraceParamRoof.End = end;
@@ -1823,6 +1837,34 @@ class EnvironmentFactor
                 return m_bCachedIndoorState;
         }
         return IsUnderCover(m_pCachedOwner);
+    }
+
+    // 建筑物内有顶且角色在 OBB 内，但不要求水平封闭（镂空楼梯间、栏杆侧开口等仍视为「应压制地形坡度」）
+    bool IsRoofedBuildingVolumeForEntity(IEntity owner)
+    {
+        if (!StaminaConstants.IsIndoorDetectionEnabled())
+            return false;
+        if (!owner)
+            return false;
+        if (owner == m_pCachedOwner)
+        {
+            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
+                return m_bCachedRoofedVolumeForSlopeState;
+        }
+        return EvaluateRoofedBuildingInterior(owner, StaminaConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
+    }
+
+    // 地形坡度/Pandolf 坡度项是否应按「非室外」处理为零（完整室内或建筑物内有顶体积）
+    bool ShouldSuppressTerrainSlopeForEntity(IEntity owner)
+    {
+        if (!StaminaConstants.IsIndoorDetectionEnabled())
+            return false;
+        if (!owner)
+            return false;
+        if (IsIndoorForEntity(owner))
+            return true;
+        return IsRoofedBuildingVolumeForEntity(owner);
     }
 
     // 检查指定实体是否在室内（用于坡度/速度计算，避免依赖可能未更新的 m_pCachedOwner）

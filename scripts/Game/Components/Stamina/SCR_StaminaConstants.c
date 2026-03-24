@@ -460,7 +460,7 @@ class StaminaConstants
     static const float TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0; // 爆发结束后 5 秒缓冲区，负重惩罚从爆发系数线性过渡到 1.0，再进入平稳期
     static const float TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 0.2; // 爆发期内负重惩罚乘数（0.2 = 明显拉开与平稳期差距，29kg 下爆发更快）
     static const float TACTICAL_SPRINT_COOLDOWN = 15.0;        // 爆发+缓冲区结束或松开冲刺后冷却秒数，期间再次冲刺直接进入平稳期，防止利用机制
-    // 室内楼梯：室内且原始坡度>0 时减轻负重对速度的惩罚（楼梯判定仅用于此，不改变室内0坡度逻辑）
+    // 室内楼梯：ShouldSuppressTerrainSlope 为真且原始坡度>0 时减轻负重对速度的惩罚（镂空楼梯间与完整室内一致）
     static const float INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR = 0.4; // 楼梯上负重速度惩罚乘数（0.4 = 降至40%）
     // 上坡/下坡速度倍率（在 Tobler 结果上再乘，玩家反馈：上坡再快一点、下坡更快更省力）
     static const float UPHILL_SPEED_BOOST = 1.15;   // 上坡目标速度倍率（1.15 = 提高约15%）
@@ -640,6 +640,8 @@ class StaminaConstants
     
     // 室内检测参数
     static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
+    // 仅用于压制「地形坡度/楼梯」误判：在建筑物 OBB 内向上探测更高，且不要求水平封闭（栏杆开口的楼梯间仍可能命中上层楼板）
+    static const float ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT = 35.0; // 米
     
     // ==================== 高级环境因子常量（v2.15.0）====================
     
