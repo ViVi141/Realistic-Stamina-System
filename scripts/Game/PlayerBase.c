@@ -667,9 +667,16 @@ modded class SCR_CharacterControllerComponent
             m_fLastHeartbeatTime = currentTime; // 初始化心跳
             m_bIsConnected = true;
             m_fLastReconnectTime = currentTime;
-            Print("[RSS] 网络已连接，等待服务器推送配置");
-            // 发起配置请求
-            RequestServerConfig();
+            if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+            {
+                Print("[RSS] 网络已连接，服务器配置已应用");
+            }
+            else
+            {
+                Print("[RSS] 网络已连接，等待服务器推送配置");
+                // 发起配置请求
+                RequestServerConfig();
+            }
         }
         // 检测断线重连（通过PlayerID变化检测）
         else if (m_bIsConnected && playerIdChanged && isConnected)
