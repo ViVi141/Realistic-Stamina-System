@@ -282,6 +282,9 @@ class SCR_RSS_AIStaminaBridge
             return;
         }
 
+        if (!StaminaConstants.IsMudSlipMechanismEnabled())
+            return;
+
         float mudStress = ctrl.RSS_GetMudSlipCameraShake01();
         if (mudStress >= StaminaConstants.ENV_MUD_SLIP_AI_WARN_STRESS_MIN)
         {
@@ -298,6 +301,8 @@ class SCR_RSS_AIStaminaBridge
         if (!owner)
             return;
         if (!ctrl)
+            return;
+        if (!StaminaConstants.IsMudSlipMechanismEnabled())
             return;
         if (ctrl.IsPlayerControlled())
             return;

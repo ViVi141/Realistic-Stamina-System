@@ -1567,6 +1567,15 @@ class StaminaConstants
         
         return true; // 非 Custom 预设默认启用
     }
+
+    //! 泥泞滑倒机制（布娃娃/镜头失稳/AI 泥泞预警）：由服主在 JSON 中开关，全预设生效；默认关闭。
+    static bool IsMudSlipMechanismEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        return settings.m_bEnableMudSlipMechanism;
+    }
     
     // 检查是否启用疲劳积累系统（仅 Custom 预设生效）
     static bool IsFatigueSystemEnabled()

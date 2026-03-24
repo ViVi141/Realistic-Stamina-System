@@ -2274,6 +2274,11 @@ class EnvironmentFactor
     // 计算滑倒风险
     protected void CalculateSlipRisk()
     {
+        if (!StaminaConstants.IsMudSlipMechanismEnabled())
+        {
+            m_fSlipRisk = 0.0;
+            return;
+        }
         // 只有在泥泞路面才计算滑倒风险
         if (m_fCachedMudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
         {

@@ -225,12 +225,14 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
+            m_Settings.m_bEnableMudSlipMechanism = false;
             
             // 工作台模式：默认使用 EliteStandard
             #ifdef WORKBENCH
                 m_Settings.m_sSelectedPreset = "EliteStandard";
                 m_Settings.m_bDebugLogEnabled = true;
                 m_Settings.m_bDataExportEnabled = true;
+                m_Settings.m_bEnableMudSlipMechanism = true;
                 Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
             #endif
 
@@ -244,11 +246,12 @@ class SCR_RSS_ConfigManager
         m_bIsLoaded = true;
         m_fLastLoadTime = currentTime;
         
-        // 工作台模式：强制开启调试和 Hint 显示
+        // 工作台模式：强制开启调试和 Hint 显示；泥泞滑倒机制便于本地验证
         #ifdef WORKBENCH
             m_Settings.m_bDebugLogEnabled = true;
             m_Settings.m_bHintDisplayEnabled = true;
             m_Settings.m_bDataExportEnabled = true;
+            m_Settings.m_bEnableMudSlipMechanism = true;
         #endif
         
         // 确保所有字段有合理的默认值（兼容旧版本配置文件或空值）
@@ -607,6 +610,7 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_bEnableMetabolicAdaptation = m_Settings.m_bEnableMetabolicAdaptation;
         m_CachedSettings.m_bEnableIndoorDetection = m_Settings.m_bEnableIndoorDetection;
         m_CachedSettings.m_bDataExportEnabled = m_Settings.m_bDataExportEnabled;
+        m_CachedSettings.m_bEnableMudSlipMechanism = m_Settings.m_bEnableMudSlipMechanism;
         m_CachedSettings.m_iTerrainUpdateInterval = m_Settings.m_iTerrainUpdateInterval;
         m_CachedSettings.m_iEnvironmentUpdateInterval = m_Settings.m_iEnvironmentUpdateInterval;
         m_CachedSettings.m_iDataExportIntervalMs = m_Settings.m_iDataExportIntervalMs;
@@ -642,6 +646,11 @@ class SCR_RSS_ConfigManager
         m_Settings.m_iTerrainUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_iEnvironmentUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
         m_Settings.m_bDataExportEnabled = false;
+        #ifdef WORKBENCH
+            m_Settings.m_bEnableMudSlipMechanism = true;
+        #else
+            m_Settings.m_bEnableMudSlipMechanism = false;
+        #endif
         m_Settings.m_iDataExportIntervalMs = 1000;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
@@ -881,6 +890,15 @@ class SCR_RSS_ConfigManager
         if (m_Settings.m_fStaminaRecoveryMultiplier != m_CachedSettings.m_fStaminaRecoveryMultiplier) {
             hasChanged = true;
             Print("[RSS_ConfigManager] Config changed: Stamina recovery multiplier changed to " + m_Settings.m_fStaminaRecoveryMultiplier.ToString());
+        }
+
+        if (m_Settings.m_bEnableMudSlipMechanism != m_CachedSettings.m_bEnableMudSlipMechanism) {
+            hasChanged = true;
+            string mudSlipStatus = "disabled";
+            if (m_Settings.m_bEnableMudSlipMechanism) {
+                mudSlipStatus = "enabled";
+            }
+            Print("[RSS_ConfigManager] Config changed: Mud slip mechanic " + mudSlipStatus);
         }
         
         // 检测预设参数变更

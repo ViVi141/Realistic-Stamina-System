@@ -456,7 +456,7 @@ modded class SCR_CharacterControllerComponent
             settings = new SCR_RSS_Settings();
 
         // 计算配置哈希值（基于关键配置参数）
-        string newConfigHash = CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings);
+        string newConfigHash = CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings, boolSettings);
 
         // 配置未变化时跳过应用（基于哈希值，而非仅版本/预设名）
         // 必须已应用过服务器配置才可跳过：首次连接时客户端默认值可能与服务器版本/预设名相同，若直接跳过会导致预设参数从未被应用
@@ -500,7 +500,7 @@ modded class SCR_CharacterControllerComponent
 
     // 计算配置哈希值（基于关键配置参数）
     // 用于检测配置内容变化，避免重复应用相同配置
-    protected string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings)
+    protected string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
         string hashString = configVersion + "|" + selectedPreset + "|";
 
@@ -521,6 +521,18 @@ modded class SCR_CharacterControllerComponent
             for (int j = 0; j < intSettings.Count(); j++)
             {
                 hashString += string.ToString(intSettings[j]) + ",";
+            }
+        }
+
+        // 合并布尔设置（含 m_bEnableMudSlipMechanism 等），避免仅开关变更时被误判为未变化
+        if (boolSettings && boolSettings.Count() > 0)
+        {
+            for (int bi = 0; bi < boolSettings.Count(); bi++)
+            {
+                if (boolSettings[bi])
+                    hashString += "1,";
+                else
+                    hashString += "0,";
             }
         }
 
@@ -1515,26 +1527,33 @@ modded class SCR_CharacterControllerComponent
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
 
-        if (m_pMudSlipRunner)
+        if (StaminaConstants.IsMudSlipMechanismEnabled())
         {
-            m_pMudSlipRunner.ProcessAfterSlope(
-                this,
-                useSwimmingModel,
-                isSwimming,
-                m_pEnvironmentFactor,
-                m_pStaminaComponent,
-                currentSpeed,
-                isSprintActive,
-                currentWeight,
-                staminaPercent,
-                velocity,
-                slopeAngleDegrees,
-                timeDeltaSec,
-                currentTime,
-                IsRssDebugEnabled());
-        }
+            if (m_pMudSlipRunner)
+            {
+                m_pMudSlipRunner.ProcessAfterSlope(
+                    this,
+                    useSwimmingModel,
+                    isSwimming,
+                    m_pEnvironmentFactor,
+                    m_pStaminaComponent,
+                    currentSpeed,
+                    isSprintActive,
+                    currentWeight,
+                    staminaPercent,
+                    velocity,
+                    slopeAngleDegrees,
+                    timeDeltaSec,
+                    currentTime,
+                    IsRssDebugEnabled());
+            }
 
-        SCR_RSS_AIStaminaBridge.MaybeApplyMudSlipSpeedCap(this, owner);
+            SCR_RSS_AIStaminaBridge.MaybeApplyMudSlipSpeedCap(this, owner);
+        }
+        else
+        {
+            RSS_SetMudSlipCameraShake01(0.0);
+        }
         //! 休整恢复中若变为战场危险，先于移动策略终止休整（清锁定、取消战斗移动/掩护）；定时与体力 tick 同步
         SCR_RSS_AIStaminaBridge.TickAbortRestRecoveryIfBattlefieldDanger(owner);
         SCR_RSS_AIStaminaBridge.ApplyOnFootMovementPolicy(this, owner, staminaPercent);

@@ -360,7 +360,9 @@ class SCR_RSS_Settings
     static const int PARAMS_ARRAY_SIZE = 47;  // 必须与 WriteParamsToArray/ApplyParamsFromArray 字段数一致
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
-    static const int SETTINGS_BOOLS_SIZE = 15;
+    //! 与 WriteSettingsToArrays / ApplySettingsFromArrays 末尾布尔数量一致；旧版为 15（见 SETTINGS_BOOLS_SIZE_LEGACY）
+    static const int SETTINGS_BOOLS_SIZE = 16;
+    static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
     [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
@@ -712,6 +714,9 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("false", UIWidgets.CheckBox, "Data Export: Write player stamina/env to JSON for external apps. File: RSS_PlayerData.json in profile. | 数据导出：将玩家体力/环境写入 JSON 供外部应用读取")]
     bool m_bDataExportEnabled;
 
+    [Attribute("false", UIWidgets.CheckBox, "Mud slip mechanic: ragdoll + camera stress on slippery wet terrain. Server chooses via JSON; default OFF. | 泥泞滑倒机制（湿滑地形布娃娃/镜头失稳），服主在 JSON 中开关，默认关闭")]
+    bool m_bEnableMudSlipMechanism;
+
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
     int m_iDataExportIntervalMs;
     
@@ -1003,6 +1008,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outBools.Insert(s.m_bEnableMetabolicAdaptation);
         outBools.Insert(s.m_bEnableIndoorDetection);
         outBools.Insert(s.m_bDataExportEnabled);
+        outBools.Insert(s.m_bEnableMudSlipMechanism);
     }
 
     static void ApplySettingsFromArrays(SCR_RSS_Settings s, array<float> floats, array<int> ints, array<bool> bools)
@@ -1060,6 +1066,27 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bEnableMetabolicAdaptation = bools[bi++];
             s.m_bEnableIndoorDetection = bools[bi++];
             s.m_bDataExportEnabled = bools[bi++];
+            s.m_bEnableMudSlipMechanism = bools[bi++];
+        }
+        else if (bools && bools.Count() >= SETTINGS_BOOLS_SIZE_LEGACY)
+        {
+            int bi = 0;
+            s.m_bDebugLogEnabled = bools[bi++];
+            s.m_bVerboseLogging = bools[bi++];
+            s.m_bLogToFile = bools[bi++];
+            s.m_bHintDisplayEnabled = bools[bi++];
+            s.m_bEnableHeatStress = bools[bi++];
+            s.m_bEnableRainWeight = bools[bi++];
+            s.m_bEnableWindResistance = bools[bi++];
+            s.m_bEnableMudPenalty = bools[bi++];
+            s.m_bUseEngineTemperature = bools[bi++];
+            s.m_bUseEngineTimezone = bools[bi++];
+            s.m_bMapOverWater = bools[bi++];
+            s.m_bEnableFatigueSystem = bools[bi++];
+            s.m_bEnableMetabolicAdaptation = bools[bi++];
+            s.m_bEnableIndoorDetection = bools[bi++];
+            s.m_bDataExportEnabled = bools[bi++];
+            s.m_bEnableMudSlipMechanism = false;
         }
 
         // 数据导出开关仅服务器生效，客户端收到配置后强制关闭，避免客户端写文件

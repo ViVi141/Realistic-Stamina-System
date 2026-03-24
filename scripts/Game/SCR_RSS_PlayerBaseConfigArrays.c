@@ -45,7 +45,7 @@ class RSS_PlayerBaseConfigArrays : Managed
         }
     }
 
-    static string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings)
+    static string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
         string hashString = configVersion + "|" + selectedPreset + "|";
         if (floatSettings && floatSettings.Count() > 0)
@@ -60,6 +60,16 @@ class RSS_PlayerBaseConfigArrays : Managed
         {
             for (int j = 0; j < intSettings.Count(); j++)
                 hashString += string.ToString(intSettings[j]) + ",";
+        }
+        if (boolSettings && boolSettings.Count() > 0)
+        {
+            for (int bi = 0; bi < boolSettings.Count(); bi++)
+            {
+                if (boolSettings[bi])
+                    hashString += "1,";
+                else
+                    hashString += "0,";
+            }
         }
         int hash = 0;
         for (int k = 0; k < hashString.Length(); k++)
