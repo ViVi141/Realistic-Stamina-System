@@ -716,8 +716,9 @@ modded class SCR_CharacterControllerComponent
         // 启动速度更新循环（每0.2秒更新一次速度）
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS, false);
         
-        // 启动速度采集循环（每秒一次）
-        GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
+        // 启动速度采集循环（每秒一次，仅调试开启时）
+        if (IsRssDebugEnabled())
+            GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
     }
 
     // ==================== 游泳状态检测（用于调试显示/分支判断）====================
@@ -1902,8 +1903,9 @@ modded class SCR_CharacterControllerComponent
         m_fCurrentSecondSpeed = speedHorizontal;
         m_bHasPreviousSpeed = true; // 标记已有上一秒的数据
         
-        // 继续下一秒的采样
-        GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
+        // 继续下一秒的采样（仅调试开启时）
+        if (IsRssDebugEnabled())
+            GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
     }
     
     // 显示状态信息（包含速度、体力、速度倍数、移动类型、坡度等）
