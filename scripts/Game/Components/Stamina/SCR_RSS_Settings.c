@@ -718,7 +718,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("false", UIWidgets.CheckBox, "Mud slip mechanic: ragdoll + camera stress on slippery wet terrain. Server chooses via JSON; default OFF. | 泥泞滑倒机制（湿滑地形布娃娃/镜头失稳），服主在 JSON 中开关，默认关闭")]
     bool m_bEnableMudSlipMechanism;
 
-    [Attribute("false", UIWidgets.CheckBox, "AI stamina combat: scale perception, fire rate, EAISkill by stamina (server JSON). Default OFF. | 体力影响 AI 感知/射速/战斗技能，服主 JSON 开关，默认关闭")]
+    [Attribute("true", UIWidgets.CheckBox, "AI stamina combat: scale perception, fire rate, EAISkill by stamina. Workbench default ON; dedicated server uses JSON (default OFF). | 体力影响 AI 感知/射速/战斗技能；工作台默认开启，专用服见 JSON（默认关闭）")]
     bool m_bEnableAIStaminaCombatEffects;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]

@@ -60,11 +60,12 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bHintDisplayEnabled = true;
         m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
+        m_Settings.m_bEnableAIStaminaCombatEffects = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, AI stamina combat ON.");
         return;
         #endif
 
@@ -234,6 +235,7 @@ class SCR_RSS_ConfigManager
                 m_Settings.m_bDebugLogEnabled = true;
                 m_Settings.m_bDataExportEnabled = true;
                 m_Settings.m_bEnableMudSlipMechanism = true;
+                m_Settings.m_bEnableAIStaminaCombatEffects = true;
                 Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
             #endif
 
@@ -253,6 +255,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_bHintDisplayEnabled = true;
             m_Settings.m_bDataExportEnabled = true;
             m_Settings.m_bEnableMudSlipMechanism = true;
+            m_Settings.m_bEnableAIStaminaCombatEffects = true;
         #endif
         
         // 确保所有字段有合理的默认值（兼容旧版本配置文件或空值）
@@ -650,10 +653,11 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bDataExportEnabled = false;
         #ifdef WORKBENCH
             m_Settings.m_bEnableMudSlipMechanism = true;
+            m_Settings.m_bEnableAIStaminaCombatEffects = true;
         #else
             m_Settings.m_bEnableMudSlipMechanism = false;
+            m_Settings.m_bEnableAIStaminaCombatEffects = false;
         #endif
-        m_Settings.m_bEnableAIStaminaCombatEffects = false;
         m_Settings.m_iDataExportIntervalMs = 1000;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;

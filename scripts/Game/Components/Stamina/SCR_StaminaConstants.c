@@ -1584,7 +1584,7 @@ class StaminaConstants
         return settings.m_bEnableMudSlipMechanism;
     }
 
-    //! 体力驱动 AI 感知/射速/战斗技能：由服主在 JSON 中开关，全预设生效；默认关闭。
+    //! 体力驱动 AI 感知/射速/战斗技能：由服主在 JSON 中开关，全预设生效；默认关闭。工作台编译（WORKBENCH）下 ConfigManager 默认开启。
     static bool IsAIStaminaCombatEffectsEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();

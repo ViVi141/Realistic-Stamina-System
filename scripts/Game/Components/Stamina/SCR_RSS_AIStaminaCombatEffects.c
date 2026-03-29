@@ -4,7 +4,7 @@
 //! - 战斗技能：以 GetAISkillDefault() 对应数值为 100% 基准，有效值 = vRef × 体力比例，再映射回 EAISkill；
 //!   满体力 ResetAISkill() 恢复预制体设定，不会把「已设为最弱」的单位抬成更强档位。
 //!
-//! 开关：JSON m_bEnableAIStaminaCombatEffects（StaminaConstants.IsAIStaminaCombatEffectsEnabled），默认关闭
+//! 开关：JSON m_bEnableAIStaminaCombatEffects（StaminaConstants.IsAIStaminaCombatEffectsEnabled）；专用服默认关，工作台默认开（见 SCR_RSS_ConfigManager #ifdef WORKBENCH）
 
 class SCR_RSS_AIStaminaCombatEffects
 {
@@ -47,6 +47,27 @@ class SCR_RSS_AIStaminaCombatEffects
     }
 
     //------------------------------------------------------------------------------------------------
+    //! SetPerceptionFactor 内部会用到 SCR_AIUtilityComponent.m_ThreatSystem；初始化完成前为空会崩溃。
+    //! 与 Utility 创建威胁系统的时机对齐：SCR_AIInfoComponent.GetThreatSystem() 非空后再调感知系数。
+    protected static bool IsAIThreatSystemReadyForPerception(IEntity owner)
+    {
+        if (!owner)
+            return false;
+        AIControlComponent aiControl = AIControlComponent.Cast(owner.FindComponent(AIControlComponent));
+        if (!aiControl)
+            return false;
+        AIAgent agent = aiControl.GetAIAgent();
+        if (!agent)
+            return false;
+        SCR_AIInfoComponent info = SCR_AIInfoComponent.Cast(agent.FindComponent(SCR_AIInfoComponent));
+        if (!info)
+            return false;
+        if (!info.GetThreatSystem())
+            return false;
+        return true;
+    }
+
+    //------------------------------------------------------------------------------------------------
     //! 服务器 AI + 开关开启时，按体力缩放感知、射速；战斗技能按「预制体默认技能数值 × 体力比例」计算。
     static void ApplyStaminaToCombat(IEntity owner, float staminaPercent01)
     {
@@ -69,7 +90,8 @@ class SCR_RSS_AIStaminaCombatEffects
 
         float pMin = StaminaConstants.RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN;
         float pMul = pMin + (1.0 - pMin) * s;
-        combat.SetPerceptionFactor(pMul);
+        if (IsAIThreatSystemReadyForPerception(owner))
+            combat.SetPerceptionFactor(pMul);
 
         float fMin = StaminaConstants.RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN;
         float fireCoef = fMin + (1.0 - fMin) * s;
