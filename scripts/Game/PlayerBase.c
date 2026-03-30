@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.19.1
+// Realistic Stamina System (RSS) - v3.19.3
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -127,6 +127,8 @@ modded class SCR_CharacterControllerComponent
     protected float m_fRssMudSlipCameraShake01 = 0.0;
     // 本帧 UpdateSpeedBasedOnStamina 主路径已应用的 RSS 速度倍率（供 AI 泥泞预警二次 OverrideMaxSpeed）
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
+    //! 性能：仅应在参与体力循环时为 true；ShouldProcess==false 时停表不再 CallLater
+    protected bool m_bRssStaminaLoopActive = false;
     
     // 在组件初始化后
     override void OnInit(IEntity owner)
@@ -278,6 +280,9 @@ modded class SCR_CharacterControllerComponent
         
         // 延迟初始化，确保组件完全加载
         GetGame().GetCallqueue().CallLater(StartSystem, 500, false);
+        // 客户端：载具内乘客等若首帧未建立循环，2s 后再尝试启动（与 ShouldProcess 一致）
+        if (!Replication.IsServer())
+            GetGame().GetCallqueue().CallLater(EnsureRssStaminaLoopIfNeeded, 2000, false);
         
         if (!Replication.IsServer())
         {
@@ -710,15 +715,27 @@ modded class SCR_CharacterControllerComponent
 
     
     
-    // 启动系统
+    // 启动系统（仅当本实体需要参与 RSS 时调度；远端复制体不启动以节省性能）
     void StartSystem()
     {
-        // 启动速度更新循环（每0.2秒更新一次速度）
-        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS, false);
+        if (!ShouldProcessStaminaUpdate())
+            return;
+        m_bRssStaminaLoopActive = true;
+        int intervalMs = SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs(this);
+        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, intervalMs, false);
         
-        // 启动速度采集循环（每秒一次，仅调试开启时）
         if (IsRssDebugEnabled())
             GetGame().GetCallqueue().CallLater(CollectSpeedSample, SPEED_SAMPLE_INTERVAL_MS, false);
+    }
+
+    //! 获得本地控制等时机补挂体力循环（与 StartSystem 互斥重复调度）
+    void EnsureRssStaminaLoopIfNeeded()
+    {
+        if (!ShouldProcessStaminaUpdate())
+            return;
+        if (m_bRssStaminaLoopActive)
+            return;
+        StartSystem();
     }
 
     // ==================== 游泳状态检测（用于调试显示/分支判断）====================
@@ -759,6 +776,9 @@ modded class SCR_CharacterControllerComponent
     override void OnControlledByPlayer(IEntity owner, bool controlled)
     {
         super.OnControlledByPlayer(owner, controlled);
+        
+        if (controlled)
+            EnsureRssStaminaLoopIfNeeded();
         
         // 只对本地控制的玩家处理
         if (controlled && owner == SCR_PlayerController.GetLocalControlledEntity())
@@ -945,6 +965,12 @@ modded class SCR_CharacterControllerComponent
         return SCR_RSS_AIStaminaBridge.ShouldAllowMudSlipRagdoll(this, owner);
     }
 
+    //! 供群组代理队员同步队长 OverrideMaxSpeed 倍率
+    float RSS_GetLastAppliedSpeedMultiplier()
+    {
+        return m_fLastRssSpeedMultiplierApplied;
+    }
+
     // 根据体力更新速度（玩家≈17ms，AI 100ms）
     void UpdateSpeedBasedOnStamina()
     {
@@ -955,17 +981,24 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
-        // 数据导出：服务器端按配置间隔写入 JSON（方案一：文件桥接）
-        SCR_RSS_DataExport.TryExport();
-
-        int intervalMs = GetSpeedUpdateIntervalMs();
-
         // 仅对本地玩家或服务器端 AI 处理
         if (!ShouldProcessStaminaUpdate())
         {
             RSS_SetMudSlipCameraShake01(0.0);
-            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, intervalMs, false);
+            m_bRssStaminaLoopActive = false;
             return;
+        }
+
+        // 服端：远距非交战群组跟随者仅同步队长体力与速度，不跑全量 RSS
+        if (Replication.IsServer() && !IsPlayerControlled())
+        {
+            if (SCR_RSS_AIGroupStaminaProxy.ProcessFollowerProxySync(this, owner))
+            {
+                RSS_SetMudSlipCameraShake01(0.0);
+                m_bRssStaminaLoopActive = true;
+                GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS, false);
+                return;
+            }
         }
         
         // ==================== 载具检测：如果在载具中，不消耗体力 ====================
@@ -1102,6 +1135,7 @@ modded class SCR_CharacterControllerComponent
             
             // 继续调度下一次更新，但不进行速度更新和体力消耗计算
             RSS_SetMudSlipCameraShake01(0.0);
+            m_bRssStaminaLoopActive = true;
             GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
             return;
         }
@@ -1863,6 +1897,7 @@ modded class SCR_CharacterControllerComponent
         StaminaConstants.FlushDebugBatch();
         
         // 继续更新
+        m_bRssStaminaLoopActive = true;
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
     }
     

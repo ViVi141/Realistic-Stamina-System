@@ -678,6 +678,17 @@ class StaminaConstants
     // RSS 主循环速度/体力 tick（毫秒）：玩家≈60Hz；AI 仅在服务器上降频
     static const int RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS = 17;
     static const int RSS_AI_SPEED_UPDATE_INTERVAL_MS = 100;
+    //! 服端：非交战群组距玩家较远时仅队长全算，队员同步；与 SCR_RSS_AIGroupStaminaProxy 一致
+    static const bool RSS_PERF_AI_GROUP_PROXY_ENABLED = true;
+    static const float RSS_PERF_AI_GROUP_PROXY_DISTANCE_M = 1500.0;
+    static const int RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS = 5000;
+    //! 服端单兵：未命中群组代理时按距玩家距离分档刷新间隔
+    static const bool RSS_PERF_AI_DISTANCE_LOD_ENABLED = true;
+    static const float RSS_PERF_AI_LOD_NEAR_M = 400.0;
+    static const float RSS_PERF_AI_LOD_FAR_M = 1200.0;
+    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 100;
+    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
+    static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
     // AI 徒步：当前体力低于此比例且 AI 意图为快跑时，降级为 WALK（与「撞墙」区间大致衔接）
     static const float RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD = 0.28;
     //! AI 群组低体力自动休整（动态防守路点等）：功能完善中，勿依赖；开启前请自行验证。当前默认关闭。

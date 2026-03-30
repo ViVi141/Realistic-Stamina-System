@@ -13,14 +13,22 @@ class SCR_RSS_AIStaminaBridge
     protected static ref array<string> s_aAIDebugLines;
 
     //------------------------------------------------------------------------------------------------
-    //! 玩家使用 RSS 主循环间隔；服务器 AI 使用较低频率以节省性能。
+    //! 玩家使用 RSS 主循环间隔；服务器 AI 使用较低频率以节省性能（群组代理 / 距离 LOD）。
     static int GetSpeedUpdateIntervalMs(SCR_CharacterControllerComponent ctrl)
     {
         if (!ctrl)
             return StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS;
         if (ctrl.IsPlayerControlled())
             return StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS;
-        return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
+        int baseAi = StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
+        IEntity owner = ctrl.GetOwner();
+        if (!owner)
+            return baseAi;
+        if (!Replication.IsServer())
+            return baseAi;
+        if (SCR_RSS_AIGroupStaminaProxy.ShouldLeaderUseProxyInterval(ctrl, owner))
+            return StaminaConstants.RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS;
+        return SCR_RSS_AIGroupStaminaProxy.GetDistanceLodIntervalMsForAi(ctrl, owner, baseAi);
     }
 
     //------------------------------------------------------------------------------------------------

@@ -18,6 +18,8 @@ modded class SCR_BaseGameMode
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
+            if (GetGame())
+                GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, true);
             return;
         }
 
@@ -26,5 +28,12 @@ modded class SCR_BaseGameMode
         {
             GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
         }
+    }
+
+    //! 数据导出单点触发，避免每个角色 tick 调用 TryExport（性能）
+    protected void RssServerDataExportTick()
+    {
+        if (Replication.IsServer())
+            SCR_RSS_DataExport.TryExport();
     }
 }

@@ -6,6 +6,25 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.19.3] - 2026-03-30
+
+### 性能
+
+- **远端实体停表** - `ShouldProcessStaminaUpdate()==false` 时不再 `CallLater` 空转；本地控制/载具内乘客通过 `OnControlledByPlayer` 与延迟 `EnsureRssStaminaLoopIfNeeded` 补挂循环（[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+- **数据导出单点** - `SCR_RSS_DataExport.TryExport()` 改为服务端 `SCR_BaseGameMode` 定时调用，避免每角色 tick 进入（[SCR_RSS_ServerBootstrap.c](scripts/Game/SCR_RSS_ServerBootstrap.c)）。
+- **服端 AI 群组代理** - 非交战且群组距最近玩家超过 `RSS_PERF_AI_GROUP_PROXY_DISTANCE_M`（默认 1500m）时，仅队长全量 RSS（5s），队员同步队长体力与 `OverrideMaxSpeed` 倍率（[SCR_RSS_AIGroupStaminaProxy.c](scripts/Game/Components/Stamina/SCR_RSS_AIGroupStaminaProxy.c)、[SCR_RSS_AIStaminaBridge.c](scripts/Game/Components/Stamina/SCR_RSS_AIStaminaBridge.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）。群内任一人处于战场危险上下文则整群不启用代理。
+- **服端单兵距离 LOD** - 未命中群组代理时按距玩家距离分档 AI 刷新间隔（近/中/远，见 `RSS_PERF_AI_LOD_*`）。
+
+### 说明
+
+- 群组代理模式下队员与队长负重/地形可能不一致，体力与速度为近似同步，仅用于远距非交战减负。
+
+### 配置版本
+
+- **CURRENT_VERSION** 更新为 **3.19.3**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.19.1] - 2026-03-24
 
 ### 🔧 修复
