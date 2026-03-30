@@ -6,6 +6,25 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.20.5] - 2026-03-30
+
+### ⚡ 性能优化
+
+- **`CalculateLandBaseDrainRate` Pandolf 调用减少**（`SCR_StaminaUpdateCoordinator.c`）- 将 T1 负重阻尼分支中的无负重 Pandolf 结果（`unloadedPerSAtCurrentSpeed`）提升为外层变量，并引入 `needsDampening` 布尔标志统一控制两处阻尼分支。努力补偿分支在 `unencumberedSpeedEstimate ≈ currentSpeed`（差值 < 0.01）时直接复用缓存值，跳过一次 `CalculatePandolfEnergyExpenditure` 调用；最坏情况从 4 次降至 3 次，常见情况降至 2 次。
+- **`ShouldSync` / `AcceptClientReport` 消除运行时除法**（`SCR_NetworkSync.c`）- 新增三个预计算间隔常量 `BASE_SYNC_INTERVAL`（0.05s）、`CRITICAL_SYNC_INTERVAL`（≈0.01667s）、`STABLE_SYNC_INTERVAL`（0.2s），替换原来每次调用都执行的 `1.0 / Hz` 浮点除法；同时重构 `ShouldSync` 为三个独立 if-else 分支，消除中间变量 `hz`/`lastTime`，逻辑更清晰。
+
+### 🔧 修复
+
+- **网络速度插值实际无效**（`SCR_NetworkSync.c`）- `SMOOTH_TRANSITION_DURATION` 原值 `0.05s` 导致在 50ms 更新间隔下 `lerpSpeed = timeDelta/0.05 ≥ 1.0`，`Math.Lerp` 每次直接跳变到目标值，平滑形同虚设。修复：将过渡窗口提升至 `0.15s`（约 9 帧 @60fps），50ms 间隔下 `lerpSpeed ≈ 0.33`，每次更新平滑推进约 1/3，约 3 次更新（0.15s）完成过渡，消除网络速度突变感。
+- **`CalculateBaseDrainRate` 死代码**（`SCR_StaminaUpdateCoordinator.c`）- 删除计算后从未使用的 `weightRatio`、`weightRatioPower`、`loadFactor` 三行（含注释），消除无意义的 `StaminaHelpers.Pow` 调用。
+
+### 🏗️ 重构
+
+- **提取 `BuildRecoveryContext` 私有辅助方法**（`SCR_StaminaUpdateCoordinator.c`）- 新增 `RecoveryContext` 结构体和 `BuildRecoveryContext` 静态私有方法，将 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行完全相同的恢复率参数组装逻辑合并为一处；两个方法各缩减至 12 行调用代码，消除维护时的不一致风险。
+- **静态共享结果对象使用约定文档化**（`SCR_StaminaUpdateCoordinator.c`）- 在 `s_pResultSpeedCalc`、`s_pResultBaseDrainRate`、`s_pRecoveryCtx` 声明处添加明确的使用约定注释，说明不得跨调用持有引用，防止同帧内多次调用导致结果被覆盖的潜在逻辑错误。
+
+---
+
 ## [3.20.4] - 2026-03-30
 
 ### 🔧 修复

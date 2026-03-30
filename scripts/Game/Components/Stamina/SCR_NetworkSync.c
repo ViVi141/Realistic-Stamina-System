@@ -23,6 +23,11 @@ class NetworkSyncManager
     protected const float CRITICAL_SYNC_HZ = 60.0;  // 关键状态变化：精疲力尽、战斗 (60Hz)
     protected const float STABLE_SYNC_HZ = 5.0;     // 稳定字段：配置哈希 (5Hz)
 
+    // 预计算同步间隔（秒），避免 ShouldSync / AcceptClientReport 每次调用都做浮点除法
+    protected const float BASE_SYNC_INTERVAL = 1.0 / BASE_SYNC_HZ;         // 0.05s
+    protected const float CRITICAL_SYNC_INTERVAL = 1.0 / CRITICAL_SYNC_HZ; // ~0.01667s
+    protected const float STABLE_SYNC_INTERVAL = 1.0 / STABLE_SYNC_HZ;     // 0.2s
+
     // 各层独立时间戳（避免不同层互相干扰）
     protected float m_fLastBaseSyncTime = 0.0;       // 上次基础同步时间
     protected float m_fLastCriticalSyncTime = 0.0;   // 上次关键同步时间
@@ -38,7 +43,10 @@ class NetworkSyncManager
     // 网络同步容差优化：连续偏差累计触发
     protected float m_fDeviationStartTime = -1.0; // 偏差开始时间（-1表示无偏差）
     protected const float DEVIATION_TRIGGER_DURATION = 0.0; // 偏差触发持续时间（秒），0=立即下发
-    protected const float SMOOTH_TRANSITION_DURATION = 0.05; // 速度插值平滑过渡时间（秒，约3帧@60fps）
+
+    // 速度插值平滑：0.15s 过渡窗口（约9帧@60fps），确保在 50ms 更新间隔下插值实际生效。
+    // 原值 0.05s 导致 lerpSpeed = timeDelta/0.05 ≥ 1.0，平滑形同虚设。
+    protected const float SMOOTH_TRANSITION_DURATION = 0.15;
     protected float m_fTargetSpeedMultiplier = 1.0; // 目标速度倍数（用于插值）
     protected float m_fSmoothedSpeedMultiplier = 1.0; // 平滑后的速度倍数
     protected float m_fLastSmoothUpdateTime = 0.0; // 上次平滑更新时间（用于内部时间管理）
@@ -70,40 +78,35 @@ class NetworkSyncManager
     // @return true 表示需要同步，false 表示不需要
     bool ShouldSync(float currentTime, int syncType = 0)
     {
-        float hz = 0.0;
-        float lastTime = 0.0;
-
+        // 使用预计算间隔常量，避免每次调用做浮点除法
         if (syncType == 1)
         {
-            hz = CRITICAL_SYNC_HZ;
-            lastTime = m_fLastCriticalSyncTime;
+            if (currentTime - m_fLastCriticalSyncTime >= CRITICAL_SYNC_INTERVAL)
+            {
+                m_fLastCriticalSyncTime = currentTime;
+                return true;
+            }
+            return false;
         }
         else if (syncType == 2)
         {
-            hz = STABLE_SYNC_HZ;
-            lastTime = m_fLastStableSyncTime;
+            if (currentTime - m_fLastStableSyncTime >= STABLE_SYNC_INTERVAL)
+            {
+                m_fLastStableSyncTime = currentTime;
+                return true;
+            }
+            return false;
         }
         else
         {
-            hz = BASE_SYNC_HZ;
-            lastTime = m_fLastBaseSyncTime;
-        }
-
-        float interval = 1.0 / hz;
-        if (currentTime - lastTime >= interval)
-        {
-            if (syncType == 1)
-                m_fLastCriticalSyncTime = currentTime;
-            else if (syncType == 2)
-                m_fLastStableSyncTime = currentTime;
-            else
+            if (currentTime - m_fLastBaseSyncTime >= BASE_SYNC_INTERVAL)
             {
                 m_fLastBaseSyncTime = currentTime;
                 m_fLastNetworkSyncTime = currentTime; // 保持兼容
+                return true;
             }
-            return true;
+            return false;
         }
-        return false;
     }
 
     // 验证并接受客户端报告（速率限制）
@@ -114,9 +117,8 @@ class NetworkSyncManager
     {
         if (isCriticalData)
         {
-            // 关键数据使用 60Hz 独立限流（而非原来的无限制上报）
-            float critInterval = 1.0 / CRITICAL_SYNC_HZ;
-            if (currentTime - m_fLastCriticalReportTime >= critInterval)
+            // 关键数据使用 60Hz 独立限流，使用预计算间隔常量
+            if (currentTime - m_fLastCriticalReportTime >= CRITICAL_SYNC_INTERVAL)
             {
                 m_fLastCriticalReportTime = currentTime;
                 return true;
@@ -124,8 +126,7 @@ class NetworkSyncManager
             return false;
         }
 
-        float baseInterval = 1.0 / BASE_SYNC_HZ;
-        if (currentTime - m_fLastClientReportTime >= baseInterval)
+        if (currentTime - m_fLastClientReportTime >= BASE_SYNC_INTERVAL)
         {
             m_fLastClientReportTime = currentTime;
             return true;
@@ -164,23 +165,20 @@ class NetworkSyncManager
         float timeDelta = currentTime - m_fLastSmoothUpdateTime;
         
         // 平滑插值：从当前速度倍数过渡到目标速度倍数
-        // 使用线性插值，过渡时间为 SMOOTH_TRANSITION_DURATION
+        // 使用线性插值，过渡时间为 SMOOTH_TRANSITION_DURATION（0.15s）
+        // 在 50ms 更新间隔下 lerpSpeed = 0.05/0.15 ≈ 0.33，插值实际生效
         if (timeDelta > 0.0 && timeDelta < 1.0 && Math.AbsFloat(m_fSmoothedSpeedMultiplier - targetSpeedMultiplier) > 0.001)
         {
-            // 计算插值系数（每秒过渡速度）
             float lerpSpeed = timeDelta / SMOOTH_TRANSITION_DURATION;
-            lerpSpeed = Math.Clamp(lerpSpeed, 0.0, 1.0); // 限制在0-1之间
+            lerpSpeed = Math.Clamp(lerpSpeed, 0.0, 1.0);
             
-            // 线性插值
             m_fSmoothedSpeedMultiplier = Math.Lerp(m_fSmoothedSpeedMultiplier, targetSpeedMultiplier, lerpSpeed);
         }
         else
         {
-            // 无需插值：直接使用目标值
             m_fSmoothedSpeedMultiplier = targetSpeedMultiplier;
         }
         
-        // 更新内部时间
         m_fLastSmoothUpdateTime = currentTime;
         
         return m_fSmoothedSpeedMultiplier;

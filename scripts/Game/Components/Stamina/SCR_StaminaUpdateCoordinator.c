@@ -18,10 +18,28 @@ class BaseDrainRateResult
     bool swimmingVelocityDebugPrinted;
 }
 
+// 恢复率计算上下文结构体（供 UpdateStaminaValue / GetNetStaminaRatePerSecond 共用）
+class RecoveryContext
+{
+    float currentWeightForRecovery;
+    float staticDrainForRecovery;
+    int stanceInt;
+    ref EnvironmentFactor envFactor;
+    float speedForRecovery;
+    float heatPenalty;
+    float restDurationMinutes;
+    float exerciseDurationMinutes;
+}
+
 class StaminaUpdateCoordinator
 {
+    // ── 静态共享结果对象 ──────────────────────────────────────────────────────
+    // 【使用约定】每次调用后立即读取返回值，不得跨调用持有引用。
+    // 同一帧内若需要两次调用结果，须将第一次返回值的字段复制到局部变量后再发起第二次调用，
+    // 否则第二次调用会覆盖同一对象导致第一次结果丢失。
     protected static ref SpeedCalculationResult s_pResultSpeedCalc;
     protected static ref BaseDrainRateResult s_pResultBaseDrainRate;
+    protected static ref RecoveryContext s_pRecoveryCtx;
 
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
@@ -93,12 +111,14 @@ class StaminaUpdateCoordinator
 
                 // T1 负重代谢阻尼
                 float bodyWeightWRS = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
-                if (currentWeightWithWet > bodyWeightWRS && StaminaConstants.GetLoadMetabolicDampening() < 1.0)
+                float unloadedPerSAtCurrentSpeed = -1.0;
+                bool needsDampening = (currentWeightWithWet > bodyWeightWRS && StaminaConstants.GetLoadMetabolicDampening() < 1.0);
+                if (needsDampening)
                 {
-                    float unloadedPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                    unloadedPerSAtCurrentSpeed = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                         currentSpeed, bodyWeightWRS, gradePercent, terrainFactor, true);
-                    float loadExtra = pandolfPerS - unloadedPerS;
-                    pandolfPerS = unloadedPerS + loadExtra * StaminaConstants.GetLoadMetabolicDampening();
+                    float loadExtra = pandolfPerS - unloadedPerSAtCurrentSpeed;
+                    pandolfPerS = unloadedPerSAtCurrentSpeed + loadExtra * StaminaConstants.GetLoadMetabolicDampening();
                 }
 
                 // 负重限速努力补偿（生理学近似）：当负重显著压低“跑/冲刺”的实际速度时，
@@ -126,10 +146,18 @@ class StaminaUpdateCoordinator
                         terrainFactor,
                         true);
 
-                    if (currentWeightWithWet > bodyWeightWRS && StaminaConstants.GetLoadMetabolicDampening() < 1.0)
+                    if (needsDampening)
                     {
-                        float unloadedEffort = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
-                            unencumberedSpeedEstimate, bodyWeightWRS, gradePercent, terrainFactor, true);
+                        float unloadedEffort;
+                        if (Math.AbsFloat(unencumberedSpeedEstimate - currentSpeed) < 0.01)
+                        {
+                            unloadedEffort = unloadedPerSAtCurrentSpeed;
+                        }
+                        else
+                        {
+                            unloadedEffort = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
+                                unencumberedSpeedEstimate, bodyWeightWRS, gradePercent, terrainFactor, true);
+                        }
                         float effortExtra = effortPandolfPerS - unloadedEffort;
                         effortPandolfPerS = unloadedEffort + effortExtra * StaminaConstants.GetLoadMetabolicDampening();
                     }
@@ -568,10 +596,6 @@ class StaminaUpdateCoordinator
             // 应用降雨湿重（修正当前重量）
             currentWeightWithWet = currentWeightWithWet + totalWetWeight;
 
-            // 计算负重影响因子（与 RealisticStaminaSpeedSystem 中的实现一致）
-            float weightRatio = currentWeightWithWet / RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
-            float weightRatioPower = StaminaHelpers.Pow(weightRatio, 1.2);
-            float loadFactor = 1.0 + (weightRatioPower * 1.5);
 
                 // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
             baseDrainRate = CalculateLandBaseDrainRate(
@@ -653,55 +677,29 @@ class StaminaUpdateCoordinator
         
         if (!isInEpocDelay)
         {
-            // 计算恢复相关参数
-            float currentWeightForRecovery = 0.0;
-            if (encumbranceCache && encumbranceCache.IsCacheValid())
-                currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
-            
-            currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
-            
-            float restDurationMinutes = 0.0;
-            float exerciseDurationMinutes = 0.0;
-            if (exerciseTracker)
-            {
-                restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
-                exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
-            }
-            
-            float staticDrainForRecovery = baseDrainRateByVelocity;
-            if (baseDrainRateByVelocityForModule > 0.0)
-                staticDrainForRecovery = baseDrainRateByVelocityForModule;
-            
-            // 趴下休息：不应沿用"静态站立消耗"，否则会把恢复压成持续损耗
-            ECharacterStance stanceForRecovery = controller.GetStance();
-            if (stanceForRecovery == ECharacterStance.PRONE)
-                staticDrainForRecovery = 0.0;
-            
-            // 将姿态转换为整数（0=站立，1=蹲姿，2=趴姿）
-            int stanceInt = 0;
-            if (stanceForRecovery == ECharacterStance.PRONE)
-                stanceInt = 2;
-            else if (stanceForRecovery == ECharacterStance.CROUCH)
-                stanceInt = 1;
-            else
-                stanceInt = 0;
-            
-            recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
-                staminaPercent,
-                restDurationMinutes,
-                exerciseDurationMinutes,
-                currentWeightForRecovery,
-                staticDrainForRecovery,
+            RecoveryContext ctx = BuildRecoveryContext(
                 false,
-                stanceInt,
+                encumbranceCache,
+                exerciseTracker,
+                controller,
                 environmentFactor,
+                baseDrainRateByVelocity,
+                baseDrainRateByVelocityForModule,
+                heatStressMultiplier,
                 currentSpeed);
 
-            // ==================== 热应激对恢复的影响（模块化）====================
-            // 生理学依据：高温不仅让人动起来累，更让人休息不回来
-            // 热应激越大，恢复倍数越小（恢复速度越慢）
-            float heatRecoveryPenalty = 1.0 / heatStressMultiplier; // 热应激1.3倍时，恢复速度降至约77%
-            recoveryRate = recoveryRate * heatRecoveryPenalty;
+            recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                staminaPercent,
+                ctx.restDurationMinutes,
+                ctx.exerciseDurationMinutes,
+                ctx.currentWeightForRecovery,
+                ctx.staticDrainForRecovery,
+                false,
+                ctx.stanceInt,
+                ctx.envFactor,
+                ctx.speedForRecovery);
+
+            recoveryRate = recoveryRate * ctx.heatPenalty;
         }
         
         // 计算EPOC延迟期间的消耗
@@ -743,6 +741,79 @@ class StaminaUpdateCoordinator
     // 获取当前净体力变化率（用于 HUD 显示耗尽/回满时间）
     // @param inVehicle 是否在载具中；载具内只恢复不消耗，不应用 EPOC 延迟消耗
     // @return 净变化率（/秒）：负=消耗中，正=恢复中。恢复/消耗率按每0.2秒设计，乘以5转为每秒
+    // ==================== 私有辅助方法：构建恢复率计算上下文 ====================
+    // 供 UpdateStaminaValue 和 GetNetStaminaRatePerSecond 共用，消除重复的参数组装逻辑。
+    // @param inVehicle    是否在载具内（载具内使用固定参数：零负重、趴姿、无环境）
+    // @param encumbranceCache  负重缓存（inVehicle=true 时忽略）
+    // @param exerciseTracker   运动跟踪器
+    // @param controller        角色控制器（inVehicle=true 时可为 null）
+    // @param environmentFactor 环境因子（inVehicle=true 时忽略）
+    // @param baseDrainRateByVelocity        基础消耗率（行人用）
+    // @param baseDrainRateByVelocityForModule 模块基础消耗率（行人用）
+    // @param heatStressMultiplier 热应激倍数（行人用）
+    // @param currentSpeed 当前速度（行人用）
+    // @return 填充好的 RecoveryContext（复用静态实例 s_pRecoveryCtx）
+    static RecoveryContext BuildRecoveryContext(
+        bool inVehicle,
+        EncumbranceCache encumbranceCache,
+        ExerciseTracker exerciseTracker,
+        SCR_CharacterControllerComponent controller,
+        EnvironmentFactor environmentFactor,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        float currentSpeed)
+    {
+        if (!s_pRecoveryCtx)
+            s_pRecoveryCtx = new RecoveryContext();
+
+        if (inVehicle)
+        {
+            s_pRecoveryCtx.currentWeightForRecovery = 0.0;
+            s_pRecoveryCtx.staticDrainForRecovery = -StaminaConstants.REST_RECOVERY_PER_TICK;
+            s_pRecoveryCtx.stanceInt = 2;
+            s_pRecoveryCtx.envFactor = null;
+            s_pRecoveryCtx.speedForRecovery = 0.0;
+            s_pRecoveryCtx.heatPenalty = 1.0;
+        }
+        else
+        {
+            float currentWeightForRecovery = 0.0;
+            if (encumbranceCache && encumbranceCache.IsCacheValid())
+                currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
+            s_pRecoveryCtx.currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
+
+            s_pRecoveryCtx.staticDrainForRecovery = baseDrainRateByVelocity;
+            if (baseDrainRateByVelocityForModule > 0.0)
+                s_pRecoveryCtx.staticDrainForRecovery = baseDrainRateByVelocityForModule;
+
+            ECharacterStance stanceForRecovery = controller.GetStance();
+            if (stanceForRecovery == ECharacterStance.PRONE)
+                s_pRecoveryCtx.staticDrainForRecovery = 0.0;
+
+            if (stanceForRecovery == ECharacterStance.PRONE)
+                s_pRecoveryCtx.stanceInt = 2;
+            else if (stanceForRecovery == ECharacterStance.CROUCH)
+                s_pRecoveryCtx.stanceInt = 1;
+            else
+                s_pRecoveryCtx.stanceInt = 0;
+
+            s_pRecoveryCtx.envFactor = environmentFactor;
+            s_pRecoveryCtx.speedForRecovery = currentSpeed;
+            s_pRecoveryCtx.heatPenalty = 1.0 / heatStressMultiplier;
+        }
+
+        s_pRecoveryCtx.restDurationMinutes = 0.0;
+        s_pRecoveryCtx.exerciseDurationMinutes = 0.0;
+        if (exerciseTracker)
+        {
+            s_pRecoveryCtx.restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
+            s_pRecoveryCtx.exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
+        }
+
+        return s_pRecoveryCtx;
+    }
+
     static float GetNetStaminaRatePerSecond(
         float staminaPercent,
         bool useSwimmingModel,
@@ -770,63 +841,23 @@ class StaminaUpdateCoordinator
         // 载具内始终计算恢复（载具不应用 EPOC 消耗）；行人仅在非 EPOC 时计算恢复
         if (!isInEpocDelay || inVehicle)
         {
-            float currentWeightForRecovery = 0.0;
-            float staticDrainForRecovery = 0.0;
-            int stanceInt = 2;
-            EnvironmentFactor envFactor = null;
-            float speedForRecovery = 0.0;
-            float heatPenalty = 1.0;
-
-            if (inVehicle)
-            {
-                // 载具内：与行人共用同一算法，仅参数不同（无负重、趴姿、无环境、零速度）
-                // 关键：staticDrainForRecovery 用 Rest 负值，与行人静止时一致，否则恢复率缺 REST_RECOVERY 加成导致 ETA 突增
-                currentWeightForRecovery = 0.0;
-                staticDrainForRecovery = -StaminaConstants.REST_RECOVERY_PER_TICK;
-                stanceInt = 2;
-                envFactor = null;
-                speedForRecovery = 0.0;
-                heatPenalty = 1.0;
-            }
-            else
-            {
-                if (encumbranceCache && encumbranceCache.IsCacheValid())
-                    currentWeightForRecovery = encumbranceCache.GetCurrentWeight();
-                currentWeightForRecovery = StaminaRecoveryCalculator.CalculateRecoveryWeight(currentWeightForRecovery, controller);
-
-                staticDrainForRecovery = baseDrainRateByVelocity;
-                if (baseDrainRateByVelocityForModule > 0.0)
-                    staticDrainForRecovery = baseDrainRateByVelocityForModule;
-                ECharacterStance stanceForRecovery = controller.GetStance();
-                if (stanceForRecovery == ECharacterStance.PRONE)
-                    staticDrainForRecovery = 0.0;
-
-                if (stanceForRecovery == ECharacterStance.PRONE)
-                    stanceInt = 2;
-                else if (stanceForRecovery == ECharacterStance.CROUCH)
-                    stanceInt = 1;
-                else
-                    stanceInt = 0;
-
-                envFactor = environmentFactor;
-                speedForRecovery = currentSpeed;
-                heatPenalty = 1.0 / heatStressMultiplier;
-            }
-
-            float restDurationMinutes = 0.0;
-            float exerciseDurationMinutes = 0.0;
-            if (exerciseTracker)
-            {
-                restDurationMinutes = exerciseTracker.GetRestDurationMinutes();
-                exerciseDurationMinutes = exerciseTracker.GetExerciseDurationMinutes();
-            }
+            RecoveryContext ctx = BuildRecoveryContext(
+                inVehicle,
+                encumbranceCache,
+                exerciseTracker,
+                controller,
+                environmentFactor,
+                baseDrainRateByVelocity,
+                baseDrainRateByVelocityForModule,
+                heatStressMultiplier,
+                currentSpeed);
 
             recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
-                staminaPercent, restDurationMinutes, exerciseDurationMinutes,
-                currentWeightForRecovery, staticDrainForRecovery, false, stanceInt,
-                envFactor, speedForRecovery);
+                staminaPercent, ctx.restDurationMinutes, ctx.exerciseDurationMinutes,
+                ctx.currentWeightForRecovery, ctx.staticDrainForRecovery, false, ctx.stanceInt,
+                ctx.envFactor, ctx.speedForRecovery);
 
-            recoveryRate = recoveryRate * heatPenalty;
+            recoveryRate = recoveryRate * ctx.heatPenalty;
         }
 
         float epocDrainRate = 0.0;
