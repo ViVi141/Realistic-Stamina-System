@@ -6,6 +6,18 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.20.4] - 2026-03-30
+
+### 🔧 修复
+
+- **ExerciseTracker 频繁输出时间跳跃警告** - 原逻辑用 `restTimeDelta >= 1.0` 判断"时间跳跃"并完全丢弃该帧的累积，但服务器帧率波动（卡顿、低帧）时两次 `Update` 调用间隔本就可能超过 1 秒，导致正常帧被误判为异常并大量刷日志。修复：在 `Update` 入口统一计算 `clampedDelta = Clamp(rawDelta, 0, 0.5s)`，运动时间和休息时间均使用截断后的 delta 累积，彻底消除大 delta 警告，同时保证极低帧率下累积连续性不中断（[SCR_ExerciseTracking.c](scripts/Game/Components/Stamina/SCR_ExerciseTracking.c)）。
+
+### 📝 说明
+
+- **室内楼梯速度偏慢（已知问题，原版行为）** - 经过 v3.20.2/3.20.3 的坡度过渡器重置修复和执行顺序修复后，室内楼梯的坡度惩罚已被正确抑制（`shouldSuppressSlope = true`）。但玩家仍反馈室内楼梯速度偏慢，经排查这是 **Arma Reforger 原版引擎行为**：引擎在楼梯碰撞体上会对角色施加额外的移动阻力（与地形碰撞网格相关），与本模组的速度倍数系统无关，本模组无法通过 `OverrideMaxSpeed` 消除此效果。如需进一步改善，需调整 `IndoorStairsEncumbranceSpeedFactor` 配置参数给予补偿加成，或等待引擎层面的修复。
+
+---
+
 ## [3.20.3] - 2026-03-30
 
 ### 🔧 修复

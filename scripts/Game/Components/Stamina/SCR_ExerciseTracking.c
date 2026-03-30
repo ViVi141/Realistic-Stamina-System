@@ -33,16 +33,18 @@ class ExerciseTracker
     {
         float currentTimeSeconds = currentTime / 1000.0; // 转换为秒
         
+        // v3.20.4：统一用 Clamp 处理帧间时间差，防止服务器卡顿/帧率波动导致的大 delta
+        // 上限 0.5s（约 2fps 时的帧间距），超出部分视为异常帧，截断而非丢弃，保证累积连续性
+        float rawDelta = currentTimeSeconds - m_fLastUpdateTime;
+        float clampedDelta = Math.Clamp(rawDelta, 0.0, 0.5);
+
         if (isCurrentlyMoving)
         {
             if (m_bWasMoving)
             {
-                // 继续运动：累积运动时间
-                float exerciseTimeDelta = currentTimeSeconds - m_fLastUpdateTime;
-                if (exerciseTimeDelta > 0.0 && exerciseTimeDelta < 1.0) // 防止时间跳跃异常
-                {
-                    m_fExerciseDurationMinutes += exerciseTimeDelta / 60.0; // 转换为分钟
-                }
+                // 继续运动：累积运动时间（使用截断后的 delta）
+                if (clampedDelta > 0.0)
+                    m_fExerciseDurationMinutes += clampedDelta / 60.0;
             }
             else
             {
@@ -51,14 +53,14 @@ class ExerciseTracker
                 // 不再清零 m_fRestDurationMinutes；运动时按 1:1 衰减，使短距离走向载具几乎保留休息进度
             }
             m_bWasMoving = true;
-            m_fLastMovementTime = currentTimeSeconds; // 更新最后移动时间
+            m_fLastMovementTime = currentTimeSeconds;
         }
         else
         {
             // 静止：检查是否进入 idle 状态
             float idleDuration = currentTimeSeconds - m_fLastMovementTime;
             bool isIdle = (idleDuration >= IDLE_THRESHOLD_TIME);
-            
+
             // 调试信息：idle 状态检测
             static float nextIdleLogTime = 0.0;
             if (StaminaConstants.ShouldVerboseLog(nextIdleLogTime))
@@ -68,12 +70,12 @@ class ExerciseTracker
                     isIdle,
                     Math.Round(m_fRestDurationMinutes * 10.0) / 10.0);
             }
-            
+
             if (isIdle)
             {
-                // 进入 idle 状态：累积休息时间
-                float restTimeDelta = currentTimeSeconds - m_fLastUpdateTime;
-                
+                // 进入 idle 状态：用截断后的 delta 累积休息时间，彻底消除大 delta 警告
+                float restTimeDelta = clampedDelta;
+
                 // 调试信息：休息时间累积
                 static float nextRestLogTime = 0.0;
                 if (StaminaConstants.ShouldVerboseLog(nextRestLogTime))
@@ -82,48 +84,28 @@ class ExerciseTracker
                         Math.Round(restTimeDelta * 10.0) / 10.0,
                         m_bWasMoving);
                 }
-                
-                if (restTimeDelta > 0.0 && restTimeDelta < 1.0)
+
+                if (restTimeDelta > 0.0)
                 {
                     // 累积休息时间（用于多维度恢复模型）
                     if (m_bWasMoving)
                     {
                         // 从运动转为 idle：通常重置休息时间；载具内保留进度（上车视为延续休息）
                         if (isInVehicle)
-                        {
-                            m_fRestDurationMinutes += restTimeDelta / 60.0; // 延续休息进度
-                        }
+                            m_fRestDurationMinutes += restTimeDelta / 60.0;
                         else
-                        {
                             m_fRestDurationMinutes = 0.0;
-                        }
                     }
                     else
                     {
                         // 继续 idle：累积休息时间
-                        m_fRestDurationMinutes += restTimeDelta / 60.0; // 转换为分钟
+                        m_fRestDurationMinutes += restTimeDelta / 60.0;
                     }
-                    
+
                     // 静止时，疲劳恢复速度是累积速度的2倍（快速恢复）
                     if (m_fExerciseDurationMinutes > 0.0)
-                    {
                         m_fExerciseDurationMinutes = Math.Max(m_fExerciseDurationMinutes - (restTimeDelta / 60.0 * 2.0), 0.0);
-                    }
                 }
-                else if (restTimeDelta >= 1.0)
-                {
-                    // 时间跳跃异常：重置更新时间，但不累积休息时间
-                    if (StaminaConstants.IsDebugEnabled())
-                    {
-                        PrintFormat("[RSS] ExerciseTracker 时间跳跃异常 / Time Jump: restTimeDelta=%1s, 重置更新时间 | restTimeDelta=%1s, Resetting update time",
-                            Math.Round(restTimeDelta * 10.0) / 10.0);
-                    }
-                }
-            }
-            else
-            {
-                // 未进入 idle 状态（静止时间 < 1秒）：不累积休息时间
-                // 避免"短暂停顿"被误判为休息
             }
             m_bWasMoving = false;
         }
