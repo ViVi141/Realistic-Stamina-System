@@ -4,6 +4,8 @@ class SCR_RSS_AIGroupStaminaProxy
 {
     protected static float s_fPlayerPosCacheTimeS = -1000.0;
     protected static ref array<vector> s_aCachedPlayerPositions;
+    protected static ref map<int, float> s_mGroupBattleDangerCacheTimeS;
+    protected static ref map<int, bool> s_mGroupBattleDangerCached;
 
     //------------------------------------------------------------------------------------------------
     protected static void EnsurePlayerPositionsCache(float nowSec)
@@ -49,6 +51,15 @@ class SCR_RSS_AIGroupStaminaProxy
     }
 
     //------------------------------------------------------------------------------------------------
+    protected static void EnsureGroupBattleCacheMaps()
+    {
+        if (!s_mGroupBattleDangerCacheTimeS)
+            s_mGroupBattleDangerCacheTimeS = new map<int, float>();
+        if (!s_mGroupBattleDangerCached)
+            s_mGroupBattleDangerCached = new map<int, bool>();
+    }
+
+    //------------------------------------------------------------------------------------------------
     protected static bool GroupHasAnyBattlefieldDanger(SCR_AIGroup scrGrp)
     {
         if (!scrGrp)
@@ -67,6 +78,29 @@ class SCR_RSS_AIGroupStaminaProxy
                 return true;
         }
         return false;
+    }
+
+    //------------------------------------------------------------------------------------------------
+    //! 按群组 ID 时间窗缓存，降低每 AI 每 tick 对全组成员的 IsBattlefieldDangerContext 扫描频率。
+    protected static bool GroupHasAnyBattlefieldDangerCached(SCR_AIGroup scrGrp, float nowSec)
+    {
+        if (!scrGrp)
+            return false;
+        EnsureGroupBattleCacheMaps();
+        int gid = scrGrp.GetGroupID();
+        float ttl = StaminaConstants.RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC;
+        if (ttl < 0.05)
+            ttl = 0.05;
+        if (s_mGroupBattleDangerCacheTimeS.Contains(gid))
+        {
+            float t = s_mGroupBattleDangerCacheTimeS.Get(gid);
+            if ((nowSec - t) < ttl)
+                return s_mGroupBattleDangerCached.Get(gid);
+        }
+        bool danger = GroupHasAnyBattlefieldDanger(scrGrp);
+        s_mGroupBattleDangerCacheTimeS.Set(gid, nowSec);
+        s_mGroupBattleDangerCached.Set(gid, danger);
+        return danger;
     }
 
     //------------------------------------------------------------------------------------------------
@@ -130,7 +164,8 @@ class SCR_RSS_AIGroupStaminaProxy
         if (!scrGrp)
             return false;
 
-        if (GroupHasAnyBattlefieldDanger(scrGrp))
+        float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (GroupHasAnyBattlefieldDangerCached(scrGrp, nowSec))
             return false;
 
         IEntity leader = ResolveLeaderEntity(scrGrp, owner);

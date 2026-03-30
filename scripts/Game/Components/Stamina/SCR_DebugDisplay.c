@@ -569,6 +569,14 @@ class DebugDisplay
         // 如果 Hint 显示没开启，直接退出
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
+
+        // AI 无 HUD：仅玩家角色更新屏幕提示
+        if (params.owner)
+        {
+            SCR_CharacterControllerComponent ownerCtrl = SCR_CharacterControllerComponent.Cast(params.owner.FindComponent(SCR_CharacterControllerComponent));
+            if (ownerCtrl && !ownerCtrl.IsPlayerControlled())
+                return;
+        }
         
         // 只对本地控制的玩家输出（含载具内：角色在本地控制的载具中）
         IEntity controlled = SCR_PlayerController.GetLocalControlledEntity();

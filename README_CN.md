@@ -22,8 +22,8 @@
 
 ## 专用服性能（v3.19.3+）
 
-- 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载。
-- 专用服上大规模 AI 时，远距且非交战群组可降为「仅队长全量计算体力（默认 5s）、队员同步体力与速度倍率」，未命中该模式时另有按距离分档的 AI 刷新间隔。可调参数见 [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)。
+- 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
+- 专用服上大规模 AI 时，远距且非交战群组可降为「仅队长全量计算体力（默认 5s）、队员同步体力与速度倍率」，未命中该模式时另有按距离分档的 AI 刷新间隔；群组「是否交战」判定带短时间缓存（`RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC`），减轻大组扫描开销。可调参数见 [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 功能说明
 

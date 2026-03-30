@@ -14,6 +14,12 @@
 - **数据导出单点** - `SCR_RSS_DataExport.TryExport()` 改为服务端 `SCR_BaseGameMode` 定时调用，避免每角色 tick 进入（[SCR_RSS_ServerBootstrap.c](scripts/Game/SCR_RSS_ServerBootstrap.c)）。
 - **服端 AI 群组代理** - 非交战且群组距最近玩家超过 `RSS_PERF_AI_GROUP_PROXY_DISTANCE_M`（默认 1500m）时，仅队长全量 RSS（5s），队员同步队长体力与 `OverrideMaxSpeed` 倍率（[SCR_RSS_AIGroupStaminaProxy.c](scripts/Game/Components/Stamina/SCR_RSS_AIGroupStaminaProxy.c)、[SCR_RSS_AIStaminaBridge.c](scripts/Game/Components/Stamina/SCR_RSS_AIStaminaBridge.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）。群内任一人处于战场危险上下文则整群不启用代理。
 - **服端单兵距离 LOD** - 未命中群组代理时按距玩家距离分档 AI 刷新间隔（近/中/远，见 `RSS_PERF_AI_LOD_*`）。
+- **群组交战判定缓存** - 按 `groupId` 缓存「群内是否存在战场危险」结果 `RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC` 秒（默认 0.5s），减少每 AI 每次间隔对全组成员的 `IsBattlefieldDangerContext` 扫描（[SCR_RSS_AIGroupStaminaProxy.c](scripts/Game/Components/Stamina/SCR_RSS_AIGroupStaminaProxy.c)）。
+- **AI 不跑 Hint/HUD 路径** - 载具内 Hint 构建仅 `IsPlayerControlled()`；`DebugDisplay.OutputHintInfo` 对非玩家实体直接返回；`UISignalBridge.UpdateUISignal` 仅玩家；`ApplyFullConfig` 内 HUD Init/Destroy 仅玩家（[PlayerBase.c](scripts/Game/PlayerBase.c)、[SCR_DebugDisplay.c](scripts/Game/Components/Stamina/SCR_DebugDisplay.c)）。
+
+### 🔧 修复
+
+- **客户端乘客体力循环** - 本地控制载具且本角色为乘客时，`ShouldProcessStaminaUpdate()` 仅在上车后为真，但 `StartSystem`（500ms）与 `EnsureRssStaminaLoopIfNeeded`（2s）可能已以 false 跳过，且不会再次触发 `OnControlledByPlayer`。现订阅 `SCR_CompartmentAccessComponent.GetOnCompartmentEntered` 在进舱时调用 `EnsureRssStaminaLoopIfNeeded()`；`StartSystem` 在 `m_bRssStaminaLoopActive` 已为真时直接返回，避免与舱位回调重复调度 `UpdateSpeedBasedOnStamina`（[PlayerBase.c](scripts/Game/PlayerBase.c)）。
 
 ### 说明
 

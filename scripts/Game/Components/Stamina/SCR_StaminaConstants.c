@@ -689,6 +689,8 @@ class StaminaConstants
     static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 100;
     static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
     static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
+    //! 群组「是否存在战场危险」判定缓存秒数；避免每 AI 每 tick 遍历全组成员（与 SCR_RSS_AIGroupStaminaProxy 一致）
+    static const float RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC = 0.5;
     // AI 徒步：当前体力低于此比例且 AI 意图为快跑时，降级为 WALK（与「撞墙」区间大致衔接）
     static const float RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD = 0.28;
     //! AI 群组低体力自动休整（动态防守路点等）：功能完善中，勿依赖；开启前请自行验证。当前默认关闭。
