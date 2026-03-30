@@ -205,10 +205,10 @@ modded class SCR_CharacterControllerComponent
         if (m_pSlopeSpeedTransition)
             m_pSlopeSpeedTransition.Initialize();
         
-        // 初始化地形检测模块
+        // 初始化地形检测模块（传入 isAi 标志，AI 实体启用距离LOD降频）
         m_pTerrainDetector = new TerrainDetector();
         if (m_pTerrainDetector)
-            m_pTerrainDetector.Initialize();
+            m_pTerrainDetector.Initialize(!IsPlayerControlled());
         
         m_pMudSlipRunner = new RSS_MudSlipRunner();
 
@@ -283,6 +283,11 @@ modded class SCR_CharacterControllerComponent
         // 客户端：载具内乘客等若首帧未建立循环，2s 后再尝试启动（与 ShouldProcess 一致）
         if (!Replication.IsServer())
             GetGame().GetCallqueue().CallLater(EnsureRssStaminaLoopIfNeeded, 2000, false);
+        // 服务器端 AI：远端服务器上 AI 组件初始化时序可能晚于 StartSystem 的 500ms 延迟，
+        // 导致 ShouldProcessStaminaUpdate() 首次调用返回 false 而循环永不启动。
+        // 使用带重试计数的专用方法，最多重试 5 次（间隔 3s），确保远端服务器 AI 体力循环可靠启动。
+        if (Replication.IsServer() && !IsPlayerControlled())
+            GetGame().GetCallqueue().CallLater(EnsureAiStaminaLoopOnServer, 3000, false);
         
         if (!Replication.IsServer())
         {
@@ -738,6 +743,25 @@ modded class SCR_CharacterControllerComponent
         StartSystem();
     }
 
+    //! 服务器端 AI 专用兜底：远端服务器上 AI 组件初始化时序不确定，
+    //! 若循环尚未启动则持续重试（最多 5 次，间隔 3s），直到成功或超限。
+    protected int m_iAiLoopRetryCount = 0;
+    protected const int AI_LOOP_MAX_RETRIES = 5;
+    void EnsureAiStaminaLoopOnServer()
+    {
+        if (!Replication.IsServer() || IsPlayerControlled())
+            return;
+        if (m_bRssStaminaLoopActive)
+            return;
+        m_iAiLoopRetryCount = m_iAiLoopRetryCount + 1;
+        if (m_iAiLoopRetryCount > AI_LOOP_MAX_RETRIES)
+            return;
+        StartSystem();
+        // 若本次仍未成功启动，继续安排下一次重试
+        if (!m_bRssStaminaLoopActive)
+            GetGame().GetCallqueue().CallLater(EnsureAiStaminaLoopOnServer, 3000, false);
+    }
+
     // ==================== 游泳状态检测（用于调试显示/分支判断）====================
     protected bool IsSwimmingByCommand()
     {
@@ -776,7 +800,12 @@ modded class SCR_CharacterControllerComponent
     override void OnControlledByPlayer(IEntity owner, bool controlled)
     {
         super.OnControlledByPlayer(owner, controlled);
-        
+
+        // 控制权变更时同步更新地形检测器的实体类型标志，
+        // 防止玩家接管AI角色后地形检测仍以AI LOD（最慢2.5s）频率运行。
+        if (m_pTerrainDetector)
+            m_pTerrainDetector.SetIsAiEntity(!controlled);
+
         if (controlled)
             EnsureRssStaminaLoopIfNeeded();
         
@@ -1247,6 +1276,23 @@ modded class SCR_CharacterControllerComponent
         }
         m_bLastWasSprinting = isSprintActive;
         
+        // ==================== 地形系数（提前到 UpdateSpeed 之前）====================
+        // 必须在 UpdateEnvironmentFactors 之前计算，以便传入泥泞/地表判断
+        // currentTime 提前声明（原在第 1343 行，因地形/环境因子提前而一并前移）
+        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
+        float currentTime = currentTimeForExerciseMs / 1000.0; // 秒，供地形/环境/RPC节流等模块使用
+        float terrainFactor = 1.0; // 默认值（铺装路面）
+        if (m_pTerrainDetector)
+            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTime, currentSpeed);
+
+        // ==================== 环境因子更新（提前到 UpdateSpeed 之前）====================
+        // v3.20.3 修复：原先环境因子更新在 UpdateSpeed 之后执行，导致室内状态缓存（INDOOR_CHECK_INTERVAL=1s）
+        // 在 UpdateSpeed 读取时最多落后 1 秒，造成进入楼梯后 1 秒内坡度未被抑制，
+        // SlopeSpeedTransition 开始 5 秒减速过渡，出现"站好再走慢"的问题。
+        // 将此调用提前，确保 UpdateSpeed 读取的室内状态是本帧最新值。
+        if (m_pEnvironmentFactor)
+            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, velocity, terrainFactor, m_fCurrentWetWeight);
+
         // ==================== 速度计算和更新（模块化）====================
         // 模块化：使用 StaminaUpdateCoordinator 更新速度（传入 velocity 用于坡度上下判断）
         float finalSpeedMultiplier = StaminaUpdateCoordinator.UpdateSpeed(
@@ -1294,10 +1340,6 @@ modded class SCR_CharacterControllerComponent
                 currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
         }
 
-        // 提前取得当前时间（秒），供速度应用与体力 RPC 节流使用
-        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
-        float currentTime = currentTimeForExerciseMs / 1000.0;  // 秒，供湿重/环境因子等模块使用
-
         // ==================== 已移除引擎动画速度补偿 ====================
         // 由于现在模组完全直接控制绝对速度，不再需要动画速度补偿
         // 直接计算目标绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数即可
@@ -1321,12 +1363,15 @@ modded class SCR_CharacterControllerComponent
             m_sLastSpeedSource = "Server";
 
         // 仅当服务器开启数据导出时向服务器上报体力与负重
-        // 关键数据（体力耗尽等）允许即时上报，绕过速率限制
+        // v3.20.0: 使用分层同步策略——基础数据 20Hz，关键数据（体力耗尽等）60Hz 独立限流
         bool isCriticalData = (staminaPercent <= 0.05 || (m_pNetworkSyncManager && m_pNetworkSyncManager.GetLastReportedStaminaPercent() > 0.5 && staminaPercent <= 0.1));
         if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
         {
-            bool shouldSync = m_pNetworkSyncManager.ShouldSync(currentTime);
-            if (shouldSync || isCriticalData)
+            // 关键数据走关键层（60Hz），普通数据走基础层（20Hz）
+            int syncType = 0;
+            if (isCriticalData)
+                syncType = 1;
+            if (m_pNetworkSyncManager.ShouldSync(currentTime, syncType))
             {
                 Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight, currentTime, isCriticalData);
                 if (isCriticalData && IsRssDebugEnabled())
@@ -1366,24 +1411,6 @@ modded class SCR_CharacterControllerComponent
         
         // 更新上一帧状态
         m_bWasSwimming = isSwimming;
-        
-        // 地形系数：铺装路面 1.0 → 深雪 2.1-3.0
-        // 优化检测频率：移动时0.5秒检测一次，静止时2秒检测一次（性能优化）
-        // 注意：terrain 检测使用秒单位的 currentTime
-        float terrainFactor = 1.0; // 默认值（铺装路面）
-        if (m_pTerrainDetector)
-        {
-            terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTime, currentSpeed);
-        }
-        
-        // ==================== 环境因子更新（模块化）====================
-        // 每5秒更新一次环境因子（性能优化）
-        // 传入角色实体用于室内检测，传入速度向量用于风阻计算，传入地形系数用于泥泞计算，传入游泳湿重用于总湿重计算
-        // 性能优化：复用前面已获取的 velocity，避免重复 GetVelocity()
-        if (m_pEnvironmentFactor)
-        {
-            m_pEnvironmentFactor.UpdateEnvironmentFactors(currentTime, owner, velocity, terrainFactor, m_fCurrentWetWeight);
-        }
         
         // 获取热应激倍数（影响体力消耗和恢复）
         float heatStressMultiplier = 1.0;

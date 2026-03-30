@@ -1,6 +1,10 @@
 // 体力消耗计算模块
 // 负责计算体力消耗率（Pandolf模型、姿态修正、Sprint消耗等）
 // 模块化拆分：从 PlayerBase.c 提取的体力消耗计算逻辑
+//
+// v3.20.0 性能优化：非Sprint情况下走快路径，跳过完整的环境因子展开，
+// 直接使用 EnvironmentFactor.GetQuickEnvironmentMultiplier() 的缓存值。
+// Sprint / 游泳 / 复杂场景仍走完整路径，保证精度。
 
 class StaminaConsumptionCalculator
 {
@@ -38,14 +42,56 @@ class StaminaConsumptionCalculator
         bool isSprinting = false,
         int currentMovementPhase = -1)
     {
-        // ==================== v2.14.0 环境因子修正 ====================
-        
+        // ── 快路径（v3.20.0 性能优化）────────────────────────────────────
+        // 非Sprint、非游泳的常规移动：跳过完整环境因子展开，使用缓存乘数。
+        // 条件：不在Sprint（phase!=3 且 !isSprinting）且 baseDrainRateByVelocity 已由调用方预填。
+        bool isSprintPhase = (isSprinting || currentMovementPhase == 3);
+        if (!isSprintPhase && baseDrainRateByVelocity > 0.0)
+        {
+            // 应用室内坡度抑制
+            if (environmentFactor)
+            {
+                if (owner && environmentFactor.ShouldSuppressTerrainSlopeForEntity(owner))
+                    gradePercent = 0.0;
+                else if (!owner && environmentFactor.IsIndoor())
+                    gradePercent = 0.0;
+            }
+
+            // 应用温度修正
+            float fastBase = baseDrainRateByVelocity;
+            if (environmentFactor && fastBase > 0.0)
+                fastBase = environmentFactor.AdjustEnergyForTemperature(fastBase);
+
+            // 应用姿态修正
+            if (fastBase > 0.0)
+                fastBase = fastBase * postureMultiplier;
+
+            // 应用效率与疲劳
+            float fastDrain = fastBase * totalEfficiencyFactor * fatigueFactor;
+
+            // 应用轻量级环境乘数（泥泞+风阻+热应激缓存值）
+            if (environmentFactor)
+                fastDrain = fastDrain * environmentFactor.GetQuickEnvironmentMultiplier();
+
+            // 应用负重消耗倍数
+            fastDrain = fastDrain * encumbranceStaminaDrainMultiplier;
+
+            // 输出基础消耗率（不含姿态修正，用于恢复计算）
+            baseDrainRateByVelocity = fastBase / postureMultiplier; // 还原姿态修正前的值
+            if (postureMultiplier <= 0.0)
+                baseDrainRateByVelocity = fastBase;
+
+            return fastDrain;
+        }
+
+        // ==================== v2.14.0 环境因子修正（完整路径）====================
+
         // 获取高级环境因子（如果环境因子模块存在）
         float windDrag = 0.0;
         float mudTerrainFactor = 0.0;
         float totalWetWeight = 0.0;
         float coldStaticPenalty = 0.0;
-        
+
         if (environmentFactor)
         {
             windDrag = environmentFactor.GetWindDrag();
@@ -64,7 +110,7 @@ class StaminaConsumptionCalculator
                 gradePercent = 0.0; // 无 owner 时回退到 IsIndoor()
             }
         }
-        
+
         // ==================== 手持重物额外消耗 ====================
         const float itemBonus = 1.0; // 默认无额外消耗
         

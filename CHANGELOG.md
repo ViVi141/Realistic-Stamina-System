@@ -6,6 +6,59 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.20.3] - 2026-03-30
+
+### 🔧 修复
+
+- **室内楼梯速度受初始速度影响（执行顺序根因修复）** - 即使室内/室外均被正确判定，进入楼梯时仍受初始速度影响。根本原因：`UpdateEnvironmentFactors`（更新室内状态缓存）在 `UpdateSpeed`（读取室内状态）**之后**执行，导致 `UpdateSpeed` 每帧读取的都是上一次缓存（最多落后 1 秒）。进入楼梯后最多 1 秒内 `shouldSuppressSlope = false`，坡度被正常计算，`SlopeSpeedTransition` 开始 5 秒减速过渡；1 秒后缓存更新触发重置，但带初速进入时这 1 秒内已完成大部分楼梯行程，感受不到减速，而站好再走时恰好在这 1 秒内触发了减速过渡。修复：将 `terrainFactor` 计算和 `UpdateEnvironmentFactors` 调用整体提前到 `UpdateSpeed` 之前，确保室内状态缓存在速度计算时已是本帧最新值（[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+
+---
+
+## [3.20.2] - 2026-03-30
+
+### 🔧 修复
+
+- **室内/室外切换时坡度过渡器状态异常** - `SlopeSpeedTransition.NotifySuppressSlope()` 初版仅处理"出室内→室外"方向的重置；带上坡减速状态进入楼梯时，过渡器冻结在低值，导致楼梯内或出楼梯后速度异常（带初速入楼梯快、站好再走慢）。改为**双向切换均重置**：室内↔室外任意方向切换时立即将过渡器归 1.0，以干净状态重新计算坡度速度（[SCR_SlopeSpeedTransition.c](scripts/Game/Components/Stamina/SCR_SlopeSpeedTransition.c)、[SCR_StaminaUpdateCoordinator.c](scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c)）。
+
+---
+
+## [3.20.1] - 2026-03-30
+
+### 🔧 修复
+
+- **远端服务器 AI 体力不计算** - `OnPostInit` 中 `StartSystem` 以 500ms 延迟调用，若远端服务器上 AI 组件初始化时序晚于此延迟，`ShouldProcessStaminaUpdate()` 首次返回 `false` 后循环永不启动（无重试机制）；新增 `EnsureAiStaminaLoopOnServer()` 方法，在 `OnPostInit` 额外安排 3s 后的首次兜底，失败时最多重试 5 次（间隔 3s），确保远端服务器 AI 体力循环可靠启动（[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+
+---
+
+## [3.20.0] - 2026-03-30
+
+### 性能
+
+- **地形检测距离LOD** - `TerrainDetector` 初始化时接受 `isAi` 标志；AI 实体按与最近玩家的距离分三档降低射线追踪频率：近距（<500m）0.5s、中距（500-1000m）1.0s、远距（>1000m）2.5s；距离缓存每 2 秒刷新一次，避免每帧调用 `GetPlayerManager`；静止降频逻辑与距离档叠加取较大值（[SCR_TerrainDetection.c](scripts/Game/Components/Stamina/SCR_TerrainDetection.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）。预期收益：大型战役地形检测频率↓40-60%。
+- **网络同步分层策略** - `NetworkSyncManager.ShouldSync()` 新增 `syncType` 参数，实现三层独立限流：基础字段（速度倍数、体力%）20Hz、关键状态（精疲力尽、战斗）60Hz、稳定字段（配置哈希）5Hz；`AcceptClientReport` 关键数据改为 60Hz 独立限流（原为无限制），消除关键事件绕过速率限制的问题；`SMOOTH_TRANSITION_DURATION` 由 `1/60s` 调整为 `0.05s`（约3帧）（[SCR_NetworkSync.c](scripts/Game/Components/Stamina/SCR_NetworkSync.c)）。预期收益：RPC 数量↓30-40%。
+- **温度计算位置触发** - `EnvironmentFactor` 新增位置缓存（`m_vLastTempCalcPosition`）；温度重算触发条件由「仅时间间隔」扩展为「时间间隔 OR 位置移动超过 100m」；静止时温度不再按固定 5s 重算，减少不必要的 `CalculateUniversalTemperature` 调用（[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）。预期收益：温度计算频率↓60-80%（静止场景）。
+- **体力消耗快路径** - `StaminaConsumptionCalculator.CalculateStaminaConsumption()` 新增非Sprint快路径：当 `!isSprinting && phase!=3 && baseDrainRateByVelocity>0` 时，跳过完整环境因子展开，直接使用 `EnvironmentFactor.GetQuickEnvironmentMultiplier()` 的缓存乘数（泥泞+风阻+热应激），减少约 50% 的分支计算；Sprint/游泳/复杂场景仍走完整路径（[SCR_StaminaConsumption.c](scripts/Game/Components/Stamina/SCR_StaminaConsumption.c)、[SCR_EnvironmentFactor.c](scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)）。预期收益：非Sprint消耗计算CPU↓30%。
+- **AI群组代理参数精调** - `RSS_PERF_AI_GROUP_PROXY_DISTANCE_M` 从 1500m 缩短至 **800m**，提升代理激活覆盖率约 +50%；`RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC` 从 0.5s 延长至 **1.0s**，减少高密度场景下全组扫描频率约 -50%（[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)）。
+
+### 🔧 修复
+
+- **玩家接管AI角色后地形LOD不复位** - `TerrainDetector` 新增 `SetIsAiEntity()` 方法；`OnControlledByPlayer` 回调中在 `controlled=true` 时立即将检测器切换回玩家模式（0.5s 间隔），避免接管后地形系数最慢 2.5s 才更新的问题（[SCR_TerrainDetection.c](scripts/Game/Components/Stamina/SCR_TerrainDetection.c)、[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+- **关键体力数据绕过同步限流** - 原 `if (shouldSync || isCriticalData)` 逻辑允许关键数据无限制发送 RPC；改为统一走 `ShouldSync(time, syncType)`，关键数据使用关键层（60Hz），普通数据使用基础层（20Hz），彻底消除无限制上报（[PlayerBase.c](scripts/Game/PlayerBase.c)）。
+
+### 说明
+
+- 网络同步分层：调用方如需按类型同步，传入 `ShouldSync(time, 0/1/2)`；旧版无参调用等同于 `syncType=0`（基础层，20Hz），行为变更需注意测试。
+- 地形LOD：`TerrainDetector.Initialize(isAi)` 新增参数，`PlayerBase.c` 已更新为 `Initialize(!IsPlayerControlled())`；若其他模块直接 `new TerrainDetector()` 并调用 `Initialize()` 则默认 `isAi=false`（玩家模式，无LOD），行为向后兼容。`SetIsAiEntity()` 可在运行时动态切换，无需重新初始化。
+- 体力消耗快路径：快路径仅在 `baseDrainRateByVelocity` 已由调用方预填时生效；若调用方传入 `0.0` 则回退到完整路径，与旧版行为一致。
+- AI群组代理距离缩短后，中等距离（800-1500m）的非交战AI群组将进入代理模式，队员体力与速度为近似同步（与队长一致），精度略低于全量计算，仅用于减负。
+- 载具内路径（`isInVehicle==true`）在第一个 `return` 前退出，不经过 `ShouldSync` 调用，载具内不产生额外 RPC，行为与优化前一致。
+
+### 配置版本
+
+- **CURRENT_VERSION** 更新为 **3.20.0**（[SCR_RSS_ConfigManager.c](scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)）
+
+---
+
 ## [3.19.3] - 2026-03-30
 
 ### 性能

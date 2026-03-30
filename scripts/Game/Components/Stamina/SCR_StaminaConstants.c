@@ -679,8 +679,10 @@ class StaminaConstants
     static const int RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS = 17;
     static const int RSS_AI_SPEED_UPDATE_INTERVAL_MS = 100;
     //! 服端：非交战群组距玩家较远时仅队长全算，队员同步；与 SCR_RSS_AIGroupStaminaProxy 一致
+    //! v3.20.0: 激活距离从 1500m 缩短至 800m，提高代理覆盖率（约 +50%），
+    //!          在中等交战密度场景下减少约 20% 的 AI 全量计算开销。
     static const bool RSS_PERF_AI_GROUP_PROXY_ENABLED = true;
-    static const float RSS_PERF_AI_GROUP_PROXY_DISTANCE_M = 1500.0;
+    static const float RSS_PERF_AI_GROUP_PROXY_DISTANCE_M = 800.0;
     static const int RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS = 5000;
     //! 服端单兵：未命中群组代理时按距玩家距离分档刷新间隔
     static const bool RSS_PERF_AI_DISTANCE_LOD_ENABLED = true;
@@ -690,7 +692,8 @@ class StaminaConstants
     static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
     static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
     //! 群组「是否存在战场危险」判定缓存秒数；避免每 AI 每 tick 遍历全组成员（与 SCR_RSS_AIGroupStaminaProxy 一致）
-    static const float RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC = 0.5;
+    //! v3.20.0: 缓存时间从 0.5s 延长至 1.0s，减少高密度场景下的全组扫描频率（约 -50% 扫描次数）。
+    static const float RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC = 1.0;
     // AI 徒步：当前体力低于此比例且 AI 意图为快跑时，降级为 WALK（与「撞墙」区间大致衔接）
     static const float RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD = 0.28;
     //! AI 群组低体力自动休整（动态防守路点等）：功能完善中，勿依赖；开启前请自行验证。当前默认关闭。

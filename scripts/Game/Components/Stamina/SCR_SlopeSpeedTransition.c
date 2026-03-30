@@ -9,6 +9,7 @@ class SlopeSpeedTransition
     protected float m_fTransitionStartValue = 1.0;     // 过渡起始值
     protected float m_fTransitionTargetValue = 1.0;    // 过渡目标值
     protected float m_fTransitionStartTime = -1.0;     // 过渡开始时间（-1 表示无过渡）
+    protected bool m_bLastSuppressSlope = false;        // 上一帧是否处于坡度抑制（室内）状态
 
     // ==================== 常量 ====================
     protected const float TRANSITION_DURATION = 5.0;   // 过渡持续时间（秒）
@@ -25,6 +26,25 @@ class SlopeSpeedTransition
         m_fTransitionStartValue = 1.0;
         m_fTransitionTargetValue = 1.0;
         m_fTransitionStartTime = -1.0;
+        m_bLastSuppressSlope = false;
+    }
+
+    // 通知过渡器当前帧是否处于坡度抑制（室内）状态。
+    // 室内/室外任意方向切换时均立即重置过渡状态为 1.0：
+    //   进入室内：防止室外上坡的减速状态冻结在过渡器中，导致楼梯内或出楼梯后速度异常偏低。
+    //   离开室内：防止室内冻结的旧值在出楼梯后带来意外减速过渡。
+    // @param suppress true=室内（坡度被抑制），false=室外（坡度正常计算）
+    void NotifySuppressSlope(bool suppress)
+    {
+        if (suppress != m_bLastSuppressSlope)
+        {
+            // 任意方向切换：将过渡器重置为 1.0，以干净状态重新开始
+            m_fCurrentSmoothedScale = 1.0;
+            m_fTransitionStartValue = 1.0;
+            m_fTransitionTargetValue = 1.0;
+            m_fTransitionStartTime = -1.0;
+        }
+        m_bLastSuppressSlope = suppress;
     }
 
     // 更新并获取平滑后的坡度速度倍率

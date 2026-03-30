@@ -61,6 +61,12 @@ class EnvironmentFactor
     // ====== 温度计算相关参数（P1 实现） ======
     protected float m_fTempUpdateInterval = 5.0; // 温度步进间隔（秒），默认5s（实时每5秒更新）
     protected float m_fLastTemperatureUpdateTime = 0.0; // 上次温度更新时间（秒）
+
+    // 位置变化触发温度重算（v3.20.0 性能优化）
+    // 玩家移动超过阈值时提前触发，静止时回退到时间间隔，减少不必要的重算
+    protected vector m_vLastTempCalcPosition = vector.Zero; // 上次温度计算时的位置
+    protected bool m_bTempPositionInitialized = false;      // 位置是否已初始化
+    protected const float TEMP_RECALC_DISTANCE_SQ = 10000.0; // 100m² → 100m 触发（存储平方值避免 sqrt）
     protected float m_fNextTempStepLogTime = 0.0; // 下次非详细温度步进日志时间（用于 ShouldLog）
     protected bool m_bPendingForceUpdate = false; // 标记是否有管理员触发的即时温度重算请求
     protected float m_fNextForceUpdateLogTime = 0.0; // ForceUpdate 日志节流时间（避免传字面量给 ShouldLog）
@@ -684,7 +690,24 @@ class EnvironmentFactor
     {
         return m_fSurfaceWetnessPenalty;
     }
-    
+
+    // ── 轻量级快速消耗倍数（v3.20.0 性能优化）────────────────────────────
+    // 仅读取已缓存的环境值，不触发任何重新计算，供体力消耗快路径使用。
+    // 返回一个综合乘数，用于非Sprint情况下的简化消耗计算。
+    // 公式：(1 + mudFactor×0.3) × (1 + windDrag×0.1) × (1 + heatStress×0.5)
+    float GetQuickEnvironmentMultiplier()
+    {
+        float mult = 1.0 + m_fCachedMudFactor * 0.3;
+
+        if (m_fCachedWindDrag > 0.0)
+            mult = mult * (1.0 + m_fCachedWindDrag * 0.1);
+
+        if (m_fHeatStressPenalty > 0.05)
+            mult = mult * (1.0 + m_fHeatStressPenalty * 0.5);
+
+        return mult;
+    }
+
     // ==================== 私有方法 ====================
     
     // 计算虚拟气温（统一模拟算法，无论引擎天气与否）
@@ -1972,10 +1995,25 @@ class EnvironmentFactor
             {
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
+                if (owner)
+                {
+                    m_vLastTempCalcPosition = owner.GetOrigin();
+                    m_bTempPositionInitialized = true;
+                }
             }
 
-            float tempDelta = currentTime - m_fLastTemperatureUpdateTime;
-            if (tempDelta >= m_fTempUpdateInterval)
+            // 触发条件：时间间隔 OR 位置移动超过阈值（100m）
+            // 位置触发可在玩家快速移动时及时更新海拔/云层，减少静止时的无效重算
+            bool timeTrigger = (currentTime - m_fLastTemperatureUpdateTime >= m_fTempUpdateInterval);
+            bool posTrigger = false;
+            if (owner && m_bTempPositionInitialized)
+            {
+                vector curPos = owner.GetOrigin();
+                float dSq = vector.DistanceSq(curPos, m_vLastTempCalcPosition);
+                posTrigger = (dSq >= TEMP_RECALC_DISTANCE_SQ);
+            }
+
+            if (timeTrigger || posTrigger)
             {
                 tod = m_pCachedWeatherManager.GetTimeOfTheDay();
                 cloud = InferCloudFactor();
@@ -1985,6 +2023,8 @@ class EnvironmentFactor
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
                 m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
+                if (owner)
+                    m_vLastTempCalcPosition = owner.GetOrigin();
             }
 
             m_fCachedTemperature = m_fCachedSurfaceTemperature;

@@ -302,6 +302,10 @@ class StaminaUpdateCoordinator
         float runBaseSpeedMultiplier = SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
         
+        // 通知过渡器当前帧的室内/室外状态，检测切换时机以便及时重置残留减速状态
+        if (slopeSpeedTransition)
+            slopeSpeedTransition.NotifySuppressSlope(shouldSuppressSlope);
+
         // 计算坡度自适应目标速度倍数
         float speedScaleFactor = 1.0;
         if (!shouldSuppressSlope)
