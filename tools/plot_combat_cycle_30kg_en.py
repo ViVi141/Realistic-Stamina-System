@@ -3,7 +3,9 @@
 """
 30KG Combat Cycle - Tactical Simulation
 Simulates realistic combat scenarios: Engagement -> Withdrawal -> Recovery -> Re-engagement
-Config: optimized_rss_config_realism_super.json
+
+默认读取 tools/optimized_rss_config_realism_super.json。
+可选第一个命令行参数指定 JSON（相对 tools 目录或绝对路径），用于对比三套优化输出。
 """
 
 import json
@@ -332,11 +334,18 @@ def plot_combat_cycle(time_list, stamina_list, recovery_rate_list, drain_rate_li
 
 
 def main():
-    json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+    # 默认与脚本注释一致：拟真档。可传入参数对比三套预设，例如：
+    #   python plot_combat_cycle_30kg_en.py optimized_rss_config_playability_super.json
+    if len(sys.argv) > 1:
+        arg = Path(sys.argv[1])
+        json_path = arg if arg.is_absolute() else (SCRIPT_DIR / arg)
+    else:
+        json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
     if not json_path.exists():
         print(f"Config not found: {json_path}")
         return 1
     
+    print(f"Loading: {json_path}\n")
     constants = load_constants_from_json(json_path)
     twin = RSSDigitalTwin(constants)
     

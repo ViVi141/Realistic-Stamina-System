@@ -539,7 +539,7 @@ class RSSSuperPipeline:
     默认目标数量与含义（均 minimize）：
     - 目标 1：可玩性负担（30kg 多场景）
     - 目标 2：稳定性风险（BUG 检测 + 软约束惩罚）
-    - 目标 3：生理学损失（100 - 生理学合理性）
+    - 目标 3：生理学损失（100 - 生理学合理性，权重见 REALISM['objective_weight']）
     - 目标 4：会话体验损失（40/60 分钟样本 + 恢复窗）
     - 可选：Sprint-drop、Sprint-remaining（当 enable_sprint_objective 时）
 
@@ -608,6 +608,22 @@ class RSSSuperPipeline:
         'final_stamina_high': 0.70,
         'final_stamina_high_coeff': 50.0,
         'low_events_per_min_coeff': 10.0,
+    }
+    # 拟真目标：physiology_loss = (100 - realism_score) * objective_weight，再 *0.1 进入第三目标
+    # 旧版 objective_weight=50 且 energy_coeff 上限写死 5e-7（与搜索空间 5e-6 冲突），拟真项几乎失去区分度
+    REALISM = {
+        'objective_weight': 115.0,
+        'energy_coeff_search_low': 5e-7,
+        'energy_coeff_search_high': 5e-6,
+        'energy_coeff_reference_low': 5e-7,
+        'energy_coeff_reference_high': 1.3e-6,
+        'energy_coeff_outside_reference_penalty': 7.0,
+        'energy_coeff_outside_search_penalty': 14.0,
+        'base_recovery_physiological_min': 5e-5,
+        'base_recovery_physiological_max': 3e-4,
+        'load_metabolic_dampening_min': 0.48,
+        'load_metabolic_dampening_max': 0.88,
+        'load_metabolic_dampening_penalty': 5.0,
     }
 
     def __init__(
@@ -1155,7 +1171,8 @@ class RSSSuperPipeline:
         # ==================== 9. 应用多阶段优化权重 ====================
         # 获取当前权重
         stability_weight = getattr(self, '_stability_weight', 1.0)
-        realism_weight = 50.0  # 进一步降低到50，优先优化可玩性和稳定性
+        rcfg = getattr(self, 'REALISM', RSSSuperPipeline.REALISM)
+        realism_weight = float(rcfg.get('objective_weight', 115.0))
 
         # 应用权重到稳定性风险
         weighted_stability_risk = stability_risk * stability_weight
@@ -1230,7 +1247,7 @@ class RSSSuperPipeline:
     
     def _evaluate_physiological_realism(self, constants: RSSConstants) -> float:
         """
-        评估生理学合理性（基于科学文献）
+        评估生理学合理性（基于科学文献与当前 Optuna 搜索边界对齐）
         
         Args:
             constants: 常量对象
@@ -1238,59 +1255,46 @@ class RSSSuperPipeline:
         Returns:
             生理学合理性值（越大越好，0-100范围）
         """
-        # 基于科学文献的生理学合理性评估
-        # 参考：
-        # - Pandolf et al. (1977): 能量消耗模型
-        # - ACSM (2018): 生理学阈值
-        # （Givoni-Goldman 跑步模型已弃用，仍在文档中保留历史说明）
-        
+        # 参考：Pandolf et al. (1977)；ACSM；模组内嵌预设 energy 量级
+        rcfg = getattr(self, 'REALISM', RSSSuperPipeline.REALISM)
         realism_score = 100.0
-        
-        # 1. 恢复模型合理性
-        # 检查恢复率是否在生理学合理范围内
+
         base_recovery = constants.BASE_RECOVERY_RATE
-        if base_recovery < 2e-5 or base_recovery > 3e-4:
-            realism_score -= 10.0  # 基础恢复率偏离生理学范围（Optuna范围：2e-5~1.2e-4）
-        # 增加恢复率的精细评估
-        elif 5e-5 <= base_recovery <= 7e-5:
-            realism_score -= 5.0  # 惩罚过于接近默认值的参数
-        
-        # 2. 恢复倍数合理性
-        # 检查恢复倍数是否合理
-        # 恢复/姿态顺序由软约束（CONSTRAINT）统一表达，此处仅保留数值范围类检查
-        
-        # 3. 代谢阈值合理性
-        # 检查代谢阈值是否在合理范围内
+        br_lo = float(rcfg.get('base_recovery_physiological_min', 5e-5))
+        br_hi = float(rcfg.get('base_recovery_physiological_max', 3e-4))
+        if base_recovery < br_lo or base_recovery > br_hi:
+            realism_score -= 10.0
+
         aerobic_threshold = constants.AEROBIC_THRESHOLD
         anaerobic_threshold = constants.ANAEROBIC_THRESHOLD
         if aerobic_threshold >= anaerobic_threshold:
-            realism_score -= 20.0  # 有氧阈值应该低于无氧阈值
-        
-        # 4. 能量转换合理性
-        # 校准与 Pandolf(2.7/3.2) 一致：1.5e-7 时约 15 分钟耗尽为设计目标
+            realism_score -= 20.0
+
         energy_coeff = constants.ENERGY_TO_STAMINA_COEFF
-        if energy_coeff < 1e-9 or energy_coeff > 5e-7:
-            realism_score -= 10.0  # 能量转换系数偏离生理学范围
-        
-        # 5. 负重影响合理性
-        # 检查负重影响是否合理
+        es_lo = float(rcfg.get('energy_coeff_search_low', 5e-7))
+        es_hi = float(rcfg.get('energy_coeff_search_high', 5e-6))
+        ref_lo = float(rcfg.get('energy_coeff_reference_low', 5e-7))
+        ref_hi = float(rcfg.get('energy_coeff_reference_high', 1.3e-6))
+        if energy_coeff < es_lo or energy_coeff > es_hi:
+            realism_score -= float(rcfg.get('energy_coeff_outside_search_penalty', 14.0))
+        elif energy_coeff < ref_lo or energy_coeff > ref_hi:
+            realism_score -= float(rcfg.get('energy_coeff_outside_reference_penalty', 7.0))
+
         encumbrance_coeff = constants.ENCUMBRANCE_STAMINA_DRAIN_COEFF
         if encumbrance_coeff < 0.8 or encumbrance_coeff > 2.0:
-            realism_score -= 10.0  # 负重系数偏离生理学范围
-        
-        # 6. 运动消耗合理性
-        # 已统一为 Pandolf 公式，不再使用 Sprint 倍数（速度项自然体现 Sprint 更高消耗）
+            realism_score -= 10.0
 
-        # 7. 疲劳系统合理性
         fatigue_accumulation = constants.FATIGUE_ACCUMULATION_COEFF
         if fatigue_accumulation < 0.005 or fatigue_accumulation > 0.03:
-            realism_score -= 8.0  # 疲劳积累系数偏离合理范围
-        
-        # 姿态倍数顺序与 >1.0 由软约束（CONSTRAINT）统一表达，此处不再重复扣分
-        
-        # 确保分数在0-100范围内
+            realism_score -= 8.0
+
+        lmd = float(getattr(constants, 'LOAD_METABOLIC_DAMPENING', 0.7))
+        lmd_lo = float(rcfg.get('load_metabolic_dampening_min', 0.48))
+        lmd_hi = float(rcfg.get('load_metabolic_dampening_max', 0.88))
+        if lmd < lmd_lo or lmd > lmd_hi:
+            realism_score -= float(rcfg.get('load_metabolic_dampening_penalty', 5.0))
+
         realism_score = max(0.0, min(realism_score, 100.0))
-        
         return realism_score
     
     def _evaluate_movement_balance_penalty(self, constants: RSSConstants) -> Tuple[float, float]:
@@ -2503,11 +2507,21 @@ class RSSSuperPipeline:
                     "EliteStandard 仍按稳定性×能耗选解，导出后请用 plot_combat_cycle_30kg_en.py 自测"
                 )
 
-        # 1. Realism (EliteStandard): 稳定性好的 trial 中选 energy_coeff 最高的
+        # 1. EliteStandard：在稳定性较好的候选中，优先第三目标（生理学损失）最小，再按 energy 系数打破平局
         stability_ordered = sorted(realism_indices, key=lambda i: self.best_trials[i].values[1])
         top_n = max(3, len(realism_indices) // 3)
         top_stability = stability_ordered[:top_n]
-        realism_idx = max(top_stability, key=lambda i: energy_coeff(self.best_trials[i]))
+
+        def _phys_loss_for_index(idx: int) -> float:
+            t = self.best_trials[idx]
+            if t.values is not None and len(t.values) >= 3:
+                return float(t.values[2])
+            return 1e30
+
+        realism_idx = min(
+            top_stability,
+            key=lambda i: (_phys_loss_for_index(i), -energy_coeff(self.best_trials[i])),
+        )
         realism_trial = self.best_trials[realism_idx]
 
         # 2. Playability (TacticalAction): 可玩性好的 trial 中选 energy_coeff 最低的
