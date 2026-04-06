@@ -2728,6 +2728,28 @@ class RSSSuperPipeline:
             print(f"    {bug_type}: {count}")
 
 
+def _default_use_gui():
+    """
+    是否默认启动 Tk GUI。
+    Codespaces / 无 DISPLAY 的 Linux SSH 等环境下无图形后端，强行 tk.Tk() 会报错。
+    Windows / macOS 本机一般默认可用；Linux 需有 DISPLAY 或 Wayland。
+    """
+    import sys
+    if os.environ.get("CODESPACES", "").lower() == "true":
+        return False
+    if os.environ.get("GITHUB_CODESPACES", "").lower() == "true":
+        return False
+    if sys.platform == "win32":
+        return True
+    if sys.platform == "darwin":
+        return True
+    if os.environ.get("DISPLAY"):
+        return True
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+
+
 def main():
     """主函数：执行完整优化流程"""
     
@@ -2744,117 +2766,88 @@ def main():
     import sys
     fast_mode = "--fast" in sys.argv
 
-    # 询问是否启动GUI
-    use_gui = "--gui" in sys.argv or "--no-gui" not in sys.argv
+    # GUI：显式 --gui / --no-gui 优先；否则按环境默认（无头 Linux 默认命令行）
+    if "--gui" in sys.argv:
+        use_gui = True
+    elif "--no-gui" in sys.argv:
+        use_gui = False
+    else:
+        use_gui = _default_use_gui()
+        if not use_gui:
+            print(
+                "[提示] 未检测到图形界面环境（如无 DISPLAY），使用命令行模式。"
+                " 在本机桌面运行可加 --gui；云端/Codespaces 请加 --no-gui 或依赖本检测。"
+            )
 
     if fast_mode:
         print("[快速模式] 已启用：使用更大时间步长(0.4s)，提速约2倍")
 
-    if use_gui:
-        print("正在启动GUI优化器...")
-        
-        # 导入GUI模块
-        try:
-            from rss_optimizer_gui import RSSTunerGUI
-        except ImportError:
-            print("错误：无法导入GUI模块")
-            print("请确保 rss_optimizer_gui.py 在同一目录下")
-            use_gui = False
-    
     # 创建流水线（快速验证设置）
     # 设置为500次迭代以快速验证优化效果
     # use_database=False 使用内存存储以提高性能（默认）
     # 如果需要后续诊断，可以设置 use_database=True（但会降低性能）
     pipeline = RSSSuperPipeline(n_trials=1000, n_jobs=n_jobs, use_database=False, fast_mode=fast_mode)
-    
-    # 如果使用GUI，设置回调函数
+
+    gui_completed = False
+
+    # 如果使用 GUI：成功跑完 mainloop 则 gui_completed=True；失败则回退命令行
     if use_gui:
-        # 导入GUI模块并启动
         try:
+            print("正在启动GUI优化器...")
             from rss_optimizer_gui import RSSTunerGUI
             import tkinter as tk
             import threading
-            
-            # 创建GUI实例，传递总迭代次数
+
             root = tk.Tk()
             gui = RSSTunerGUI(root, total_iterations=500)
-            
-            # 设置GUI更新回调
+
             pipeline.set_gui_callback(gui.update_data)
-            
+
             print("GUI已启动，优化将在后台运行...")
             print("提示：GUI窗口可以独立控制优化过程")
-            
-            # 在单独线程中运行优化
+
             optimization_thread = threading.Thread(
                 target=lambda: pipeline.optimize(study_name="rss_super_optimization"),
                 daemon=True
             )
             optimization_thread.start()
-            
-            # 在主线程中运行GUI
+
             root.mainloop()
-            
-            # 等待优化线程完成
             optimization_thread.join()
-            
-            # 自动提取预设
+
             archetypes = pipeline.extract_archetypes()
-            
-            # 导出预设配置
             pipeline.export_presets(archetypes, output_dir=".")
-            
-            # 导出BUG报告
             pipeline.export_bug_report("stability_bug_report.json")
-            
-            print("\n" + "=" * 80)
-            print("优化流程完成！")
-            print("=" * 80)
-            print("\n生成的文件：")
-            print("  1. optimized_rss_config_realism_super.json - EliteStandard 预设")
-            print("  2. optimized_rss_config_balanced_super.json - StandardMilsim 预设")
-            print("  3. optimized_rss_config_playability_super.json - TacticalAction 预设")
-            print("  4. stability_bug_report.json - 稳定性BUG检测报告")
-            print("\n建议：")
-            print("  - 硬核 Milsim 服务器：使用 EliteStandard 预设")
-            print("  - 公共服务器：使用 StandardMilsim 预设")
-            print("  - 休闲服务器：使用 TacticalAction 预设（30KG最轻松）")
-            print("\nBUG报告说明：")
-            print("  - 查看 stability_bug_report.json 了解所有导致数值崩溃的参数组合")
-            print("  - 这些信息可用于排查公式漏洞和边界条件问题")
+            gui_completed = True
         except ImportError:
             print("错误：无法导入GUI模块")
             print("请确保 rss_optimizer_gui.py 在同一目录下")
             print("继续使用命令行模式...")
-            use_gui = False
-    else:
-        # 执行优化（不使用GUI）
-        results = pipeline.optimize(study_name="rss_super_optimization")
-        
-        # 自动提取预设
+        except Exception as exc:
+            print("GUI 启动或运行失败: " + str(exc))
+            print("改用命令行模式...")
+
+    if not gui_completed:
+        pipeline.optimize(study_name="rss_super_optimization")
         archetypes = pipeline.extract_archetypes()
-        
-        # 导出预设配置
         pipeline.export_presets(archetypes, output_dir=".")
-        
-        # 导出BUG报告
         pipeline.export_bug_report("stability_bug_report.json")
-        
-        print("\n" + "=" * 80)
-        print("优化流程完成！")
-        print("=" * 80)
-        print("\n生成的文件：")
-        print("  1. optimized_rss_config_realism_super.json - EliteStandard 预设")
-        print("  2. optimized_rss_config_balanced_super.json - StandardMilsim 预设")
-        print("  3. optimized_rss_config_playability_super.json - TacticalAction 预设")
-        print("  4. stability_bug_report.json - 稳定性BUG检测报告")
-        print("\n建议：")
-        print("  - 硬核 Milsim 服务器：使用 EliteStandard 预设")
-        print("  - 公共服务器：使用 StandardMilsim 预设")
-        print("  - 休闲服务器：使用 TacticalAction 预设（30KG最轻松）")
-        print("\nBUG报告说明：")
-        print("  - 查看 stability_bug_report.json 了解所有导致数值崩溃的参数组合")
-        print("  - 这些信息可用于排查公式漏洞和边界条件问题")
+
+    print("\n" + "=" * 80)
+    print("优化流程完成！")
+    print("=" * 80)
+    print("\n生成的文件：")
+    print("  1. optimized_rss_config_realism_super.json - EliteStandard 预设")
+    print("  2. optimized_rss_config_balanced_super.json - StandardMilsim 预设")
+    print("  3. optimized_rss_config_playability_super.json - TacticalAction 预设")
+    print("  4. stability_bug_report.json - 稳定性BUG检测报告")
+    print("\n建议：")
+    print("  - 硬核 Milsim 服务器：使用 EliteStandard 预设")
+    print("  - 公共服务器：使用 StandardMilsim 预设")
+    print("  - 休闲服务器：使用 TacticalAction 预设（30KG最轻松）")
+    print("\nBUG报告说明：")
+    print("  - 查看 stability_bug_report.json 了解所有导致数值崩溃的参数组合")
+    print("  - 这些信息可用于排查公式漏洞和边界条件问题")
 
 
 if __name__ == '__main__':
