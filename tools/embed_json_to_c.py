@@ -8,11 +8,23 @@
 import json
 import re
 from pathlib import Path
-from typing import Dict, Any
 
 
 class JsonToCEmbedder:
     """JSON到C文件的嵌入器"""
+
+    # Optuna 导出的 JSON 常省略固定项；与 rss_super_pipeline / SCR_RSS_Params defvalue 对齐，
+    # 缺键时仍写入 C，避免 Init*Defaults 被整段替换后丢失生理学常数或 Sprint 阈值。
+    DEFAULT_PARAM_VALUES = {
+        'encumbrance_speed_penalty_exponent': 1.5,
+        'sprint_stamina_drain_multiplier': 3.5,
+        'aerobic_efficiency_factor': 0.9,
+        'anaerobic_efficiency_factor': 1.2,
+        'jump_efficiency': 0.22,
+        'climb_iso_efficiency': 0.12,
+        'sprint_velocity_threshold': 5.5,
+        'env_surface_wetness_prone_penalty': 0.15,
+    }
     
     def __init__(self, c_file_path: str):
         """
@@ -25,7 +37,9 @@ class JsonToCEmbedder:
         self.c_content = self.c_file_path.read_text(encoding='utf-8')
         self.json_data = {}
         
-        # 参数映射表：JSON参数名 -> C变量名
+        # 参数映射表：JSON 键名 -> SCR_RSS_Params 成员名（与 SCR_RSS_Settings.c 中
+        # Init*Defaults 赋值顺序、PARAMS_ARRAY_SIZE=47 对齐）。
+        # JSON 缺键时：先查 DEFAULT_PARAM_VALUES（固定生理学/管线项），否则跳过并告警。
         self.param_mapping = {
             'energy_to_stamina_coeff': 'energy_to_stamina_coeff',
             'base_recovery_rate': 'base_recovery_rate',
@@ -39,11 +53,13 @@ class JsonToCEmbedder:
             'encumbrance_stamina_drain_coeff': 'encumbrance_stamina_drain_coeff',
             'load_metabolic_dampening': 'load_metabolic_dampening',
             'max_recovery_per_tick': 'max_recovery_per_tick',
-            # sprint_stamina_drain_multiplier: [HARD] 固定=3.5，不写入 JSON，不嵌入
-            # aerobic_efficiency_factor:       [HARD] 固定=0.9，不写入 JSON，不嵌入
-            # anaerobic_efficiency_factor:     [HARD] 固定=1.2，不写入 JSON，不嵌入
+            # 优化管线常固定为 3.5；若未来 JSON 含此键则写入 C
+            'sprint_stamina_drain_multiplier': 'sprint_stamina_drain_multiplier',
             'fatigue_accumulation_coeff': 'fatigue_accumulation_coeff',
             'fatigue_max_factor': 'fatigue_max_factor',
+            # 默认 0.9 / 1.2；若 JSON 显式提供则嵌入
+            'aerobic_efficiency_factor': 'aerobic_efficiency_factor',
+            'anaerobic_efficiency_factor': 'anaerobic_efficiency_factor',
             'recovery_nonlinear_coeff': 'recovery_nonlinear_coeff',
             'fast_recovery_multiplier': 'fast_recovery_multiplier',
             'medium_recovery_multiplier': 'medium_recovery_multiplier',
@@ -53,16 +69,14 @@ class JsonToCEmbedder:
             'min_recovery_stamina_threshold': 'min_recovery_stamina_threshold',
             'min_recovery_rest_time_seconds': 'min_recovery_rest_time_seconds',
             'sprint_speed_boost': 'sprint_speed_boost',
+            'sprint_velocity_threshold': 'sprint_velocity_threshold',
             'posture_crouch_multiplier': 'posture_crouch_multiplier',
             'posture_prone_multiplier': 'posture_prone_multiplier',
-            'jump_consecutive_penalty': 'jump_consecutive_penalty',
-            'jump_height_guess': 'jump_height_guess',                      # [SOFT][OPTIMIZE]
-            'jump_horizontal_speed_guess': 'jump_horizontal_speed_guess',  # [SOFT][OPTIMIZE]
-            # [HARD] jump_efficiency 和 climb_iso_efficiency 是 Margaria 1963 生理学常数，不参与优化；
-            # 必须写入是因为 [Attribute defvalue] 仅 Workbench 编辑器生效，
-            # 代码 new SCR_RSS_Params() 不触发 defvalue，不显式赋值则运行时为 0.0。
-            'jump_efficiency': 'jump_efficiency',                          # [HARD] 0.22 fixed
-            'climb_iso_efficiency': 'climb_iso_efficiency',                # [HARD] 0.12 fixed
+            # [HARD] jump_efficiency / climb_iso_efficiency：Margaria 常数；JSON 有则写入
+            'jump_efficiency': 'jump_efficiency',
+            'jump_height_guess': 'jump_height_guess',
+            'jump_horizontal_speed_guess': 'jump_horizontal_speed_guess',
+            'climb_iso_efficiency': 'climb_iso_efficiency',
             'slope_uphill_coeff': 'slope_uphill_coeff',
             'slope_downhill_coeff': 'slope_downhill_coeff',
             'swimming_base_power': 'swimming_base_power',
@@ -75,7 +89,8 @@ class JsonToCEmbedder:
             'env_wind_resistance_coeff': 'env_wind_resistance_coeff',
             'env_mud_penalty_max': 'env_mud_penalty_max',
             'env_temperature_heat_penalty_coeff': 'env_temperature_heat_penalty_coeff',
-            'env_temperature_cold_recovery_penalty_coeff': 'env_temperature_cold_recovery_penalty_coeff'
+            'env_temperature_cold_recovery_penalty_coeff': 'env_temperature_cold_recovery_penalty_coeff',
+            'env_surface_wetness_prone_penalty': 'env_surface_wetness_prone_penalty',
         }
     
     def load_json(self, json_file_path: str):
@@ -110,24 +125,35 @@ class JsonToCEmbedder:
         method_name = f"Init{preset_name}Defaults"
         print(f"\n正在更新 {preset_name} 预设...")
         
-        # 构建参数赋值语句
+        # 构建参数赋值语句（JSON 优先，否则使用 DEFAULT_PARAM_VALUES）
         param_assignments = []
+        missing_keys = []
+        unknown_json_keys = set(self.json_data.keys()) - set(self.param_mapping.keys())
+        if unknown_json_keys:
+            print(f"提示：JSON 中存在未映射的键（已忽略）: {sorted(unknown_json_keys)}")
+
         for json_param, c_param in self.param_mapping.items():
             if json_param in self.json_data:
                 value = self.json_data[json_param]
-                # 格式化数值
-                if isinstance(value, float):
-                    # 使用科学计数法或小数表示
-                    if abs(value) < 0.001 or abs(value) > 10000:
-                        formatted_value = f"{value:.16e}"
-                    else:
-                        formatted_value = str(value)
+            elif json_param in self.DEFAULT_PARAM_VALUES:
+                value = self.DEFAULT_PARAM_VALUES[json_param]
+            else:
+                missing_keys.append(json_param)
+                continue
+
+            if isinstance(value, float):
+                if abs(value) < 0.001 or abs(value) > 10000:
+                    formatted_value = f"{value:.16e}"
                 else:
                     formatted_value = str(value)
-                
-                # 生成正确的变量名：m_EliteStandard, m_StandardMilsim, m_TacticalAction
-                var_name = f"m_{preset_name}.{c_param}"
-                param_assignments.append(f"\t{var_name} = {formatted_value};")
+            else:
+                formatted_value = str(value)
+
+            var_name = f"m_{preset_name}.{c_param}"
+            param_assignments.append(f"\t{var_name} = {formatted_value};")
+
+        if missing_keys:
+            print(f"警告：{preset_name} 的 JSON 缺少以下可优化键（且无内置默认值），已跳过: {missing_keys}")
         
         # 构建方法内容
         method_pattern = rf'protected void Init{preset_name}Defaults\(bool shouldInit\)\s*\{{[^}}]*\}}'
