@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.20.5
+# Realistic Stamina System (RSS) v3.20.6
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.20.5-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.20.6-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -20,7 +20,7 @@
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
 
-## 专用服性能（v3.20.5+）
+## 专用服性能（v3.20.6+）
 
 - 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
 - 专用服上大规模 AI 时，远距且非交战群组可降为「仅队长全量计算体力（默认 5s）、队员同步体力与速度倍率」，未命中该模式时另有按距离分档的 AI 刷新间隔；群组「是否交战」判定带短时间缓存（`RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC`），减轻大组扫描开销。可调参数见 [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)。
@@ -167,21 +167,35 @@ RealisticStaminaSystem/
     └── README.md                         # Tools 工具集文档
 ```
 
-## v3.20.5 版本更新 / v3.20.5 Updates
+## v3.20.6 版本更新 / v3.20.6 Updates
+
+**2026-04-09** · 发布区间（含两端）：`b18953d9421289a3bc994bfba621da04f5fcb41c` … `a79a8ef04777f73d938049374c68d8c9cb60b8e3`
+
+### 配置与工具
+
+- **预设与嵌入** - `SCR_RSS_Params` 与 `embed_json_to_c.py`、三份 `optimized_rss_config_*_super.json`、`SCR_RSS_Settings.c` 同步；嵌入脚本支持 JSON 缺省时的固定默认值，避免丢失生理学常数字段。
+- **优化管线与绘图** - `rss_super_pipeline.py`（GUI / 默认行为）、`plot_combat_cycle_30kg_en.py` 更新。
+- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` = **3.20.6**。
+
+### 区间内其它变更（摘要）
+
+- 自 **AI 交战体力效果**、专用服 AI 群组代理与 `RSS_PERF_*` 起，至 **3.20.5** 的网络同步、体力协调器与多模块性能/修复，**完整条目见 [CHANGELOG.md](CHANGELOG.md) 中 [3.20.6] 与 [3.19.3]～[3.20.5]**。
+
+### （原 v3.20.5 亮点，仍含于本发布区间）
 
 **2026-03-30**
 
-### ⚡ 性能优化
+#### ⚡ 性能优化
 
 - **Pandolf 调用减少** - `CalculateLandBaseDrainRate` 中 T1 阻尼结果提升为外层变量复用，努力补偿分支在速度差 < 0.01 时跳过重复调用，最坏情况 4 次→3 次，常见情况降至 2 次（`SCR_StaminaUpdateCoordinator.c`）。
 - **消除运行时除法** - `ShouldSync` / `AcceptClientReport` 新增三个预计算间隔常量替换 `1.0 / Hz` 浮点除法（`SCR_NetworkSync.c`）。
 
-### 🔧 修复
+#### 🔧 修复
 
 - **网络速度插值实际无效** - `SMOOTH_TRANSITION_DURATION` 从 `0.05s` 提升至 `0.15s`，50ms 间隔下 lerpSpeed ≈ 0.33，插值真正生效，消除速度突变感（`SCR_NetworkSync.c`）。
 - **死代码清理** - 删除 `CalculateBaseDrainRate` 中计算后从未使用的 `loadFactor` 等三行（`SCR_StaminaUpdateCoordinator.c`）。
 
-### 🏗️ 重构
+#### 🏗️ 重构
 
 - **提取 `BuildRecoveryContext`** - 新增 `RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_StaminaUpdateCoordinator.c`）。
 

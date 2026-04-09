@@ -6,6 +6,30 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.20.6] - 2026-04-09
+
+### 版本范围
+
+- **3.20.6** 发布内容对应 Git 提交区间（**含两端**）：`b18953d9421289a3bc994bfba621da04f5fcb41c` → `a79a8ef04777f73d938049374c68d8c9cb60b8e3`。
+
+### 配置与工具链
+
+- **`SCR_RSS_Settings` / `SCR_RSS_Params`** - 预设字段与三份 `optimized_rss_config_*_super.json` 对齐；`PARAMS_ARRAY_SIZE = 47` 与 `WriteParamsToArray` / `ApplyParamsFromArray` 一致。
+- **`embed_json_to_c.py`** - 映射表与 C 端 `SCR_RSS_Params` 同步（含 `sprint_velocity_threshold`、`env_surface_wetness_prone_penalty`、有氧/无氧效率与 Sprint 倍数等可选键）；新增 `DEFAULT_PARAM_VALUES`，避免 JSON 缺省固定项时整段替换 `Init*Defaults` 丢失生理学常数。
+- **`rss_super_pipeline.py`** - GUI 与默认行为增强；**`plot_combat_cycle_30kg_en.py`** - 战斗循环绘图与配置/拟真度量处理更新。
+- **`SCR_RSS_ConfigManager.c`** - `CURRENT_VERSION` 更新为 **3.20.6**。
+
+### AI、专用服与运行时（区间汇总）
+
+- **AI 交战体力效果**（`SCR_RSS_AIStaminaCombatEffects.c`）及 **AI 体力桥接 / 群组代理**（`SCR_RSS_AIStaminaBridge.c`、`SCR_RSS_AIGroupStaminaProxy.c`）、**`SCR_StaminaConstants.c`** 中 `RSS_PERF_*` 调参。
+- **玩家与协调器**（`PlayerBase.c`、`SCR_StaminaUpdateCoordinator.c`、`SCR_StaminaConsumption.c`、`SCR_EnvironmentFactor.c`、`SCR_TerrainDetection.c`、`SCR_NetworkSync.c`、`SCR_SlopeSpeedTransition.c`、`SCR_ExerciseTracking.c`、`SCR_DebugDisplay.c`、`SCR_RSS_ServerBootstrap.c` 等）的性能优化与修复，**逐条明细见下文 [3.19.3]～[3.20.5]** 各版本小节。
+
+### 说明
+
+- 自 **3.19.3** 起至 **3.20.5** 的变更已在下方按版本保留，便于按次查阅；**3.20.6** 为上述提交区间的**发布整合标签**与配置版本对齐，不重复展开全部 diff。
+
+---
+
 ## [3.20.5] - 2026-03-30
 
 ### ⚡ 性能优化
