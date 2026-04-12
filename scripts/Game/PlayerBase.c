@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.21.0
+// Realistic Stamina System (RSS) - v3.21.1
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -1361,13 +1361,6 @@ modded class SCR_CharacterControllerComponent
         // 由于我们现在直接计算绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数，
         // 不需要动画速度补偿，因为我们的计算已经基于真实目标速度，不再依赖引擎的动画速度
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
-        {
-            finalSpeedToApply = Math.Clamp(
-                finalSpeedToApply * SCR_CombatStimConstants.CRASH_SPEED_MULTIPLIER,
-                0.01,
-                1.0);
-        }
         m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
         OverrideMaxSpeed(finalSpeedToApply);
         if (IsPlayerControlled())
@@ -1434,6 +1427,13 @@ modded class SCR_CharacterControllerComponent
         float rainWeight = 0.0;
         if (m_pEnvironmentFactor)
             rainWeight = m_pEnvironmentFactor.GetRainWeight();
+
+        // 苯甲酸钠咖啡因药效期：不计天气对体力链的热应激与降雨湿重（与恢复侧跳过一致）
+        if (RSS_IsCaffeineSodiumBenzoateActive())
+        {
+            heatStressMultiplier = 1.0;
+            rainWeight = 0.0;
+        }
         
         // 应用湿重到当前重量（用于消耗计算）
         // 模块化：使用 SwimmingStateManager 计算总湿重
@@ -1742,8 +1742,9 @@ modded class SCR_CharacterControllerComponent
             
         }
 
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
-            totalDrainRate = 0.0;
+        // 咖啡因药效期：体力消耗再降低 15%（在热应激等已应用之后）
+        if (RSS_IsCaffeineSodiumBenzoateActive())
+            totalDrainRate = totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
         
         // 调试信息：最终体力消耗率
         
@@ -1817,12 +1818,7 @@ modded class SCR_CharacterControllerComponent
         // 通过 UISignalBridge 模块更新 "Exhaustion" 信号，让官方UI特效和音效响应自定义体力系统状态
         // 官方UI特效阈值：0.45，拟真模型崩溃点：0.25
         if (m_pUISignalBridge)
-        {
-            bool exhaustedForUi = isExhausted;
-            if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
-                exhaustedForUi = false;
-            m_pUISignalBridge.UpdateUISignal(staminaPercent, exhaustedForUi, currentSpeed, totalDrainRate);
-        }
+            m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate);
         
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
@@ -2521,14 +2517,22 @@ modded class SCR_CharacterControllerComponent
         return realOriginalSpeed;
     }
 
-    // ==================== 战术刺激针：阶段与注入 ====================
+    // ==================== 苯甲酸钠咖啡因注射液：阶段与注入 ====================
     int RSS_GetCombatStimPhase()
     {
         return m_iCombatStimPhase;
     }
 
+    //! 药效进行中（15 分钟内）：体力消耗减免、无视天气惩罚。
+    bool RSS_IsCaffeineSodiumBenzoateActive()
+    {
+        return m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE;
+    }
+
     protected void RSS_CombatStim_OnTickTransitions()
     {
+        if (!Replication.IsServer())
+            return;
         if (m_fCombatStimPhaseEndsAt < 0.0)
             return;
 
@@ -2536,28 +2540,26 @@ modded class SCR_CharacterControllerComponent
         if (wt < m_fCombatStimPhaseEndsAt)
             return;
 
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.DELAY)
         {
-            m_iCombatStimPhase = ERSS_CombatStimPhase.CRASH;
-            m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.CRASH_DURATION_SEC;
-            if (m_pStaminaComponent)
-                m_pStaminaComponent.SetTargetStamina(0.0);
+            m_iCombatStimPhase = ERSS_CombatStimPhase.ACTIVE;
+            m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.ACTIVE_DURATION_SEC;
+            if (IsPlayerControlled())
+                Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
             return;
         }
 
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE)
         {
             m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
             m_fCombatStimPhaseEndsAt = -1.0;
+            if (IsPlayerControlled())
+                Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
         }
     }
 
     protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
     {
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
-            return 1.0;
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
-            return 0.0;
         return staminaPercent;
     }
 
@@ -2573,43 +2575,17 @@ modded class SCR_CharacterControllerComponent
 
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
-        {
-            RSS_CombatStim_TriggerOverdose(ch);
-            return;
-        }
-
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.DELAY || m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE)
             return;
 
-        m_iCombatStimPhase = ERSS_CombatStimPhase.RUSH;
-        m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.RUSH_DURATION_SEC;
-        if (m_pStaminaComponent)
-            m_pStaminaComponent.SetTargetStamina(1.0);
+        m_iCombatStimPhase = ERSS_CombatStimPhase.DELAY;
+        m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.ABSORPTION_DELAY_SEC;
 
         if (IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
     }
 
-    protected void RSS_CombatStim_TriggerOverdose(ChimeraCharacter ch)
-    {
-        m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
-        m_fCombatStimPhaseEndsAt = -1.0;
-
-        SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
-        if (dmgMgr)
-        {
-            dmgMgr.SetHealthScaled(SCR_CombatStimConstants.OVERDOSE_HEALTH_SCALED);
-            dmgMgr.ForceUnconsciousness(0.0);
-        }
-
-        if (m_pStaminaComponent)
-            m_pStaminaComponent.SetTargetStamina(0.0);
-
-        if (IsPlayerControlled())
-            Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
-    }
-
+    //! 将注射阶段同步至拥有者客户端（供 CanApplyEffect 等本地查询；不含 HUD 特效）。
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     protected void RPC_CombatStimSyncToOwner(int phase, float phaseEndsAt)
     {

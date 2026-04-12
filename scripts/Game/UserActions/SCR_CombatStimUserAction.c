@@ -1,4 +1,4 @@
-//! User action for SCR_ConsumableCombatStimInjector (tactical stim; usable when not injured).
+//! User action for SCR_ConsumableCombatStimInjector (CSB 20% injector; same rules as morphine self-heal eligibility).
 class SCR_CombatStimUserAction : SCR_HealingUserAction
 {
 	override void OnActionCanceled(IEntity pOwnerEntity, IEntity pUserEntity)

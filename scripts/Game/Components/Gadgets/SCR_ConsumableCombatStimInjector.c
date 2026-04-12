@@ -1,5 +1,5 @@
-//! Tactical stim autoinjector: RSS combat rush / crash / overdose (no morphine HP healing).
-//! Prefab: Consumable Effect = this class; clear Damage Effects To Load; same MORPHINE gadget animations.
+//! 苯甲酸钠咖啡因 20% 自注射器：延迟生效 + 药效期内体力/天气等见 PlayerBase。
+
 [BaseContainerProps()]
 class SCR_ConsumableCombatStimInjector : SCR_ConsumableEffectHealthItems
 {
@@ -15,7 +15,7 @@ class SCR_ConsumableCombatStimInjector : SCR_ConsumableEffectHealthItems
 			return false;
 
 		int phase = ctrl.RSS_GetCombatStimPhase();
-		if (phase == ERSS_CombatStimPhase.RUSH)
+		if (phase == ERSS_CombatStimPhase.DELAY || phase == ERSS_CombatStimPhase.ACTIVE)
 		{
 			failReason = SCR_EConsumableFailReason.ALREADY_APPLIED;
 			return false;

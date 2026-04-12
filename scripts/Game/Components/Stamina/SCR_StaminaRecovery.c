@@ -80,6 +80,7 @@ class StaminaRecoveryCalculator
     // @param stance 当前姿态（0=站立，1=蹲姿，2=趴姿）
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
     // @param currentSpeed 当前速度 (m/s) - 新增参数用于静态保护逻辑
+    // @param rssCtrlForCaffeine 若处于苯甲酸钠咖啡因药效期，则跳过天气类恢复惩罚
     // @return 恢复率（每0.2秒）
     static float CalculateRecoveryRate(
         float staminaPercent,
@@ -91,7 +92,8 @@ class StaminaRecoveryCalculator
         int stance = 0,
         EnvironmentFactor environmentFactor = null,
         float currentSpeed = 0.0,
-        int movementPhase = 0)
+        int movementPhase = 0,
+        SCR_CharacterControllerComponent rssCtrlForCaffeine = null)
     {
         float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
             staminaPercent, 
@@ -103,12 +105,16 @@ class StaminaRecoveryCalculator
         
         // ==================== v2.14.0 环境因子修正 ====================
         
+        bool skipWeatherRecoveryPenalties = false;
+        if (rssCtrlForCaffeine && rssCtrlForCaffeine.RSS_IsCaffeineSodiumBenzoateActive())
+            skipWeatherRecoveryPenalties = true;
+
         // 获取高级环境因子（如果环境因子模块存在）
         float heatStressPenalty = 0.0;
         float coldStressPenalty = 0.0;
         float surfaceWetnessPenalty = 0.0;
         
-        if (environmentFactor)
+        if (!skipWeatherRecoveryPenalties && environmentFactor)
         {
             heatStressPenalty = environmentFactor.GetHeatStressPenalty();
             coldStressPenalty = environmentFactor.GetColdStressPenalty();

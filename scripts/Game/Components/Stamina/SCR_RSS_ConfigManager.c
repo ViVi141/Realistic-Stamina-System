@@ -1,14 +1,14 @@
 // RSS配置管理器 - 使用Reforger官方标准
 // 负责从服务器Profile目录读取或生成JSON配置文件
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c
-// 版本: v3.21.0
+// 版本: v3.21.1
 
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.21.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.21.1";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;

@@ -4,11 +4,11 @@ GenericEntity : "{C95E11C60810F432}Prefabs/Items/Core/Item_Base.et" {
   InventoryItemComponent "{5222EB4D0C73006B}" {
    Attributes SCR_ItemAttributeCollection "{5222EB4D0A2B466B}" {
     ItemDisplayName SCR_InventoryUIInfo "{5222EB4D07D865FA}" {
-     Name "Epinephrine-X Autoinjector"
-     Description "Tactical stim: rush then crash; second dose during crash can overdose. Not morphine. | 战术刺激针：爆发后反噬；反噬期再注射可能过载。非吗啡。"
+     Name "Caffeine-Sodium Benzoate 20% Injector"
+     Description "CSB 20%: 30s to onset, then 15 min −15% stamina drain & no weather penalties. | 苯甲酸钠咖啡因 20%：注射后约 30 秒起效，15 分钟内体力消耗降低约 15%、无视天气惩罚。"
      m_aItemHints {
       SCR_InventoryItemHintUIInfo "{6918D071A419C896}" {
-       Name "Combat stim (Epinephrine-X)"
+       Name "CSB 20% (caffeine / sodium benzoate)"
        Icon "{B9199157B90D6216}UI/Textures/InventoryIcons/Medical/Medical-icons.imageset"
        IconSetName "Morphine_UI"
        m_cColor 1 1 1 1

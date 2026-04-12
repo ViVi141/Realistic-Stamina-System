@@ -6,6 +6,25 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.21.1] - 2026-04-12
+
+### 注射器与药效（相对旧版肾上腺素式战术兴奋针）
+
+- **物品与设定**：由原先面向「肾上腺素 / 战术兴奋」的注射体验，改为 **苯甲酸钠咖啡因 20%（CSB）** 自注射器（预制体 **`CombatStimInjection_01`**、`SCR_ConsumableCombatStimInjector`、`SCR_CombatStimUserAction`）。
+- **阶段模型**：**`NONE` → `DELAY`（吸收等待）→ `ACTIVE`（药效期）**；不再使用旧版 **RUSH / CRASH / 过量昏迷** 等与肾上腺素强绑定的阶段与惩罚链（相关逻辑已由 CSB 规则替代，见 `PlayerBase`、`SCR_CombatStimConstants`）。
+- **药效要点（ACTIVE）**：约 **15 分钟** 药效；体力消耗按 **`STAMINA_DRAIN_MULTIPLIER`** 减免；**热应激 / 降雨湿重等**对体力链的惩罚在药效期内按设计绕过或削弱（实现见 **`SCR_StaminaUpdateCoordinator`**、**`SCR_StaminaRecovery`** 等与 `RSS_IsCaffeineSodiumBenzoateActive()` 的分支）。
+- **网络**：注射仍走服务端 **`RSS_CombatStim_OnInjectServer`**；拥有者客户端通过 **`RPC_CombatStimSyncToOwner`** 同步 **`phase`** 与 **`phaseEndsAt`**，供再注射判定与本地逻辑使用。
+
+### 已移除的表现（无用或与新药效无关的特效）
+
+- **全屏 HUD 叠层**：删除 **`CombatStimOverlay.layout`** 及 **`SCR_RSS_CombatStimOverlay`**、**`SCR_ScreenEffectsManager_RSS`** 等对 **`SCR_ScreenEffectsManager`** 的挂钩；不再为第一人称叠加暗角/色偏类全屏特效。
+- **随旧设计一并清理**：与上述表现绑定的常量与客户端冗余（如仅服务于已删叠层/旧镜头表现的参数）；预制体描述去掉已不再适用的「瞄准抖动」等文案。
+- **说明**：药效本身仍完全由体力与环境逻辑体现，**不依赖**屏幕特效。
+
+### 版本与文档
+
+- **`CURRENT_VERSION`**、三份 **README**、`PlayerBase` 头注释等与版本 **3.21.1** 对齐。
+
 ## [3.21.0] - 2026-04-12
 
 本版本变更来自当前工作区相对 `origin/main` 的已修改文件与未纳入版本控制的**新增文件**（见 `git status`）。
@@ -39,6 +58,8 @@
 
 - **`SCR_RSS_CombatStimOverlay.c`** - 在 **`Workspace`** 上 **`CreateWidgets`** 加载 **`UI/layouts/HUD/RSS/CombatStimOverlay.layout`**，按 **`RSS_GetCombatStimPhase()`** 在 RUSH/CRASH 下调整全屏 **`ImageWidget`** 色调与透明度；仅本地控制、**`PlayerCamera`** 匹配且 **第一人称**（非第三人称）时生效。
 - **`SCR_ScreenEffectsManager_RSS.c`** - **`modded class SCR_ScreenEffectsManager`**，在 **`DisplayStartDraw` / `DisplayUpdate` / `DisplayStopDraw`** 中驱动上述叠层的创建、每帧更新与销毁。
+
+（**v3.21.1** 起：注射器与药效已改为 **CSB 20%** 新模型，并删除上述与旧肾上腺素式兴奋针绑定的全屏叠层；详见 **[3.21.1]**。）
 
 ---
 

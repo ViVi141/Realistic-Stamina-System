@@ -697,7 +697,9 @@ class StaminaUpdateCoordinator
                 false,
                 ctx.stanceInt,
                 ctx.envFactor,
-                ctx.speedForRecovery);
+                ctx.speedForRecovery,
+                0,
+                controller);
 
             recoveryRate = recoveryRate * ctx.heatPenalty;
         }
@@ -855,7 +857,7 @@ class StaminaUpdateCoordinator
             recoveryRate = StaminaRecoveryCalculator.CalculateRecoveryRate(
                 staminaPercent, ctx.restDurationMinutes, ctx.exerciseDurationMinutes,
                 ctx.currentWeightForRecovery, ctx.staticDrainForRecovery, false, ctx.stanceInt,
-                ctx.envFactor, ctx.speedForRecovery);
+                ctx.envFactor, ctx.speedForRecovery, 0, controller);
 
             recoveryRate = recoveryRate * ctx.heatPenalty;
         }
