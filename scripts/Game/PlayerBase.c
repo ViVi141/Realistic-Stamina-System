@@ -1,4 +1,4 @@
-// Realistic Stamina System (RSS) - v3.19.3
+// Realistic Stamina System (RSS) - v3.21.0
 // 拟真体力-速度系统：结合体力值和负重，动态调整移动速度并显示状态信息
 // 使用精确数学模型（α=0.6，Pandolf模型），不使用近似
 // 优化目标：2英里在15分27秒内完成（完成时间：925.8秒，提前1.2秒）
@@ -120,6 +120,10 @@ modded class SCR_CharacterControllerComponent
     protected float m_fSprintStartTime = -1.0;       // 本次冲刺开始时间（世界时间秒），-1 表示未在爆发/已进入平稳期
     protected bool m_bLastWasSprinting = false;       // 上一帧是否处于 Sprint 状态，用于检测进入/离开冲刺
     protected float m_fSprintCooldownUntil = -1.0;    // 冷却结束时间（世界时间秒），此时间前再次冲刺不触发爆发，直接平稳期
+
+    // ==================== 战术刺激针（Combat Stim-Pen）====================
+    protected int m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
+    protected float m_fCombatStimPhaseEndsAt = -1.0;
     
     // 泥泞滑倒：状态与每帧判定（独立文件以控制 PlayerBase 单文件体积）
     protected ref RSS_MudSlipRunner m_pMudSlipRunner;
@@ -1170,12 +1174,14 @@ modded class SCR_CharacterControllerComponent
         }
         
         // 获取当前体力百分比（使用目标体力值，这是我们控制的）
+        RSS_CombatStim_OnTickTransitions();
+
         float staminaPercent = 1.0;
         if (m_pStaminaComponent)
             staminaPercent = m_pStaminaComponent.GetTargetStamina();
-        
-        // 限制在有效范围内
+
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+        staminaPercent = RSS_CombatStim_AdjustStaminaRead(staminaPercent);
         
         // [修复 v3.7.0] 移除了强制归零逻辑(staminaPercent < 0.01 = 0.0)
         // 允许浮点数精度的微量恢复，防止进入归零死锁
@@ -1355,6 +1361,13 @@ modded class SCR_CharacterControllerComponent
         // 由于我们现在直接计算绝对速度并转换为相对于GAME_MAX_SPEED的正确倍数，
         // 不需要动画速度补偿，因为我们的计算已经基于真实目标速度，不再依赖引擎的动画速度
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
+        {
+            finalSpeedToApply = Math.Clamp(
+                finalSpeedToApply * SCR_CombatStimConstants.CRASH_SPEED_MULTIPLIER,
+                0.01,
+                1.0);
+        }
         m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
         OverrideMaxSpeed(finalSpeedToApply);
         if (IsPlayerControlled())
@@ -1728,6 +1741,9 @@ modded class SCR_CharacterControllerComponent
             totalDrainRate = totalDrainRate * heatStressMultiplier;
             
         }
+
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+            totalDrainRate = 0.0;
         
         // 调试信息：最终体力消耗率
         
@@ -1802,9 +1818,10 @@ modded class SCR_CharacterControllerComponent
         // 官方UI特效阈值：0.45，拟真模型崩溃点：0.25
         if (m_pUISignalBridge)
         {
-            // 检查是否精疲力尽
-            // 注意：isExhausted 已在函数作用域内声明
-            m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate);
+            bool exhaustedForUi = isExhausted;
+            if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+                exhaustedForUi = false;
+            m_pUISignalBridge.UpdateUISignal(staminaPercent, exhaustedForUi, currentSpeed, totalDrainRate);
         }
         
         m_fLastStaminaPercent = staminaPercent;
@@ -2502,6 +2519,102 @@ modded class SCR_CharacterControllerComponent
         OverrideMaxSpeed(currentMultiplier);
         
         return realOriginalSpeed;
+    }
+
+    // ==================== 战术刺激针：阶段与注入 ====================
+    int RSS_GetCombatStimPhase()
+    {
+        return m_iCombatStimPhase;
+    }
+
+    protected void RSS_CombatStim_OnTickTransitions()
+    {
+        if (m_fCombatStimPhaseEndsAt < 0.0)
+            return;
+
+        float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (wt < m_fCombatStimPhaseEndsAt)
+            return;
+
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+        {
+            m_iCombatStimPhase = ERSS_CombatStimPhase.CRASH;
+            m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.CRASH_DURATION_SEC;
+            if (m_pStaminaComponent)
+                m_pStaminaComponent.SetTargetStamina(0.0);
+            return;
+        }
+
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
+        {
+            m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
+            m_fCombatStimPhaseEndsAt = -1.0;
+        }
+    }
+
+    protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
+    {
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+            return 1.0;
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
+            return 0.0;
+        return staminaPercent;
+    }
+
+    void RSS_CombatStim_OnInjectServer()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        IEntity ownerEnt = GetOwner();
+        ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
+        if (!ch)
+            return;
+
+        float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.CRASH)
+        {
+            RSS_CombatStim_TriggerOverdose(ch);
+            return;
+        }
+
+        if (m_iCombatStimPhase == ERSS_CombatStimPhase.RUSH)
+            return;
+
+        m_iCombatStimPhase = ERSS_CombatStimPhase.RUSH;
+        m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.RUSH_DURATION_SEC;
+        if (m_pStaminaComponent)
+            m_pStaminaComponent.SetTargetStamina(1.0);
+
+        if (IsPlayerControlled())
+            Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
+    }
+
+    protected void RSS_CombatStim_TriggerOverdose(ChimeraCharacter ch)
+    {
+        m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
+        m_fCombatStimPhaseEndsAt = -1.0;
+
+        SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
+        if (dmgMgr)
+        {
+            dmgMgr.SetHealthScaled(SCR_CombatStimConstants.OVERDOSE_HEALTH_SCALED);
+            dmgMgr.ForceUnconsciousness(0.0);
+        }
+
+        if (m_pStaminaComponent)
+            m_pStaminaComponent.SetTargetStamina(0.0);
+
+        if (IsPlayerControlled())
+            Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
+    }
+
+    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
+    protected void RPC_CombatStimSyncToOwner(int phase, float phaseEndsAt)
+    {
+        m_iCombatStimPhase = phase;
+        m_fCombatStimPhaseEndsAt = phaseEndsAt;
     }
 
 }

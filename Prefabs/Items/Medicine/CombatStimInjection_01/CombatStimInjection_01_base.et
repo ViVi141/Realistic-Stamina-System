@@ -1,0 +1,87 @@
+GenericEntity : "{C95E11C60810F432}Prefabs/Items/Core/Item_Base.et" {
+ ID "508AB2013EEE1E00"
+ components {
+  InventoryItemComponent "{5222EB4D0C73006B}" {
+   Attributes SCR_ItemAttributeCollection "{5222EB4D0A2B466B}" {
+    ItemDisplayName SCR_InventoryUIInfo "{5222EB4D07D865FA}" {
+     Name "Epinephrine-X Autoinjector"
+     Description "Tactical stim: rush then crash; second dose during crash can overdose. Not morphine. | 战术刺激针：爆发后反噬；反噬期再注射可能过载。非吗啡。"
+     m_aItemHints {
+      SCR_InventoryItemHintUIInfo "{6918D071A419C896}" {
+       Name "Combat stim (Epinephrine-X)"
+       Icon "{B9199157B90D6216}UI/Textures/InventoryIcons/Medical/Medical-icons.imageset"
+       IconSetName "Morphine_UI"
+       m_cColor 1 1 1 1
+      }
+     }
+    }
+    ItemPhysAttributes ItemPhysicalAttributes PhysicalAttributes {
+     Weight 0.02
+     SizeSetupStrategy Manual
+     ItemDimensions 5 5 5
+     ItemVolume 10
+     DimensionScaler 0.01
+     RestingUP Left
+    }
+    ItemAnimationAttributes ItemAnimationAttributes "{6918D071A419C846}" {
+     AnimationInstance "{4FCBEA45CAEBC9C0}anims/workspaces/player/player_main_1h.asi"
+     AnimationIKPose "{3E5C93E85F05C6B5}Assets/Weapons/Grenades/RGD5/anims/anm/p_rgd5_ik.anm"
+     AnimationAttachments {
+      AnimationAttachmentInfo "{6918D071A419C848}" {
+       AnimGraph "{25B5CD66792F60F4}Assets/Items/Medicine/Workspaces/MorphineInjection_01.agr"
+       AnimInstance "{B900F61FD4D7F1DA}Assets/Items/Medicine/Workspaces/morphine_injection_player.asi"
+       BindingName "Gadget"
+      }
+     }
+    }
+    CustomAttributes {
+     SCR_AlternativeModel "{6918D071A419C84D}" {
+      m_sAlternativeModel "{DC889A505131E567}Assets/Items/Medicine/MorphineInjection_01/MorphineInjection_01_full_open.xob"
+     }
+     SCR_ItemOfInterestAttribute "{6918D071A419C84C}" {
+      m_InterestType MORPHINE
+     }
+     ItemActionAnimAttributes "{6918D071A419C84E}" {
+      AnimationGraphTemplate "{DFFC0A34A77ADCB4}anims/workspaces/player/player_main.agr"
+      ActionAnimationCommandName "CMD_HealSelf"
+      ActionAnimDuration 10
+      AllowMovementDuringAction 1
+     }
+     CharacterModifierAttributes "{6918D071A419C850}" {
+      SpeedLimit 4
+      ADSSpeedLimit 4
+      SpeedLimitItemPrimaryAction 4
+      SpeedLimitHighready 4
+     }
+     PreviewRenderAttributes "{6918D071A419C855}" {
+      CameraPreset Top
+      CameraDistanceToItem 0.5
+      ItemRenderRotation 45 90 0
+      FOV 10
+      AspectRatio 1
+     }
+     SCR_SelectionMenuPreviewAttributes "{6918D071A419C854}" {
+      m_bShowMedicalColor 1
+     }
+    }
+    CommonItemType "RSS_COMBAT_STIM"
+   }
+  }
+  MeshObject "{6918D071A419C856}" {
+   Object "{31568ECC375344FD}Assets/Items/Medicine/MorphineInjection_01/MorphineInjection_01_full_close.xob"
+  }
+  RigidBody "{6918D071A419C859}" {
+   Mass 5
+   ModelGeometry 1
+  }
+  SCR_ConsumableItemComponent "{6918D071A419C85B}" {
+   m_eAnimVariable ADRIANOV
+   m_eUseMask 7
+   m_ConsumableEffect SCR_ConsumableCombatStimInjector "{C4A902E18F7D3561}" {
+    m_fApplyToSelfDuration 2.5
+    m_fApplyToOtherDuration 2.5
+   }
+   m_bAlternativeModelOnAction 1
+  }
+ }
+}

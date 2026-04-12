@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.20.6
+# Realistic Stamina System (RSS) v3.21.0
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.20.6-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.21.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -20,7 +20,7 @@
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
 
-## 专用服性能（v3.20.6+）
+## 专用服性能（v3.21.0+）
 
 - 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
 - 专用服上大规模 AI 时，远距且非交战群组可降为「仅队长全量计算体力（默认 5s）、队员同步体力与速度倍率」，未命中该模式时另有按距离分档的 AI 刷新间隔；群组「是否交战」判定带短时间缓存（`RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC`），减轻大组扫描开销。可调参数见 [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)。
@@ -166,6 +166,16 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*.json       # 优化后的配置文件（3 个预设）
     └── README.md                         # Tools 工具集文档
 ```
+
+## v3.21.0 版本更新 / v3.21.0 Updates
+
+**2026-04-12**（条目与当前仓库变更一致，详见 [CHANGELOG.md](CHANGELOG.md) **[3.21.0]**）
+
+- **配置与 README** - `CURRENT_VERSION` **3.21.0**（`SCR_RSS_ConfigManager.c`）、三份 README 与 `PlayerBase.c` 头注释版本对齐。
+- **战术兴奋剂** - `SCR_CombatStimConstants`、`SCR_ConsumableCombatStimInjector`、`SCR_CombatStimUserAction`；`PlayerBase` 内 RUSH/CRASH/过量、体力与速度、**`RPC_CombatStimSyncToOwner`**；预制体 **`Prefabs/Items/Medicine/CombatStimInjection_01/`**。
+- **注射器扩展** - 自定义注射器与吗啡相关消耗品 / UserAction / DamageEffect 脚本（见 CHANGELOG 文件列表）。
+- **实体目录** - `Configs/EntityCatalog/US/InventoryItems_EntityCatalog_US.conf` 登记战斗兴奋剂军火库数据（若需在游戏内出现，还须按 CHANGELOG 说明接好派系 `US.conf` 目录引用）。
+- **画面叠层** - `CombatStimOverlay.layout`、`SCR_RSS_CombatStimOverlay.c`、`SCR_ScreenEffectsManager_RSS.c`；仅本地第一人称下按阶段显示暖/冷色叠层。
 
 ## v3.20.6 版本更新 / v3.20.6 Updates
 

@@ -6,6 +6,42 @@
 # 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 #
 
+## [3.21.0] - 2026-04-12
+
+本版本变更来自当前工作区相对 `origin/main` 的已修改文件与未纳入版本控制的**新增文件**（见 `git status`）。
+
+### 配置与文档
+
+- **`SCR_RSS_ConfigManager.c`** - `CURRENT_VERSION` 与文件头注释对齐为 **3.21.0**。
+- **`PlayerBase.c`** - 文件头版本注释 **3.21.0**。
+- **`README.md`**、**`README_CN.md`**、**`README_EN.md`** - 标题与 Version 徽章更新为 **3.21.0**。
+
+### 战术兴奋剂（Combat Stim）— 逻辑与网络
+
+- **`PlayerBase.c`**（`modded class SCR_CharacterControllerComponent`）- 新增战术刺激针状态 **`m_iCombatStimPhase`**、**`m_fCombatStimPhaseEndsAt`**；**RUSH** 阶段体力消耗率置 **0**、体力显示读数拉满，**CRASH** 阶段对最终速度倍率乘以 **`SCR_CombatStimConstants.CRASH_SPEED_MULTIPLIER`**、体力读数视为 **0**；阶段超时在 **`RSS_CombatStim_OnTickTransitions`** 中从 RUSH→CRASH→NONE；**`RSS_CombatStim_OnInjectServer`** 在服务端处理注射（CRASH 期内再注触发 **`RSS_CombatStim_TriggerOverdose`**：`SetHealthScaled`、`ForceUnconsciousness`）；**`RPC_CombatStimSyncToOwner`** 将阶段同步至本地拥有者；RUSH 期间 **`UISignalBridge`** 的精疲力尽显示强制为假。
+- **`SCR_CombatStimConstants.c`** - 阶段枚举 **`ERSS_CombatStimPhase`** 与 RUSH/CRASH 时长、崩溃减速、过量血量比例等常量。
+
+### 战术兴奋剂 — 消耗品、伤害与预制体
+
+- **`SCR_ConsumableCombatStimInjector.c`**、**`SCR_CombatStimUserAction.c`** - 战术兴奋剂自动注射器消耗品与用户动作（RUSH 期内拒绝重复使用；服务端 **`ApplyEffect`** 调用 **`RSS_CombatStim_OnInjectServer`**）。
+- **`Prefabs/Items/Medicine/CombatStimInjection_01/`** - **`CombatStimInjection_01.et`**、**`CombatStimInjection_01_base.et`**（及对应 `.meta`）- 战斗兴奋剂预制体资源。
+
+### 注射器 / 吗啡管线（脚本扩展）
+
+- **`SCR_ConsumableCustomInjector.c`**、**`SCR_CustomInjectorUserAction.c`**、**`SCR_CustomInjectorDamageEffect.c`** - 自定义注射器与伤害效果路径。
+- **`SCR_ConsumableMorphine.c`**、**`SCR_MorphineUserAction.c`**、**`SCR_MorphineDamageEffect.c`** - 吗啡侧消耗品、动作与伤害效果脚本。
+
+### 实体目录（军火库条目）
+
+- **`Configs/EntityCatalog/US/InventoryItems_EntityCatalog_US.conf`**（及 `.meta`）- 为 **`CombatStimInjection_01.et`** 增加 **`SCR_EntityCatalogInventoryItem`**，含 **`SCR_ArsenalItem`**（`HEAL` / `CONSUMABLE`、补给点等）。**注意**：若游戏中仍不出现，需在 **`Configs/Factions/US.conf`** 的 **`m_aEntityCatalogs`** 中引用本模组目录资源 GUID，或采用完整合并原版目录的流程（参见实体目录官方说明）。
+
+### 画面反馈（Workspace 叠层）
+
+- **`SCR_RSS_CombatStimOverlay.c`** - 在 **`Workspace`** 上 **`CreateWidgets`** 加载 **`UI/layouts/HUD/RSS/CombatStimOverlay.layout`**，按 **`RSS_GetCombatStimPhase()`** 在 RUSH/CRASH 下调整全屏 **`ImageWidget`** 色调与透明度；仅本地控制、**`PlayerCamera`** 匹配且 **第一人称**（非第三人称）时生效。
+- **`SCR_ScreenEffectsManager_RSS.c`** - **`modded class SCR_ScreenEffectsManager`**，在 **`DisplayStartDraw` / `DisplayUpdate` / `DisplayStopDraw`** 中驱动上述叠层的创建、每帧更新与销毁。
+
+---
+
 ## [3.20.6] - 2026-04-09
 
 ### 版本范围
