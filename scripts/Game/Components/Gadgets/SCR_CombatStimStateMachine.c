@@ -37,6 +37,13 @@ class SCR_CombatStimStateMachine
             return true;
         }
 
+        if (currentPhase == ERSS_CombatStimPhase.DELAY)
+        {
+            outPhase = ERSS_CombatStimPhase.ACTIVE;
+            outPhaseEndsAt = worldTimeSec + SCR_CombatStimConstants.ACTIVE_DURATION_SEC;
+            return true;
+        }
+
         if (currentPhase == ERSS_CombatStimPhase.OD)
         {
             outPhase = ERSS_CombatStimPhase.NONE;
