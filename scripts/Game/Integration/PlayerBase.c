@@ -124,6 +124,7 @@ modded class SCR_CharacterControllerComponent
     // ==================== 战术刺激针（Combat Stim-Pen）====================
     protected int m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
     protected float m_fCombatStimPhaseEndsAt = -1.0;
+    protected int m_iCombatStimDelayInjectionCount = 0;
     
     // 泥泞滑倒：状态与每帧判定（独立文件以控制 PlayerBase 单文件体积）
     protected ref RSS_MudSlipRunner m_pMudSlipRunner;
@@ -395,14 +396,12 @@ modded class SCR_CharacterControllerComponent
 
     protected array<float> BuildPresetArray(SCR_RSS_Params p)
     {
-        array<float> values = new array<float>();
-        SCR_RSS_Settings.WriteParamsToArray(p, values);
-        return values;
+        return SCR_RSS_ConfigSyncUtils.BuildPresetArray(p);
     }
 
     protected void BuildSettingsArrays(SCR_RSS_Settings s, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
-        SCR_RSS_Settings.WriteSettingsToArrays(s, floatSettings, intSettings, boolSettings);
+        SCR_RSS_ConfigSyncUtils.BuildSettingsArrays(s, floatSettings, intSettings, boolSettings);
     }
 
     // 统一的配置数组构建方法（减少重复代码）
@@ -412,55 +411,13 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             return;
-
-        combinedPresetParams = new array<float>();
-        floatSettings = new array<float>();
-        intSettings = new array<int>();
-        boolSettings = new array<bool>();
-
-        BuildCombinedPresetArray(settings, combinedPresetParams);
-        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
+        SCR_RSS_ConfigSyncUtils.BuildConfigArrays(settings, combinedPresetParams, floatSettings, intSettings, boolSettings);
     }
 
     // 将 4 个预设数组合并为 1 个，用于 RPC（Enfusion Rpc 有参数数量限制）
     protected void BuildCombinedPresetArray(SCR_RSS_Settings s, array<float> outCombined)
     {
-        if (!outCombined || !s)
-            return;
-        outCombined.Clear();
-        int size = SCR_RSS_Settings.PARAMS_ARRAY_SIZE;
-        array<float> elite = BuildPresetArray(s.m_EliteStandard);
-        array<float> standard = BuildPresetArray(s.m_StandardMilsim);
-        array<float> tactical = BuildPresetArray(s.m_TacticalAction);
-        array<float> custom = BuildPresetArray(s.m_Custom);
-        for (int i = 0; i < size; i++)
-        {
-            if (i < elite.Count())
-                outCombined.Insert(elite[i]);
-            else
-                outCombined.Insert(0.0);
-        }
-        for (int i = 0; i < size; i++)
-        {
-            if (i < standard.Count())
-                outCombined.Insert(standard[i]);
-            else
-                outCombined.Insert(0.0);
-        }
-        for (int i = 0; i < size; i++)
-        {
-            if (i < tactical.Count())
-                outCombined.Insert(tactical[i]);
-            else
-                outCombined.Insert(0.0);
-        }
-        for (int i = 0; i < size; i++)
-        {
-            if (i < custom.Count())
-                outCombined.Insert(custom[i]);
-            else
-                outCombined.Insert(0.0);
-        }
+        SCR_RSS_ConfigSyncUtils.BuildCombinedPresetArray(s, outCombined);
     }
 
     protected void ApplyFullConfig(string configVersion, string selectedPreset,
@@ -521,49 +478,7 @@ modded class SCR_CharacterControllerComponent
     // 用于检测配置内容变化，避免重复应用相同配置
     protected string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
-        string hashString = configVersion + "|" + selectedPreset + "|";
-
-        // 合并关键浮点数设置到哈希字符串
-        if (floatSettings && floatSettings.Count() > 0)
-        {
-            for (int i = 0; i < floatSettings.Count(); i++)
-            {
-                // 四舍五入到3位小数，避免浮点精度差异
-                int roundedValue = Math.Round(floatSettings[i] * 1000);
-                hashString += string.ToString(roundedValue) + ",";
-            }
-        }
-
-        // 合并关键整数设置到哈希字符串
-        if (intSettings && intSettings.Count() > 0)
-        {
-            for (int j = 0; j < intSettings.Count(); j++)
-            {
-                hashString += string.ToString(intSettings[j]) + ",";
-            }
-        }
-
-        // 合并布尔设置（含 m_bEnableMudSlipMechanism 等），避免仅开关变更时被误判为未变化
-        if (boolSettings && boolSettings.Count() > 0)
-        {
-            for (int bi = 0; bi < boolSettings.Count(); bi++)
-            {
-                if (boolSettings[bi])
-                    hashString += "1,";
-                else
-                    hashString += "0,";
-            }
-        }
-
-        // 使用简单的字符串哈希（EnforceScript无内置哈希函数）
-        int hash = 0;
-        for (int k = 0; k < hashString.Length(); k++)
-        {
-            hash = ((hash << 5) - hash) + hashString.ToAscii(k);
-            hash = hash & 0x7FFFFFFF; // 限制为正整数
-        }
-
-        return string.ToString(hash);
+        return SCR_RSS_ConfigSyncUtils.CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings, boolSettings);
     }
 
     // RPC: 服务器发送完整配置给客户端（目标客户端）
@@ -610,21 +525,13 @@ modded class SCR_CharacterControllerComponent
         array<float> combinedPresetParams,
         array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
     {
-        int size = SCR_RSS_Settings.PARAMS_ARRAY_SIZE;
-        if (!combinedPresetParams || combinedPresetParams.Count() < size * 4)
+        array<float> eliteParams = null;
+        array<float> standardParams = null;
+        array<float> tacticalParams = null;
+        array<float> customParams = null;
+        bool isValid = SCR_RSS_ConfigSyncUtils.SplitCombinedPresetParams(combinedPresetParams, eliteParams, standardParams, tacticalParams, customParams);
+        if (!isValid)
             return false;
-        array<float> eliteParams = new array<float>();
-        array<float> standardParams = new array<float>();
-        array<float> tacticalParams = new array<float>();
-        array<float> customParams = new array<float>();
-        for (int i = 0; i < size; i++)
-            eliteParams.Insert(combinedPresetParams[i]);
-        for (int i = size; i < size * 2; i++)
-            standardParams.Insert(combinedPresetParams[i]);
-        for (int i = size * 2; i < size * 3; i++)
-            tacticalParams.Insert(combinedPresetParams[i]);
-        for (int i = size * 3; i < size * 4; i++)
-            customParams.Insert(combinedPresetParams[i]);
         ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
         return true;
     }
@@ -647,19 +554,14 @@ modded class SCR_CharacterControllerComponent
 
         // 方法2：心跳检测（补充验证）
         // 如果玩家ID存在，检查心跳超时（防止静默断开）
-        bool isHeartbeatActive = false;
-        if (hasValidPlayerId && m_fLastHeartbeatTime > 0.0)
-        {
-            float heartbeatTimeout = 10.0; // 心跳超时阈值（秒）
-            isHeartbeatActive = ((currentTime - m_fLastHeartbeatTime) < heartbeatTimeout);
-        }
+        bool isHeartbeatActive = SCR_RSS_NetworkStateUtils.IsHeartbeatActive(hasValidPlayerId, m_fLastHeartbeatTime, currentTime, 10.0);
 
         // 综合判断连接状态
         // 条件：有效的玩家ID AND（未启动心跳 或 心跳活跃）
-        bool isConnected = hasValidPlayerId && (m_fLastHeartbeatTime == 0.0 || isHeartbeatActive);
+        bool isConnected = SCR_RSS_NetworkStateUtils.IsConnected(hasValidPlayerId, m_fLastHeartbeatTime, isHeartbeatActive);
 
         // 检测PlayerID变化（重连/重新连接）
-        bool playerIdChanged = (m_iPlayerId != 0 && playerId != 0 && m_iPlayerId != playerId);
+        bool playerIdChanged = SCR_RSS_NetworkStateUtils.HasPlayerIdChanged(m_iPlayerId, playerId);
 
         // 更新玩家ID缓存
         if (hasValidPlayerId && m_iPlayerId != playerId)
@@ -968,11 +870,7 @@ modded class SCR_CharacterControllerComponent
 
     void RSS_SetMudSlipCameraShake01(float value)
     {
-        if (value < 0.0)
-            value = 0.0;
-        if (value > 1.0)
-            value = 1.0;
-        m_fRssMudSlipCameraShake01 = value;
+        m_fRssMudSlipCameraShake01 = SCR_RSS_PresentationBridge.ClampShake01(value);
     }
 
     float RSS_GetMudSlipCameraShake01()
@@ -982,20 +880,18 @@ modded class SCR_CharacterControllerComponent
 
     bool RSS_IsRagdollActiveForCamera()
     {
-        if (m_pAnimComponent && m_pAnimComponent.IsRagdollActive())
-            return true;
-        return false;
+        return SCR_RSS_PresentationBridge.IsRagdollActive(m_pAnimComponent);
     }
 
     // AI 泥泞安全 / 限速 / Ragdoll 许可：实现见 SCR_RSS_AIStaminaBridge（供 MudSlipRunner 等调用）
     bool RSS_IsAiMudSlipBlockedBySafety(IEntity owner)
     {
-        return SCR_RSS_AIStaminaBridge.IsMudSlipBlockedBySafety(this, owner);
+        return SCR_RSS_AIMudSlipPolicy.IsBlockedBySafety(this, owner);
     }
 
     bool RSS_ShouldAiAllowMudSlipRagdoll(IEntity owner)
     {
-        return SCR_RSS_AIStaminaBridge.ShouldAllowMudSlipRagdoll(this, owner);
+        return SCR_RSS_AIMudSlipPolicy.ShouldAllowRagdoll(this, owner);
     }
 
     //! 供群组代理队员同步队长 OverrideMaxSpeed 倍率
@@ -1818,7 +1714,9 @@ modded class SCR_CharacterControllerComponent
         // 通过 UISignalBridge 模块更新 "Exhaustion" 信号，让官方UI特效和音效响应自定义体力系统状态
         // 官方UI特效阈值：0.45，拟真模型崩溃点：0.25
         if (m_pUISignalBridge)
-            m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate);
+        {
+            m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate, false);
+        }
         
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
@@ -2526,36 +2424,40 @@ modded class SCR_CharacterControllerComponent
     //! 药效进行中（15 分钟内）：体力消耗减免、无视天气惩罚。
     bool RSS_IsCaffeineSodiumBenzoateActive()
     {
-        return m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE;
+        return SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase);
+    }
+
+    bool RSS_IsCombatStimOverdosed()
+    {
+        return SCR_CombatStimStateMachine.IsOverdosed(m_iCombatStimPhase);
     }
 
     protected void RSS_CombatStim_OnTickTransitions()
     {
-        if (!Replication.IsServer())
-            return;
-        if (m_fCombatStimPhaseEndsAt < 0.0)
-            return;
-
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        if (wt < m_fCombatStimPhaseEndsAt)
+        int oldPhase = m_iCombatStimPhase;
+        float oldEndsAt = m_fCombatStimPhaseEndsAt;
+        int nextPhase = m_iCombatStimPhase;
+        float nextEndsAt = m_fCombatStimPhaseEndsAt;
+        bool changed = SCR_CombatStimStateMachine.AdvancePhase(m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt, nextPhase, nextEndsAt);
+        if (!changed)
             return;
 
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.DELAY)
+        m_iCombatStimPhase = nextPhase;
+        m_fCombatStimPhaseEndsAt = nextEndsAt;
+        if (m_iCombatStimPhase != ERSS_CombatStimPhase.DELAY)
+            m_iCombatStimDelayInjectionCount = 0;
+        if (IsRssDebugEnabled())
         {
-            m_iCombatStimPhase = ERSS_CombatStimPhase.ACTIVE;
-            m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.ACTIVE_DURATION_SEC;
-            if (IsPlayerControlled())
-                Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
-            return;
+            PrintFormat("[RSS][CombatStim][Server] TickTransition: phase %1 -> %2, endsAt %3 -> %4, now=%5",
+                oldPhase,
+                m_iCombatStimPhase,
+                Math.Round(oldEndsAt * 10.0) / 10.0,
+                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
+                Math.Round(wt * 10.0) / 10.0);
         }
-
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE)
-        {
-            m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
-            m_fCombatStimPhaseEndsAt = -1.0;
-            if (IsPlayerControlled())
-                Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
-        }
+        if (Replication.IsServer())
+            Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
     }
 
     protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
@@ -2574,14 +2476,55 @@ modded class SCR_CharacterControllerComponent
             return;
 
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-        if (m_iCombatStimPhase == ERSS_CombatStimPhase.DELAY || m_iCombatStimPhase == ERSS_CombatStimPhase.ACTIVE)
+        int nextPhase = m_iCombatStimPhase;
+        float nextEndsAt = m_fCombatStimPhaseEndsAt;
+        int nextDelayInjectionCount = m_iCombatStimDelayInjectionCount;
+        bool shouldDie = false;
+        bool started = SCR_CombatStimStateMachine.TryStartFromInjection(
+            m_iCombatStimPhase,
+            m_fCombatStimPhaseEndsAt,
+            wt,
+            m_iCombatStimDelayInjectionCount,
+            nextPhase,
+            nextEndsAt,
+            nextDelayInjectionCount,
+            shouldDie);
+        if (!started)
             return;
 
-        m_iCombatStimPhase = ERSS_CombatStimPhase.DELAY;
-        m_fCombatStimPhaseEndsAt = wt + SCR_CombatStimConstants.ABSORPTION_DELAY_SEC;
+        if (IsRssDebugEnabled())
+        {
+            PrintFormat("[RSS][CombatStim][Server] Inject: oldPhase=%1 oldEndsAt=%2 delayCount=%3 => nextPhase=%4 nextEndsAt=%5 nextDelayCount=%6 shouldDie=%7 now=%8",
+                m_iCombatStimPhase,
+                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
+                m_iCombatStimDelayInjectionCount,
+                nextPhase,
+                Math.Round(nextEndsAt * 10.0) / 10.0,
+                nextDelayInjectionCount,
+                shouldDie,
+                Math.Round(wt * 10.0) / 10.0);
+        }
 
-        if (IsPlayerControlled())
+        if (shouldDie)
+        {
+            SCR_CharacterDamageManagerComponent damageMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
+            if (damageMgr)
+            {
+                Instigator selfInstigator = Instigator.CreateInstigator(ch);
+                damageMgr.Kill(selfInstigator);
+                if (IsRssDebugEnabled())
+                    Print("[RSS][CombatStim][Server] OD threshold reached: player killed");
+            }
+            return;
+        }
+
+        m_iCombatStimPhase = nextPhase;
+        m_fCombatStimPhaseEndsAt = nextEndsAt;
+        m_iCombatStimDelayInjectionCount = nextDelayInjectionCount;
+        if (m_iCombatStimPhase != ERSS_CombatStimPhase.DELAY)
+            m_iCombatStimDelayInjectionCount = 0;
+
+        if (Replication.IsServer())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
     }
 
@@ -2591,6 +2534,14 @@ modded class SCR_CharacterControllerComponent
     {
         m_iCombatStimPhase = phase;
         m_fCombatStimPhaseEndsAt = phaseEndsAt;
+        if (IsRssDebugEnabled())
+        {
+            float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            PrintFormat("[RSS][CombatStim][Client] Sync received: phase=%1 endsAt=%2 now=%3",
+                m_iCombatStimPhase,
+                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
+                Math.Round(wt * 10.0) / 10.0);
+        }
     }
 
 }

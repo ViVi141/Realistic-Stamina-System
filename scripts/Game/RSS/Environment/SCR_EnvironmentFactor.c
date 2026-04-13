@@ -831,39 +831,19 @@ class EnvironmentFactor
     // 计算某个日期的年积日（1..365/366）
     protected int DayOfYear(int year, int month, int day)
     {
-        int mdays[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-        // 闰年处理
-        bool isLeap = ((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0);
-        if (isLeap)
-            mdays[1] = 29;
-
-        int n = 0;
-        int i = 0;
-        while (i < month - 1)
-        {
-            n += mdays[i];
-            i = i + 1;
-        }
-        n = n + day;
-        return n;
+        return SCR_EnvironmentAstronomyMath.DayOfYear(year, month, day);
     }
 
     // 太阳偏角（弧度）
     protected float SolarDeclination(int n)
     {
-        // δ ≈ 23.44° × sin(2π (284 + n) / 365)
-        return 23.44 * Math.DEG2RAD * Math.Sin(2.0 * Math.PI * (284.0 + n) / 365.0);
+        return SCR_EnvironmentAstronomyMath.SolarDeclination(n);
     }
 
     // 计算太阳天顶角余弦（cos θ），输入纬度（deg）、年日、时刻（小时）
     protected float SolarCosZenith(float latDeg, int n, float localHour)
     {
-        float latRad = latDeg * Math.DEG2RAD;
-        float decl = SolarDeclination(n);
-        float hourAngleDeg = 15.0 * (localHour - 12.0);
-        float hourAngleRad = hourAngleDeg * Math.DEG2RAD;
-        float cosTheta = Math.Sin(latRad) * Math.Sin(decl) + Math.Cos(latRad) * Math.Cos(decl) * Math.Cos(hourAngleRad);
-        return cosTheta;
+        return SCR_EnvironmentAstronomyMath.SolarCosZenith(latDeg, n, localHour);
     }
 
     // 估算经纬度（基于引擎提供的日出/日落时间，返回置信度 0.0-1.0）
@@ -1121,20 +1101,13 @@ class EnvironmentFactor
     // 空气质量近似（Kasten & Young，返回 m）
     protected float AirMass(float cosTheta)
     {
-        if (cosTheta <= 0.0)
-            return 9999.0; // 夜间或太阳低于地平线
-        float thetaDeg = Math.Acos(cosTheta) * Math.RAD2DEG;
-        float m = 1.0 / (cosTheta + 0.50572 * Math.Pow(96.07995 - thetaDeg, -1.6364));
-        return m;
+        return SCR_EnvironmentAstronomyMath.AirMass(cosTheta);
     }
 
     // 根据空气质量计算简单的清空透过率（经验）
     protected float ClearSkyTransmittance(float m)
     {
-        // 简化模型：tau = exp(-k * m)
-        // Enfusion 脚本没有 Math.Exp，使用 Math.Pow(M_E, x) 替代
-        float tau = Math.Pow(M_E, -m_fAerosolOpticalDepth * m);
-        return Math.Clamp(tau, 0.0, 1.0);
+        return SCR_EnvironmentAstronomyMath.ClearSkyTransmittance(m, m_fAerosolOpticalDepth);
     }
 
     // 简单云因子推断，从雨强、湿度与天气状态推测云量因子 [0,1]
@@ -1332,12 +1305,7 @@ class EnvironmentFactor
     // 赤道约27°C，随纬度降低；北半球简易季节调制；北大西洋/中高纬海洋偏凉
     protected float EstimateSeasonalAvgTemp(float lat, int dayOfYear)
     {
-        float absLat = Math.AbsFloat(lat);
-        float baseTemp = 27.0 - 0.4 * absLat;
-        float seasonOffset = -10.0 * Math.Cos(2.0 * Math.PI * (float)(dayOfYear + 10) / 365.0);
-        if (absLat > 40.0 && absLat < 60.0)
-            baseTemp -= 3.0; // 海洋调节，中高纬偏凉
-        return baseTemp + seasonOffset;
+        return SCR_EnvironmentAstronomyMath.EstimateSeasonalAvgTemp(lat, dayOfYear);
     }
 
     // ------------------- 物理平衡求解（用于初始/回退） -------------------
@@ -2112,79 +2080,28 @@ class EnvironmentFactor
     // @return 降雨强度（0.0-1.0）
     protected float CalculateRainIntensityFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // 尝试获取降雨强度（API方法）
-        float rainIntensity = 0.0;
-        
-        // API调用：获取降雨强度
-        rainIntensity = m_pCachedWeatherManager.GetRainIntensity();
-        
-        // 如果API返回有效值，直接使用
-        if (rainIntensity > StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
-            return rainIntensity;
-        
-        // 回退方案：基于天气状态名称判断
-        return CalculateRainIntensityFromStateName();
+        return SCR_EnvironmentWeatherApi.CalculateRainIntensityFromAPI(m_pCachedWeatherManager);
     }
     
     // 基于状态名称判断降雨强度（回退方案）
     // @return 降雨强度（0.0-1.0）
     protected float CalculateRainIntensityFromStateName()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // 获取当前天气状态
-        BaseWeatherStateTransitionManager transitionManager = m_pCachedWeatherManager.GetTransitionManager();
-        if (!transitionManager)
-            return 0.0;
-        
-        WeatherState currentWeatherState = transitionManager.GetCurrentState();
-        if (!currentWeatherState)
-            return 0.0;
-        
-        string stateName = currentWeatherState.GetStateName();
-        stateName.ToLower();
-        
-        // 基于状态名称判断降雨强度
-        if (stateName.Contains("storm") || stateName.Contains("heavy"))
-            return 0.9;
-        else if (stateName.Contains("rain") || stateName.Contains("shower"))
-            return 0.5;
-        else if (stateName.Contains("drizzle") || stateName.Contains("light"))
-            return 0.2;
-        else if (stateName.Contains("cloudy") || stateName.Contains("overcast"))
-            return 0.05;
-        else
-            return 0.0;
+        return SCR_EnvironmentWeatherApi.CalculateRainIntensityFromStateName(m_pCachedWeatherManager);
     }
     
     // 从API获取风速
     // @return 风速（m/s）
     protected float CalculateWindSpeedFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // API调用：获取风速
-        float windSpeed = m_pCachedWeatherManager.GetWindSpeed();
-        
-        return windSpeed;
+        return SCR_EnvironmentWeatherApi.CalculateWindSpeedFromAPI(m_pCachedWeatherManager);
     }
     
     // 从API获取风向
     // @return 风向（度，0-360）
     protected float CalculateWindDirectionFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // API调用：获取风向
-        float windDirection = m_pCachedWeatherManager.GetWindDirection();
-        
-        return windDirection;
+        return SCR_EnvironmentWeatherApi.CalculateWindDirectionFromAPI(m_pCachedWeatherManager);
     }
     
     // 计算风阻系数（基于玩家移动方向）
@@ -2192,49 +2109,14 @@ class EnvironmentFactor
     // @return 风阻系数（0.0-1.0）
     protected float CalculateWindDrag(vector playerVelocity)
     {
-        if (m_fCachedWindSpeed < StaminaConstants.ENV_WIND_SPEED_THRESHOLD)
-            return 0.0;
-        
-        // 获取玩家移动向量（水平）
-        vector playerVel = playerVelocity;
-        playerVel[1] = 0; // 忽略垂直分量
-        
-        float speed = playerVel.Length();
-        if (speed < 0.1)
-            return 0.0; // 玩家静止，无风阻
-        
-        // 转换风向为向量
-        float windDirRad = m_fCachedWindDirection * Math.DEG2RAD;
-        vector windDirVec = Vector(Math.Sin(windDirRad), 0, Math.Cos(windDirRad));
-        
-        // 计算玩家速度与风向的投影
-        // Dot > 0 为顺风, Dot < 0 为逆风
-        float windProjection = vector.Dot(playerVel.Normalized(), windDirVec);
-        
-        if (windProjection > 0)
-        {
-            // 顺风：减少消耗（返回负值，让 1+drag < 1）
-            float tailwindBenefit = windProjection * m_fCachedWindSpeed * StaminaConstants.ENV_WIND_TAILWIND_BONUS;
-            return -Math.Clamp(tailwindBenefit, 0.0, 0.15);
-        }
-        
-        // 逆风：增加消耗
-        float windResistance = Math.AbsFloat(windProjection) * m_fCachedWindSpeed * StaminaConstants.ENV_WIND_RESISTANCE_COEFF;
-        
-        return Math.Clamp(windResistance, 0.0, 1.0);
+        return SCR_EnvironmentWeatherApi.CalculateWindDrag(m_fCachedWindSpeed, m_fCachedWindDirection, playerVelocity);
     }
     
     // 从API获取泥泞度系数
     // @return 泥泞度系数（0.0-1.0）
     protected float CalculateMudFactorFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // API调用：获取积水程度
-        float puddles = m_pCachedWeatherManager.GetCurrentWaterAccumulationPuddles();
-        
-        return puddles;
+        return SCR_EnvironmentWeatherApi.CalculateMudFactorFromAPI(m_pCachedWeatherManager);
     }
     
     // 从API获取当前气温（使用TimeAndWeather的Min/Max进行昼夜插值计算）
@@ -2251,13 +2133,7 @@ class EnvironmentFactor
     // @return 地表湿度（0.0-1.0）
     protected float CalculateSurfaceWetnessFromAPI()
     {
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-        
-        // API调用：获取地表湿度
-        float wetness = m_pCachedWeatherManager.GetCurrentWetness();
-        
-        return wetness;
+        return SCR_EnvironmentWeatherApi.CalculateSurfaceWetnessFromAPI(m_pCachedWeatherManager);
     }
     
     // 计算降雨湿重（基于降雨强度）
@@ -2313,79 +2189,31 @@ class EnvironmentFactor
     // 计算暴雨呼吸阻力
     protected void CalculateRainBreathingPenalty()
     {
-        // 只有暴雨才会触发呼吸阻力
-        if (m_fCachedRainIntensity < StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
-        {
-            m_fRainBreathingPenalty = 0.0;
-            return;
-        }
-        
-        // 计算呼吸阻力（基于降雨强度）
-        m_fRainBreathingPenalty = StaminaConstants.ENV_RAIN_INTENSITY_BREATHING_PENALTY * 
-                                   (m_fCachedRainIntensity - StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
+        m_fRainBreathingPenalty = SCR_EnvironmentPenaltyMath.CalculateRainBreathingPenalty(m_fCachedRainIntensity);
     }
     
     // 计算泥泞地形系数
     protected void CalculateMudTerrainFactor()
     {
-        // 只有在非铺装路面才计算泥泞惩罚
-        if (m_fCachedTerrainFactor <= 1.0)
-        {
-            m_fMudTerrainFactor = 0.0;
-            return;
-        }
-        
-        // 计算泥泞惩罚（基于积水程度）
-        m_fMudTerrainFactor = m_fCachedMudFactor * StaminaConstants.ENV_MUD_PENALTY_MAX;
+        m_fMudTerrainFactor = SCR_EnvironmentPenaltyMath.CalculateMudTerrainFactor(m_fCachedTerrainFactor, m_fCachedMudFactor);
     }
     
     // 计算泥泞Sprint惩罚
     protected void CalculateMudSprintPenalty()
     {
-        // 只有在泥泞路面才计算Sprint惩罚
-        if (m_fCachedMudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
-        {
-            m_fMudSprintPenalty = 0.0;
-            return;
-        }
-        
-        // 计算Sprint惩罚（基于泥泞度）
-        m_fMudSprintPenalty = StaminaConstants.ENV_MUD_SPRINT_PENALTY * m_fCachedMudFactor;
+        m_fMudSprintPenalty = SCR_EnvironmentPenaltyMath.CalculateMudSprintPenalty(m_fCachedMudFactor);
     }
     
     // 计算滑倒风险
     protected void CalculateSlipRisk()
     {
-        if (!StaminaConstants.IsMudSlipMechanismEnabled())
-        {
-            m_fSlipRisk = 0.0;
-            return;
-        }
-        // 只有在泥泞路面才计算滑倒风险
-        if (m_fCachedMudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
-        {
-            m_fSlipRisk = 0.0;
-            return;
-        }
-        
-        // 计算滑倒风险（基于泥泞度）
-        m_fSlipRisk = StaminaConstants.ENV_MUD_SLIP_RISK_BASE * m_fCachedMudFactor;
+        m_fSlipRisk = SCR_EnvironmentPenaltyMath.CalculateSlipRisk(m_fCachedMudFactor);
     }
     
     // 计算热应激惩罚
     protected void CalculateHeatStressPenalty()
     {
-        // 只有超过热应激阈值才计算
-        if (m_fCachedTemperature <= StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD)
-        {
-            m_fHeatStressPenalty = 0.0;
-            return;
-        }
-        
-        // 计算热应激惩罚（每高1度，恢复率降低2%）
-        float heatPenaltyCoeff = StaminaConstants.GetEnvTemperatureHeatPenaltyCoeff();
-        m_fHeatStressPenalty = (m_fCachedTemperature - StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * 
-                               heatPenaltyCoeff;
+        m_fHeatStressPenalty = SCR_EnvironmentPenaltyMath.CalculateHeatStressPenalty(m_fCachedTemperature);
     }
 
     // 根据当前环境温度和风速对机械能耗进行补偿
@@ -2393,57 +2221,13 @@ class EnvironmentFactor
     // @return 包含热调节的总功率 (J/s)
     float AdjustEnergyForTemperature(float basePower)
     {
-        // 使用缓存的环境温度与风速
-        float T = m_fCachedTemperature;
-        float wind = m_fCachedWindSpeed;
-
-        // 1. 体感温度
-        float T_eff = T - 1.35 * Math.Sqrt(wind);
-
-        // 2. 热调节额外消耗（单位：Watts）。冷/热均用二次项，避免大 dt 时冷侧反超热侧（符合热应激通常不低于冷应激的生理参考）。
-        float extra_watts = 0.0;
-        const float T_low = 18.0;
-        const float T_high = 27.0;
-        if (T_eff < T_low)
-        {
-            float dt = T_low - T_eff;
-            extra_watts = 0.15 * (dt * dt);
-        }
-        else if (T_eff > T_high)
-        {
-            float dtHot = T_eff - T_high;
-            extra_watts = 2.0 * (dtHot * dtHot);
-        }
-
-        // [修复 v2.16.0] 单位转换：extra 是瓦特（Watts），而 basePower 是体力/tick 单位。
-        // 必须将额外瓦特数转换为体力/tick，否则会直接把几瓦的数值加到 0.000xxx 的体力/tick 上，
-        // 导致 baseDrain 从 0.000245 暴增到 3.637，造成瞬间耗尽体力。
-        // 转换：extra_watts × energyToStaminaCoeff（/W → /s）× 0.2（/s → /tick）
-        float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
-        float extra_per_tick = extra_watts * coeff * 0.2;
-
-        return basePower + extra_per_tick;
+        return SCR_EnvironmentPenaltyMath.AdjustEnergyForTemperature(basePower, m_fCachedTemperature, m_fCachedWindSpeed);
     }
     
     // 计算冷应激惩罚
     protected void CalculateColdStressPenalty()
     {
-        // 只有低于冷应激阈值才计算
-        if (m_fCachedTemperature >= StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD)
-        {
-            m_fColdStressPenalty = 0.0;
-            m_fColdStaticPenalty = 0.0;
-            return;
-        }
-        
-        // 计算冷应激惩罚（每低1度，恢复率降低5%）
-        float coldRecoveryPenaltyCoeff = StaminaConstants.GetEnvTemperatureColdRecoveryPenaltyCoeff();
-        m_fColdStressPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
-                               coldRecoveryPenaltyCoeff;
-        
-        // 计算冷应激静态惩罚（每低1度，静态消耗增加3%）
-        m_fColdStaticPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - m_fCachedTemperature) * 
-                               StaminaConstants.ENV_TEMPERATURE_COLD_STATIC_PENALTY;
+        SCR_EnvironmentPenaltyMath.CalculateColdStressPenalty(m_fCachedTemperature, m_fColdStressPenalty, m_fColdStaticPenalty);
     }
     
     // 计算地表湿度惩罚
@@ -2453,23 +2237,7 @@ class EnvironmentFactor
     {
         if (!owner)
             return;
-        
-        // 只有趴下姿态才计算地表湿度惩罚
-        if (stance != 2) // 不是趴姿
-        {
-            m_fSurfaceWetnessPenalty = 0.0;
-            return;
-        }
-        
-        // 只有在地表湿度超过阈值时才计算
-        if (m_fCachedSurfaceWetness < StaminaConstants.ENV_SURFACE_WETNESS_THRESHOLD)
-        {
-            m_fSurfaceWetnessPenalty = 0.0;
-            return;
-        }
-        
-        // 计算地表湿度惩罚（趴下时的恢复惩罚）
-        float surfaceWetnessPenaltyMax = StaminaConstants.GetEnvSurfaceWetnessPenaltyMax();
-        m_fSurfaceWetnessPenalty = surfaceWetnessPenaltyMax * m_fCachedSurfaceWetness;
+
+        m_fSurfaceWetnessPenalty = SCR_EnvironmentPenaltyMath.CalculateSurfaceWetnessPenalty(m_fCachedSurfaceWetness, stance);
     }
 }

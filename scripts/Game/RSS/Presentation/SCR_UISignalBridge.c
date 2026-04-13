@@ -5,6 +5,7 @@
 class UISignalBridge
 {
     // ==================== 状态变量 ====================
+    protected IEntity m_pOwner;
     protected SignalsManagerComponent m_pSignalsManager; // 信号管理器组件引用
     protected int m_iExhaustionSignal = -1; // "Exhaustion" 信号的ID（-1表示未找到）
 
@@ -19,24 +20,16 @@ class UISignalBridge
     // @return true表示初始化成功，false表示失败
     bool Init(IEntity owner)
     {
-        if (!owner)
-            return false;
-        
-        // 获取信号管理器组件
-        m_pSignalsManager = SignalsManagerComponent.Cast(owner.FindComponent(SignalsManagerComponent));
-        if (!m_pSignalsManager)
-            return false;
-        
-        // 查找 "Exhaustion" 信号（官方UI模糊效果和呼吸声基于此信号）
-        m_iExhaustionSignal = m_pSignalsManager.FindSignal("Exhaustion");
-        
-        return (m_iExhaustionSignal != -1);
+        m_pOwner = owner;
+        return TryResolveSignals();
     }
     
     // 检查是否已初始化
     // @return true表示已初始化，false表示未初始化
     bool IsInitialized()
     {
+        if (m_pSignalsManager == null || m_iExhaustionSignal == -1)
+            TryResolveSignals();
         return (m_pSignalsManager != null && m_iExhaustionSignal != -1);
     }
     
@@ -67,13 +60,40 @@ class UISignalBridge
     // @param isExhausted 是否精疲力尽
     // @param currentSpeed 当前移动速度（米/秒）
     // @param totalDrainRate 总消耗率（每0.2秒的消耗）
-    void UpdateUISignal(float staminaPercent, bool isExhausted, float currentSpeed, float totalDrainRate)
+    void UpdateUISignal(float staminaPercent, bool isExhausted, float currentSpeed, float totalDrainRate, bool forceOverdoseEffect = false)
     {
         // 检查是否已初始化
         if (!IsInitialized())
             return;
 
+        if (forceOverdoseEffect)
+        {
+            m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, SCR_CombatStimConstants.OD_EXHAUSTION_SIGNAL_VALUE);
+            return;
+        }
+
         // 已移除体力驱动的画面效果（原 40% 以下模糊、呼吸声等）
         m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, 0.0);
+    }
+
+    // 强制设置 Exhaustion 信号（用于 OD 中毒画面等高优先级效果）
+    void SetExhaustionSignalOverride(float value)
+    {
+        if (!IsInitialized())
+            return;
+        m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, value);
+    }
+
+    protected bool TryResolveSignals()
+    {
+        if (!m_pOwner)
+            return false;
+
+        m_pSignalsManager = SignalsManagerComponent.Cast(m_pOwner.FindComponent(SignalsManagerComponent));
+        if (!m_pSignalsManager)
+            return false;
+
+        m_iExhaustionSignal = m_pSignalsManager.FindSignal("Exhaustion");
+        return (m_iExhaustionSignal != -1);
     }
 }

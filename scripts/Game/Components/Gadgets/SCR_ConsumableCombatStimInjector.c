@@ -14,13 +14,6 @@ class SCR_ConsumableCombatStimInjector : SCR_ConsumableEffectHealthItems
 		if (!ctrl)
 			return false;
 
-		int phase = ctrl.RSS_GetCombatStimPhase();
-		if (phase == ERSS_CombatStimPhase.DELAY || phase == ERSS_CombatStimPhase.ACTIVE)
-		{
-			failReason = SCR_EConsumableFailReason.ALREADY_APPLIED;
-			return false;
-		}
-
 		return true;
 	}
 
