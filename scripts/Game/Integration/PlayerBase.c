@@ -74,6 +74,8 @@ modded class SCR_CharacterControllerComponent
     protected int m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
     protected float m_fCombatStimPhaseEndsAt = -1.0;
     protected int m_iCombatStimDelayInjectionCount = 0;
+    //! 注射 Buff 前记录的 GetBleedingScale()，用于阶段结束时还原；-1 表示未处于 Buff
+    protected float m_fRSS_CombatStimBleedingBaseline = -1.0;
     
     protected ref RSS_MudSlipRunner m_pMudSlipRunner;
     protected float m_fRssMudSlipCameraShake01 = 0.0;
@@ -260,6 +262,18 @@ modded class SCR_CharacterControllerComponent
             return;
         
         RSS_CombatStim_OnTickTransitions();
+
+        // 药效/OD 期间：已存在的 SCR_BleedingDamageEffect 不会每帧读取 GetBleedingScale()，且 Hijack 叠伤时可能写成未乘全局倍率的 DPS；每轮体力更新同步一次。
+        if (Replication.IsServer() && SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase))
+        {
+            ChimeraCharacter combatStimChar = ChimeraCharacter.Cast(owner);
+            if (combatStimChar)
+            {
+                SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(combatStimChar.GetDamageManager());
+                if (stimDmgMgr)
+                    RSS_CombatStim_RefreshBleedingEffectsToMatchScale(stimDmgMgr);
+            }
+        }
 
         float staminaPercent = 1.0;
         if (m_pStaminaComponent)
@@ -998,6 +1012,93 @@ modded class SCR_CharacterControllerComponent
         return SCR_CombatStimStateMachine.IsOverdosed(m_iCombatStimPhase);
     }
 
+    //------------------------------------------------------------------------------------------------
+    //! 与 SCR_CharacterDamageManagerComponent.AddBleedingEffectOnHitZone 中一致的「基础流血速率」公式，
+    //! 用于在 SetBleedingScale 之后刷新已存在的 SCR_BleedingDamageEffect（其 DPS 不会在每帧自动重读全局倍率）。
+    protected float RSS_CombatStim_ComputeBleedingBaseRateForEffect(SCR_BleedingDamageEffect bleed)
+    {
+        if (!bleed)
+            return 0.0;
+
+        SCR_CharacterHitZone hz = SCR_CharacterHitZone.Cast(bleed.GetAffectedHitZone());
+        if (!hz)
+            return 0.0;
+
+        float hitZoneDamageMultiplier = hz.GetHealthScaled();
+        return hz.GetMaxBleedingRate() - hz.GetMaxBleedingRate() * hitZoneDamageMultiplier;
+    }
+
+    //------------------------------------------------------------------------------------------------
+    //! 将当前所有流血 DOT 的 DPS 设为 baseRate * GetBleedingScale()，与官方创建流血时一致。
+    protected void RSS_CombatStim_RefreshBleedingEffectsToMatchScale(SCR_CharacterDamageManagerComponent dmgMgr)
+    {
+        if (!dmgMgr)
+            return;
+
+        float scale = dmgMgr.GetBleedingScale();
+        array<ref SCR_PersistentDamageEffect> effects = dmgMgr.GetAllPersistentEffectsOfType(SCR_BleedingDamageEffect);
+
+        foreach (SCR_PersistentDamageEffect pe : effects)
+        {
+            SCR_BleedingDamageEffect bleed = SCR_BleedingDamageEffect.Cast(pe);
+            if (!bleed)
+                continue;
+
+            float baseRate = RSS_CombatStim_ComputeBleedingBaseRateForEffect(bleed);
+            bleed.SetDPS(baseRate * scale);
+        }
+    }
+
+    //------------------------------------------------------------------------------------------------
+    //! 药效/OD 期间临时提高 SCR_CharacterDamageManagerComponent 的流血倍率；仅在服务端生效。
+    protected void RSS_CombatStim_UpdateBleedingScale()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        IEntity ownerEnt = GetOwner();
+        ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
+        if (!ch)
+            return;
+
+        SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
+        if (!dmgMgr)
+            return;
+
+        int phase = m_iCombatStimPhase;
+        bool wantBuff = false;
+        float mult = 1.0;
+
+        if (phase == ERSS_CombatStimPhase.ACTIVE)
+        {
+            wantBuff = true;
+            mult = SCR_CombatStimConstants.BLEEDING_SCALE_MULT_ACTIVE;
+        }
+        else if (phase == ERSS_CombatStimPhase.OD)
+        {
+            wantBuff = true;
+            mult = SCR_CombatStimConstants.BLEEDING_SCALE_MULT_ACTIVE * SCR_CombatStimConstants.BLEEDING_SCALE_MULT_OD_EXTRA;
+        }
+
+        if (!wantBuff)
+        {
+            if (m_fRSS_CombatStimBleedingBaseline >= 0.0)
+            {
+                dmgMgr.SetBleedingScale(m_fRSS_CombatStimBleedingBaseline, true);
+                m_fRSS_CombatStimBleedingBaseline = -1.0;
+                RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgr);
+            }
+            return;
+        }
+
+        if (m_fRSS_CombatStimBleedingBaseline < 0.0)
+            m_fRSS_CombatStimBleedingBaseline = dmgMgr.GetBleedingScale();
+
+        float targetScale = m_fRSS_CombatStimBleedingBaseline * mult;
+        dmgMgr.SetBleedingScale(targetScale, true);
+        RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgr);
+    }
+
     protected void RSS_CombatStim_OnTickTransitions()
     {
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
@@ -1029,6 +1130,8 @@ modded class SCR_CharacterControllerComponent
         }
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
+
+        RSS_CombatStim_UpdateBleedingScale();
     }
 
     protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
@@ -1097,6 +1200,8 @@ modded class SCR_CharacterControllerComponent
 
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
+
+        RSS_CombatStim_UpdateBleedingScale();
     }
 
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]

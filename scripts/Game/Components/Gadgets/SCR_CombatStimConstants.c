@@ -19,4 +19,9 @@ class SCR_CombatStimConstants
 	static const float STAMINA_DRAIN_MULTIPLIER = 0.85;
 	//! OD 期间强制写入 Exhaustion 信号，触发中毒/恶化画面效果
 	static const float OD_EXHAUSTION_SIGNAL_VALUE = 1.0;
+
+	//! 药效期（ACTIVE）内全局流血速率：相对注射前基准通常为 1，本系数为 ×2 → 有效约 2
+	static const float BLEEDING_SCALE_MULT_ACTIVE = 2.0;
+	//! OD 在 ACTIVE 之上再乘一次 2：基准 ×2×2 = 4（再次注射进入 OD 后的流血倍率）
+	static const float BLEEDING_SCALE_MULT_OD_EXTRA = 2.0;
 }
