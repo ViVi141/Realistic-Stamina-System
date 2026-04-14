@@ -60,12 +60,13 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bHintDisplayEnabled = true;
         m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
+        m_Settings.m_bEnableMudSlipMechanism = true;
         m_Settings.m_bEnableAIStaminaCombatEffects = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, AI stamina combat ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip ON, AI stamina combat ON.");
         return;
         #endif
 
