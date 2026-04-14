@@ -1,0 +1,10 @@
+MatPBRBasic {
+ Color 0.071 0.561 0.192 1
+ SpecularIBL 0.479 0.479 0.479 1
+ Specular 0.913 0.879 0.865 1
+ SpecularMul 0.821
+ RoughnessScale 0.5
+ MetalnessScale 0
+ DielectricReflectance 0.16
+ BCRMap "{7CBF201106D16539}Assets/Items/Medicine/MorphineInjection_01/Data/MorphineInjection_01_BCR.edds"
+}

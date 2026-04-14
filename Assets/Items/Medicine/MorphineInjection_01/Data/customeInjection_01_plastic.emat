@@ -1,0 +1,14 @@
+MatPBRBasic {
+ Color 0.245 0.183 0 1
+ Cull none
+ Sort translucent
+ SpecularMul 4
+ AlphaTest 0.22
+ AlphaMul 0.862
+ BlendMode AlphaBlend
+ RoughnessScale 1.5
+ MetalnessScale 0
+ DielectricReflectance 0.133
+ BCRMap "{93AAE26DAA1992E6}Assets/_SharedData/Glass/ST_Glass_Streaks_01_NoColor_BCR.edds"
+ OpacityMap "{46CF67CB400DECC9}Assets/_SharedData/Glass/ST_Glass_Streaks_01_A.edds"
+}

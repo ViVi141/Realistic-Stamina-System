@@ -5,7 +5,7 @@ GenericEntity : "{C95E11C60810F432}Prefabs/Items/Core/Item_Base.et" {
    Attributes SCR_ItemAttributeCollection "{5222EB4D0A2B466B}" {
     ItemDisplayName SCR_InventoryUIInfo "{5222EB4D07D865FA}" {
      Name "Caffeine-Sodium Benzoate 20% Injector"
-     Description "CSB 20%: 30s to onset, then 15 min −15% stamina drain & no weather penalties. | 苯甲酸钠咖啡因 20%：注射后约 30 秒起效，15 分钟内体力消耗降低约 15%、无视天气惩罚。"
+     Description "CSB 20%: 30s to onset, then 15 min −15% stamina drain & no weather penalties."
      m_aItemHints {
       SCR_InventoryItemHintUIInfo "{6918D071A419C896}" {
        Name "CSB 20% (caffeine / sodium benzoate)"
@@ -69,6 +69,16 @@ GenericEntity : "{C95E11C60810F432}Prefabs/Items/Core/Item_Base.et" {
   }
   MeshObject "{6918D071A419C856}" {
    Object "{31568ECC375344FD}Assets/Items/Medicine/MorphineInjection_01/MorphineInjection_01_full_close.xob"
+   Materials {
+    MaterialAssignClass "{691D0E4B8F72856E}" {
+     SourceMaterial "MorphineInjection_01"
+     AssignedMaterial "{F48A3D4EDC90AD3F}Assets/Items/Medicine/MorphineInjection_01/Data/customInjection_01.emat"
+    }
+    MaterialAssignClass "{691D0E4B8F728553}" {
+     SourceMaterial "MorphineInjection_01_plastic"
+     AssignedMaterial "{61AC0C69DCC16FC1}Assets/Items/Medicine/MorphineInjection_01/Data/customeInjection_01_plastic.emat"
+    }
+   }
   }
   RigidBody "{6918D071A419C859}" {
    Mass 5

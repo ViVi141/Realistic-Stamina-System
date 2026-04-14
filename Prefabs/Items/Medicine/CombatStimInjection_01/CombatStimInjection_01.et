@@ -1,3 +1,24 @@
 GenericEntity : "{7E91AC42F83D50B6}Prefabs/Items/Medicine/CombatStimInjection_01/CombatStimInjection_01_base.et" {
  ID "6F3B8D2A9014E5C7"
+ components {
+  InventoryItemComponent "{5222EB4D0C73006B}" {
+   Attributes SCR_ItemAttributeCollection "{5222EB4D0A2B466B}" {
+    ItemDisplayName SCR_InventoryUIInfo "{5222EB4D07D865FA}" {
+     Description "CSB 20%: 30s to onset, then 15 min −15% stamina drain & no weather penalties."
+    }
+   }
+  }
+  MeshObject "{6918D071A419C856}" {
+   Materials {
+    MaterialAssignClass "{691D0E4B10E18DF1}" {
+     SourceMaterial "MorphineInjection_01"
+     AssignedMaterial "{F48A3D4EDC90AD3F}Assets/Items/Medicine/MorphineInjection_01/Data/customInjection_01.emat"
+    }
+    MaterialAssignClass "{691D0E4B10E18DCD}" {
+     SourceMaterial "MorphineInjection_01_plastic"
+     AssignedMaterial "{61AC0C69DCC16FC1}Assets/Items/Medicine/MorphineInjection_01/Data/customeInjection_01_plastic.emat"
+    }
+   }
+  }
+ }
 }
