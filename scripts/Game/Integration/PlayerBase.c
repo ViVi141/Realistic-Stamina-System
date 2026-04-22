@@ -14,21 +14,15 @@ modded class SCR_CharacterControllerComponent
     protected ref NetworkSyncManager m_pNetworkSyncManager;
     protected string m_sLastSpeedSource = "";  // 调试用：上次速度计算来源（Server/Client）
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
-    protected const float SERVER_CONFIG_SYNC_INTERVAL = 5.0; // 未收到配置时的重试间隔（秒），收到后不再请求
-    protected const float RECONNECT_SYNC_DELAY = 2.0; // 重连后同步延迟（秒）
     protected const float CONFIG_FETCH_TIMEOUT_SEC = 30.0; // 配置获取超时（秒），超时后每 30 秒打印一次警告
-    protected bool m_bIsConnected = false; // 网络连接状态
-    protected float m_fFirstConfigRequestTime = -1.0; // 首次请求配置时间（秒），-1 表示未在等待
     protected float m_fLastConfigTimeoutWarningTime = -1.0; // 上次打印超时警告时间，避免刷屏
-    protected bool m_bClientAckedConfig = false;  // 服务器：该客户端是否已回执"已收到配置"，收到后不再推送
-    protected float m_fLastHeartbeatTime = 0.0; // 上次心跳时间
-    protected int m_iPlayerId = 0; // 玩家ID缓存
-    protected int m_iConfigRetryCount = 0; // 配置请求重试次数
-    protected const int MAX_CONFIG_RETRY_COUNT = 3; // 最大配置重试次数，超过后请求广播配置
-    protected float m_fLastHeartbeatSendTime = 0.0; // 上次发送心跳时间
-    protected const float HEARTBEAT_INTERVAL = 5.0; // 心跳发送间隔（秒）
-    protected const float HEARTBEAT_TIMEOUT = 15.0; // 心跳超时阈值（秒）
     protected string m_sLastAppliedConfigHash = ""; // 上次应用的配置哈希值，用于检测内容变化
+
+    // Native-style config replication:
+    // Clients receive settings via GameMode RplProp (see SCR_RSS_ServerBootstrap.c),
+    // so we do not use per-player request/ACK/broadcast fallback anymore.
+    protected bool m_bRssWaitingGameModeConfig = false;
+    protected float m_fRssConfigWaitStartTime = -1.0;
 
     protected ref CollapseTransition m_pCollapseTransition;
     protected ref SlopeSpeedTransition m_pSlopeSpeedTransition;
@@ -92,9 +86,7 @@ modded class SCR_CharacterControllerComponent
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
-            SCR_RSS_ConfigManager.RegisterConfigChangeListener(owner);
-            if (IsPlayerControlled() && GetGame() && GetGame().GetCallqueue())
-                GetGame().GetCallqueue().CallLater(ServerPushConfigToOwner, 3000, false);
+            // Config distribution is now handled by GameMode replication.
 
             if (IsRssDebugEnabled())
             {
@@ -210,11 +202,35 @@ modded class SCR_CharacterControllerComponent
         
         if (!Replication.IsServer())
         {
-            m_bIsConnected = false;
-            GetGame().GetCallqueue().CallLater(MonitorNetworkConnection, 5000, true);
-            GetGame().GetCallqueue().CallLater(RequestServerConfig, 1500, false);
-            GetGame().GetCallqueue().CallLater(RequestServerConfigUntilApplied, 2500, false);
-            GetGame().GetCallqueue().CallLater(UpdateHeartbeat, HEARTBEAT_INTERVAL * 1000, true);
+            // Wait for GameMode replicated config to arrive; do not actively request via RPC.
+            m_bRssWaitingGameModeConfig = true;
+            m_fRssConfigWaitStartTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, true);
+        }
+    }
+
+    void RSS_WaitForGameModeConfig()
+    {
+        if (Replication.IsServer())
+            return;
+        if (!m_bRssWaitingGameModeConfig)
+            return;
+
+        if (SCR_RSS_ConfigManager.IsServerConfigApplied())
+        {
+            m_bRssWaitingGameModeConfig = false;
+            return;
+        }
+
+        float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (m_fRssConfigWaitStartTime >= 0.0 && (nowSec - m_fRssConfigWaitStartTime) >= CONFIG_FETCH_TIMEOUT_SEC)
+        {
+            // Single warning per timeout window to avoid spam.
+            if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
+            {
+                m_fLastConfigTimeoutWarningTime = nowSec;
+                Print("[RSS] 等待 GameMode 同步配置超时。请确认服务器端 RSS 已加载且复制正常。");
+            }
         }
     }
     
@@ -1264,61 +1280,9 @@ modded class SCR_CharacterControllerComponent
         return m_fLastRssSpeedMultiplierApplied;
     }
 
-    void ServerPushConfigToOwner()
-    {
-        if (!Replication.IsServer())
-            return;
-        if (m_bClientAckedConfig)
-            return;
+    // Legacy per-player config push removed (replaced by GameMode replication).
 
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            return;
-
-        array<float> combinedPresetParams;
-        array<float> floatSettings;
-        array<int> intSettings;
-        array<bool> boolSettings;
-        BuildConfigArrays(combinedPresetParams, floatSettings, intSettings, boolSettings);
-
-        Rpc(RPC_SendFullConfigOwner,
-            settings.m_sConfigVersion,
-            settings.m_sSelectedPreset,
-            combinedPresetParams,
-            floatSettings,
-            intSettings,
-            boolSettings
-        );
-        if (IsRssDebugEnabled())
-            PrintFormat("[RSS] Server pushed config to client (will retry until ack): %1", GetPlayerLabel(GetOwner()));
-        GetGame().GetCallqueue().CallLater(ServerPushConfigToOwner, 3000, false);
-    }
-
-    void OnConfigChanged()
-    {
-        if (Replication.IsServer())
-        {
-            SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            if (settings)
-            {
-                array<float> combinedPresetParams = new array<float>();
-                array<float> floatSettings = new array<float>();
-                array<int> intSettings = new array<int>();
-                array<bool> boolSettings = new array<bool>();
-                BuildCombinedPresetArray(settings, combinedPresetParams);
-                BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
-                Rpc(RPC_SendFullConfigOwner,
-                    settings.m_sConfigVersion,
-                    settings.m_sSelectedPreset,
-                    combinedPresetParams,
-                    floatSettings,
-                    intSettings,
-                    boolSettings
-                );
-            }
-        }
-    }
+    // Legacy config change callback removed (config distribution is GameMode replication).
 
     protected string GetPlayerLabel(IEntity entity)
     {
@@ -1370,7 +1334,6 @@ modded class SCR_CharacterControllerComponent
             newConfigHash);
         if (shouldSkipApply)
         {
-            m_fFirstConfigRequestTime = -1.0;
             m_fLastConfigTimeoutWarningTime = -1.0;
             if (IsRssDebugEnabled())
                 Print("[RSS] Config unchanged (hash match), skipping apply");
@@ -1389,9 +1352,8 @@ modded class SCR_CharacterControllerComponent
             intSettings,
             boolSettings);
 
-        SCR_RSS_ConfigManager.Save();
+        // Client: do not write profile JSON. The authoritative config lives on the server.
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-        m_fFirstConfigRequestTime = -1.0;  // 收到配置，清除超时计时
         m_fLastConfigTimeoutWarningTime = -1.0;
         m_sLastAppliedConfigHash = newConfigHash; // 更新配置哈希
         PrintFormat("[RSS] Applied full server config: preset=%1, version=%2, hash=%3", selectedPreset, configVersion, newConfigHash);
@@ -1407,42 +1369,7 @@ modded class SCR_CharacterControllerComponent
         return SCR_PlayerBaseConfigHelper.CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings, boolSettings);
     }
 
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_SendFullConfigOwner(string configVersion, string selectedPreset,
-                                 array<float> combinedPresetParams,
-                                 array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        bool applied = ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
-        if (!Replication.IsServer() && applied)
-            Rpc(RPC_ClientAckConfig);
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ClientAckConfig()
-    {
-        if (Replication.IsServer())
-        {
-            m_bClientAckedConfig = true;
-            Rpc(RPC_ServerAckReceived);
-            if (IsRssDebugEnabled())
-                PrintFormat("[RSS] 收到客户端配置回执，停止推送: %1", GetPlayerLabel(GetOwner()));
-        }
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ServerAckReceived()
-    {
-        if (!Replication.IsServer() && IsRssDebugEnabled())
-            Print("[RSS] 服务器已确认收到回执，后续不再推送配置");
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Broadcast)]
-    void RPC_SendFullConfigBroadcast(string configVersion, string selectedPreset,
-                                     array<float> combinedPresetParams,
-                                     array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        ApplyFullConfigFromCombined(configVersion, selectedPreset, combinedPresetParams, floatSettings, intSettings, boolSettings);
-    }
+    // Legacy config RPCs removed (replaced by GameMode replication).
 
     protected bool ApplyFullConfigFromCombined(string configVersion, string selectedPreset,
         array<float> combinedPresetParams,
@@ -1459,244 +1386,7 @@ modded class SCR_CharacterControllerComponent
         return true;
     }
 
-    void MonitorNetworkConnection()
-    {
-        if (Replication.IsServer()) return;
-
-        if (!GetGame()) return;
-        PlayerManager playerManager = GetGame().GetPlayerManager();
-        if (!playerManager) return;
-
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-        int playerId = playerManager.GetPlayerIdFromControlledEntity(GetOwner());
-        bool hasValidPlayerId = (playerId != 0);
-
-        bool isHeartbeatActive = SCR_RSS_NetworkStateUtils.IsHeartbeatActive(hasValidPlayerId, m_fLastHeartbeatTime, currentTime, 10.0);
-
-        bool isConnected = SCR_RSS_NetworkStateUtils.IsConnected(hasValidPlayerId, m_fLastHeartbeatTime, isHeartbeatActive);
-
-        bool playerIdChanged = SCR_RSS_NetworkStateUtils.HasPlayerIdChanged(m_iPlayerId, playerId);
-
-        if (hasValidPlayerId && m_iPlayerId != playerId)
-        {
-            if (m_iPlayerId != 0)
-            {
-                PrintFormat("[RSS] 检测到玩家ID变化: %1 -> %2 (可能是重连)", m_iPlayerId, playerId);
-            }
-            else
-            {
-                PrintFormat("[RSS] 检测到玩家ID: %1", playerId);
-            }
-            m_iPlayerId = playerId;
-        }
-
-        if (!m_bIsConnected && isConnected)
-        {
-            m_fLastHeartbeatTime = currentTime; // 初始化心跳
-            m_bIsConnected = true;
-            m_fLastReconnectTime = currentTime;
-            if (SCR_RSS_ConfigManager.IsServerConfigApplied())
-            {
-                Print("[RSS] 网络已连接，服务器配置已应用");
-            }
-            else
-            {
-                Print("[RSS] 网络已连接，等待服务器推送配置");
-                RequestServerConfig();
-            }
-        }
-        else if (m_bIsConnected && playerIdChanged && isConnected)
-        {
-            SCR_RSS_ConfigManager.ResetClientConfigAwaitingSync();
-            m_iConfigRetryCount = 0; // 重置重试计数
-            m_fFirstConfigRequestTime = -1.0;
-            m_fLastConfigTimeoutWarningTime = -1.0;
-            m_fLastReconnectTime = currentTime;
-            Print("[RSS] 网络已重连，等待服务器推送配置");
-            GetGame().GetCallqueue().CallLater(RequestServerConfig, RECONNECT_SYNC_DELAY * 1000, false);
-        }
-        else if (m_bIsConnected && !isConnected)
-        {
-            m_bIsConnected = false;
-            m_iPlayerId = 0;
-            m_fLastHeartbeatTime = 0.0;
-            Print("[RSS] 网络连接已断开");
-        }
-
-        if (isConnected)
-        {
-            m_fLastHeartbeatTime = currentTime;
-        }
-    }
-
-    void RequestServerConfig(bool forceBroadcast = false)
-    {
-        if (!Replication.IsServer())
-        {
-            if (SCR_RSS_ConfigManager.IsServerConfigApplied())
-                return;
-
-            if (m_fFirstConfigRequestTime < 0.0)
-                m_fFirstConfigRequestTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            float elapsed = nowSec - m_fFirstConfigRequestTime;
-
-            if (elapsed >= CONFIG_FETCH_TIMEOUT_SEC)
-            {
-                m_iConfigRetryCount++;
-
-                if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
-                {
-                    m_fLastConfigTimeoutWarningTime = nowSec;
-
-                    if (m_iConfigRetryCount >= MAX_CONFIG_RETRY_COUNT)
-                    {
-                        PrintFormat("[RSS] 配置获取超时（重试 %1/%2），请求服务器广播配置", m_iConfigRetryCount, MAX_CONFIG_RETRY_COUNT);
-                        forceBroadcast = true;
-                    }
-                    else
-                    {
-                        PrintFormat("[RSS] 配置获取超时（重试 %1/%2），继续重试。若持续无响应请检查服务器或网络。", m_iConfigRetryCount, MAX_CONFIG_RETRY_COUNT);
-                    }
-                }
-            }
-            if (forceBroadcast)
-            {
-                Rpc(RPC_ServerRequestBroadcastConfig);
-            }
-            else
-            {
-                Rpc(RPC_ServerRequestConfig);
-            }
-        }
-    }
-
-    void RequestServerConfigUntilApplied()
-    {
-        if (Replication.IsServer())
-            return;
-
-        if (SCR_RSS_ConfigManager.IsServerConfigApplied())
-            return;
-
-        RequestServerConfig();
-
-        if (GetGame() && GetGame().GetCallqueue())
-        {
-            int retryIntervalMs = Math.Round(SERVER_CONFIG_SYNC_INTERVAL * 1000.0);
-            if (retryIntervalMs < 1000)
-                retryIntervalMs = 1000;
-            GetGame().GetCallqueue().CallLater(RequestServerConfigUntilApplied, retryIntervalMs, false);
-        }
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ServerRequestConfig()
-    {
-        if (!Replication.IsServer())
-            return;
-
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            return;
-
-        PrintFormat("[RSS] Sync config to client (owner request): %1", GetPlayerLabel(GetOwner()));
-
-        array<float> combinedPresetParams = new array<float>();
-        array<float> floatSettings = new array<float>();
-        array<int> intSettings = new array<int>();
-        array<bool> boolSettings = new array<bool>();
-        BuildCombinedPresetArray(settings, combinedPresetParams);
-        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
-        Rpc(RPC_SendFullConfigOwner,
-            settings.m_sConfigVersion,
-            settings.m_sSelectedPreset,
-            combinedPresetParams,
-            floatSettings,
-            intSettings,
-            boolSettings
-        );
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ServerRequestBroadcastConfig()
-    {
-        if (!Replication.IsServer())
-            return;
-
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            return;
-
-        PrintFormat("[RSS] Broadcast config to all clients (timeout fallback): %1", GetPlayerLabel(GetOwner()));
-
-        array<float> combinedPresetParams = new array<float>();
-        array<float> floatSettings = new array<float>();
-        array<int> intSettings = new array<int>();
-        array<bool> boolSettings = new array<bool>();
-        BuildCombinedPresetArray(settings, combinedPresetParams);
-        BuildSettingsArrays(settings, floatSettings, intSettings, boolSettings);
-
-        Rpc(RPC_SendFullConfigBroadcast,
-            settings.m_sConfigVersion,
-            settings.m_sSelectedPreset,
-            combinedPresetParams,
-            floatSettings,
-            intSettings,
-            boolSettings
-        );
-    }
-
-    void UpdateHeartbeat()
-    {
-        if (Replication.IsServer()) return;
-
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-        if (currentTime - m_fLastHeartbeatSendTime >= HEARTBEAT_INTERVAL)
-        {
-            m_fLastHeartbeatSendTime = currentTime;
-            Rpc(RPC_ClientHeartbeat, GetGame().GetWorld().GetWorldTime() / 1000.0);
-        }
-
-        if (m_fLastHeartbeatTime > 0.0 && (currentTime - m_fLastHeartbeatTime) > HEARTBEAT_TIMEOUT)
-        {
-            if (m_bIsConnected)
-            {
-                m_bIsConnected = false;
-                m_iPlayerId = 0;
-                Print("[RSS] 心跳超时，判定网络已断开");
-            }
-        }
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
-    void RPC_ClientHeartbeat(int clientTimestamp)
-    {
-        if (Replication.IsServer())
-        {
-            m_fLastHeartbeatTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-            Rpc(RPC_ServerHeartbeatAck, GetGame().GetWorld().GetWorldTime() / 1000.0);
-        }
-    }
-
-    [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
-    void RPC_ServerHeartbeatAck(float serverTimestamp)
-    {
-        if (!Replication.IsServer())
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            float rtt = currentTime - serverTimestamp;
-
-            m_fLastHeartbeatTime = currentTime;
-
-            if (IsRssDebugEnabled() && rtt > 0.5)
-                PrintFormat("[RSS] High latency detected (RTT: %1s)", rtt);
-        }
-    }
+    // Legacy client-driven config sync (request/broadcast/heartbeat) removed.
 
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
     void RPC_ClientReportStamina(float staminaPercent, float weight, float clientTimestamp, bool isCriticalData)

@@ -15,7 +15,6 @@ class SCR_RSS_ConfigManager
     protected static const float RELOAD_COOLDOWN = 5.0;  // 重载冷却（秒）
     protected static bool m_bIsServerConfigApplied = false;  // 是否已应用服务器配置
     protected static bool m_bLoggedClientDefaultsOnce = false;  // 客户端默认值日志仅打印一次
-    protected static ref array<IEntity> m_aConfigChangeListeners = new array<IEntity>();  // 配置变更监听器
     protected static string m_sLastSelectedPreset = "";  // 上次选中的预设，用于检测变更
     protected static ref SCR_RSS_Settings m_CachedSettings;  // 配置缓存，用于检测变更
     protected static float m_fLastSyncTime = 0.0;  // 上次同步时间
@@ -103,11 +102,12 @@ class SCR_RSS_ConfigManager
         }
         
         // 防止频繁重载
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        if (m_bIsLoaded && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
-        {
+        float currentTime = 0.0;
+        if (GetGame() && GetGame().GetWorld())
+            currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+
+        if (m_bIsLoaded && currentTime > 0.0 && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
             return;
-        }
         
         m_Settings = new SCR_RSS_Settings();
         
@@ -493,7 +493,7 @@ class SCR_RSS_ConfigManager
         if (Replication.IsServer())
         {
             DetectConfigChanges();
-            NotifyConfigChanges();
+            ReplicateConfigToClients();
         }
     }
     
@@ -503,51 +503,22 @@ class SCR_RSS_ConfigManager
         // 检查主配置文件是否存在
         if (!FileIO.FileExists(CONFIG_PATH))
             return;
-        
-        // 管理备份文件
-        ManageBackupFiles();
-        
-        // 创建当前备份
+
+        // Single-backup strategy: keep exactly one .bak.json in sync with last good config.
+        // This matches RestoreFromBackup() behavior.
         FileIO.CopyFile(CONFIG_PATH, CONFIG_BACKUP_PATH);
-        Print("[RSS_ConfigManager] Config backup created at " + CONFIG_BACKUP_PATH);
     }
     
     // 管理备份文件
     protected static void ManageBackupFiles()
     {
-        // 仅保留单个 .bak.json，不保留编号历史备份
-        for (int i = 1; i <= MAX_BACKUP_COUNT; i++)
-        {
-            string oldBackupPath = CONFIG_BACKUP_PATH + "." + i.ToString();
-            if (FileIO.FileExists(oldBackupPath))
-            {
-                FileIO.DeleteFile(oldBackupPath);
-            }
-        }
+        // No-op for single-backup strategy.
     }
     
     // 从备份恢复配置
     static bool RestoreFromBackup()
     {
-        // 尝试从最新的备份恢复
-        for (int i = 1; i <= MAX_BACKUP_COUNT; i++)
-        {
-            string backupPath = CONFIG_BACKUP_PATH + "." + i.ToString();
-            if (FileIO.FileExists(backupPath))
-            {
-                // 复制备份文件到主配置文件
-                if (FileIO.CopyFile(backupPath, CONFIG_PATH))
-                {
-                    Print("[RSS_ConfigManager] Config restored from backup: " + backupPath);
-                    // 重新加载配置
-                    m_bIsLoaded = false;
-                    Load();
-                    return true;
-                }
-            }
-        }
-        
-        // 尝试从主备份文件恢复
+        // Restore from single .bak.json backup.
         if (FileIO.FileExists(CONFIG_BACKUP_PATH))
         {
             if (FileIO.CopyFile(CONFIG_BACKUP_PATH, CONFIG_PATH))
@@ -577,21 +548,33 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_sSelectedPreset = m_Settings.m_sSelectedPreset;
         
         // 复制预设参数
-        if (m_Settings.m_EliteStandard) {
+        if (m_Settings.m_EliteStandard)
+        {
             m_CachedSettings.m_EliteStandard = new SCR_RSS_Params();
-            m_CachedSettings.m_EliteStandard = m_Settings.m_EliteStandard;
+            array<float> tmpElite = new array<float>();
+            SCR_RSS_Settings.WriteParamsToArray(m_Settings.m_EliteStandard, tmpElite);
+            SCR_RSS_Settings.ApplyParamsFromArray(m_CachedSettings.m_EliteStandard, tmpElite);
         }
-        if (m_Settings.m_StandardMilsim) {
+        if (m_Settings.m_StandardMilsim)
+        {
             m_CachedSettings.m_StandardMilsim = new SCR_RSS_Params();
-            m_CachedSettings.m_StandardMilsim = m_Settings.m_StandardMilsim;
+            array<float> tmpStandard = new array<float>();
+            SCR_RSS_Settings.WriteParamsToArray(m_Settings.m_StandardMilsim, tmpStandard);
+            SCR_RSS_Settings.ApplyParamsFromArray(m_CachedSettings.m_StandardMilsim, tmpStandard);
         }
-        if (m_Settings.m_TacticalAction) {
+        if (m_Settings.m_TacticalAction)
+        {
             m_CachedSettings.m_TacticalAction = new SCR_RSS_Params();
-            m_CachedSettings.m_TacticalAction = m_Settings.m_TacticalAction;
+            array<float> tmpTactical = new array<float>();
+            SCR_RSS_Settings.WriteParamsToArray(m_Settings.m_TacticalAction, tmpTactical);
+            SCR_RSS_Settings.ApplyParamsFromArray(m_CachedSettings.m_TacticalAction, tmpTactical);
         }
-        if (m_Settings.m_Custom) {
+        if (m_Settings.m_Custom)
+        {
             m_CachedSettings.m_Custom = new SCR_RSS_Params();
-            m_CachedSettings.m_Custom = m_Settings.m_Custom;
+            array<float> tmpCustom = new array<float>();
+            SCR_RSS_Settings.WriteParamsToArray(m_Settings.m_Custom, tmpCustom);
+            SCR_RSS_Settings.ApplyParamsFromArray(m_CachedSettings.m_Custom, tmpCustom);
         }
         
         // 复制其他配置
@@ -631,6 +614,7 @@ class SCR_RSS_ConfigManager
         Print("[RSS_ConfigManager] Reloading settings...");
         m_bIsLoaded = false;
         Load();
+        ReplicateConfigToClients();
         Print("[RSS_ConfigManager] Settings reloaded successfully");
     }
     
@@ -834,26 +818,6 @@ class SCR_RSS_ConfigManager
         return m_bServerDataExportEnabled;
     }
 
-    // 注册配置变更监听器
-    static void RegisterConfigChangeListener(IEntity listener)
-    {
-        if (listener && !m_aConfigChangeListeners.Contains(listener))
-        {
-            m_aConfigChangeListeners.Insert(listener);
-            Print("[RSS_ConfigManager] Registered config change listener: " + listener.GetName());
-        }
-    }
-    
-    // 移除配置变更监听器
-    static void UnregisterConfigChangeListener(IEntity listener)
-    {
-        if (listener && m_aConfigChangeListeners.Contains(listener))
-        {
-            m_aConfigChangeListeners.RemoveItem(listener);
-            Print("[RSS_ConfigManager] Unregistered config change listener: " + listener.GetName());
-        }
-    }
-    
     // 检测配置变更
     static bool DetectConfigChanges()
     {
@@ -950,39 +914,8 @@ class SCR_RSS_ConfigManager
         return hasChanged;
     }
     
-    // 通知配置变更：对每个监听器点对点推送，每个控制器只发给自己的 Owner
-    static void NotifyConfigChanges()
-    {
-        for (int i = 0; i < m_aConfigChangeListeners.Count(); i++)
-        {
-            IEntity listener = m_aConfigChangeListeners[i];
-            if (listener)
-            {
-                SCR_CharacterControllerComponent controller = SCR_CharacterControllerComponent.Cast(listener.FindComponent(SCR_CharacterControllerComponent));
-                if (controller)
-                    controller.OnConfigChanged();
-            }
-        }
-    }
-    
-    // 保存配置并检测变更
-    static void SaveWithChangeDetection()
-    {
-        if (!m_Settings)
-            return;
-        
-        // 保存前检测变更
-        bool hasChanged = DetectConfigChanges();
-        
-        // 保存配置
-        Save();
-        
-        // 如果有变更，通知监听器
-        if (hasChanged && Replication.IsServer())
-        {
-            NotifyConfigChanges();
-        }
-    }
+    // SaveWithChangeDetection / listener-based notifications removed.
+    // Config changes are distributed via GameMode replication (RplProp) only.
     
     // 验证配置文件完整性
     static bool ValidateConfigFile()
@@ -1095,8 +1028,23 @@ class SCR_RSS_ConfigManager
         if (!Replication.IsServer() || !m_Settings)
             return;
         
-        // 通知所有监听器
-        NotifyConfigChanges();
+        ReplicateConfigToClients();
         Print("[RSS_ConfigManager] Forced config sync to all clients");
+    }
+
+    // Server: push current settings via GameMode replication (native-style).
+    protected static void ReplicateConfigToClients()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        if (!GetGame())
+            return;
+
+        SCR_BaseGameMode gameMode = SCR_BaseGameMode.Cast(GetGame().GetGameMode());
+        if (!gameMode)
+            return;
+
+        gameMode.RSS_ReplicateConfigNow();
     }
 }
