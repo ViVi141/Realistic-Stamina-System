@@ -128,8 +128,10 @@ class SCR_StaminaHUDComponent
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
         
-        s_Instance = new SCR_StaminaHUDComponent();
-        s_Instance.CreateHUD();
+        SCR_StaminaHUDComponent inst = new SCR_StaminaHUDComponent();
+        if (!inst.CreateHUD())
+            return;
+        s_Instance = inst;
     }
 
     // 与 SCR_RSS_Settings.m_bHintDisplayEnabled 对齐：开则 Init、关则 Destroy（含热重载后关闭 HUD）。
@@ -173,15 +175,15 @@ class SCR_StaminaHUDComponent
     
     // ==================== 私有方法 ====================
     
-    // 创建 HUD
-    protected void CreateHUD()
+    // 创建 HUD。失败时不得把实例赋给 s_Instance，否则 Init() 会因「已有单例」永远不重试。
+    protected bool CreateHUD()
     {
         WorkspaceWidget workspace = GetGame().GetWorkspace();
         if (!workspace)
         {
             if (StaminaConstants.IsDebugEnabled())
                 Print("[RSS_StaminaHUD] Workspace not found");
-            return;
+            return false;
         }
         
         // 直接在 workspace 上创建布局
@@ -192,7 +194,7 @@ class SCR_StaminaHUDComponent
             // 如果布局加载失败，打印日志
             if (StaminaConstants.IsDebugEnabled())
                 Print("[RSS_StaminaHUD] Layout not found or failed to load");
-            return;
+            return false;
         }
         
         // 查找所有 Text widget
@@ -234,6 +236,7 @@ class SCR_StaminaHUDComponent
         
         if (StaminaConstants.IsDebugEnabled())
             Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets");
+        return true;
     }
     
     
