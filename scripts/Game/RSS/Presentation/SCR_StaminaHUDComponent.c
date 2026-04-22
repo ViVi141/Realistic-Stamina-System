@@ -131,6 +131,25 @@ class SCR_StaminaHUDComponent
         s_Instance = new SCR_StaminaHUDComponent();
         s_Instance.CreateHUD();
     }
+
+    // 与 SCR_RSS_Settings.m_bHintDisplayEnabled 对齐：开则 Init、关则 Destroy（含热重载后关闭 HUD）。
+    // 须先于 Init 内「已有实例则 return」使用，否则无法关闭已创建的 HUD。
+    // 不依据 Replication.IsServer() 过滤：工作台试玩/监听主机常为「带画面的服务端」，原逻辑会整段 return 导致不显示。
+    // 无 Workspace（专服无头等）时无法创建 widget，与 CreateHUD 行为一致，此处可提前 return。
+    static void SyncHintDisplayWithSettings()
+    {
+        if (!GetGame() || !GetGame().GetWorkspace())
+            return;
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+
+        if (settings.m_bHintDisplayEnabled)
+            Init();
+        else
+            Destroy();
+    }
     
     // 销毁 HUD
     static void Destroy()

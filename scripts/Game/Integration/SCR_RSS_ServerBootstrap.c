@@ -31,11 +31,15 @@ modded class SCR_BaseGameMode
 
     protected bool m_bRssConfigInitialized = false;
 
+    //! 服务端数据导出链是否在跑（m_bDataExportEnabled 为假时不跑、不占每秒 CallLater true）。
+    protected bool m_bRssDataExportLoopRunning = false;
+
     // Public entry for server hot-reload / save paths.
     // Can be called from SCR_RSS_ConfigManager after a successful Load/Save/Reload.
     void RSS_ReplicateConfigNow()
     {
         RSS_BuildAndReplicateConfig();
+        RssServerDataExportScheduleIfNeeded();
     }
 
     override void OnGameStart()
@@ -53,8 +57,7 @@ modded class SCR_BaseGameMode
         {
             SCR_RSS_ConfigManager.Load();
             RSS_BuildAndReplicateConfig();
-            if (GetGame())
-                GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, true);
+            RssServerDataExportScheduleIfNeeded();
             return;
         }
 
@@ -65,11 +68,46 @@ modded class SCR_BaseGameMode
         }
     }
 
-    //! 数据导出单点触发，避免每个角色 tick 调用 TryExport（性能）
+    //! 仅在 m_bDataExportEnabled 为真时启动/维持约 1s 一次的 TryExport；关导出时停止链并不再调度。
+    protected void RssServerDataExportScheduleIfNeeded()
+    {
+        if (!Replication.IsServer())
+            return;
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return;
+        if (!settings.m_bDataExportEnabled)
+            return;
+        if (m_bRssDataExportLoopRunning)
+            return;
+
+        m_bRssDataExportLoopRunning = true;
+        if (GetGame())
+            GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
+    }
+
     protected void RssServerDataExportTick()
     {
-        if (Replication.IsServer())
-            SCR_RSS_DataExport.TryExport();
+        if (!Replication.IsServer())
+        {
+            m_bRssDataExportLoopRunning = false;
+            return;
+        }
+
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings || !settings.m_bDataExportEnabled)
+        {
+            m_bRssDataExportLoopRunning = false;
+            return;
+        }
+
+        SCR_RSS_DataExport.TryExport();
+
+        if (GetGame())
+            GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
+        else
+            m_bRssDataExportLoopRunning = false;
     }
 
     // Server: build payload from current settings and replicate.
@@ -145,7 +183,7 @@ modded class SCR_BaseGameMode
 
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
 
-        // Notify systems which depend on settings (HUD etc.) is still handled by PlayerBase apply path
-        // when it detects server config is applied; we keep ConfigManager as the single source of truth.
+        // Hint HUD 与 m_bHintDisplayEnabled 同步（含首次同步与专服热重载）。
+        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 }

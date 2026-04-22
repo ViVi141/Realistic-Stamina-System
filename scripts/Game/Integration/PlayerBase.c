@@ -16,7 +16,6 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastReconnectTime = -1.0; // 上次重连时间
     protected const float CONFIG_FETCH_TIMEOUT_SEC = 30.0; // 配置获取超时（秒），超时后每 30 秒打印一次警告
     protected float m_fLastConfigTimeoutWarningTime = -1.0; // 上次打印超时警告时间，避免刷屏
-    protected string m_sLastAppliedConfigHash = ""; // 上次应用的配置哈希值，用于检测内容变化
 
     // Native-style config replication:
     // Clients receive settings via GameMode RplProp (see SCR_RSS_ServerBootstrap.c),
@@ -1294,100 +1293,7 @@ modded class SCR_CharacterControllerComponent
         return SCR_PlayerBaseConfigHelper.IsRssDebugEnabled();
     }
 
-    protected array<float> BuildPresetArray(SCR_RSS_Params p)
-    {
-        return SCR_PlayerBaseConfigHelper.BuildPresetArray(p);
-    }
-
-    protected void BuildSettingsArrays(SCR_RSS_Settings s, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        SCR_PlayerBaseConfigHelper.BuildSettingsArrays(s, floatSettings, intSettings, boolSettings);
-    }
-
-    protected void BuildConfigArrays(out array<float> combinedPresetParams, out array<float> floatSettings, out array<int> intSettings, out array<bool> boolSettings)
-    {
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        SCR_PlayerBaseConfigHelper.BuildConfigArrays(settings, combinedPresetParams, floatSettings, intSettings, boolSettings);
-    }
-
-    protected void BuildCombinedPresetArray(SCR_RSS_Settings s, array<float> outCombined)
-    {
-        SCR_PlayerBaseConfigHelper.BuildCombinedPresetArray(s, outCombined);
-    }
-
-    protected void ApplyFullConfig(string configVersion, string selectedPreset,
-        array<float> eliteParams, array<float> standardParams, array<float> tacticalParams, array<float> customParams,
-        array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        if (Replication.IsServer())
-            return;
-
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            settings = new SCR_RSS_Settings();
-
-        string newConfigHash = CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings, boolSettings);
-
-        bool shouldSkipApply = SCR_PlayerBaseConfigHelper.ShouldSkipApply(
-            SCR_RSS_ConfigManager.IsServerConfigApplied(),
-            m_sLastAppliedConfigHash,
-            newConfigHash);
-        if (shouldSkipApply)
-        {
-            m_fLastConfigTimeoutWarningTime = -1.0;
-            if (IsRssDebugEnabled())
-                Print("[RSS] Config unchanged (hash match), skipping apply");
-            return;
-        }
-
-        SCR_PlayerBaseConfigHelper.ApplyFullConfigPayload(
-            settings,
-            configVersion,
-            selectedPreset,
-            eliteParams,
-            standardParams,
-            tacticalParams,
-            customParams,
-            floatSettings,
-            intSettings,
-            boolSettings);
-
-        // Client: do not write profile JSON. The authoritative config lives on the server.
-        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
-        m_fLastConfigTimeoutWarningTime = -1.0;
-        m_sLastAppliedConfigHash = newConfigHash; // 更新配置哈希
-        PrintFormat("[RSS] Applied full server config: preset=%1, version=%2, hash=%3", selectedPreset, configVersion, newConfigHash);
-
-        if (settings.m_bHintDisplayEnabled)
-            SCR_StaminaHUDComponent.Init();
-        else
-            SCR_StaminaHUDComponent.Destroy();
-    }
-
-    protected string CalculateConfigHash(string configVersion, string selectedPreset, array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        return SCR_PlayerBaseConfigHelper.CalculateConfigHash(configVersion, selectedPreset, floatSettings, intSettings, boolSettings);
-    }
-
-    // Legacy config RPCs removed (replaced by GameMode replication).
-
-    protected bool ApplyFullConfigFromCombined(string configVersion, string selectedPreset,
-        array<float> combinedPresetParams,
-        array<float> floatSettings, array<int> intSettings, array<bool> boolSettings)
-    {
-        array<float> eliteParams = null;
-        array<float> standardParams = null;
-        array<float> tacticalParams = null;
-        array<float> customParams = null;
-        bool isValid = SCR_RSS_ConfigSyncUtils.SplitCombinedPresetParams(combinedPresetParams, eliteParams, standardParams, tacticalParams, customParams);
-        if (!isValid)
-            return false;
-        ApplyFullConfig(configVersion, selectedPreset, eliteParams, standardParams, tacticalParams, customParams, floatSettings, intSettings, boolSettings);
-        return true;
-    }
-
-    // Legacy client-driven config sync (request/broadcast/heartbeat) removed.
-
+    //! 客户端上报：仅用于数据导出/对照（m_bDataExportEnabled），非强反作弊与玩法权威判据。配置由 GameMode RplProp 写入设置；Hint HUD 由 SCR_StaminaHUDComponent.SyncHintDisplayWithSettings 对齐。
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
     void RPC_ClientReportStamina(float staminaPercent, float weight, float clientTimestamp, bool isCriticalData)
     {
@@ -1585,7 +1491,7 @@ modded class SCR_CharacterControllerComponent
 
     void InitStaminaHUD()
     {
-        SCR_StaminaHUDComponent.Init();
+        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 
     void OnJumpActionTriggered(float value = 0.0, EActionTrigger trigger = 0)
