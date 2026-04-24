@@ -22,6 +22,6 @@ class SCR_CombatStimConstants
 
 	//! 药效期（ACTIVE）内全局流血速率：相对注射前基准通常为 1，本系数为 ×2 → 有效约 2
 	static const float BLEEDING_SCALE_MULT_ACTIVE = 2.0;
-	//! OD 在 ACTIVE 之上再乘一次 2：基准 ×2×2 = 4（再次注射进入 OD 后的流血倍率）
-	static const float BLEEDING_SCALE_MULT_OD_EXTRA = 2.0;
+	//! OD 在 ACTIVE 之上再乘一次 1.5：基准 ×2×1.5 = 3（再次注射进入 OD 后的流血倍率）
+	static const float BLEEDING_SCALE_MULT_OD_EXTRA = 1.5;
 }
