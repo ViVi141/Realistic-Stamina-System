@@ -5,11 +5,9 @@ modded class SCR_BaseGameMode
     protected static const int RSS_LOAD_RETRY_MAX = 10;
 
     // --------------------------------------------------------------------------------------------
-    // RSS config replication (native-style): replicate from GameMode to all clients.
-    // This replaces per-player config request/ACK loops in PlayerBase.
-    //
-    // NOTE: We intentionally keep the replicated payload compact and versioned.
-    // Clients apply it into SCR_RSS_ConfigManager in onRpl callbacks.
+    // RSS config replication (lightweight)
+    //   • 客户端本地 InitPresets() 生成预设参数，服务器只复制"选哪个预设 + 管理员改了哪些开关"
+    //   • Custom 预设时额外复制 m_aRssCustomParams（47 floats），非 Custom 不复制
     // --------------------------------------------------------------------------------------------
     [RplProp(onRplName: "OnRssConfigReplicated")]
     protected string m_sRssConfigVersion;
@@ -18,24 +16,33 @@ modded class SCR_BaseGameMode
     protected string m_sRssSelectedPreset;
 
     [RplProp(onRplName: "OnRssConfigReplicated")]
-    protected ref array<float> m_aRssCombinedPresetParams;
+    protected bool m_bRssCustomActive;  // true = Custom 预设选中，m_aRssCustomParams 有效
 
     [RplProp(onRplName: "OnRssConfigReplicated")]
-    protected ref array<float> m_aRssFloatSettings;
+    protected ref array<float> m_aRssCustomParams;  // 47 floats，仅 Custom 模式有效
+
+    // 顶层开关（5 个，管理员通过 Settings → RSS Tab 修改）
+    [RplProp(onRplName: "OnRssConfigReplicated")]
+    protected bool m_bRssDebugLog;
 
     [RplProp(onRplName: "OnRssConfigReplicated")]
-    protected ref array<int> m_aRssIntSettings;
+    protected bool m_bRssHintDisplay;
 
     [RplProp(onRplName: "OnRssConfigReplicated")]
-    protected ref array<bool> m_aRssBoolSettings;
+    protected bool m_bRssDataExport;
+
+    [RplProp(onRplName: "OnRssConfigReplicated")]
+    protected bool m_bRssMudSlip;
+
+    [RplProp(onRplName: "OnRssConfigReplicated")]
+    protected bool m_bRssAICombat;
 
     protected bool m_bRssConfigInitialized = false;
 
-    //! 服务端数据导出链是否在跑（m_bDataExportEnabled 为假时不跑、不占每秒 CallLater true）。
+    //! 服务端数据导出链是否在跑
     protected bool m_bRssDataExportLoopRunning = false;
 
-    // Public entry for server hot-reload / save paths.
-    // Can be called from SCR_RSS_ConfigManager after a successful Load/Save/Reload.
+    //------------------------------------------------------------------------------------------------
     void RSS_ReplicateConfigNow()
     {
         RSS_BuildAndReplicateConfig();
@@ -43,10 +50,6 @@ modded class SCR_BaseGameMode
     }
 
     //------------------------------------------------------------------------------------------------
-    // 打开 RSS 管理面板
-    // RSS 管理面板现在嵌入在 SettingsSuperMenu 的 "RSS" 标签页中
-    // （与 Video / Audio / Interface 同一层级，仅管理员可见）
-    // 使用方法：Esc → Settings → RSS 标签
     void RSS_OpenAdminMenu()
     {
         if (!GetGame() || !GetGame().GetWorkspace())
@@ -54,14 +57,11 @@ modded class SCR_BaseGameMode
 
         int playerId = GetGame().GetPlayerController().GetPlayerId();
         PlayerManager pm = GetGame().GetPlayerManager();
-        if (!pm)
-            return;
+        if (!pm) return;
 
-        bool isAdmin = pm.HasPlayerRole(playerId, EPlayerRole.ADMINISTRATOR)
-                    || pm.HasPlayerRole(playerId, EPlayerRole.SESSION_ADMINISTRATOR)
-                    || pm.HasPlayerRole(playerId, EPlayerRole.GAME_MASTER);
-
-        if (!isAdmin)
+        if (!pm.HasPlayerRole(playerId, EPlayerRole.ADMINISTRATOR)
+            && !pm.HasPlayerRole(playerId, EPlayerRole.SESSION_ADMINISTRATOR)
+            && !pm.HasPlayerRole(playerId, EPlayerRole.GAME_MASTER))
         {
             Print("[RSS] RSS_OpenAdminMenu: access denied");
             return;
@@ -70,15 +70,15 @@ modded class SCR_BaseGameMode
         GetGame().GetMenuManager().OpenMenu(ChimeraMenuPreset.SettingsSuperMenu);
     }
 
+    //------------------------------------------------------------------------------------------------
     override void OnGameStart()
     {
         super.OnGameStart();
-
-        // Replication can be uninitialized at OnGameStart; defer and retry briefly.
         if (GetGame())
             GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
     }
 
+    //------------------------------------------------------------------------------------------------
     protected void DeferredRssConfigLoad()
     {
         if (Replication.IsServer())
@@ -91,30 +91,23 @@ modded class SCR_BaseGameMode
 
         m_iRssLoadRetries++;
         if (m_iRssLoadRetries <= RSS_LOAD_RETRY_MAX && GetGame())
-        {
             GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
-        }
     }
 
-    //! 仅在 m_bDataExportEnabled 为真时启动/维持约 1s 一次的 TryExport；关导出时停止链并不再调度。
+    //------------------------------------------------------------------------------------------------
     protected void RssServerDataExportScheduleIfNeeded()
     {
-        if (!Replication.IsServer())
-            return;
-
+        if (!Replication.IsServer()) return;
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            return;
-        if (!settings.m_bDataExportEnabled)
-            return;
-        if (m_bRssDataExportLoopRunning)
-            return;
+        if (!settings || !settings.m_bDataExportEnabled) return;
+        if (m_bRssDataExportLoopRunning) return;
 
         m_bRssDataExportLoopRunning = true;
         if (GetGame())
             GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
     }
 
+    //------------------------------------------------------------------------------------------------
     protected void RssServerDataExportTick()
     {
         if (!Replication.IsServer())
@@ -122,96 +115,89 @@ modded class SCR_BaseGameMode
             m_bRssDataExportLoopRunning = false;
             return;
         }
-
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings || !settings.m_bDataExportEnabled)
         {
             m_bRssDataExportLoopRunning = false;
             return;
         }
-
         SCR_RSS_DataExport.TryExport();
-
         if (GetGame())
             GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
         else
             m_bRssDataExportLoopRunning = false;
     }
 
-    // Server: build payload from current settings and replicate.
+    //------------------------------------------------------------------------------------------------
+    // Server: 只复制差异数据（预设名 + 开关 + Custom 参数若有）
     protected void RSS_BuildAndReplicateConfig()
     {
-        if (!Replication.IsServer())
-            return;
+        if (!Replication.IsServer()) return;
 
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-            return;
+        if (!settings) return;
 
-        if (!m_aRssCombinedPresetParams)
-            m_aRssCombinedPresetParams = new array<float>();
-        if (!m_aRssFloatSettings)
-            m_aRssFloatSettings = new array<float>();
-        if (!m_aRssIntSettings)
-            m_aRssIntSettings = new array<int>();
-        if (!m_aRssBoolSettings)
-            m_aRssBoolSettings = new array<bool>();
-
-        SCR_RSS_ConfigSyncUtils.BuildCombinedPresetArray(settings, m_aRssCombinedPresetParams);
-        SCR_RSS_ConfigSyncUtils.BuildSettingsArrays(settings, m_aRssFloatSettings, m_aRssIntSettings, m_aRssBoolSettings);
-
-        m_sRssConfigVersion = settings.m_sConfigVersion;
+        m_sRssConfigVersion  = settings.m_sConfigVersion;
         m_sRssSelectedPreset = settings.m_sSelectedPreset;
+        m_bRssDebugLog       = settings.m_bDebugLogEnabled;
+        m_bRssHintDisplay    = settings.m_bHintDisplayEnabled;
+        m_bRssDataExport     = settings.m_bDataExportEnabled;
+        m_bRssMudSlip        = settings.m_bEnableMudSlipMechanism;
+        m_bRssAICombat       = settings.m_bEnableAIStaminaCombatEffects;
+
+        // Custom 预设：额外复制 47 参数
+        string preset = settings.m_sSelectedPreset;
+        if (preset == "Custom" && settings.m_Custom)
+        {
+            m_bRssCustomActive = true;
+            if (!m_aRssCustomParams)
+                m_aRssCustomParams = new array<float>();
+            SCR_RSS_Settings.WriteParamsToArray(settings.m_Custom, m_aRssCustomParams);
+        }
+        else
+        {
+            m_bRssCustomActive = false;
+            if (m_aRssCustomParams)
+                m_aRssCustomParams.Clear();
+        }
 
         m_bRssConfigInitialized = true;
         Replication.BumpMe();
     }
 
-    // Client: apply replicated config into SCR_RSS_ConfigManager.
-    // Also runs on server when replication updates locally; server side is no-op.
+    //------------------------------------------------------------------------------------------------
+    // Client: 收到差异数据 → 本地 InitPresets + 应用开关
     protected void OnRssConfigReplicated()
     {
-        if (Replication.IsServer())
-            return;
-
-        if (!m_bRssConfigInitialized)
-            return;
-
-        if (!m_sRssConfigVersion || !m_sRssSelectedPreset)
-            return;
+        if (Replication.IsServer()) return;
+        if (!m_bRssConfigInitialized) return;
+        if (!m_sRssConfigVersion || !m_sRssSelectedPreset) return;
 
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
             settings = new SCR_RSS_Settings();
 
-        array<float> eliteParams = null;
-        array<float> standardParams = null;
-        array<float> tacticalParams = null;
-        array<float> customParams = null;
-
-        bool ok = SCR_RSS_ConfigSyncUtils.SplitCombinedPresetParams(
-            m_aRssCombinedPresetParams,
-            eliteParams,
-            standardParams,
-            tacticalParams,
-            customParams);
-        if (!ok)
-            return;
-
-        // Apply settings and presets in the same format as the old RPC payload.
-        settings.InitPresets(false);
-        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_EliteStandard, eliteParams);
-        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_StandardMilsim, standardParams);
-        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_TacticalAction, tacticalParams);
-        SCR_RSS_Settings.ApplyParamsFromArray(settings.m_Custom, customParams);
-        SCR_RSS_Settings.ApplySettingsFromArrays(settings, m_aRssFloatSettings, m_aRssIntSettings, m_aRssBoolSettings);
-
-        settings.m_sConfigVersion = m_sRssConfigVersion;
+        settings.m_sConfigVersion  = m_sRssConfigVersion;
         settings.m_sSelectedPreset = m_sRssSelectedPreset;
 
-        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
+        // 客户端本地生成预设参数（与服务器相同代码路径）
+        bool isCustom = (m_sRssSelectedPreset == "Custom");
+        settings.InitPresets(!isCustom);
 
-        // Hint HUD 与 m_bHintDisplayEnabled 同步（含首次同步与专服热重载）。
+        // Custom 模式：应用服务器传来的自定义参数
+        if (isCustom && m_bRssCustomActive && m_aRssCustomParams)
+        {
+            SCR_RSS_Settings.ApplyParamsFromArray(settings.m_Custom, m_aRssCustomParams);
+        }
+
+        // 应用顶层开关
+        settings.m_bDebugLogEnabled              = m_bRssDebugLog;
+        settings.m_bHintDisplayEnabled           = m_bRssHintDisplay;
+        settings.m_bDataExportEnabled            = m_bRssDataExport;
+        settings.m_bEnableMudSlipMechanism       = m_bRssMudSlip;
+        settings.m_bEnableAIStaminaCombatEffects = m_bRssAICombat;
+
+        SCR_RSS_ConfigManager.SetServerConfigApplied(true);
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 }
