@@ -44,10 +44,9 @@ modded class SCR_BaseGameMode
 
     //------------------------------------------------------------------------------------------------
     // 打开 RSS 管理面板
-    // 仅管理员/Game Master 可调用；无 workspace 时静默忽略（专服无头）。
-    // 可通过游戏内控制台调用: RSS_OpenAdminMenu()
-    // 权限检查与 SCR_Global.IsAdmin / SCR_BaseEditorComponent.IsAdmin 一致：
-    //   ADMINISTRATOR | SESSION_ADMINISTRATOR | GAME_MASTER
+    // RSS 管理面板现在嵌入在 SettingsSuperMenu 的 "RSS" 标签页中
+    // （与 Video / Audio / Interface 同一层级，仅管理员可见）
+    // 使用方法：Esc → Settings → RSS 标签
     void RSS_OpenAdminMenu()
     {
         if (!GetGame() || !GetGame().GetWorkspace())
@@ -64,18 +63,11 @@ modded class SCR_BaseGameMode
 
         if (!isAdmin)
         {
-            Print("[RSS] RSS_OpenAdminMenu: access denied (player " + playerId.ToString() + " is not admin/GM)");
+            Print("[RSS] RSS_OpenAdminMenu: access denied");
             return;
         }
 
-        SCR_RSSAdminMenuUI.Toggle();
-    }
-
-    //------------------------------------------------------------------------------------------------
-    // 关闭 RSS 管理面板
-    void RSS_CloseAdminMenu()
-    {
-        SCR_RSSAdminMenuUI.Close();
+        GetGame().GetMenuManager().OpenMenu(ChimeraMenuPreset.SettingsSuperMenu);
     }
 
     override void OnGameStart()
