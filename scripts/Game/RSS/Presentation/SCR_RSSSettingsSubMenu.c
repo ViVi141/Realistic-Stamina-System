@@ -1,6 +1,5 @@
 // RSS Settings SubMenu — 嵌入 SettingsSuperMenu 的标签页
-// 继承 SCR_SettingsSubMenuBase，使用游戏标准控件
-
+// 不经过游戏设置系统，直接读写 SCR_RSS_ConfigManager
 class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 {
     protected SCR_ComboBoxComponent m_wPresetSelector;
@@ -15,7 +14,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     {
         super.OnTabCreate(menuRoot, buttonsLayout, index);
 
-        m_wPresetSelector    = FindSpinOrCombo("PresetSelector");
+        m_wPresetSelector    = FindComboBox("PresetSelector");
         m_wDebugToggle       = FindSpinBox("ToggleDebug");
         m_wHUDToggle         = FindSpinBox("ToggleHUD");
         m_wDataExportToggle  = FindSpinBox("ToggleDataExport");
@@ -26,55 +25,63 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         if (m_wPresetSelector)
             m_wPresetSelector.m_OnChanged.Insert(OnPresetChanged);
 
-        // 使用标准的 SettingsBinding 系统自动保存（游戏内置机制）
-        m_aSettingsBindings.Clear();
-        if (m_wDebugToggle)
-            m_aSettingsBindings.Insert(new SCR_SettingBindingRSS("RSS", "m_bDebugLogEnabled",         "ToggleDebug"));
-        if (m_wHUDToggle)
-            m_aSettingsBindings.Insert(new SCR_SettingBindingRSS("RSS", "m_bHintDisplayEnabled",       "ToggleHUD"));
-        if (m_wDataExportToggle)
-            m_aSettingsBindings.Insert(new SCR_SettingBindingRSS("RSS", "m_bDataExportEnabled",        "ToggleDataExport"));
-        if (m_wMudSlipToggle)
-            m_aSettingsBindings.Insert(new SCR_SettingBindingRSS("RSS", "m_bEnableMudSlipMechanism",   "ToggleMudSlip"));
-        if (m_wAICombatToggle)
-            m_aSettingsBindings.Insert(new SCR_SettingBindingRSS("RSS", "m_bEnableAIStaminaCombatEffects", "ToggleAICombat"));
-
-        LoadSettings();
-        RefreshPresetUI();
+        // 从 RSS 配置加载当前值到控件
+        LoadFromSettings();
     }
 
     //------------------------------------------------------------------------------------------------
     override void OnTabShow()
     {
         super.OnTabShow();
-        RefreshPresetUI();
+        LoadFromSettings();
     }
 
     //------------------------------------------------------------------------------------------------
     override void OnTabHide()
     {
         super.OnTabHide();
+        SaveToSettings();
         ApplyAndSync();
     }
 
     //------------------------------------------------------------------------------------------------
-    protected void RefreshPresetUI()
+    protected void LoadFromSettings()
     {
-        if (!m_wPresetSelector) return;
-
         SCR_RSS_Settings s = GetSettings();
         if (!s) return;
 
-        string preset = s.m_sSelectedPreset;
-        if (!preset || preset == "") preset = "StandardMilsim";
+        // 预设下拉框
+        if (m_wPresetSelector)
+        {
+            string preset = s.m_sSelectedPreset;
+            if (!preset || preset == "") preset = "StandardMilsim";
+            int idx = 1;
+            if (preset == "EliteStandard")   idx = 0;
+            else if (preset == "StandardMilsim") idx = 1;
+            else if (preset == "TacticalAction") idx = 2;
+            else if (preset == "Custom")     idx = 3;
+            m_wPresetSelector.SetCurrentItem(idx, false, false);
+        }
 
-        int idx = 1; // default StandardMilsim
-        if (preset == "EliteStandard")   idx = 0;
-        if (preset == "StandardMilsim")  idx = 1;
-        if (preset == "TacticalAction")  idx = 2;
-        if (preset == "Custom")          idx = 3;
+        // 开关控件
+        SetSpin(m_wDebugToggle,      s.m_bDebugLogEnabled);
+        SetSpin(m_wHUDToggle,        s.m_bHintDisplayEnabled);
+        SetSpin(m_wDataExportToggle, s.m_bDataExportEnabled);
+        SetSpin(m_wMudSlipToggle,    s.m_bEnableMudSlipMechanism);
+        SetSpin(m_wAICombatToggle,   s.m_bEnableAIStaminaCombatEffects);
+    }
 
-        m_wPresetSelector.SetCurrentItem(idx, false, false);
+    //------------------------------------------------------------------------------------------------
+    protected void SaveToSettings()
+    {
+        SCR_RSS_Settings s = GetSettings();
+        if (!s) return;
+
+        s.m_bDebugLogEnabled               = GetSpin(m_wDebugToggle);
+        s.m_bHintDisplayEnabled            = GetSpin(m_wHUDToggle);
+        s.m_bDataExportEnabled             = GetSpin(m_wDataExportToggle);
+        s.m_bEnableMudSlipMechanism        = GetSpin(m_wMudSlipToggle);
+        s.m_bEnableAIStaminaCombatEffects  = GetSpin(m_wAICombatToggle);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -84,18 +91,16 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         if (!s) return;
 
         string preset;
-        switch (index)
-        {
-            case 0: preset = "EliteStandard"; break;
-            case 1: preset = "StandardMilsim"; break;
-            case 2: preset = "TacticalAction"; break;
-            case 3: preset = "Custom"; break;
-        }
+        if (index == 0)       preset = "EliteStandard";
+        else if (index == 1)  preset = "StandardMilsim";
+        else if (index == 2)  preset = "TacticalAction";
+        else                  preset = "Custom";
 
         if (preset == s.m_sSelectedPreset) return;
 
         s.m_sSelectedPreset = preset;
         s.InitPresets(preset != "Custom");
+        LoadFromSettings();
         ApplyAndSync();
     }
 
@@ -114,6 +119,20 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     }
 
     //------------------------------------------------------------------------------------------------
+    protected void SetSpin(SCR_SpinBoxComponent spin, bool value)
+    {
+        if (!spin) return;
+        int idx = 0;
+        if (value) idx = 1;
+        spin.SetCurrentItem(idx, false, false);
+    }
+
+    protected bool GetSpin(SCR_SpinBoxComponent spin)
+    {
+        if (!spin) return false;
+        return spin.GetCurrentIndex() != 0;
+    }
+
     protected SCR_SpinBoxComponent FindSpinBox(string name)
     {
         Widget w = m_wRoot.FindAnyWidget(name);
@@ -121,75 +140,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         return SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
     }
 
-    protected SCR_ComboBoxComponent FindSpinOrCombo(string name)
+    protected SCR_ComboBoxComponent FindComboBox(string name)
     {
         Widget w = m_wRoot.FindAnyWidget(name);
         if (!w) return null;
-        SCR_ComboBoxComponent c = SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent));
-        if (c) return c;
-        return null;
-    }
-}
-
-// 简单的 SettingBinding：将 SCR_SpinBox 的 On/Off 状态映射到 RSS 配置
-class SCR_SettingBindingRSS : SCR_SettingsBindingBase
-{
-    protected string m_sSettingName;
-
-    void SCR_SettingBindingRSS(string module, string settingName, string widgetName)
-    {
-        m_sParentModule = module;
-        m_sSettingName  = settingName;
-        m_sWidgetName   = widgetName;
-    }
-
-    override void SaveSetting()
-    {
-        Widget w = m_wBoundWidget;
-        if (!w) return;
-
-        SCR_SpinBoxComponent spin = SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
-        if (!spin) return;
-
-        SCR_RSS_Settings s = SCR_RSS_ConfigManager.GetSettings();
-        if (!s) return;
-
-        bool value = spin.GetCurrentIndex() != 0;
-
-        switch (m_sSettingName)
-        {
-            case "m_bDebugLogEnabled":               s.m_bDebugLogEnabled = value; break;
-            case "m_bHintDisplayEnabled":             s.m_bHintDisplayEnabled = value; break;
-            case "m_bDataExportEnabled":              s.m_bDataExportEnabled = value; break;
-            case "m_bEnableMudSlipMechanism":         s.m_bEnableMudSlipMechanism = value; break;
-            case "m_bEnableAIStaminaCombatEffects":   s.m_bEnableAIStaminaCombatEffects = value; break;
-        }
-    }
-
-    override void LoadSetting()
-    {
-        SCR_RSS_Settings s = SCR_RSS_ConfigManager.GetSettings();
-        if (!s) return;
-
-        bool value = false;
-        switch (m_sSettingName)
-        {
-            case "m_bDebugLogEnabled":               value = s.m_bDebugLogEnabled; break;
-            case "m_bHintDisplayEnabled":             value = s.m_bHintDisplayEnabled; break;
-            case "m_bDataExportEnabled":              value = s.m_bDataExportEnabled; break;
-            case "m_bEnableMudSlipMechanism":         value = s.m_bEnableMudSlipMechanism; break;
-            case "m_bEnableAIStaminaCombatEffects":   value = s.m_bEnableAIStaminaCombatEffects; break;
-        }
-
-        Widget w = m_wBoundWidget;
-        if (!w) return;
-
-        SCR_SpinBoxComponent spin = SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
-        if (spin)
-        {
-            int idx = 0;
-            if (value) idx = 1;
-            spin.SetCurrentItem(idx, false, false);
-        }
+        return SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent));
     }
 }
