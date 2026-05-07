@@ -5,7 +5,6 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected SCR_ComboBoxComponent m_wPresetSelector;
     protected SCR_SpinBoxComponent m_wDebugToggle;
     protected SCR_SpinBoxComponent m_wHUDToggle;
-    protected SCR_SpinBoxComponent m_wDataExportToggle;
     protected SCR_SpinBoxComponent m_wMudSlipToggle;
     protected SCR_SpinBoxComponent m_wAICombatToggle;
 
@@ -17,7 +16,6 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         m_wPresetSelector    = FindComboBox("PresetSelector");
         m_wDebugToggle       = FindSpinBox("ToggleDebug");
         m_wHUDToggle         = FindSpinBox("ToggleHUD");
-        m_wDataExportToggle  = FindSpinBox("ToggleDataExport");
         m_wMudSlipToggle     = FindSpinBox("ToggleMudSlip");
         m_wAICombatToggle    = FindSpinBox("ToggleAICombat");
 
@@ -66,7 +64,6 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         // 开关控件
         SetSpin(m_wDebugToggle,      s.m_bDebugLogEnabled);
         SetSpin(m_wHUDToggle,        s.m_bHintDisplayEnabled);
-        SetSpin(m_wDataExportToggle, s.m_bDataExportEnabled);
         SetSpin(m_wMudSlipToggle,    s.m_bEnableMudSlipMechanism);
         SetSpin(m_wAICombatToggle,   s.m_bEnableAIStaminaCombatEffects);
     }
@@ -79,7 +76,6 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 
         s.m_bDebugLogEnabled               = GetSpin(m_wDebugToggle);
         s.m_bHintDisplayEnabled            = GetSpin(m_wHUDToggle);
-        s.m_bDataExportEnabled             = GetSpin(m_wDataExportToggle);
         s.m_bEnableMudSlipMechanism        = GetSpin(m_wMudSlipToggle);
         s.m_bEnableAIStaminaCombatEffects  = GetSpin(m_wAICombatToggle);
     }

@@ -111,23 +111,6 @@ HorizontalLayoutWidgetClass {
         }
        }
       }
-      ButtonWidgetClass "{5932EB24D1397F12}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleDataExport"
-       Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
-       }
-       components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "Data Export"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
-       }
-      }
       ButtonWidgetClass "{5932EB24D1397F13}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
        Name "ToggleMudSlip"
        Slot LayoutSlot "{54890CCD61050681}" {
