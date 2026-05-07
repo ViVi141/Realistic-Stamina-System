@@ -1,5 +1,8 @@
 VerticalLayoutWidgetClass "{5932EB24D1397F02}" {
  Name "RSSSettingsRoot"
+ components {
+  SCR_RSSSettingsSubMenu "{5932EB24D1397F00}" {}
+ }
  Slot LayoutSlot "{54890CCE26EF3FDE}" {
   Padding 20 10 20 10
  }
