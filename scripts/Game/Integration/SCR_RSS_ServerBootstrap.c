@@ -42,6 +42,30 @@ modded class SCR_BaseGameMode
         RssServerDataExportScheduleIfNeeded();
     }
 
+    //------------------------------------------------------------------------------------------------
+    // 打开 RSS 管理面板
+    // 仅管理员可调用；无 workspace 时静默忽略（专服无头）。
+    // 可通过游戏内控制台调用: RSS_OpenAdminMenu()
+    void RSS_OpenAdminMenu()
+    {
+        if (!GetGame() || !GetGame().GetWorkspace())
+            return;
+        int playerId = GetGame().GetPlayerController().GetPlayerId();
+        if (!SCR_Global.IsAdmin(playerId))
+        {
+            Print("[RSS] RSS_OpenAdminMenu: access denied (not admin)");
+            return;
+        }
+        SCR_RSSAdminMenuUI.Toggle();
+    }
+
+    //------------------------------------------------------------------------------------------------
+    // 关闭 RSS 管理面板
+    void RSS_CloseAdminMenu()
+    {
+        SCR_RSSAdminMenuUI.Close();
+    }
+
     override void OnGameStart()
     {
         super.OnGameStart();
