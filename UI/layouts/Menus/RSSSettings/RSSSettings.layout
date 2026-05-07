@@ -1,291 +1,175 @@
-VerticalLayoutWidgetClass "{0000000000000001}" {
- Name "RSSSettingsRoot"
+HorizontalLayoutWidgetClass {
+ Name "RSSSettings"
  components {
   SCR_RSSSettingsSubMenu "{5932EB24D1397F00}" {}
  }
- Slot LayoutSlot "{0000000000000100}" {
-  Padding 20 10 20 10
- }
  {
-  OverlayWidgetClass "{0000000000000010}" {
-   Name "PresetSection"
-   Slot LayoutSlot "{0000000000000110}" {
-    Padding 0 4 0 2
+  ScrollLayoutWidgetClass "{000000009881A4C7}" {
+   Name "ScrollLayout0"
+   Slot LayoutSlot "{54890CCF086F1BB3}" {
+    Padding -2 72 2 0
+    SizeMode Fill
+    FillWeight 1.433
    }
+   Color 0.761 0.392 0.078 1
+   components {
+    SCR_GamepadScrollComponent "{5DE87ED7DB61D5F7}" {}
+   }
+   style Small
    {
-    TextWidgetClass "{0000000000000011}" {
-     Name "CurrentPresetLabel"
-     Slot OverlayWidgetSlot "{0000000000000111}" {
-      HorizontalAlign 0
-      VerticalAlign 1
-     }
-     Text "Active Preset: StandardMilsim"
-     "Exact Size" 1
-     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
-     "Font Size" 16
-     Color 1 1 1 1
-    }
-   }
-  }
-  OverlayWidgetClass "{0000000000000020}" {
-   Name "PresetButtons"
-   Slot LayoutSlot "{0000000000000120}" {
-    Padding 0 4 0 8
-   }
-   {
-    HorizontalLayoutWidgetClass "{0000000000000021}" {
-     Slot OverlayWidgetSlot "{0000000000000121}" {
-      HorizontalAlign 0
-      VerticalAlign 0
-     }
-     {
-      ButtonWidgetClass "{0000000000000022}" {
-       Name "BtnElite"
-       Slot LayoutSlot "{0000000000000122}" {
-        Padding 2 0 2 0
-       }
-       SizeX 130
-       SizeY 30
-       Text "EliteStandard"
-       Color 0.8 0.3 0.3 1
-       components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
-       }
-      }
-      ButtonWidgetClass "{0000000000000023}" {
-       Name "BtnStandard"
-       Slot LayoutSlot "{0000000000000123}" {
-        Padding 2 0 2 0
-       }
-       SizeX 130
-       SizeY 30
-       Text "StandardMilsim"
-       Color 0.45 0.5 0.8 1
-       components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
-       }
-      }
-      ButtonWidgetClass "{0000000000000024}" {
-       Name "BtnTactical"
-       Slot LayoutSlot "{0000000000000124}" {
-        Padding 2 0 2 0
-       }
-       SizeX 130
-       SizeY 30
-       Text "TacticalAction"
-       Color 0.3 0.75 0.3 1
-       components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
-       }
-      }
-      ButtonWidgetClass "{0000000000000025}" {
-       Name "BtnCustom"
-       Slot LayoutSlot "{0000000000000125}" {
-        Padding 2 0 2 0
-       }
-       SizeX 130
-       SizeY 30
-       Text "Custom"
-       Color 0.65 0.65 0.65 1
-       components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
-       }
-      }
-     }
-    }
-   }
-  }
-  OverlayWidgetClass "{0000000000000030}" {
-   Name "Separator1"
-   Slot LayoutSlot "{0000000000000130}" {
-    Padding 0 4 0 4
-   }
-   {
-    ImageWidgetClass "{0000000000000031}" {
-     Name "SeparatorLine"
-     Slot OverlayWidgetSlot "{0000000000000131}" {
+    VerticalLayoutWidgetClass "{00000000C099DEEF}" {
+     Name "Content"
+     Slot AlignableSlot "{54890CCE26EF3FDE}" {
       HorizontalAlign 3
       VerticalAlign 3
-     }
-     SizeX 600
-     SizeY 1
-     Color 0.3 0.3 0.3 1
-    }
-   }
-  }
-  OverlayWidgetClass "{0000000000000040}" {
-   Name "SwitchesSection"
-   Slot LayoutSlot "{0000000000000140}" {
-    Padding 0 4 0 0
-   }
-   {
-    VerticalLayoutWidgetClass "{0000000000000041}" {
-     Slot OverlayWidgetSlot "{0000000000000141}" {
-      HorizontalAlign 0
-      VerticalAlign 0
+      Padding -4 0 10 0
      }
      {
-      OverlayWidgetClass "{0000000000000050}" {
-       Name "RowDebug"
-       Slot LayoutSlot "{0000000000000150}" {
-        Padding 0 3 0 3
-       }
-       {
-        CheckBoxWidgetClass "{0000000000000051}" {
-         Name "ChkDebug"
-         Slot OverlayWidgetSlot "{0000000000000151}" {
-          HorizontalAlign 0
-          VerticalAlign 1
-         }
-         Text "Debug Log"
-        }
-       }
-      }
-      OverlayWidgetClass "{0000000000000052}" {
-       Name "RowHUD"
-       Slot LayoutSlot "{0000000000000152}" {
-        Padding 0 3 0 3
-       }
-       {
-        CheckBoxWidgetClass "{0000000000000053}" {
-         Name "ChkHUD"
-         Slot OverlayWidgetSlot "{0000000000000153}" {
-          HorizontalAlign 0
-          VerticalAlign 1
-         }
-         Text "HUD Display"
-        }
-       }
-      }
-      OverlayWidgetClass "{0000000000000054}" {
-       Name "RowDataExport"
-       Slot LayoutSlot "{0000000000000154}" {
-        Padding 0 3 0 3
-       }
-       {
-        CheckBoxWidgetClass "{0000000000000055}" {
-         Name "ChkDataExport"
-         Slot OverlayWidgetSlot "{0000000000000155}" {
-          HorizontalAlign 0
-          VerticalAlign 1
-         }
-         Text "Data Export"
-        }
-       }
-      }
-      OverlayWidgetClass "{0000000000000056}" {
-       Name "RowMudSlip"
-       Slot LayoutSlot "{0000000000000156}" {
-        Padding 0 3 0 3
-       }
-       {
-        CheckBoxWidgetClass "{0000000000000057}" {
-         Name "ChkMudSlip"
-         Slot OverlayWidgetSlot "{0000000000000157}" {
-          HorizontalAlign 0
-          VerticalAlign 1
-         }
-         Text "Mud Slip Mechanic"
-        }
-       }
-      }
-      OverlayWidgetClass "{0000000000000058}" {
-       Name "RowAICombat"
-       Slot LayoutSlot "{0000000000000158}" {
-        Padding 0 3 0 3
-       }
-       {
-        CheckBoxWidgetClass "{0000000000000059}" {
-         Name "ChkAICombat"
-         Slot OverlayWidgetSlot "{0000000000000159}" {
-          HorizontalAlign 0
-          VerticalAlign 1
-         }
-         Text "AI Stamina Combat"
-        }
-       }
-      }
-     }
-    }
-   }
-  }
-  OverlayWidgetClass "{0000000000000060}" {
-   Name "Separator2"
-   Slot LayoutSlot "{0000000000000160}" {
-    Padding 0 8 0 8
-   }
-   {
-    ImageWidgetClass "{0000000000000061}" {
-     Name "SeparatorLine2"
-     Slot OverlayWidgetSlot "{0000000000000161}" {
-      HorizontalAlign 3
-      VerticalAlign 3
-     }
-     SizeX 600
-     SizeY 1
-     Color 0.3 0.3 0.3 1
-    }
-   }
-  }
-  OverlayWidgetClass "{0000000000000070}" {
-   Name "ActionRow"
-   Slot LayoutSlot "{0000000000000170}" {
-    Padding 0 4 0 4
-   }
-   {
-    HorizontalLayoutWidgetClass "{0000000000000071}" {
-     Slot OverlayWidgetSlot "{0000000000000171}" {
-      HorizontalAlign 0
-      VerticalAlign 0
-     }
-     {
-      ButtonWidgetClass "{0000000000000072}" {
-       Name "BtnReload"
-       Slot LayoutSlot "{0000000000000172}" {
-        Padding 4 0 4 0
-       }
-       SizeX 140
-       SizeY 28
-       Text "Reload Config"
-       Color 0.35 0.35 0.55 1
+      VerticalLayoutWidgetClass "{5932EB24D1397F01}" : "{FEEEB639F2735BA1}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsTitle.layout" {
+       Name "TitlePreset"
+       Slot LayoutSlot "{58B32278C99818F2}" {}
        components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
+        SCR_LabelComponent "{58B30C1A8E56F0FF}" {
+         m_sLabel "RSS Preset"
+         m_fPaddingTop 4
+        }
+       }
+       {
+        TextWidgetClass "{58B30C1F77EC7B4E}" {
+         Prefab "{58B30C1F77EC7B4E}"
+         Slot LayoutSlot "{58B30C1F77EC7B76}" {
+          Padding 39 4 39 20
+         }
+        }
        }
       }
-      ButtonWidgetClass "{0000000000000073}" {
-       Name "BtnSave"
-       Slot LayoutSlot "{0000000000000173}" {
-        Padding 4 0 4 0
+      ButtonWidgetClass "{5932EB24D1397F02}" : "{4B5AE6E64037FFB4}UI/layouts/WidgetLibrary/ComboBox/WLib_ComboBox.layout" {
+       Name "PresetSelector"
+       Slot LayoutSlot "{58A4F540041D9FC5}" {
+        Padding 4 4 4 4
        }
-       SizeX 140
-       SizeY 28
-       Text "Save & Sync All"
-       Color 0.25 0.55 0.25 1
        components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
+        SCR_ComboBoxComponent "{546B1D464BC32853}" {
+         m_sLabel "Active Preset"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "EliteStandard" "StandardMilsim" "TacticalAction" "Custom"
+         }
+        }
+        SCR_ModularButtonComponent "{5E4C99F9B2FB5D32}" {}
+       }
+      }
+      VerticalLayoutWidgetClass "{5932EB24D1397F03}" : "{FEEEB639F2735BA1}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsTitle.layout" {
+       Name "TitleToggles"
+       Slot LayoutSlot "{58B32278C99818F2}" {}
+       components {
+        SCR_LabelComponent "{58B30C1A8E56F0FF}" {
+         m_sLabel "Server Options"
+         m_fPaddingTop 12
+        }
+       }
+       {
+        TextWidgetClass "{58B30C1F77EC7B4E}" {
+         Prefab "{58B30C1F77EC7B4E}"
+         Slot LayoutSlot "{58B30C1F77EC7B76}" {
+          Padding 39 4 39 20
+         }
+        }
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F10}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
+       Name "ToggleDebug"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       components {
+        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
+         m_sLabel "Debug Log"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "Off" "On"
+         }
+         m_bUseLightArrows 1
+         m_bCycleMode 1
+        }
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F11}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
+       Name "ToggleHUD"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       components {
+        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
+         m_sLabel "HUD Display"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "Off" "On"
+         }
+         m_bUseLightArrows 1
+         m_bCycleMode 1
+        }
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F12}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
+       Name "ToggleDataExport"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       components {
+        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
+         m_sLabel "Data Export"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "Off" "On"
+         }
+         m_bUseLightArrows 1
+         m_bCycleMode 1
+        }
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F13}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
+       Name "ToggleMudSlip"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       components {
+        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
+         m_sLabel "Mud Slip Mechanic"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "Off" "On"
+         }
+         m_bUseLightArrows 1
+         m_bCycleMode 1
+        }
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F14}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
+       Name "ToggleAICombat"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       components {
+        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
+         m_sLabel "AI Stamina Combat"
+         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
+         m_aElementNames {
+          "Off" "On"
+         }
+         m_bUseLightArrows 1
+         m_bCycleMode 1
+        }
        }
       }
      }
     }
-  }
-  OverlayWidgetClass "{0000000000000080}" {
-   Name "StatusRow"
-   Slot LayoutSlot "{0000000000000180}" {
-    Padding 0 8 0 0
    }
-   {
-    TextWidgetClass "{0000000000000081}" {
-     Name "StatusText"
-     Slot OverlayWidgetSlot "{0000000000000181}" {
-      HorizontalAlign 0
-      VerticalAlign 1
-     }
-     Text ""
-     "Exact Size" 1
-     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
-     "Font Size" 12
-     Color 0.7 0.7 0.7 1
-    }
+  }
+  VerticalLayoutWidgetClass "{00000000AD5D4DAC}" {
+   Name "Description"
+   Slot LayoutSlot "{54890CCD7A457969}" {
+    SizeMode Fill
    }
   }
  }
