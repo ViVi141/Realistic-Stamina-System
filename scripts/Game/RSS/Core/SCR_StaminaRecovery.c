@@ -141,7 +141,7 @@ class StaminaRecoveryCalculator
         // 移除基于速度的恢复率惩罚，保持正常恢复率
         // 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
         // 通过消耗率大于恢复率来实现净消耗
-        float speedBasedRecoveryMultiplier = 1.0;
+        const float speedBasedRecoveryMultiplier = 1.0;
         
         // 应用速度基于的恢复率调整（保持1.0，无惩罚）
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;

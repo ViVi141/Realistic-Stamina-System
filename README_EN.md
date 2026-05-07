@@ -117,14 +117,16 @@ This release documents changes at the C script layer.
 
 Key paths (see `README_CN.md` for the full tree):
 
-- `scripts/Game/PlayerBase.c`: main controller (speed update + status display)
-- `scripts/Game/Components/Stamina/`: modular stamina system
-  - `SCR_RealisticStaminaSystem.c`: core math/models
-  - `SCR_StaminaUpdateCoordinator.c`: orchestration for speed/drain/recovery
-  - `SCR_SwimmingState.c`: swimming detection + wet weight tracking
-  - `SCR_DebugDisplay.c`: debug/status formatting & output
-  - plus other modules (terrain, EPOC, fatigue, encumbrance cache, UI bridge, etc.)
-- `tools/`: python analysis/plot generators
+- `scripts/Game/Integration/PlayerBase.c`: main controller (modded SCR_CharacterControllerComponent)
+- `scripts/Game/Integration/`: modded entry points (StaminaOverride, ServerBootstrap, InventoryOverride)
+- `scripts/Game/RSS/Core/`: stamina core (RealisticStaminaSystem, UpdateCoordinator, SpeedCalculation, Consumption, Recovery, etc.)
+- `scripts/Game/RSS/Environment/`: environment system (EnvironmentFactor, TerrainDetection, SwimmingState, etc.)
+- `scripts/Game/RSS/AI/`: AI stamina & behavior bridge (GroupProxy, CombatEffects, RestCoordinator)
+- `scripts/Game/RSS/NetworkConfig/`: config model, sync, migration (ConfigManager, Settings, NetworkSync, API)
+- `scripts/Game/RSS/MudSlip/`: mud-slip mechanics
+- `scripts/Game/RSS/Presentation/`: HUD, debug, UI signals, camera inertia
+- `scripts/Game/Components/Gadgets/`: combat stim items & state machine
+- `tools/`: Python optimization pipeline & analysis scripts
 
 ## Installation
 

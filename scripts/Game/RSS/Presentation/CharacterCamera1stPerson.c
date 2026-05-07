@@ -15,7 +15,7 @@ modded class CharacterCamera1stPerson
         if (!m_ControllerComponent || !m_OwnerCharacter)
             return;
 
-        SCR_CharacterControllerComponent rssController = SCR_CharacterControllerComponent.Cast(m_ControllerComponent);
+        SCR_CharacterControllerComponent rssController = m_ControllerComponent;
         if (!rssController)
             return;
 

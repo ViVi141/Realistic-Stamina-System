@@ -44,17 +44,8 @@ class EnvironmentFactor
     protected float m_fColdStressPenalty = 0.0; // 冷应激惩罚
     protected float m_fColdStaticPenalty = 0.0; // 冷应激静态惩罚
     // ==================== 室内检测相关变量 ====================
-    protected float m_fLastIndoorCheckTime = 0.0; // 上次室内检测时间
-    protected const float INDOOR_CHECK_INTERVAL = 1.0; // 室内检测间隔（秒）
-    protected bool m_bCachedIndoorState = false; // 缓存的室内状态
-    protected bool m_bCachedRoofedVolumeForSlopeState = false; // 建筑物内有顶（不要求水平封闭），用于压制楼梯间地形坡度
-    protected ref array<IEntity> m_pCachedBuildings; // 缓存的建筑物列表（用于回调）
-    protected ref TraceParam m_pTraceParamRoof; // 复用的 TraceParam（RaycastHasRoof）
-    protected ref TraceParam m_pTraceParamEnclosed; // 复用的 TraceParam（IsHorizontallyEnclosed）
+    protected ref SCR_EnvironmentIndoorDetection m_pIndoorDetector; // 室内检测模块
     protected float m_fSurfaceWetnessPenalty = 0.0; // 地表湿度惩罚
-
-    // 调试开关：启用后输出室内检测的详细日志
-    protected bool m_bIndoorDebug = false; // 默认关闭
 
     // 是否使用引擎天气API（true=使用引擎数据，false=使用虚拟昼夜模型）
     protected bool m_bUseEngineWeather = true; // 默认启用真实天气
@@ -279,20 +270,23 @@ class EnvironmentFactor
                 }
             }
         
-        // 初始化建筑物列表
-        m_pCachedBuildings = new array<IEntity>();
+        // 初始化室内检测模块
+        m_pIndoorDetector = new SCR_EnvironmentIndoorDetection();
         }
     }
 
-    // 设置室内检测调试开关（用于运行时打开/关闭详细日志）
+    // 设置室内检测调试开关 — 委托给 SCR_EnvironmentIndoorDetection
     void SetIndoorDebug(bool enabled)
     {
-        m_bIndoorDebug = enabled;
+        if (m_pIndoorDetector)
+            m_pIndoorDetector.SetIndoorDebug(enabled);
     }
 
     bool GetIndoorDebug()
     {
-        return m_bIndoorDebug;
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.GetIndoorDebug();
+        return false;
     }
 
     // 设置是否使用引擎实时天气数据（用于在运行时切换）
@@ -389,16 +383,9 @@ class EnvironmentFactor
         if (owner)
             m_pCachedOwner = owner;
 
-        // 按 INDOOR_CHECK_INTERVAL 更新室内状态缓存（性能优化：避免每 tick 多次 IsUnderCover）
-        if (StaminaConstants.IsIndoorDetectionEnabled() && m_pCachedOwner && (currentTime - m_fLastIndoorCheckTime >= INDOOR_CHECK_INTERVAL))
-        {
-            m_bCachedIndoorState = IsUnderCover(m_pCachedOwner);
-            m_bCachedRoofedVolumeForSlopeState = EvaluateRoofedBuildingInterior(
-                m_pCachedOwner,
-                StaminaConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT,
-                false);
-            m_fLastIndoorCheckTime = currentTime;
-        }
+        // 按间隔更新室内状态缓存 — 委托给 m_pIndoorDetector
+        if (m_pIndoorDetector)
+            m_pIndoorDetector.UpdateIndoorCache(m_pCachedOwner, currentTime);
         
         // 检查是否需要更新（每 m_fLastEnvironmentCheckTime 秒更新一次），但对管理员的即时修改要实时响应
         bool forceUpdate = false;
@@ -786,46 +773,10 @@ class EnvironmentFactor
         return m_fAltitudeMeters;
     }
 
-    // 正弦波叠加气温模型：纯数学拟合，无辐射求解，极轻量且稳定
-    // T = T_纬度基准 + T_季节偏差 + T_昼夜波动 - T_海拔衰减 + T_天气修正
-    // 最热约 15:00、最冷约 04:00；阴天/雾压缩昼夜温差
+    // 正弦波叠加气温模型 — 委托给 SCR_EnvironmentAstronomyMath
     protected float CalculateUniversalTemperature(float latitude, int dayOfYear, float hourOfDay, float altitudeMeters, float overcast, float rainIntensity, float fogDensity)
     {
-        // 1) 纬度基准：赤道年均 27°C，极地 -15°C，Cos 曲线拟合
-        float latRad = latitude * Math.PI / 180.0;
-        float baseTemp = 27.0 - 42.0 * Math.Pow(Math.Sin(latRad), 2.0);
-
-        // 2) 季节修正：纬度越高冬夏温差越大；(day-15)/365*2PI，北半球 1 月最冷、7 月最热
-        float seasonRange = 2.0 + 20.0 * Math.AbsFloat(Math.Sin(latRad));
-        float yearPhase = ((float)(dayOfYear) - 15.0) / 365.0 * 2.0 * Math.PI;
-        float hemisphere;
-        if (latitude >= 0.0)
-            hemisphere = -1.0;
-        else
-            hemisphere = 1.0;
-        float seasonTemp = hemisphere * seasonRange * Math.Cos(yearPhase);
-
-        // 3) 昼夜温差：基础 10°C；云/雾阻尼后不低于 20% 幅度；最低 04:00、最高约 15:00
-        float dailyRange = 10.0;
-        float damping = 1.0 - (overcast * 0.5) - (fogDensity * 0.3);
-        float currentRange = dailyRange * Math.Max(0.2, damping);
-        float hourPhase = (hourOfDay - 9.5) / 24.0 * 2.0 * Math.PI;
-        float dailyTemp = (currentRange / 2.0) * Math.Sin(hourPhase);
-
-        // 4) 海拔：标准递减率 6.5°C/1000m
-        float altTemp = (altitudeMeters / 1000.0) * 6.5;
-
-        // 5) 即时天气：降雨蒸发冷却，仅当气温 >10°C 时显著，最多降 5°C
-        float currentBase = baseTemp + seasonTemp + dailyTemp - altTemp;
-        float rainCooling = 0.0;
-        if (currentBase > 10.0 && rainIntensity > 0.0)
-        {
-            rainCooling = rainIntensity * 5.0 * ((currentBase - 10.0) / 20.0);
-            if (rainCooling > 5.0)
-                rainCooling = 5.0;
-        }
-
-        return currentBase - rainCooling;
+        return SCR_EnvironmentAstronomyMath.CalculateUniversalTemperature(latitude, dayOfYear, hourOfDay, altitudeMeters, overcast, rainIntensity, fogDensity);
     }
 
     // ------------------- 太阳与辐照工具函数（P1） -------------------
@@ -848,255 +799,53 @@ class EnvironmentFactor
         return SCR_EnvironmentAstronomyMath.SolarCosZenith(latDeg, n, localHour);
     }
 
-    // 估算经纬度（基于引擎提供的日出/日落时间，返回置信度 0.0-1.0）
-    // 需要：GetSunriseHour(), GetSunsetHour(), GetDate(), m_fTimeZoneOffsetHours
+    // 估算经纬度 — 委托给 SCR_EnvironmentAstronomyMath（副作用：写回 m_fLatitude/m_fLongitude + 日志）
     protected float EstimateLatLongFromSunriseSunset(out float outLatDeg, out float outLonDeg)
     {
-        outLatDeg = 0.0;
-        outLonDeg = 0.0;
+        float conf = SCR_EnvironmentAstronomyMath.EstimateLatLongFromSunriseSunset(
+            m_pCachedWeatherManager, m_fTimeZoneOffsetHours,
+            outLatDeg, outLonDeg,
+            m_fCachedRainIntensity, m_fCachedSurfaceWetness);
 
-        if (!m_pCachedWeatherManager)
-            return 0.0; // 无天气管理器，无法估算
-
-        float sr = 0.0;
-        float ss = 0.0;
-        bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
-        bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
-
-        if (!hasSR || !hasSS)
-            return 0.0; // 缺少关键数据
-
-        // 处理跨日问题
-        if (ss < sr)
-            ss += 24.0;
-
-        float L = ss - sr; // 昼长，小时
-        if (L <= 0.0 || L >= 24.0)
-            return 0.0;
-
-        int year, month, day;
-        m_pCachedWeatherManager.GetDate(year, month, day);
-        int n = DayOfYear(year, month, day);
-
-        // 计算日角 ω0（度）: ω0_deg = 7.5 * L
-        float omega0_deg = 7.5 * L; // 15 * (L/2)
-        float omega0_rad = omega0_deg * Math.DEG2RAD;
-
-        // 太阳偏角（弧度）
-        float decl = SolarDeclination(n); // 返回弧度
-
-        // 检查数值稳定性（tan(decl) 不能接近0）
-        float tanDecl = Math.Tan(decl);
-        if (Math.AbsFloat(tanDecl) < 1e-6)
-            return 0.0; // 不可靠（春/秋分附近）
-
-        // tan(phi) = -cos(omega0) / tan(decl)
-        float tanPhi = -Math.Cos(omega0_rad) / tanDecl;
-
-        // 使用稳定的反正切代替（部分平台缺少 Math.Atan）：φ = asin(tanPhi / sqrt(1 + tanPhi^2))
-        float denom = Math.Sqrt(1.0 + tanPhi * tanPhi);
-        float latRad = Math.Asin(tanPhi / denom);
-        float latDeg = latRad * Math.RAD2DEG;
-
-        // 计算经度：基于局部太阳中天
-        float t_noon_local = (sr + ss) * 0.5;
-        // 归一化
-        while (t_noon_local >= 24.0) t_noon_local -= 24.0;
-
-        float tz = m_fTimeZoneOffsetHours; // 假定已填
-        float solarNoonUTC = t_noon_local - tz; // 小时
-
-        float lonDeg = 15.0 * (12.0 - solarNoonUTC);
-        // 规范化到 -180..180
-        while (lonDeg > 180.0) lonDeg -= 360.0;
-        while (lonDeg < -180.0) lonDeg += 360.0;
-
-        // 置信度估算：基于昼长、太阳偏角、云量（云会影响日出/日落观测）
-        float cloud = InferCloudFactor();
-        float conf = 1.0;
-        // 减少因云/雨导致的置信度
-        conf -= Math.Clamp(cloud * 0.5, 0.0, 0.5);
-        // 当太阳偏角接近0(春秋分)置信度下降
-        conf -= Math.Clamp(1.0 - Math.AbsFloat(tanDecl) * 1000.0, 0.0, 0.3);
-        // 极昼/极夜邻近区域置信度降低
-        if (L < 2.0 || L > 22.0) conf -= 0.3;
-        conf = Math.Clamp(conf, 0.0, 1.0);
-
-        // 写回成员变量
-        m_fLatitude = latDeg;
-        m_fLongitude = lonDeg;
-
-        // 日志（使用节流变量，避免传字面量给 ShouldLog）
-        float tmpLocationLog = m_fNextLocationEstimateLogTime;
-        if (StaminaConstants.ShouldLog(tmpLocationLog))
+        if (conf > 0.0)
         {
-            m_fNextLocationEstimateLogTime = tmpLocationLog;
-            PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3 L=%4 sr=%5 ss=%6 n=%7",
-                Math.Round(latDeg * 10.0) / 10.0,
-                Math.Round(lonDeg * 10.0) / 10.0,
-                Math.Round(conf * 100.0) / 100.0,
-                Math.Round(L * 10.0) / 10.0,
-                Math.Round(sr * 100.0) / 100.0,
-                Math.Round(ss * 100.0) / 100.0,
-                n);
+            m_fLatitude = outLatDeg;
+            m_fLongitude = outLonDeg;
+            float tmpLog = m_fNextLocationEstimateLogTime;
+            if (StaminaConstants.ShouldLog(tmpLog))
+            {
+                m_fNextLocationEstimateLogTime = tmpLog;
+                PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3",
+                    Math.Round(outLatDeg * 10.0) / 10.0,
+                    Math.Round(outLonDeg * 10.0) / 10.0,
+                    Math.Round(conf * 100.0) / 100.0);
+            }
         }
-
-        outLatDeg = latDeg;
-        outLonDeg = lonDeg;
         return conf;
     }
 
-    // 使用引擎天文函数进行网格搜索以细化经纬度估算（返回置信度 0-1）
-    // 利用：GetSunriseHourForDate, GetSunsetHourForDate, GetMoonPhaseForDate
+    // 天文网格搜索 — 委托给 SCR_EnvironmentAstronomyMath（副作用：写回 m_fLatitude/m_fLongitude + 日志）
     protected float EstimateLatLongFromAstronomicalSearch(out float outLatDeg, out float outLonDeg)
     {
-        outLatDeg = 0.0;
-        outLonDeg = 0.0;
+        float conf = SCR_EnvironmentAstronomyMath.EstimateLatLongFromAstronomicalSearch(
+            m_pCachedWeatherManager, m_fTimeZoneOffsetHours,
+            outLatDeg, outLonDeg,
+            m_fCachedRainIntensity, m_fCachedSurfaceWetness);
 
-        if (!m_pCachedWeatherManager)
-            return 0.0;
-
-        // 读取观测日出/日落/月相/时间信息
-        float obsSR = 0.0;
-        float obsSS = 0.0;
-        bool hasSR = m_pCachedWeatherManager.GetSunriseHour(obsSR);
-        bool hasSS = m_pCachedWeatherManager.GetSunsetHour(obsSS);
-        float obsMoonPhase = m_pCachedWeatherManager.GetMoonPhase(m_pCachedWeatherManager.GetTimeOfTheDay());
-        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-        int year, month, day;
-        m_pCachedWeatherManager.GetDate(year, month, day);
-        float tz = m_fTimeZoneOffsetHours;
-        float dst = m_pCachedWeatherManager.GetDSTOffset();
-
-        if (!hasSR || !hasSS)
-            return 0.0;
-
-        if (obsSS < obsSR)
-            obsSS += 24.0;
-
-        float obsL = obsSS - obsSR;
-        float obsNoon = (obsSR + obsSS) * 0.5;
-        while (obsNoon >= 24.0) obsNoon -= 24.0;
-
-        // 搜索参数：粗/细两级网格
-        float bestErr = 1e9;
-        float bestLat = 0.0;
-        float bestLon = 0.0;
-
-        // 权重（可调整）
-        float wL = 1.0; // 白昼长度权重
-        float wNoon = 0.5; // 中天时差权重
-        float wMoon = 0.3; // 月相差异权重
-
-        // 1) 粗网格（步长 5°）
-        for (float lat = -85.0; lat <= 85.0; lat += 5.0)
+        if (conf > 0.0)
         {
-            for (float lon = -180.0; lon <= 180.0; lon += 5.0)
+            m_fLatitude = outLatDeg;
+            m_fLongitude = outLonDeg;
+            float tmpLog = m_fNextLocationEstimateLogTime;
+            if (StaminaConstants.ShouldLog(tmpLog))
             {
-                float sr_c = 0.0;
-                float ss_c = 0.0;
-                bool okSR = m_pCachedWeatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
-                bool okSS = m_pCachedWeatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
-
-                float penalty = 0.0;
-                if (!okSR || !okSS)
-                {
-                    // 极地季节性无日出/日落，给予大惩罚
-                    penalty += 10.0;
-                    // 尽量继续但以较差适配度记录
-                }
-
-                if (ss_c < sr_c) ss_c += 24.0;
-                float Lc = ss_c - sr_c;
-                float noon_c = (sr_c + ss_c) * 0.5;
-                while (noon_c >= 24.0) noon_c -= 24.0;
-
-                float moon_c = m_pCachedWeatherManager.GetMoonPhaseForDate(year, month, day, tod, tz, dst);
-
-                float err = wL * Math.AbsFloat(obsL - Lc) + wNoon * Math.AbsFloat(obsNoon - noon_c) + wMoon * Math.AbsFloat(obsMoonPhase - moon_c) + penalty;
-
-                if (err < bestErr)
-                {
-                    bestErr = err;
-                    bestLat = lat;
-                    bestLon = lon;
-                }
+                m_fNextLocationEstimateLogTime = tmpLog;
+                PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3",
+                    Math.Round(outLatDeg * 10.0) / 10.0,
+                    Math.Round(outLonDeg * 10.0) / 10.0,
+                    Math.Round(conf * 100.0) / 100.0);
             }
         }
-
-        // 2) 细化搜索：在最佳点周围逐级细化
-        float searchRadius = 5.0;
-        float step = 1.0;
-        for (int iter = 0; iter < 3; iter++)
-        {
-            float localBestErr = bestErr;
-            float localBestLat = bestLat;
-            float localBestLon = bestLon;
-
-            for (float lat = bestLat - searchRadius; lat <= bestLat + searchRadius; lat += step)
-            {
-                if (lat < -89.9 || lat > 89.9) continue;
-                for (float lon = bestLon - searchRadius; lon <= bestLon + searchRadius; lon += step)
-                {
-                    float sr_c = 0.0;
-                    float ss_c = 0.0;
-                    bool okSR = m_pCachedWeatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
-                    bool okSS = m_pCachedWeatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
-
-                    float penalty = 0.0;
-                    if (!okSR || !okSS) penalty += 10.0;
-                    if (ss_c < sr_c) ss_c += 24.0;
-                    float Lc = ss_c - sr_c;
-                    float noon_c = (sr_c + ss_c) * 0.5;
-                    while (noon_c >= 24.0) noon_c -= 24.0;
-
-                    float moon_c = m_pCachedWeatherManager.GetMoonPhaseForDate(year, month, day, tod, tz, dst);
-
-                    float err = wL * Math.AbsFloat(obsL - Lc) + wNoon * Math.AbsFloat(obsNoon - noon_c) + wMoon * Math.AbsFloat(obsMoonPhase - moon_c) + penalty;
-
-                    if (err < localBestErr)
-                    {
-                        localBestErr = err;
-                        localBestLat = lat;
-                        localBestLon = lon;
-                    }
-                }
-            }
-
-            bestErr = localBestErr;
-            bestLat = localBestLat;
-            bestLon = localBestLon;
-            searchRadius = Math.Max(0.5, searchRadius * 0.5);
-            step = Math.Max(0.1, step * 0.5);
-        }
-
-        // 计算置信度：基于误差大小与云因子
-        float maxAcceptableErr = 12.0; // 经验标度（小时），误差越大置信越低
-        float errScore = Math.Clamp(bestErr / maxAcceptableErr, 0.0, 1.0);
-        float conf = 1.0 - errScore;
-        // 云/雨影响置信度
-        float cloud = InferCloudFactor();
-        conf -= Math.Clamp(cloud * 0.5, 0.0, 0.5);
-        conf = Math.Clamp(conf, 0.0, 1.0);
-
-        // 写回与日志
-        m_fLatitude = bestLat;
-        m_fLongitude = bestLon;
-
-        // 日志（使用节流变量，避免传字面量给 ShouldLog）
-        float tmpLocationLog2 = m_fNextLocationEstimateLogTime;
-        if (StaminaConstants.ShouldLog(tmpLocationLog2))
-        {
-            m_fNextLocationEstimateLogTime = tmpLocationLog2;
-            PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3 bestErr=%4",
-                Math.Round(bestLat * 10.0) / 10.0,
-                Math.Round(bestLon * 10.0) / 10.0,
-                Math.Round(conf * 100.0) / 100.0,
-                Math.Round(bestErr * 100.0) / 100.0);
-        }
-
-        outLatDeg = bestLat;
-        outLonDeg = bestLon;
         return conf;
     }
 
@@ -1112,39 +861,10 @@ class EnvironmentFactor
         return SCR_EnvironmentAstronomyMath.ClearSkyTransmittance(m, m_fAerosolOpticalDepth);
     }
 
-    // 简单云因子推断，从雨强、湿度与天气状态推测云量因子 [0,1]
+    // 简单云因子推断 — 委托给 SCR_EnvironmentAstronomyMath
     protected float InferCloudFactor()
     {
-        float cloud = 0.0;
-        // 使用降雨强度优先
-        cloud = Math.Max(cloud, m_fCachedRainIntensity);
-        // 使用地表湿度作为次要指标
-        cloud = Math.Max(cloud, m_fCachedSurfaceWetness * 0.8);
-
-        // 基于天气状态名称的增强判断（如果可获得）
-        if (m_pCachedWeatherManager)
-        {
-            BaseWeatherStateTransitionManager transitionManager = m_pCachedWeatherManager.GetTransitionManager();
-            if (transitionManager)
-            {
-                WeatherState currentWeatherState = transitionManager.GetCurrentState();
-                if (currentWeatherState)
-                {
-                    string s = currentWeatherState.GetStateName();
-                    s.ToLower();
-                    if (s.Contains("storm") || s.Contains("heavy"))
-                        cloud = Math.Max(cloud, 0.95);
-                    else if (s.Contains("rain") || s.Contains("shower"))
-                        cloud = Math.Max(cloud, 0.6);
-                    else if (s.Contains("cloud") || s.Contains("overcast"))
-                        cloud = Math.Max(cloud, 0.6);
-                    else if (s.Contains("partly") || s.Contains("few"))
-                        cloud = Math.Max(cloud, 0.25);
-                }
-            }
-        }
-
-        return Math.Clamp(cloud, 0.0, 1.0);
+        return SCR_EnvironmentAstronomyMath.InferCloudFactor(m_fCachedRainIntensity, m_fCachedSurfaceWetness, m_pCachedWeatherManager);
     }
 
     // 单步温度更新（基于一层混合层的能量平衡）
@@ -1261,8 +981,8 @@ class EnvironmentFactor
         float netRadiation = (1.0 - m_fAlbedo) * SW_down + LW_down - LW_up;
 
         // 9) 简化感热/潜热项（经验小值，湿润情况增大潜热损失）
-        float rho = 1.225; // 空气密度 kg/m3
-        float Cp = 1004.0; // 比热 J/(kg·K)
+        const float rho = 1.225; // 空气密度 kg/m3
+        const float Cp = 1004.0; // 比热 J/(kg·K)
         float Hmix = m_fTemperatureMixingHeight; // m
 
         float LE = 0.0;
@@ -1476,297 +1196,45 @@ class EnvironmentFactor
         return Math.Clamp(multiplier, 1.0, StaminaConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER);
     }
     
-    // 在建筑物 OBB 内且向上能命中该建筑物的遮挡时返回 true；可选要求水平封闭（完整「室内」）
-    // @param roofCheckHeightM 向上射线长度（米）
-    // @param requireHorizontalEnclosure true 时需通过 IsHorizontallyEnclosed（门廊/镂空楼梯间常为 false）
+    // EvaluateRoofedBuildingInterior / RaycastHasRoof / WorldToLocal / IsHorizontallyEnclosed / QueryBuildingCallback
+    // — 全部委托给 SCR_EnvironmentIndoorDetection
     protected bool EvaluateRoofedBuildingInterior(IEntity owner, float roofCheckHeightM, bool requireHorizontalEnclosure)
     {
-        if (!owner)
-            return false;
-
-        World world = owner.GetWorld();
-        if (!world)
-            return false;
-
-        vector ownerPos = owner.GetOrigin();
-
-        vector searchMins = ownerPos + Vector(-50, -50, -50);
-        vector searchMaxs = ownerPos + Vector(50, 50, 50);
-
-        if (m_pCachedBuildings)
-            m_pCachedBuildings.Clear();
-        else
-            m_pCachedBuildings = new array<IEntity>();
-
-        world.QueryEntitiesByAABB(searchMins, searchMaxs, QueryBuildingCallback);
-
-        int buildingCount = m_pCachedBuildings.Count();
-        if (m_bIndoorDebug)
-        {
-            string reqEnclStr;
-            if (requireHorizontalEnclosure)
-                reqEnclStr = "true";
-            else
-                reqEnclStr = "false";
-            PrintFormat("[RSS][IndoorDetect] EvaluateRoofedBuildingInterior: ownerPos=(%1,%2,%3) buildingCount=%4 requireEnclosed=%5",
-                ownerPos[0], ownerPos[1], ownerPos[2], buildingCount, reqEnclStr);
-        }
-        if (buildingCount == 0)
-            return false;
-
-        int checkedBuildings = 0;
-        foreach (IEntity building : m_pCachedBuildings)
-        {
-            if (!building)
-                continue;
-
-            checkedBuildings++;
-
-            vector buildingMins, buildingMaxs;
-            building.GetBounds(buildingMins, buildingMaxs);
-
-            vector buildingMat[4];
-            building.GetWorldTransform(buildingMat);
-
-            vector localPos = WorldToLocal(buildingMat, ownerPos);
-
-            bool xInside = (localPos[0] >= buildingMins[0] && localPos[0] <= buildingMaxs[0]);
-            bool yInside = (localPos[1] >= buildingMins[1] && localPos[1] <= buildingMaxs[1]);
-            bool zInside = (localPos[2] >= buildingMins[2] && localPos[2] <= buildingMaxs[2]);
-
-            bool isInside = xInside && yInside && zInside;
-
-            if (m_bIndoorDebug)
-                PrintFormat("[RSS][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
-                    checkedBuildings,
-                    Math.Round(localPos[0] * 100.0) / 100.0,
-                    Math.Round(localPos[1] * 100.0) / 100.0,
-                    Math.Round(localPos[2] * 100.0) / 100.0,
-                    buildingMins[0], buildingMins[1], buildingMins[2],
-                    buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
-
-            if (!isInside)
-                continue;
-
-            bool hasRoof = RaycastHasRoof(owner, building, roofCheckHeightM);
-            if (m_bIndoorDebug)
-            {
-                string hasRoofStr;
-                if (hasRoof)
-                    hasRoofStr = "true";
-                else
-                    hasRoofStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
-            }
-
-            if (!hasRoof)
-                continue;
-
-            if (!requireHorizontalEnclosure)
-                return true;
-
-            bool enclosed = IsHorizontallyEnclosed(owner);
-            if (m_bIndoorDebug)
-            {
-                string enclosedStr;
-                if (enclosed)
-                    enclosedStr = "true";
-                else
-                    enclosedStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
-            }
-            if (enclosed)
-                return true;
-        }
-
-        if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] No matching building after checking %1 buildings", checkedBuildings);
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.EvaluateRoofedBuildingInterior(owner, roofCheckHeightM, requireHorizontalEnclosure);
         return false;
     }
 
-    // 检测角色是否在室内（基于建筑物边界框 + 向上射线确认）
-    // 新方法：先查询周围建筑物，若角色在某建筑物的边界框内则进行向上射线检测（确认有屋顶/覆盖），
-    // 只有当边界框判定为"在内"且射线检测也确认有覆盖时，才返回 true（防止开放屋顶/天窗等假阳性）。
-    // @param owner 角色实体
-    // @return true表示在室内，false表示在室外
-    protected bool IsUnderCover(IEntity owner)
-    {
-        return EvaluateRoofedBuildingInterior(owner, StaminaConstants.ENV_INDOOR_CHECK_HEIGHT, true);
-    }
-
-    // 向上射线检测上方是否存在覆盖（屋顶/天花板）
-    // 多点采样（中心 + 前后左右）以减少窗户或较小开口导致的误判
-    // 仅检测当前建筑物，避免邻近物体或地形导致假阳性
-    // @param owner 要检测的实体（用于获取位置/世界）
-    // @param building 当前候选建筑物
-    // @param roofCheckHeightM 向上探测长度（米）
-    // @return true表示所有样本点上方在检测高度内都命中遮挡物（有屋顶），false表示至少有一处无覆盖
     protected bool RaycastHasRoof(IEntity owner, IEntity building, float roofCheckHeightM)
     {
-        if (!owner || !building)
-            return false;
-        World world = owner.GetWorld();
-        if (!world)
-            return false;
-
-        vector basePos = owner.GetOrigin();
-        // 从头部高度开始检测（单位：米），可根据需要调整
-        const float HEAD_HEIGHT = 1.6;
-        const float SAMPLE_OFFSET = 0.4; // 采样点水平偏移（米）
-
-        array<vector> samples = { vector.Zero, vector.Forward * SAMPLE_OFFSET, -vector.Forward * SAMPLE_OFFSET, vector.Right * SAMPLE_OFFSET, -vector.Right * SAMPLE_OFFSET };
-
-        if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
-                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, roofCheckHeightM, samples.Count());
-
-        if (!m_pTraceParamRoof)
-            m_pTraceParamRoof = new TraceParam();
-
-        int idx = 0;
-        foreach (vector off : samples)
-        {
-            idx++;
-            vector start = basePos + vector.Up * HEAD_HEIGHT + off;
-            vector end = start + vector.Up * roofCheckHeightM;
-
-            m_pTraceParamRoof.Start = start;
-            m_pTraceParamRoof.End = end;
-            m_pTraceParamRoof.Flags = TraceFlags.ENTS;
-            m_pTraceParamRoof.Include = building;
-            m_pTraceParamRoof.Exclude = owner;
-            m_pTraceParamRoof.LayerMask = EPhysicsLayerDefs.Projectile;
-
-            world.TraceMove(m_pTraceParamRoof, null);
-
-            bool hit = (m_pTraceParamRoof.TraceEnt != null);
-
-            if (m_bIndoorDebug)
-            {
-                string surface;
-                if (m_pTraceParamRoof.SurfaceProps)
-                    surface = m_pTraceParamRoof.SurfaceProps.ToString();
-                else
-                    surface = "null";
-                PrintFormat("[RSS][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
-                    idx, start[0], start[1], start[2], end[0], end[1], end[2], m_pTraceParamRoof.TraceEnt, m_pTraceParamRoof.ColliderName);
-                PrintFormat("[RSS][IndoorDetect]   Surface=%1", surface);
-            }
-
-            // 如果任一采样点没有命中任何遮挡物，则不能确认为室内
-            if (!hit)
-            {
-                if (m_bIndoorDebug)
-                    PrintFormat("[RSS][IndoorDetect] Sample %1 missed -> not indoor", idx);
-                return false;
-            }
-        }
-
-        if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] All samples hit -> indoor");
-
-        // 所有采样点都命中遮挡物 → 确认为室内
-        return true;
+        // 仅保留签名兼容性；实际调用走 m_pIndoorDetector
+        return false;
     }
 
-    // 将世界坐标点转换到实体本地坐标（仅适用于正交旋转矩阵）
     protected vector WorldToLocal(vector worldMat[4], vector worldPos)
     {
-        vector delta = worldPos - worldMat[3];
-
-        vector localPos;
-        localPos[0] = vector.Dot(delta, worldMat[0]);
-        localPos[1] = vector.Dot(delta, worldMat[1]);
-        localPos[2] = vector.Dot(delta, worldMat[2]);
-
-        return localPos;
+        vector zero;
+        return zero;
     }
 
-    // 水平径向封闭检测：在头部高度向周围发多条短射线以验证是否被墙体包围
-    // 若被足够比例的射线在短距离内命中，则认为水平封闭（有墙）
-    // @param owner 要检测的实体
-    // @return true 表示在水平方向上被包围（更可信的室内），false 表示至少有多个方向开放
     protected bool IsHorizontallyEnclosed(IEntity owner)
     {
-        if (!owner)
-            return false;
-        World world = owner.GetWorld();
-        if (!world)
-            return false;
-
-        vector basePos = owner.GetOrigin();
-        const float HEAD_HEIGHT = 1.6;
-        const int SAMPLES = 8; // 8向采样
-        const float DIST = 1.2; // 1.2 米检测距离（可根据需要调整）
-        const float HIT_RATIO = 0.75; // 至少 75% 的射线命中视为封闭
-
-        int hits = 0;
-
-        if (!m_pTraceParamEnclosed)
-            m_pTraceParamEnclosed = new TraceParam();
-
-        for (int i = 0; i < SAMPLES; i++)
-        {
-            float angle = (360.0 / SAMPLES) * i;
-            const float DEG2RAD = 3.14159265 / 180.0;
-            float rad = angle * DEG2RAD;
-            vector dir = Vector(Math.Cos(rad), Math.Sin(rad), 0);
-
-            vector start = basePos + vector.Up * HEAD_HEIGHT;
-            vector end = start + dir * DIST;
-
-            m_pTraceParamEnclosed.Start = start;
-            m_pTraceParamEnclosed.End = end;
-            m_pTraceParamEnclosed.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
-            m_pTraceParamEnclosed.Exclude = owner;
-            m_pTraceParamEnclosed.LayerMask = EPhysicsLayerPresets.Projectile;
-
-            world.TraceMove(m_pTraceParamEnclosed, null);
-
-            bool hit = (m_pTraceParamEnclosed.TraceEnt != null) || (m_pTraceParamEnclosed.SurfaceProps != null) || (m_pTraceParamEnclosed.ColliderName != string.Empty);
-            if (hit) hits++;
-
-            if (m_bIndoorDebug)
-            {
-                string hitStr;
-                if (hit)
-                    hitStr = "true";
-                else
-                    hitStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr);
-            }
-        }
-
-        float ratio = (hits / (float)SAMPLES);
-        if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0);
-
-        return (ratio >= HIT_RATIO);
+        return false;
     }
 
-    // 建筑物查询回调（过滤建筑物实体）
-    // @param e 实体
-    // @return true表示继续查询，false表示停止
     protected bool QueryBuildingCallback(IEntity e)
     {
-        if (!e)
-            return true;
-        
-        // 只接受建筑物类型的实体
-        Building building = Building.Cast(e);
-        if (!building)
-            return true;
-        
-        // 排除角色自身
-        if (ChimeraCharacter.Cast(e))
-            return true;
-        
-        // 添加到建筑物列表
-        m_pCachedBuildings.Insert(e);
-        
         return true;
     }
-    
+
+    // 室内检测 — 全部委托给 SCR_EnvironmentIndoorDetection
+    protected bool IsUnderCover(IEntity owner)
+    {
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.IsUnderCover(owner);
+        return false;
+    }
+
     // 计算降雨湿重（基于天气状态）
     // 优先尝试使用 GetRainIntensity() API，如果没有则回退到字符串匹配
     // 停止降雨后，湿重使用二次方衰减（更自然的蒸发过程）
@@ -1816,68 +1284,42 @@ class EnvironmentFactor
         return m_pCachedWeatherManager.GetTimeOfTheDay();
     }
     
-    // 检查是否在室内（用于调试）
-    // 使用 m_bCachedIndoorState 缓存，按 INDOOR_CHECK_INTERVAL 更新
-    // @return true表示在室内（有遮挡），false表示在室外（无遮挡）
+    // 检查是否在室内 — 委托给 SCR_EnvironmentIndoorDetection
     bool IsIndoor()
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
-            return false; // 室内检测已关闭，一律视为室外
-        if (m_pCachedOwner)
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
-                return m_bCachedIndoorState;
-        }
-        return IsUnderCover(m_pCachedOwner);
+            return false;
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.IsIndoor(m_pCachedOwner);
+        return false;
     }
 
-    // 建筑物内有顶且角色在 OBB 内，但不要求水平封闭（镂空楼梯间、栏杆侧开口等仍视为「应压制地形坡度」）
+    // 室内检测公共接口 — 全部委托给 SCR_EnvironmentIndoorDetection
     bool IsRoofedBuildingVolumeForEntity(IEntity owner)
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
             return false;
-        if (!owner)
-            return false;
-        if (owner == m_pCachedOwner)
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
-                return m_bCachedRoofedVolumeForSlopeState;
-        }
-        return EvaluateRoofedBuildingInterior(owner, StaminaConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.IsRoofedBuildingVolumeForEntity(owner);
+        return false;
     }
 
-    // 地形坡度/Pandolf 坡度项是否应按「非室外」处理为零（完整室内或建筑物内有顶体积）
     bool ShouldSuppressTerrainSlopeForEntity(IEntity owner)
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
             return false;
-        if (!owner)
-            return false;
-        if (IsIndoorForEntity(owner))
-            return true;
-        return IsRoofedBuildingVolumeForEntity(owner);
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.ShouldSuppressTerrainSlopeForEntity(owner);
+        return false;
     }
 
-    // 检查指定实体是否在室内（用于坡度/速度计算，避免依赖可能未更新的 m_pCachedOwner）
-    // 在服务器处理远程玩家 RPC 时，m_pCachedOwner 可能未更新，应使用此方法传入当前实体
-    // 本地玩家使用缓存；远程玩家直接调用 IsUnderCover（数量有限，影响可控）
-    // @param owner 要检测的角色实体
-    // @return true表示在室内，false表示在室外
     bool IsIndoorForEntity(IEntity owner)
     {
         if (!StaminaConstants.IsIndoorDetectionEnabled())
-            return false; // 室内检测已关闭，一律视为室外（坡度照常应用）
-        if (!owner)
             return false;
-        if (owner == m_pCachedOwner)
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
-                return m_bCachedIndoorState;
-        }
-        return IsUnderCover(owner);
+        if (m_pIndoorDetector)
+            return m_pIndoorDetector.IsIndoorForEntity(owner);
+        return false;
     }
 
     // 应用来自 `SCR_RSS_Settings` 的配置到模型（可在初始化时调用）

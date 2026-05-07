@@ -653,7 +653,7 @@ modded class SCR_CharacterControllerComponent
         if (useSwimmingModel)
             encumbranceStaminaDrainMultiplier = 1.0;
         
-        float sprintMultiplier = 1.0;
+        const float sprintMultiplier = 1.0;
         
         float baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
         float totalDrainRate = 0.0;

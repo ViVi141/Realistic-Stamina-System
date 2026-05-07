@@ -733,7 +733,7 @@ class RealisticStaminaSpeedSystem
         
         // 所有移动阶段使用 Pandolf 公式计算消耗，再乘以负重因子。
         // 由于本函数并不直接感知坡度，将其设为0（平地）。
-        float gradePercent = 0.0;
+        const float gradePercent = 0.0;
         float pandolf = CalculatePandolfDrain(velocity, currentWeight, gradePercent);
         return pandolf * loadFactor;
     }

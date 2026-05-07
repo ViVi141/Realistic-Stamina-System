@@ -59,47 +59,100 @@ RealisticStaminaSystem/
 ├── CHANGELOG.md                          # 更新日志
 ├── .gitignore                            # Git 忽略文件配置
 ├── addon.gproj                           # Arma Reforger 项目配置文件
+├── Configs/                              # 实体目录配置
+│   └── EntityCatalog/                    # 军火库条目登记
 ├── scripts/                              # EnforceScript 脚本目录
 │   └── Game/
-│       ├── PlayerBase.c                  # 主控制器组件
-│       └── Components/
-│           └── Stamina/
-│               ├── SCR_RealisticStaminaSystem.c  # 体力-速度系统核心
-│               ├── SCR_StaminaOverride.c          # 体力系统覆盖
-│               ├── SCR_SwimmingState.c            # 游泳状态管理模块
-│               ├── SCR_StaminaUpdateCoordinator.c # 体力更新协调器模块
-│               ├── SCR_SpeedCalculation.c        # 速度计算模块
-│               ├── SCR_StaminaConsumption.c      # 体力消耗计算模块
-│               ├── SCR_StaminaRecovery.c         # 体力恢复计算模块
-│               ├── SCR_DebugDisplay.c            # 调试信息显示模块
-│               ├── SCR_CollapseTransition.c      # "撞墙"阻尼过渡模块
-│               ├── SCR_ExerciseTracking.c        # 运动持续时间跟踪模块
-│               ├── SCR_JumpVaultDetection.c      # 跳跃和翻越检测模块
-│               ├── SCR_EncumbranceCache.c        # 负重缓存管理模块
-│               ├── SCR_FatigueSystem.c           # 疲劳积累系统模块
-│               ├── SCR_TerrainDetection.c        # 地形检测模块
-│               ├── SCR_EnvironmentFactor.c       # 环境因子模块
-│               ├── SCR_EpocState.c               # EPOC状态管理模块
-│               ├── SCR_NetworkSync.c             # 网络同步模块
-│               ├── SCR_UISignalBridge.c          # UI信号桥接模块
-│               ├── SCR_StaminaConstants.c        # 常量定义模块
-│               ├── SCR_StaminaHelpers.c          # 辅助函数模块
-│               ├── SCR_StaminaHUDComponent.c     # 实时状态HUD组件
-│               ├── SCR_RSS_ConfigManager.c        # 配置管理器
-│               ├── SCR_RSS_Settings.c            # 配置类
-│               ├── SCR_InventoryStorageManagerComponent_Override.c # 库存存储管理器覆盖
-│               └── SCR_StanceTransitionManager.c # 姿态转换管理器
+│       ├── Integration/                  # modded 入口层（高冲突面集中管理）
+│       │   ├── PlayerBase.c              # 主控制器（modded SCR_CharacterControllerComponent）
+│       │   ├── SCR_StaminaOverride.c     # 体力系统覆盖（modded SCR_CharacterStaminaComponent）
+│       │   ├── SCR_RSS_ServerBootstrap.c # 服务端引导（modded SCR_BaseGameMode）
+│       │   ├── SCR_InventoryStorageManagerComponent_Override.c # 库存覆盖
+│       │   └── SCR_PlayerBaseIntegrationHelpers.c # 集成辅助
+│       ├── RSS/                          # 模组主体（6 领域分层）
+│       │   ├── Core/                     # 体力核心（13 文件）
+│       │   │   ├── SCR_RealisticStaminaSystem.c  # 双稳态速度模型＋Pandolf 能量公式
+│       │   │   ├── SCR_StaminaUpdateCoordinator.c # 每 0.2s 主更新协调器
+│       │   │   ├── SCR_SpeedCalculation.c        # 综合速度／Tobler 坡度／战术冲刺
+│       │   │   ├── SCR_StaminaConsumption.c      # 体力消耗计算
+│       │   │   ├── SCR_StaminaRecovery.c         # 体力恢复计算
+│       │   │   ├── SCR_FatigueSystem.c           # 累积疲劳模型
+│       │   │   ├── SCR_EpocState.c               # EPOC 状态管理
+│       │   │   ├── SCR_ExerciseTracking.c        # 运动／休息时间累计跟踪
+│       │   │   ├── SCR_EncumbranceCache.c        # 负重缓存（分段非线性惩罚）
+│       │   │   ├── SCR_CollapseTransition.c      # 5s 阻尼过渡（25% 临界点）
+│       │   │   ├── SCR_StanceTransitionManager.c # 姿态转换成本与窗口结算
+│       │   │   ├── SCR_StaminaConstants.c        # 全系统常量与日志节流
+│       │   │   └── SCR_StaminaHelpers.c          # 辅助函数
+│       │   ├── Environment/              # 环境系统（9 文件）
+│       │   │   ├── SCR_EnvironmentFactor.c       # 热应激／冷应激／降雨湿重／风阻／泥泞
+│       │   │   ├── SCR_EnvironmentAstronomyMath.c # 天文／太阳几何
+│       │   │   ├── SCR_EnvironmentPenaltyMath.c  # 温-风补偿（冷热对称平方响应）
+│       │   │   ├── SCR_EnvironmentWeatherApi.c   # 天气 API 读取／风阻计算
+│       │   │   ├── SCR_TerrainDetection.c        # 地形类型检测（AI LOD 分档）
+│       │   │   ├── SCR_MaterialTerrainTable.c    # 地形材质映射表
+│       │   │   ├── SCR_SlopeSpeedTransition.c    # 坡度速度 5s 平滑过渡
+│       │   │   ├── SCR_SwimmingState.c           # 3D 游泳物理模型
+│       │   │   └── SCR_JumpVaultDetection.c      # 跳跃／翻越检测
+│       │   ├── AI/                      # AI 体力系统（7 文件）
+│       │   │   ├── SCR_RSS_AIStaminaBridge.c          # AI 体力桥接
+│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # 群组代理（远距仅队长全量计算）
+│       │   │   ├── SCR_RSS_AIStaminaCombatEffects.c   # 体力对 AI 射击精度／射速影响
+│       │   │   ├── SCR_RSS_AIGroupRestCoordinator.c   # AI 群组休息协调
+│       │   │   ├── SCR_RSS_AIRestRecoveryRegistry.c   # AI 恢复注册表
+│       │   │   ├── SCR_RSS_AICoverSeeker.c            # AI 掩体寻找
+│       │   │   └── SCR_RSS_AIMudSlipPolicy.c          # AI 泥泞滑倒策略
+│       │   ├── NetworkConfig/           # 网络与配置（7 文件）
+│       │   │   ├── SCR_NetworkSync.c                 # 客户端上报／服务端权威校验／三层限流
+│       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本迁移／热重载）
+│       │   │   ├── SCR_RSS_Settings.c                # 可序列化配置类（41+ 参数，3 预设）
+│       │   │   ├── SCR_RSS_ConfigSyncUtils.c         # 配置同步工具
+│       │   │   ├── SCR_RSS_API.c                     # 外部模组 API
+│       │   │   ├── SCR_RSS_DataExport.c              # 数据导出
+│       │   │   └── SCR_RSS_PlayerBaseConfigArrays.c  # 配置数组桥接
+│       │   ├── MudSlip/                 # 泥泞滑倒（2 文件）
+│       │   │   ├── SCR_MudSlipEffects.c              # 泥泞滑倒效果
+│       │   │   └── SCR_RSS_MudSlipRunner.c           # 玩家侧泥泞滑倒推进器
+│       │   └── Presentation/            # HUD 与表现（8 文件）
+│       │       ├── SCR_StaminaHUDComponent.c         # 右上角实时状态条
+│       │       ├── SCR_UISignalBridge.c              # 官方 UI 信号桥接
+│       │       ├── SCR_DebugDisplay.c                # 调试信息输出
+│       │       ├── CharacterCamera1stPerson.c        # 第一人称镜头惯性／头部物理
+│       │       ├── SCR_RSS_PresentationBridge.c      # 表现桥接
+│       │       ├── SCR_DesaturationEffect_CombatStimOD.c
+│       │       ├── SCR_NoiseFilterEffect_Stamina.c
+│       │       └── SCR_RegenerationScreenEffect_CombatStim.c
+│       ├── Components/                 # 游戏组件
+│       │   └── Gadgets/                # 战术物品（5 文件）
+│       │       ├── SCR_CombatStimConstants.c         # CSB 兴奋剂常量
+│       │       ├── SCR_CombatStimStateMachine.c      # CSB 状态机
+│       │       ├── SCR_ConsumableCombatStimInjector.c # CSB 注射器
+│       │       ├── SCR_ConsumableCustomInjector.c    # 自定义注射器
+│       │       └── SCR_ConsumableMorphine.c          # 吗啡消耗品
+│       ├── UserActions/                # 用户动作（3 文件）
+│       │   ├── SCR_CombatStimUserAction.c
+│       │   ├── SCR_CustomInjectorUserAction.c
+│       │   └── SCR_MorphineUserAction.c
+│       └── Damage/                     # 伤害效果
+│           └── DamageEffects/
+│               └── CharacterDamageEffects/
+│                   ├── SCR_CustomInjectorDamageEffect.c
+│                   └── SCR_MorphineDamageEffect.c
 ├── UI/                                   # UI布局文件
 │   └── layouts/
 │       └── HUD/
 │           └── StatsPanel/
 │               └── StaminaHUD.layout     # 状态HUD布局
 ├── Prefabs/                              # 预制体文件
-│   └── Characters/
-│       └── Core/
-│           └── Character_Base.et         # 角色基础预制体
+│   ├── Characters/
+│   │   └── Core/
+│   │       └── Character_Base.et         # 角色基础预制体
+│   └── Items/
+│       └── Medicine/
+│           └── CombatStimInjection_01/   # CSB 注射器预制体
 └── tools/                                # 开发工具和脚本
     ├── rss_super_pipeline.py              # NSGA-II 主优化管道
+    ├── rss_digital_twin_fix.py            # 数字孪生仿真器
     ├── stamina_constants.py               # 常数定义工具库
     ├── requirements.txt                   # Python依赖包
     ├── optimized_rss_config_*.json        # 优化后的配置文件（3个预设）
@@ -252,7 +305,7 @@ RSS Tools 是一个完整的 NSGA-II 多目标优化系统，用于平衡"拟真
 
 ## 调整系统参数
 
-当前版本的核心参数集中在 `scripts/Game/Components/Stamina/SCR_StaminaConstants.c` 和 `SCR_RSS_Settings.c` 中。
+当前版本的核心参数集中在 `scripts/Game/RSS/Core/SCR_StaminaConstants.c` 和 `scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c` 中。
 
 ## 技术亮点
 
