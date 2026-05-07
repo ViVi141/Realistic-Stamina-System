@@ -87,12 +87,12 @@ class StaminaUpdateCoordinator
                         true);
 
                     float bodyWeightIdle = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
-                    if (currentWeightWithWet > bodyWeightIdle && StaminaConstants.GetLoadMetabolicDampening() < 1.0)
+                    if (currentWeightWithWet > bodyWeightIdle && StaminaConfigBridge.GetLoadMetabolicDampening() < 1.0)
                     {
                         float unloadedPerS = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                             currentSpeed, bodyWeightIdle, gradePercent, terrainFactor, true);
                         float loadExtra = pandolfPerS - unloadedPerS;
-                        pandolfPerS = unloadedPerS + loadExtra * StaminaConstants.GetLoadMetabolicDampening();
+                        pandolfPerS = unloadedPerS + loadExtra * StaminaConfigBridge.GetLoadMetabolicDampening();
                     }
 
                     pandolfPerS = pandolfPerS * (1.0 + windDrag);
@@ -112,13 +112,13 @@ class StaminaUpdateCoordinator
                 // T1 负重代谢阻尼
                 float bodyWeightWRS = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;
                 float unloadedPerSAtCurrentSpeed = -1.0;
-                bool needsDampening = (currentWeightWithWet > bodyWeightWRS && StaminaConstants.GetLoadMetabolicDampening() < 1.0);
+                bool needsDampening = (currentWeightWithWet > bodyWeightWRS && StaminaConfigBridge.GetLoadMetabolicDampening() < 1.0);
                 if (needsDampening)
                 {
                     unloadedPerSAtCurrentSpeed = RealisticStaminaSpeedSystem.CalculatePandolfEnergyExpenditure(
                         currentSpeed, bodyWeightWRS, gradePercent, terrainFactor, true);
                     float loadExtra = pandolfPerS - unloadedPerSAtCurrentSpeed;
-                    pandolfPerS = unloadedPerSAtCurrentSpeed + loadExtra * StaminaConstants.GetLoadMetabolicDampening();
+                    pandolfPerS = unloadedPerSAtCurrentSpeed + loadExtra * StaminaConfigBridge.GetLoadMetabolicDampening();
                 }
 
                 // 负重限速努力补偿（生理学近似）：当负重显著压低“跑/冲刺”的实际速度时，
@@ -131,7 +131,7 @@ class StaminaUpdateCoordinator
                     float encPenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
                     if (isSprinting || currentMovementPhase == 3)
                         encPenalty = encPenalty * 1.5;
-                    float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+                    float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
                     encPenalty = Math.Clamp(encPenalty, 0.0, maxPenalty);
 
                     float denom = 1.0 - encPenalty;
@@ -159,7 +159,7 @@ class StaminaUpdateCoordinator
                                 unencumberedSpeedEstimate, bodyWeightWRS, gradePercent, terrainFactor, true);
                         }
                         float effortExtra = effortPandolfPerS - unloadedEffort;
-                        effortPandolfPerS = unloadedEffort + effortExtra * StaminaConstants.GetLoadMetabolicDampening();
+                        effortPandolfPerS = unloadedEffort + effortExtra * StaminaConfigBridge.GetLoadMetabolicDampening();
                     }
 
                     if (effortPandolfPerS > pandolfPerS)
@@ -374,7 +374,7 @@ class StaminaUpdateCoordinator
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
                 encumbrancePenalty = encumbrancePenalty * 1.5;
-            float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+            float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
             
             // 战术冲刺爆发期处理
@@ -550,7 +550,7 @@ class StaminaUpdateCoordinator
         {
             // ==================== 游泳体力消耗模型（物理阻力模型）====================
             // 调试信息：只在第一次检测到游泳速度仍为 0 时输出（避免刷屏）
-            if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
+            if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity() && !swimmingVelocityDebugPrinted)
             {
                 float swimVelLen = computedVelocity.Length();
                 if (swimVelLen < 0.01)

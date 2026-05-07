@@ -90,7 +90,7 @@ modded class SCR_CharacterControllerComponent
 
             if (IsRssDebugEnabled())
             {
-                float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
+                float coeff = StaminaConfigBridge.GetEnergyToStaminaCoeff();
                 PrintFormat("[RSS] 初始 energie->stamina coeff = %1", coeff);
             }
         }
@@ -257,7 +257,6 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
-        // 性能优化：缓存引擎穿透调用，避免每帧多次 GetGame()/GetWorld()
         Game game = GetGame();
         World world = game.GetWorld();
 
@@ -279,8 +278,18 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
-        if (RSS_HandleVehicleStaminaUpdate(owner))
+        if (SCR_PlayerBaseVehicleHelper.HandleVehicleStaminaUpdate(
+                this, owner, m_pCompartmentAccess, m_pStaminaComponent,
+                m_pExerciseTracker, m_pFatigueSystem, m_pEpocState,
+                m_pEncumbranceCache, m_pEnvironmentFactor,
+                m_pTerrainDetector, m_pStanceTransitionManager,
+                m_fLastStaminaUpdateTime, m_fCurrentWetWeight,
+                GetSpeedUpdateIntervalMs(), IsRssDebugEnabled()))
+        {
+            m_bRssStaminaLoopActive = true;
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
             return;
+        }
         
         RSS_CombatStim_OnTickTransitions();
 
@@ -318,7 +327,7 @@ modded class SCR_CharacterControllerComponent
 
             if (!m_bLastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RSS] 精疲力尽 / Exhausted: 速度限制为动态跛行速度 | Speed Limited to Dynamic Limp Speed");
+                Print("[RSS] Exhausted: limp speed");
                 m_bLastExhaustedState = true;
             }
 
@@ -327,7 +336,7 @@ modded class SCR_CharacterControllerComponent
         {
             if (m_bLastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RSS] 脱离精疲力尽状态 / Recovered from Exhaustion: 速度恢复正常 | Speed Restored");
+                Print("[RSS] Recovered from Exhaustion");
                 m_bLastExhaustedState = false;
             }
         }
@@ -359,7 +368,7 @@ modded class SCR_CharacterControllerComponent
         bool isSprintActive = isSprintingNow || (phaseNow == 3);
         
         float currentTimeForExerciseMs = world.GetWorldTime();
-        float currentTime = currentTimeForExerciseMs / 1000.0; // 秒，供地形/环境/RPC节流等模块使用
+        float currentTime = currentTimeForExerciseMs / 1000.0;
         float terrainFactor = 1.0; // 默认值（铺装路面）
         if (m_pTerrainDetector)
             terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTime, currentSpeed);
@@ -491,7 +500,7 @@ modded class SCR_CharacterControllerComponent
             );
             if (jumpCost > 0.0 && IsRssDebugEnabled())
             {
-                PrintFormat("[RSS] 跳跃消耗 / Jump Cost: -%1%% | -%1%%", 
+                PrintFormat("[RSS] Jump Cost: -%1%%", 
                     Math.Round(jumpCost * 100.0 * 10.0) / 10.0);
             }
             staminaPercent = staminaPercent - jumpCost;
@@ -511,7 +520,7 @@ modded class SCR_CharacterControllerComponent
             );
             if (vaultCost > 0.0 && IsRssDebugEnabled())
             {
-                PrintFormat("[RSS] 翻越消耗 / Vault Cost: -%1%% | -%1%%", 
+                PrintFormat("[RSS] Vault Cost: -%1%%", 
                     Math.Round(vaultCost * 100.0 * 10.0) / 10.0);
             }
             staminaPercent = staminaPercent - vaultCost;
@@ -584,7 +593,7 @@ modded class SCR_CharacterControllerComponent
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
 
-        if (StaminaConstants.IsMudSlipMechanismEnabled())
+        if (StaminaConfigBridge.IsMudSlipMechanismEnabled())
         {
             if (m_pMudSlipRunner)
             {
@@ -695,8 +704,7 @@ modded class SCR_CharacterControllerComponent
         if (RSS_IsCaffeineSodiumBenzoateActive())
             totalDrainRate = totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
         
-        // 低体力恢复区域：体力低于阈值时，步行/慢跑 (<SPRINT阈值) 转为缓慢恢复
-        // 生理学依据：极度疲劳时慢走有助于代谢废物清除，但不冲刺也能缓解肌肉紧张
+        // 低体力恢复区域：体力<阈值时步行/慢跑转为恢复
         float walkRecoveryThreshold = StaminaConstants.GetWalkRecoveryZoneThreshold();
         float walkRecoveryRatePerTick = StaminaConstants.GetWalkRecoveryZoneRate();
         if (!useSwimmingModel && !isSprintActive && staminaPercent < walkRecoveryThreshold && currentSpeed > 0.1)
@@ -719,7 +727,7 @@ modded class SCR_CharacterControllerComponent
         }
         
         if (owner == SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled() && IsPlayerControlled())
-            StaminaConstants.StartDebugBatch();
+            SCR_DebugBatchManager.StartDebugBatch();
         
         if (m_pStaminaComponent)
         {
@@ -746,13 +754,13 @@ modded class SCR_CharacterControllerComponent
             float verifyStamina = m_pStaminaComponent.GetStamina();
             if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005) // 偏差超过0.5%
             {
-                if (StaminaConstants.IsDebugBatchActive())
+                if (SCR_DebugBatchManager.IsDebugBatchActive())
                 {
                     string intLine = string.Format("[RSS] 原生干扰: 目标=%1%% 实际=%2%% 偏差=%3%%",
                         Math.Round(newTargetStamina * 100.0).ToString(),
                         Math.Round(verifyStamina * 100.0).ToString(),
                         Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
-                    StaminaConstants.AddDebugBatchLine(intLine);
+                    SCR_DebugBatchManager.AddDebugBatchLine(intLine);
                 }
                 m_pStaminaComponent.SetTargetStamina(newTargetStamina);
             }
@@ -784,69 +792,44 @@ modded class SCR_CharacterControllerComponent
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-            bool needDebugOutput = StaminaConstants.IsDebugBatchActive();
+            bool needDebugOutput = SCR_DebugBatchManager.IsDebugBatchActive();
             bool needHintOutput = (settings && settings.m_bHintDisplayEnabled);
-
             if (needDebugOutput || needHintOutput)
             {
-                float combatEncumbrancePercent = 0.0;
                 float debugCurrentWeight = 0.0;
-                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                {
+                float combatEncumbrancePercent = 0.0;
+                if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid()) {
                     debugCurrentWeight = m_pEncumbranceCache.GetCurrentWeight();
                     combatEncumbrancePercent = RealisticStaminaSpeedSystem.CalculateCombatEncumbrancePercent(owner);
                 }
-
                 float timeToDepleteSec = -1.0;
                 float timeToFullSec = -1.0;
-                if (needHintOutput)
-                {
+                if (needHintOutput) {
                     float netRate = StaminaUpdateCoordinator.GetNetStaminaRatePerSecond(
                         staminaPercent, useSwimmingModel, currentSpeed, totalDrainRate,
                         baseDrainRateByVelocity, baseDrainRateByVelocityForModule,
                         heatStressMultiplier, m_pEpocState, m_pEncumbranceCache,
                         m_pExerciseTracker, this, m_pEnvironmentFactor);
                     float targetStamina = 1.0;
-                    if (m_pFatigueSystem)
-                        targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
-                if (netRate < -0.0001)
-                    {
-                        timeToDepleteSec = staminaPercent / Math.AbsFloat(netRate);
-                        if (timeToDepleteSec > 7200.0)
-                            timeToDepleteSec = 7200.0;  // 上限 2h，避免净率接近 0 时显示异常大值
-                    }
-                    else if (netRate > 0.0001 && staminaPercent < targetStamina)
-                    {
-                        timeToFullSec = (targetStamina - staminaPercent) / netRate;
-                        if (timeToFullSec > 7200.0)
-                            timeToFullSec = 7200.0;
+                    if (m_pFatigueSystem) targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
+                    if (netRate < -0.0001) {
+                        timeToDepleteSec = Math.Min(staminaPercent / Math.AbsFloat(netRate), 7200.0);
+                    } else if (netRate > 0.0001 && staminaPercent < targetStamina) {
+                        timeToFullSec = Math.Min((targetStamina - staminaPercent) / netRate, 7200.0);
                     }
                 }
-
-                string movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
                 DebugInfoParams debugParams = new DebugInfoParams();
                 debugParams.owner = owner;
-                debugParams.movementTypeStr = movementTypeStr;
+                debugParams.movementTypeStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
                 debugParams.staminaPercent = staminaPercent;
                 debugParams.baseSpeedMultiplier = baseSpeedMultiplier;
                 debugParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
                 debugParams.finalSpeedMultiplier = finalSpeedMultiplier;
                 debugParams.gradePercent = gradePercent;
                 if (isSwimming)
-                {
-                    float horizontalLen = Math.Sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);
-                    float swimmingPitchDeg = 0.0;
-                    if (horizontalLen > 0.01 || Math.AbsFloat(velocity[1]) > 0.01)
-                    {
-                        swimmingPitchDeg = Math.Atan2(velocity[1], horizontalLen) * Math.RAD2DEG;
-                        swimmingPitchDeg = Math.Clamp(swimmingPitchDeg, -90.0, 90.0);
-                    }
-                    debugParams.slopeAngleDegrees = swimmingPitchDeg;
-                }
+                    debugParams.slopeAngleDegrees = 0.0;
                 else
-                {
                     debugParams.slopeAngleDegrees = slopeAngleDegrees;
-                }
                 debugParams.isSprinting = isSprinting;
                 debugParams.currentMovementPhase = currentMovementPhase;
                 debugParams.debugCurrentWeight = debugCurrentWeight;
@@ -862,18 +845,15 @@ modded class SCR_CharacterControllerComponent
                 debugParams.timeToDepleteSec = timeToDepleteSec;
                 debugParams.timeToFullSec = timeToFullSec;
                 debugParams.speedSource = m_sLastSpeedSource;
-
-                if (needDebugOutput)
-                {
+                if (needDebugOutput) {
                     DebugDisplay.OutputDebugInfo(debugParams);
                     SCR_RSS_AIStaminaBridge.FlushAIDebugLinesToBatch();
                 }
-                if (needHintOutput)
-                    DebugDisplay.OutputHintInfo(debugParams);
+                if (needHintOutput) DebugDisplay.OutputHintInfo(debugParams);
             }
         }
         
-        StaminaConstants.FlushDebugBatch();
+        SCR_DebugBatchManager.FlushDebugBatch();
         
         m_bRssStaminaLoopActive = true;
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
@@ -1043,9 +1023,7 @@ modded class SCR_CharacterControllerComponent
         return SCR_CombatStimStateMachine.IsOverdosed(m_iCombatStimPhase);
     }
 
-    //------------------------------------------------------------------------------------------------
-    //! 与 SCR_CharacterDamageManagerComponent.AddBleedingEffectOnHitZone 中一致的「基础流血速率」公式，
-    //! 用于在 SetBleedingScale 之后刷新已存在的 SCR_BleedingDamageEffect（其 DPS 不会在每帧自动重读全局倍率）。
+    // 与官方一致的流血速率公式
     protected float RSS_CombatStim_ComputeBleedingBaseRateForEffect(SCR_BleedingDamageEffect bleed)
     {
         if (!bleed)
@@ -1059,8 +1037,7 @@ modded class SCR_CharacterControllerComponent
         return hz.GetMaxBleedingRate() - hz.GetMaxBleedingRate() * hitZoneDamageMultiplier;
     }
 
-    //------------------------------------------------------------------------------------------------
-    //! 将当前所有流血 DOT 的 DPS 设为 baseRate * GetBleedingScale()，与官方创建流血时一致。
+    // 刷新流血 DOT DPS 以匹配当前倍率
     protected void RSS_CombatStim_RefreshBleedingEffectsToMatchScale(SCR_CharacterDamageManagerComponent dmgMgr)
     {
         if (!dmgMgr)
@@ -1080,8 +1057,7 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
-    //------------------------------------------------------------------------------------------------
-    //! 药效/OD 期间临时提高 SCR_CharacterDamageManagerComponent 的流血倍率；仅在服务端生效。
+    // 药效/OD 期间临时提高流血倍率
     protected void RSS_CombatStim_UpdateBleedingScale()
     {
         if (!Replication.IsServer())
@@ -1165,9 +1141,9 @@ modded class SCR_CharacterControllerComponent
         RSS_CombatStim_UpdateBleedingScale();
     }
 
-    // Identity passthrough — kept as extension point for future stim read adjustments.
-    // Currently no phase modifies the stamina read; CSB active state applies drain multiplier
-    // in the consumption path instead (see RSS_IsCaffeineSodiumBenzoateActive()).
+    // Identity passthrough for future stim read adjustments.
+    // CSB active state applies drain multiplier
+    // in consumption path (see RSS_IsCaffeineSodiumBenzoateActive).
     protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
     {
         return staminaPercent;
@@ -1297,10 +1273,6 @@ modded class SCR_CharacterControllerComponent
     {
         return m_fLastRssSpeedMultiplierApplied;
     }
-
-    // Legacy per-player config push removed (replaced by GameMode replication).
-
-    // Legacy config change callback removed (config distribution is GameMode replication).
 
     protected string GetPlayerLabel(IEntity entity)
     {
@@ -1609,117 +1581,7 @@ modded class SCR_CharacterControllerComponent
             GetGame().GetCallqueue().CallLater(EnsureAiStaminaLoopOnServer, 3000, false);
     }
 
-    protected bool RSS_HandleVehicleStaminaUpdate(IEntity owner)
-    {
-        bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
 
-        if (!isInVehicle)
-            return false;
-
-        static int vehicleDebugCounter = 0;
-        vehicleDebugCounter++;
-        if (vehicleDebugCounter >= 25)
-        {
-            vehicleDebugCounter = 0;
-            if (m_pStaminaComponent && IsRssDebugEnabled())
-            {
-                float currentStamina = m_pStaminaComponent.GetTargetStamina();
-                PrintFormat("[RSS] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%",
-                    Math.Round(currentStamina * 100.0).ToString());
-            }
-        }
-
-        float vehicleRestMinutes = 0.0;
-        float vehicleExerciseMinutes = 0.0;
-        if (m_pExerciseTracker)
-        {
-            float vehicleCurrentTimeMs = GetGame().GetWorld().GetWorldTime();
-            m_pExerciseTracker.Update(vehicleCurrentTimeMs, false, true);
-            vehicleRestMinutes = m_pExerciseTracker.GetRestDurationMinutes();
-            vehicleExerciseMinutes = m_pExerciseTracker.GetExerciseDurationMinutes();
-        }
-
-        float vehicleStaminaPercent = 1.0;
-        if (m_pStaminaComponent)
-            vehicleStaminaPercent = Math.Clamp(m_pStaminaComponent.GetTargetStamina(), 0.0, 1.0);
-
-        float vehicleNetRatePerSec = 0.0;
-        if (vehicleStaminaPercent < 1.0)
-        {
-            vehicleNetRatePerSec = StaminaUpdateCoordinator.GetNetStaminaRatePerSecond(
-                vehicleStaminaPercent, false, 0.0, -StaminaConstants.REST_RECOVERY_PER_TICK, 0.0, 0.0, 1.0,
-                m_pEpocState, m_pEncumbranceCache, m_pExerciseTracker, this, null, true);
-            float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
-
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (m_pFatigueSystem)
-                m_pFatigueSystem.ProcessFatigueDecay(currentWorldTime, 0.0);
-            float maxStaminaCap = 1.0;
-            if (m_pFatigueSystem)
-                maxStaminaCap = m_pFatigueSystem.GetMaxStaminaCap();
-            float timeDeltaSec;
-            if (m_fLastStaminaUpdateTime >= 0.0)
-                timeDeltaSec = currentWorldTime - m_fLastStaminaUpdateTime;
-            else
-                timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
-            timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
-            float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
-            float oldStamina = vehicleStaminaPercent;
-            float newStamina = Math.Clamp(oldStamina + vehicleRecoveryRate * tickScale, 0.0, maxStaminaCap);
-            if (vehicleStaminaPercent > maxStaminaCap)
-                newStamina = maxStaminaCap;
-            m_pStaminaComponent.SetTargetStamina(newStamina);
-            m_fLastStaminaUpdateTime = currentWorldTime;
-            vehicleStaminaPercent = newStamina;
-
-            if (vehicleDebugCounter == 0 && IsRssDebugEnabled())
-            {
-                PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% -> %2%% (净率: %3/s)",
-                    Math.Round(oldStamina * 100.0).ToString(),
-                    Math.Round(newStamina * 100.0).ToString(),
-                    vehicleNetRatePerSec.ToString());
-            }
-        }
-
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings && settings.m_bHintDisplayEnabled)
-        {
-            float vehicleTimeToDepleteSec = -1.0;
-            float vehicleTimeToFullSec = -1.0;
-            float targetStamina = 1.0;
-            if (m_pFatigueSystem)
-                targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
-            if (vehicleStaminaPercent < targetStamina && vehicleNetRatePerSec > 0.00001)
-            {
-                vehicleTimeToFullSec = (targetStamina - vehicleStaminaPercent) / vehicleNetRatePerSec;
-                if (vehicleTimeToFullSec < 0.5)
-                    vehicleTimeToFullSec = 0.5;
-                if (vehicleTimeToFullSec > 7200.0)
-                    vehicleTimeToFullSec = 7200.0;
-            }
-
-            float vehicleDebugWeight = 0.0;
-            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-                vehicleDebugWeight = m_pEncumbranceCache.GetCurrentWeight();
-
-            DebugInfoParams vehicleParams = SCR_PlayerBaseNetworkHelper.BuildVehicleDebugInfoParams(
-                owner,
-                vehicleStaminaPercent,
-                vehicleDebugWeight,
-                m_fCurrentWetWeight,
-                vehicleTimeToDepleteSec,
-                vehicleTimeToFullSec,
-                m_pTerrainDetector,
-                m_pEnvironmentFactor,
-                m_pStanceTransitionManager);
-            DebugDisplay.OutputHintInfo(vehicleParams);
-        }
-
-        RSS_SetMudSlipCameraShake01(0.0);
-        m_bRssStaminaLoopActive = true;
-        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
-        return true;
-    }
 
     protected void RSS_UpdateTacticalSprintState()
     {

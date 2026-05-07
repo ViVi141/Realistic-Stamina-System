@@ -33,7 +33,7 @@ class MudSlipEffects
     {
         if (!env)
             return false;
-        if (!StaminaConstants.IsMudPenaltyEnabled())
+        if (!StaminaConfigBridge.IsMudPenaltyEnabled())
             return false;
         if (env.GetSlipRisk() <= 0.0)
             return false;
@@ -90,7 +90,7 @@ class MudSlipEffects
     {
         if (!env)
             return 0.0;
-        if (!StaminaConstants.IsMudPenaltyEnabled())
+        if (!StaminaConfigBridge.IsMudPenaltyEnabled())
             return 0.0;
         if (env.GetSlipRisk() <= 0.0)
             return 0.0;

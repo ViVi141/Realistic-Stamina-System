@@ -63,7 +63,7 @@ class ExerciseTracker
 
             // 调试信息：idle 状态检测
             static float nextIdleLogTime = 0.0;
-            if (StaminaConstants.ShouldVerboseLog(nextIdleLogTime))
+            if (SCR_DebugBatchManager.ShouldVerboseLog(nextIdleLogTime))
             {
                 PrintFormat("[RSS] ExerciseTracker 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
                     Math.Round(idleDuration * 10.0) / 10.0,
@@ -78,7 +78,7 @@ class ExerciseTracker
 
                 // 调试信息：休息时间累积
                 static float nextRestLogTime = 0.0;
-                if (StaminaConstants.ShouldVerboseLog(nextRestLogTime))
+                if (SCR_DebugBatchManager.ShouldVerboseLog(nextRestLogTime))
                 {
                     PrintFormat("[RSS] ExerciseTracker 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
                         Math.Round(restTimeDelta * 10.0) / 10.0,
@@ -118,8 +118,8 @@ class ExerciseTracker
     float CalculateFatigueFactor()
     {
         // 计算有效运动持续时间（减去启动时间）
-        float fatigueCoeff = StaminaConstants.GetFatigueAccumulationCoeff();
-        float fatigueMaxFactor = StaminaConstants.GetFatigueMaxFactor();
+        float fatigueCoeff = StaminaConfigBridge.GetFatigueAccumulationCoeff();
+        float fatigueMaxFactor = StaminaConfigBridge.GetFatigueMaxFactor();
         
         // 疲劳启动时间：如果疲劳系数 > 0，使用5.0分钟；否则使用配置值
         float fatigueStartTime = 5.0;

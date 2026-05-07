@@ -30,7 +30,7 @@ class SCR_EnvironmentIndoorDetection
     // 检测角色是否在室内（完整室内判定：OBB内 + 有屋顶 + 水平封闭）
     bool IsIndoor(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (!owner)
             return false;
@@ -46,7 +46,7 @@ class SCR_EnvironmentIndoorDetection
     // 建筑物内有顶且角色在 OBB 内，但不要求水平封闭
     bool IsRoofedBuildingVolumeForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (!owner)
             return false;
@@ -56,7 +56,7 @@ class SCR_EnvironmentIndoorDetection
     // 地形坡度是否应按「非室外」处理为零
     bool ShouldSuppressTerrainSlopeForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (!owner)
             return false;
@@ -68,7 +68,7 @@ class SCR_EnvironmentIndoorDetection
     // 检查指定实体是否在室内（用于坡度/速度计算）
     bool IsIndoorForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (!owner)
             return false;
@@ -78,7 +78,7 @@ class SCR_EnvironmentIndoorDetection
     // 按间隔更新室内状态缓存
     bool UpdateIndoorCache(IEntity owner, float currentTime)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled() || !owner)
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled() || !owner)
             return false;
 
         if (currentTime - m_fLastIndoorCheckTime >= INDOOR_CHECK_INTERVAL)

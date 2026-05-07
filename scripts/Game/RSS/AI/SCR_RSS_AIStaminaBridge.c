@@ -290,7 +290,7 @@ class SCR_RSS_AIStaminaBridge
             return;
         }
 
-        if (!StaminaConstants.IsMudSlipMechanismEnabled())
+        if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
             return;
 
         float mudStress = ctrl.RSS_GetMudSlipCameraShake01();
@@ -310,7 +310,7 @@ class SCR_RSS_AIStaminaBridge
             return;
         if (!ctrl)
             return;
-        if (!StaminaConstants.IsMudSlipMechanismEnabled())
+        if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
             return;
         if (ctrl.IsPlayerControlled())
             return;
@@ -341,7 +341,7 @@ class SCR_RSS_AIStaminaBridge
         if (!s_aAIDebugLines)
             return;
         for (int i = 0; i < s_aAIDebugLines.Count(); i++)
-            StaminaConstants.AddDebugBatchLine(s_aAIDebugLines.Get(i));
+            SCR_DebugBatchManager.AddDebugBatchLine(s_aAIDebugLines.Get(i));
         s_aAIDebugLines.Clear();
     }
 }

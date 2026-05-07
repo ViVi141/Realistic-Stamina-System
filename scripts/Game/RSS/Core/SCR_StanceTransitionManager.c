@@ -233,7 +233,7 @@ class StanceTransitionManager
         finalCost = Math.Min(finalCost, 0.05);
         
         // 调试输出（仅在客户端）
-        if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
+        if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             string transitionName = GetTransitionName(oldStance, newStance);
             PrintFormat("[RSS] 姿态转换！%1 | 消耗: %2%% (基础: %3%%, 负重: %4kg, 倍数: %5, 疲劳堆积: %6)",

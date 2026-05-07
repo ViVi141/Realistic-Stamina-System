@@ -28,7 +28,7 @@ class SCR_EnvironmentPenaltyMath
 
     static float CalculateSlipRisk(float mudFactor)
     {
-        if (!StaminaConstants.IsMudSlipMechanismEnabled())
+        if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
             return 0.0;
         if (mudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
             return 0.0;
@@ -41,7 +41,7 @@ class SCR_EnvironmentPenaltyMath
         if (temperature <= StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD)
             return 0.0;
 
-        float heatPenaltyCoeff = StaminaConstants.GetEnvTemperatureHeatPenaltyCoeff();
+        float heatPenaltyCoeff = StaminaConfigBridge.GetEnvTemperatureHeatPenaltyCoeff();
         return (temperature - StaminaConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * heatPenaltyCoeff;
     }
 
@@ -54,7 +54,7 @@ class SCR_EnvironmentPenaltyMath
             return;
         }
 
-        float coldRecoveryPenaltyCoeff = StaminaConstants.GetEnvTemperatureColdRecoveryPenaltyCoeff();
+        float coldRecoveryPenaltyCoeff = StaminaConfigBridge.GetEnvTemperatureColdRecoveryPenaltyCoeff();
         coldStressPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * coldRecoveryPenaltyCoeff;
         coldStaticPenalty = (StaminaConstants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * StaminaConstants.ENV_TEMPERATURE_COLD_STATIC_PENALTY;
     }
@@ -66,7 +66,7 @@ class SCR_EnvironmentPenaltyMath
         if (surfaceWetness < StaminaConstants.ENV_SURFACE_WETNESS_THRESHOLD)
             return 0.0;
 
-        float surfaceWetnessPenaltyMax = StaminaConstants.GetEnvSurfaceWetnessPenaltyMax();
+        float surfaceWetnessPenaltyMax = StaminaConfigBridge.GetEnvSurfaceWetnessPenaltyMax();
         return surfaceWetnessPenaltyMax * surfaceWetness;
     }
 
@@ -88,7 +88,7 @@ class SCR_EnvironmentPenaltyMath
             extraWatts = 2.0 * (dtHot * dtHot);
         }
 
-        float coeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float coeff = StaminaConfigBridge.GetEnergyToStaminaCoeff();
         float extraPerTick = extraWatts * coeff * 0.2;
         return basePower + extraPerTick;
     }

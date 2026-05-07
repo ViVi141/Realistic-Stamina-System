@@ -89,7 +89,7 @@ class SCR_PlayerBaseConfigHelper
 
     static bool IsRssDebugEnabled()
     {
-        return StaminaConstants.IsDebugEnabled();
+        return StaminaConfigBridge.IsDebugEnabled();
     }
 }
 
@@ -275,9 +275,9 @@ class SCR_PlayerBaseNetworkHelper
             }
         }
 
-        float coeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+        float coeff = StaminaConfigBridge.GetEncumbranceSpeedPenaltyCoeff();
         rawPenalty = rawPenalty * (coeff / 0.20);
-        float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
         return Math.Clamp(rawPenalty, 0.0, maxPenalty);
     }
 

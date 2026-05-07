@@ -219,7 +219,7 @@ class StaminaRecoveryCalculator
             recoveryRate = 0.0001;
         }
 
-        float maxRecoveryPerTick = StaminaConstants.GetMaxRecoveryPerTick();
+        float maxRecoveryPerTick = StaminaConfigBridge.GetMaxRecoveryPerTick();
         if (maxRecoveryPerTick > 0.0 && recoveryRate > maxRecoveryPerTick)
         {
             recoveryRate = maxRecoveryPerTick;

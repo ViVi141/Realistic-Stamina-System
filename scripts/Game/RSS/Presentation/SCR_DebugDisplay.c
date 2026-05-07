@@ -95,7 +95,7 @@ class DebugDisplay
         if (!isSprinting && currentMovementPhase != 3)
             return "";
         
-        float sprintMultiplier = StaminaConstants.GetSprintStaminaDrainMultiplier();
+        float sprintMultiplier = StaminaConfigBridge.GetSprintStaminaDrainMultiplier();
         return string.Format(" | Sprint消耗倍数: %1x | Sprint Drain Multiplier: %1x", 
             sprintMultiplier.ToString());
     }
@@ -406,7 +406,7 @@ class DebugDisplay
         {
             speedSourceStr = string.Format(" | 速度来源:%1 | Speed Source:%2", params.speedSource, params.speedSource);
         }
-        StaminaConstants.AddDebugBatchLine(debugMessage + speedSourceStr + envInfo);
+        SCR_DebugBatchManager.AddDebugBatchLine(debugMessage + speedSourceStr + envInfo);
     }
     
     // 输出状态信息（每秒一次）
@@ -439,7 +439,7 @@ class DebugDisplay
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         // 若本秒内已有批次输出，跳过避免重复
-        if (StaminaConstants.WasBatchJustFlushed())
+        if (SCR_DebugBatchManager.WasBatchJustFlushed())
             return;
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         if (currentTime < m_fNextStatusLogTime)

@@ -97,7 +97,7 @@ class SpeedCalculator
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
             encumbrancePenalty = encumbrancePenalty * 1.5;
-        float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
         // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
@@ -126,7 +126,7 @@ class SpeedCalculator
             // Sprint理论目标速度（不含负重惩罚）= GAME_MAX_SPEED × scaledRunSpeed × (1 + 30%)
             // 注意：scaledRunSpeed 相对于 GAME_MAX_SPEED 的倍数
             // 负重惩罚将在 UpdateSpeed 中通过补偿倍数的方式应用
-            float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
+            float sprintSpeedBoost = StaminaConfigBridge.GetSprintSpeedBoost();
             finalAbsoluteSpeed = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * scaledRunSpeed * (1.0 + sprintSpeedBoost);
             // 限制速度在合理范围内
             finalAbsoluteSpeed = Math.Clamp(finalAbsoluteSpeed, 0.8, RealisticStaminaSpeedSystem.GAME_MAX_SPEED);
@@ -197,7 +197,7 @@ class SpeedCalculator
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
             encumbrancePenalty = encumbrancePenalty * 1.5;
-        float maxPenalty = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
         // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
@@ -224,7 +224,7 @@ class SpeedCalculator
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
             // Sprint速度 = Run基础倍率 × (1 + 30%)
-            float sprintSpeedBoost = StaminaConstants.GetSprintSpeedBoost();
+            float sprintSpeedBoost = StaminaConfigBridge.GetSprintSpeedBoost();
             float sprintMultiplier = 1.0 + sprintSpeedBoost; // 1.30
             finalSpeedMultiplier = (scaledRunSpeed * sprintMultiplier) * (1.0 - encumbrancePenalty);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.15, 1.0);
@@ -416,11 +416,11 @@ class SpeedCalculator
             if (slopeRatio < -1.0 || slopeRatio > 1.0)
             {
                 // log warning once per debug cycle
-                if (StaminaConstants.IsDebugEnabled())
+                if (StaminaConfigBridge.IsDebugEnabled())
                 slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             }
             s_pResultGrade.gradePercent = slopeRatio * 100.0;
-            if (StaminaConstants.IsDebugEnabled())
+            if (StaminaConfigBridge.IsDebugEnabled())
             {
             }
         }

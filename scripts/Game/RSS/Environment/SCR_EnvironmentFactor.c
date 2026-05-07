@@ -132,7 +132,7 @@ class EnvironmentFactor
             float dbgLon = m_pCachedWeatherManager.GetCurrentLongitude();
             float dbgTZ  = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
             float tmpLogInit = m_fNextLocationEstimateLogTime; // reuse same throttle
-            if (StaminaConstants.ShouldLog(tmpLogInit))
+            if (SCR_DebugBatchManager.ShouldLog(tmpLogInit))
             {
                 m_fNextLocationEstimateLogTime = tmpLogInit;
                 PrintFormat("[RSS] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
@@ -175,7 +175,7 @@ class EnvironmentFactor
         ApplySettings();
 
         // 调试：打印天气管理器的重要状态，便于排查温度是否被覆盖为常数（例如10°C）
-        if (m_pCachedWeatherManager && Replication.IsServer() && StaminaConstants.IsDebugEnabled())
+        if (m_pCachedWeatherManager && Replication.IsServer() && StaminaConfigBridge.IsDebugEnabled())
         {
             bool overrideTemp = m_pCachedWeatherManager.GetOverrideTemperature();
             float tempMin = m_pCachedWeatherManager.GetTemperatureAirMinOverride();
@@ -223,7 +223,7 @@ class EnvironmentFactor
                     skipEstimate = true;
                     // 日志提示我们使用了引擎提供的坐标
                     float tmpLocLog1 = m_fNextLocationEstimateLogTime;
-                    if (StaminaConstants.ShouldLog(tmpLocLog1))
+                    if (SCR_DebugBatchManager.ShouldLog(tmpLocLog1))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog1;
                         PrintFormat("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
@@ -239,7 +239,7 @@ class EnvironmentFactor
                 if (estConf > 0.0)
                 {
                     float tmpLocLog2 = m_fNextLocationEstimateLogTime;
-                    if (StaminaConstants.ShouldLog(tmpLocLog2))
+                    if (SCR_DebugBatchManager.ShouldLog(tmpLocLog2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog2;
                         PrintFormat("[RSS][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
@@ -257,7 +257,7 @@ class EnvironmentFactor
                         if (refinedConf > estConf)
                         {
                             float tmpLocLog3 = m_fNextLocationEstimateLogTime;
-                            if (StaminaConstants.ShouldLog(tmpLocLog3))
+                            if (SCR_DebugBatchManager.ShouldLog(tmpLocLog3))
                             {
                                 m_fNextLocationEstimateLogTime = tmpLocLog3;
                                 PrintFormat("[RSS][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
@@ -318,7 +318,7 @@ class EnvironmentFactor
         m_bPendingForceUpdate = true;
         // ShouldLog 参数为 inout，不能直接传递类成员（写保护）。使用临时变量并回写。
         float tmpLogTime = m_fNextForceUpdateLogTime;
-        if (StaminaConstants.ShouldLog(tmpLogTime))
+        if (SCR_DebugBatchManager.ShouldLog(tmpLogTime))
         {
             m_fNextForceUpdateLogTime = tmpLogTime;
             PrintFormat("[RSS] ForceUpdate: Pending recompute flagged");
@@ -356,7 +356,7 @@ class EnvironmentFactor
             if (dbgLat == 0.0 && dbgLon == 0.0)
             {
                 float tmpLogU1 = m_fNextLocationEstimateLogTime;
-                if (StaminaConstants.ShouldLog(tmpLogU1))
+                if (SCR_DebugBatchManager.ShouldLog(tmpLogU1))
                 {
                     m_fNextLocationEstimateLogTime = tmpLogU1;
                     Print("[RSS] weather mgr returned 0/0 coordinates, delaying");
@@ -369,7 +369,7 @@ class EnvironmentFactor
                 if (!once)
                 {
                     float tmpLogU2 = m_fNextLocationEstimateLogTime;
-                    if (StaminaConstants.ShouldLog(tmpLogU2))
+                    if (SCR_DebugBatchManager.ShouldLog(tmpLogU2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLogU2;
                         PrintFormat("[RSS] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
@@ -403,12 +403,12 @@ class EnvironmentFactor
             bool hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
             bool hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
 
-            if (Replication.IsServer() && StaminaConstants.IsDebugBatchActive())
+            if (Replication.IsServer() && SCR_DebugBatchManager.IsDebugBatchActive())
             {
                 string dateStr = y.ToString() + "/" + mo.ToString() + "/" + d.ToString();
                 string line = string.Format("[RSS] 引擎天气: TOD=%1 雨=%2 风=%3 ovTemp=%4 日出=%5 日落=%6 日期=%7",
                     currTOD, currRain, currWind, currOverrideTemp, sr, ss, dateStr);
-                StaminaConstants.AddDebugBatchLineOnce("EngineTOD", line);
+                SCR_DebugBatchManager.AddDebugBatchLineOnce("EngineTOD", line);
             }
 
             // 若与缓存值出现显著差异，则触发强制更新（实时响应管理员操作）
@@ -524,7 +524,7 @@ class EnvironmentFactor
 
             // 日志（使用临时变量以避免 inout 成员写入问题）
             float tmpLogTime2 = m_fNextForceUpdateLogTime;
-            if (StaminaConstants.ShouldLog(tmpLogTime2))
+            if (SCR_DebugBatchManager.ShouldLog(tmpLogTime2))
             {
                 m_fNextForceUpdateLogTime = tmpLogTime2;
                 PrintFormat("[RSS] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
@@ -533,7 +533,7 @@ class EnvironmentFactor
 
         // 调试信息：环境因子更新（统一节流）
         static float nextEnvLogTime = 0.0;
-        if (StaminaConstants.ShouldLog(nextEnvLogTime))
+        if (SCR_DebugBatchManager.ShouldLog(nextEnvLogTime))
         {
             PrintFormat("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
@@ -699,64 +699,6 @@ class EnvironmentFactor
 
     // ==================== 私有方法 ====================
     
-    // 计算虚拟气温（统一模拟算法，无论引擎天气与否）
-    // 结合时间/纬度/季节曲线，并叠加雨风修正
-    // @return 虚拟气温（°C）
-    protected float CalculateSimulatedTemperature()
-    {
-        if (!m_pCachedWeatherManager)
-            return 15.0; // 默认气温
-
-        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-        float rain = m_pCachedWeatherManager.GetRainIntensity();
-        float wind = m_pCachedWeatherManager.GetWindSpeed();
-        float sr = 0.0;
-        float ss = 0.0;
-        m_pCachedWeatherManager.GetSunriseHour(sr);
-        m_pCachedWeatherManager.GetSunsetHour(ss);
-        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
-        int year, month, day;
-        m_pCachedWeatherManager.GetDate(year, month, day);
-
-        // 1. 基于纬度和季节估算平均温度与昼夜幅度
-        float lat_factor = Math.Cos(lat * Math.DEG2RAD);
-        float season_factor = Math.Sin(((float)(month - 4) / 12.0) * Math.PI);
-
-        float t_avg = 15.0 + (15.0 * lat_factor) + (5.0 * season_factor);
-        float t_range = 8.0 + (4.0 * season_factor);
-
-        float t_max = t_avg + (t_range * 0.5);
-        float t_min = t_avg - (t_range * 0.5);
-
-        // 2. 峰值一般出现在日落前约 4 小时
-        float t_peak = ss - 4.0;
-        if (t_peak < 12.0) t_peak = 15.0;
-
-        float current_t;
-
-        // 3. 升温/降温两段曲线
-        if (tod >= sr && tod <= t_peak)
-        {
-            float p = (tod - sr) / (t_peak - sr);
-            current_t = t_min + (t_max - t_min) * Math.Pow(Math.Sin(p * 1.5707), 1.2);
-        }
-        else
-        {
-            float p;
-            if (tod > t_peak)
-                p = (tod - t_peak) / (24.0 - t_peak + sr);
-            else
-                p = (tod + 24.0 - t_peak) / (24.0 - t_peak + sr);
-
-            current_t = t_min + (t_max - t_min) * Math.Cos(p * 1.5707);
-        }
-
-        // 4. 降雨风速修正
-        current_t -= (rain * 6.5);
-        current_t -= (wind * 0.12);
-
-        return current_t;
-    }
 
     // 查询当前海拔（米）：有 owner 时用 SCR_TerrainHelper.GetTerrainY，否则用配置 m_fAltitudeMeters
     protected float GetCurrentAltitudeMeters(IEntity owner)
@@ -812,7 +754,7 @@ class EnvironmentFactor
             m_fLatitude = outLatDeg;
             m_fLongitude = outLonDeg;
             float tmpLog = m_fNextLocationEstimateLogTime;
-            if (StaminaConstants.ShouldLog(tmpLog))
+            if (SCR_DebugBatchManager.ShouldLog(tmpLog))
             {
                 m_fNextLocationEstimateLogTime = tmpLog;
                 PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3",
@@ -837,7 +779,7 @@ class EnvironmentFactor
             m_fLatitude = outLatDeg;
             m_fLongitude = outLonDeg;
             float tmpLog = m_fNextLocationEstimateLogTime;
-            if (StaminaConstants.ShouldLog(tmpLog))
+            if (SCR_DebugBatchManager.ShouldLog(tmpLog))
             {
                 m_fNextLocationEstimateLogTime = tmpLog;
                 PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3",
@@ -867,161 +809,6 @@ class EnvironmentFactor
         return SCR_EnvironmentAstronomyMath.InferCloudFactor(m_fCachedRainIntensity, m_fCachedSurfaceWetness, m_pCachedWeatherManager);
     }
 
-    // 单步温度更新（基于一层混合层的能量平衡）
-    // @param dt 秒
-    protected void StepTemperature(float dt)
-    {
-        if (!m_pCachedWeatherManager)
-            return;
-
-        // 1) 获取时间/位置/天气因子
-        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-        int year, month, day;
-        m_pCachedWeatherManager.GetDate(year, month, day);
-        int n = DayOfYear(year, month, day);
-        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
-
-        // 优先使用引擎时区信息；引擎同时提供 GetCurrentLongitude()，可作太阳时经度校正
-        float tz = 0.0;
-        float lon = m_fLongitude;
-        if (m_bUseEngineTimezone)
-        {
-            tz = m_pCachedWeatherManager.GetTimeZoneOffset() + m_pCachedWeatherManager.GetDSTOffset();
-            lon = m_pCachedWeatherManager.GetCurrentLongitude(); // 直接从引擎地图配置读取经度
-        }
-        else
-        {
-            tz = m_fTimeZoneOffsetHours;
-        }
-
-        // 时钟小时 → 真太阳时：加入经度与标准子午线之差（每 15° 差 1 小时）
-        // solarHour = clockHour + (longitude - timezone_central_meridian) / 15
-        float localHour = tod - tz; // 先转为 UTC
-        float solarHour = localHour + lon / 15.0;
-        // 归一化到 [0,24)
-        while (solarHour < 0.0) solarHour += 24.0;
-        while (solarHour >= 24.0) solarHour -= 24.0;
-        float localHourClock = tod; // 保留时钟小时供日出/日落比较（引擎返回的是本地时钟时间）
-        // 重新以真太阳时覆盖 localHour，后续天顶角计算使用太阳时
-        localHour = solarHour;
-
-        // 使用引擎的日出/日落 API（不依赖显式经度/经纬），在不可用时回退到基于天顶角的计算
-        bool hasSunrise = false;
-        bool hasSunset = false;
-        float sunRiseHour = 0.0;
-        float sunSetHour = 0.0;
-        if (m_pCachedWeatherManager)
-        {
-            hasSunrise = m_pCachedWeatherManager.GetSunriseHour(sunRiseHour);
-            hasSunset = m_pCachedWeatherManager.GetSunsetHour(sunSetHour);
-        }
-
-        float cosTheta = 0.0;
-        if (hasSunrise && hasSunset)
-        {
-            // 日出/日落是引擎返回的本地时钟时间，用时钟小时对比；天顶角用真太阳时计算
-            if (localHourClock < sunRiseHour || localHourClock > sunSetHour)
-            {
-                // 引擎判定为夜间
-                cosTheta = 0.0;
-            }
-            else
-            {
-                cosTheta = SolarCosZenith(lat, n, localHour); // localHour 此时为真太阳时
-                if (cosTheta <= 0.0)
-                    cosTheta = 0.0;
-            }
-        }
-        else
-        {
-            // 回退到原有基于天顶角的计算（无引擎日出日落时）
-            cosTheta = SolarCosZenith(lat, n, localHour);
-            if (cosTheta <= 0.0)
-                cosTheta = 0.0;
-        }
-
-        // 获取月相（若引擎可用），供日志或后续扩展使用（使用不依赖经度/经纬的接口）
-        float moonPhase01 = 0.0;
-        if (m_pCachedWeatherManager)
-            moonPhase01 = m_pCachedWeatherManager.GetMoonPhase(tod);
-
-        // 调试信息（仅在 Verbose 时输出）
-        if (StaminaConstants.ShouldVerboseLog(m_fLastTemperatureUpdateTime))
-        {
-            if (hasSunrise && hasSunset)
-            {
-                PrintFormat("[RSS][TempStep] Using engine sunrise/sunset: SR=%1, SS=%2, Moon=%3", sunRiseHour, sunSetHour, Math.Round(moonPhase01 * 100.0) / 100.0);
-            }
-        }
-
-        float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
-
-        // 3) 计算透过率
-        float m = AirMass(cosTheta);
-        float tau = ClearSkyTransmittance(m);
-
-        // 4) 云修正
-        float cloudFactor = InferCloudFactor();
-        float cloudBlocking = m_fCloudBlockingCoeff * cloudFactor; // 云层削弱短波的系数（经验，可配置）
-
-        // 5) 短波到达地表
-        float SW_down = I0 * tau * (1.0 - cloudBlocking);
-
-        // 6) 长波下行：天空有效温度由季节基准气温与云量决定，不依赖地表温度，避免热失控
-        float seasonalBaseTemp = EstimateSeasonalAvgTemp(lat, n);
-        float skyTempDepression = (1.0 - cloudFactor) * 12.0;
-        float T_atm = seasonalBaseTemp - skyTempDepression;
-        float eps_atm = 0.75 + 0.15 * cloudFactor;
-        float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
-
-        // 7) 地表发射（以当前缓存地表温度计算）
-        float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((m_fCachedSurfaceTemperature + 273.15), 4);
-
-        // 8) 净辐射
-        float netRadiation = (1.0 - m_fAlbedo) * SW_down + LW_down - LW_up;
-
-        // 9) 简化感热/潜热项（经验小值，湿润情况增大潜热损失）
-        const float rho = 1.225; // 空气密度 kg/m3
-        const float Cp = 1004.0; // 比热 J/(kg·K)
-        float Hmix = m_fTemperatureMixingHeight; // m
-
-        float LE = 0.0;
-        // 若湿度或降雨增加，加入潜热损失（可配置系数）
-        LE = m_fLECoef * m_fCachedSurfaceWetness; // 经验值（可由设置调整）
-
-        // 风速影响混合层高度：风越大，混合层越高，温度变化越小
-        float wind_factor = 1.0 + (m_fCachedWindSpeed / 10.0);
-        float mixing_height_eff = Math.Max(10.0, Hmix * wind_factor);
-
-        float Q_net = netRadiation - LE; // 忽略感热单独项（混合层近似）
-
-        // 10) 温度变化
-        float dT = 0.0;
-        if (mixing_height_eff > 0.0)
-            dT = (Q_net * dt) / (rho * Cp * mixing_height_eff);
-
-        float newT = m_fCachedSurfaceTemperature + dT;
-
-        // 限制合理范围
-        if (newT > 60.0)
-            newT = 60.0;
-        if (newT < -80.0)
-            newT = -80.0;
-
-        // 更新缓存与时间戳
-        m_fCachedSurfaceTemperature = newT;
-
-        if (StaminaConstants.IsDebugBatchActive())
-        {
-            string line = string.Format("[RSS] 温度 TempStep: dt=%1s SW=%2W/m2 气温=%3°C 云=%4 MixH=%5m",
-                dt,
-                Math.Round(SW_down),
-                Math.Round(newT * 10.0) / 10.0,
-                Math.Round(cloudFactor * 100.0) / 100.0,
-                Math.Round(mixing_height_eff));
-            StaminaConstants.AddDebugBatchLineOnce("TempStep", line);
-        }
-    }
 
     // 估算季节均温（°C），用于长波下行中的环境参考温度，避免 T_atm = T_surface+2 导致的热失控
     // 赤道约27°C，随纬度降低；北半球简易季节调制；北大西洋/中高纬海洋偏凉
@@ -1030,128 +817,6 @@ class EnvironmentFactor
         return SCR_EnvironmentAstronomyMath.EstimateSeasonalAvgTemp(lat, dayOfYear);
     }
 
-    // ------------------- 物理平衡求解（用于初始/回退） -------------------
-    // 计算给定地表温度下的净辐射（短波+长波 - 地表发射 - 潜热）
-    // @param T_surface 地表温度（°C）
-    // @param lat 纬度（deg）
-    // @param n 年日
-    // @param tod 小时
-    // @param cloudFactor 云量因子（0..1）
-    protected float NetRadiationAtSurface(float T_surface, float lat, int n, float tod, float cloudFactor)
-    {
-        // 计算太阳几何与顶端辐照：优先使用引擎的日出/日落判定（若可用），否则回退到基于天顶角的计算
-        float cosTheta = 0.0;
-        if (m_pCachedWeatherManager)
-        {
-            // 使用不依赖显式经度/经纬的引擎日出/日落接口
-            bool hasSR = false;
-            bool hasSS = false;
-            float sr = 0.0;
-            float ss = 0.0;
-            hasSR = m_pCachedWeatherManager.GetSunriseHour(sr);
-            hasSS = m_pCachedWeatherManager.GetSunsetHour(ss);
-
-            float localHour = tod;
-            if (!m_bUseEngineTimezone)
-                localHour -= m_fTimeZoneOffsetHours;
-            while (localHour < 0.0) localHour += 24.0;
-            while (localHour >= 24.0) localHour -= 24.0;
-
-            if (hasSR && hasSS)
-            {
-                if (localHour < sr || localHour > ss)
-                {
-                    cosTheta = 0.0; // 夜间
-                }
-                else
-                {
-                    cosTheta = SolarCosZenith(lat, n, localHour);
-                    if (cosTheta <= 0.0) cosTheta = 0.0;
-                }
-            }
-            else
-            {
-                cosTheta = SolarCosZenith(lat, n, tod);
-                if (cosTheta <= 0.0) cosTheta = 0.0;
-            }
-        }
-        else
-        {
-            cosTheta = SolarCosZenith(lat, n, tod);
-            if (cosTheta <= 0.0)
-                cosTheta = 0.0;
-        }
-
-        float I0 = m_fSolarConstant * (1.0 + 0.033 * Math.Cos(2.0 * Math.PI * n / 365.0)) * cosTheta;
-
-        // 透过率
-        float m = AirMass(cosTheta);
-        float tau = ClearSkyTransmittance(m);
-
-        // 云修正
-        float cloudBlocking = m_fCloudBlockingCoeff * cloudFactor; // 使用配置的云遮挡系数
-
-        // 短波到达地表
-        float SW_down = I0 * tau * (1.0 - cloudBlocking);
-
-        // 长波下行：天空有效温度独立于 T_surface，避免“超级温室”热失控
-        // 用季节基准气温估算环境温度，晴天时天空比气温冷，阴天时接近气温
-        float seasonalBaseTemp = EstimateSeasonalAvgTemp(lat, n);
-        float skyTempDepression = (1.0 - cloudFactor) * 12.0;
-        float T_atm = seasonalBaseTemp - skyTempDepression;
-        float eps_atm = 0.75 + 0.15 * cloudFactor;
-        float LW_down = eps_atm * STEFAN_BOLTZMANN * Math.Pow((T_atm + 273.15), 4);
-
-        // 地表发射（仍依赖 T_surface，供二分法求解平衡温度）
-        float LW_up = m_fSurfaceEmissivity * STEFAN_BOLTZMANN * Math.Pow((T_surface + 273.15), 4);
-
-        // 潜热项（使用当前地表湿度近似，可配置系数）
-        float LE = m_fLECoef * m_fCachedSurfaceWetness;
-        float net = (1.0 - m_fAlbedo) * SW_down + LW_down - LW_up - LE;
-
-        return net; // W/m2
-    }
-
-    // 用二分法求解稳态平衡温度（使净辐射≈0），回退至模拟模型若求解失败
-    protected float CalculateEquilibriumTemperatureFromPhysics()
-    {
-        if (!m_pCachedWeatherManager)
-            return CalculateSimulatedTemperature();
-
-        float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-        int year, month, day;
-        m_pCachedWeatherManager.GetDate(year, month, day);
-        int n = DayOfYear(year, month, day);
-        float lat = m_pCachedWeatherManager.GetCurrentLatitude();
-
-        float cloud = InferCloudFactor();
-
-        // 二分法上下界
-        float low = -80.0;
-        float high = 60.0;
-        float mid = 20.0;
-
-        float f_low = NetRadiationAtSurface(low, lat, n, tod, cloud);
-        float f_high = NetRadiationAtSurface(high, lat, n, tod, cloud);
-
-        // 若两端符号相同，退用模拟昼夜模型
-        if (f_low * f_high > 0.0)
-            return CalculateSimulatedTemperature();
-
-        for (int i = 0; i < 40; i++)
-        {
-            mid = (low + high) * 0.5;
-            float f_mid = NetRadiationAtSurface(mid, lat, n, tod, cloud);
-            if (Math.AbsFloat(f_mid) < 1.0)
-                break; // 误差在 1 W/m2 内可接受
-            if (f_mid * f_low <= 0.0)
-                high = mid;
-            else
-                low = mid;
-        }
-
-        return Math.Clamp(mid, -80.0, 60.0);
-    }
 
     // 计算热应激倍数（基于当前导出的温度，考虑室内豁免）
     // 热应激模型：基于虚拟气温阈值，而非固定时间段
@@ -1205,27 +870,6 @@ class EnvironmentFactor
         return false;
     }
 
-    protected bool RaycastHasRoof(IEntity owner, IEntity building, float roofCheckHeightM)
-    {
-        // 仅保留签名兼容性；实际调用走 m_pIndoorDetector
-        return false;
-    }
-
-    protected vector WorldToLocal(vector worldMat[4], vector worldPos)
-    {
-        vector zero;
-        return zero;
-    }
-
-    protected bool IsHorizontallyEnclosed(IEntity owner)
-    {
-        return false;
-    }
-
-    protected bool QueryBuildingCallback(IEntity e)
-    {
-        return true;
-    }
 
     // 室内检测 — 全部委托给 SCR_EnvironmentIndoorDetection
     protected bool IsUnderCover(IEntity owner)
@@ -1287,7 +931,7 @@ class EnvironmentFactor
     // 检查是否在室内 — 委托给 SCR_EnvironmentIndoorDetection
     bool IsIndoor()
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (m_pIndoorDetector)
             return m_pIndoorDetector.IsIndoor(m_pCachedOwner);
@@ -1297,7 +941,7 @@ class EnvironmentFactor
     // 室内检测公共接口 — 全部委托给 SCR_EnvironmentIndoorDetection
     bool IsRoofedBuildingVolumeForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (m_pIndoorDetector)
             return m_pIndoorDetector.IsRoofedBuildingVolumeForEntity(owner);
@@ -1306,7 +950,7 @@ class EnvironmentFactor
 
     bool ShouldSuppressTerrainSlopeForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (m_pIndoorDetector)
             return m_pIndoorDetector.ShouldSuppressTerrainSlopeForEntity(owner);
@@ -1315,7 +959,7 @@ class EnvironmentFactor
 
     bool IsIndoorForEntity(IEntity owner)
     {
-        if (!StaminaConstants.IsIndoorDetectionEnabled())
+        if (!StaminaConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (m_pIndoorDetector)
             return m_pIndoorDetector.IsIndoorForEntity(owner);
@@ -1471,7 +1115,7 @@ class EnvironmentFactor
         
         // ==================== 调试信息：高级环境因子（v2.14.0）====================
         static float nextAdvancedEnvLogTime = 0.0;
-        if (StaminaConstants.ShouldVerboseLog(nextAdvancedEnvLogTime))
+        if (SCR_DebugBatchManager.ShouldVerboseLog(nextAdvancedEnvLogTime))
         {
             PrintFormat("[RSS] 高级环境因子 / Advanced Environment Factors:");
             PrintFormat("  降雨强度 / Rain Intensity: %1 (%2%%)", 
@@ -1563,16 +1207,7 @@ class EnvironmentFactor
         return SCR_EnvironmentWeatherApi.CalculateMudFactorFromAPI(m_pCachedWeatherManager);
     }
     
-    // 从API获取当前气温（使用TimeAndWeather的Min/Max进行昼夜插值计算）
-    // @return 当前气温（°C）
-    // 统一气温模拟接口
-    // 本实现直接调用 CalculateSimulatedTemperature()，忽略引擎 min/max
-    // 这样无论是否开启引擎温度，都使用同一种算法生成基础温度
-    protected float CalculateTemperatureFromAPI()
-    {
-        return CalculateSimulatedTemperature();
-    }
-    
+
     // 从API获取地表湿度
     // @return 地表湿度（0.0-1.0）
     protected float CalculateSurfaceWetnessFromAPI()
@@ -1610,7 +1245,7 @@ class EnvironmentFactor
             m_fCachedRainWeight = Math.Clamp(
                 m_fCachedRainWeight + accumulationRate * deltaTime,
                 0.0,
-                StaminaConstants.GetEnvRainWeightMax()
+                StaminaConfigBridge.GetEnvRainWeightMax()
             );
         }
         else

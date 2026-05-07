@@ -403,8 +403,8 @@ class RealisticStaminaSpeedSystem
         // 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
         // [修复 v2.16.0] 改用动态 getter，确保 JSON 配置值实际生效
         float restDurationSeconds = restDurationMinutes * 60.0;
-        float minStaminaThreshold = StaminaConstants.GetMinRecoveryStaminaThreshold();
-        float minRestSeconds = StaminaConstants.GetMinRecoveryRestTimeSeconds();
+        float minStaminaThreshold = StaminaConfigBridge.GetMinRecoveryStaminaThreshold();
+        float minRestSeconds = StaminaConfigBridge.GetMinRecoveryRestTimeSeconds();
         if (staminaPercent < minStaminaThreshold && restDurationSeconds < minRestSeconds)
         {
             return 0.0; // 体力低于阈值且休息时间不足时，不恢复
@@ -413,9 +413,9 @@ class RealisticStaminaSpeedSystem
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
         // 体力越低，恢复越快；体力越高，恢复越慢
         // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
-        float recoveryNonlinearCoeff = StaminaConstants.GetRecoveryNonlinearCoeff();
+        float recoveryNonlinearCoeff = StaminaConfigBridge.GetRecoveryNonlinearCoeff();
         float staminaRecoveryMultiplier = 1.0 + (recoveryNonlinearCoeff * (1.0 - staminaPercent));
-        float baseRecoveryRate = StaminaConstants.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
+        float baseRecoveryRate = StaminaConfigBridge.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
         
         // ==================== 2. 健康状态/训练水平影响 ====================
         // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接使用，防止不平等游玩
@@ -424,9 +424,9 @@ class RealisticStaminaSpeedSystem
         
         // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
-        float fastRecoveryMultiplier = StaminaConstants.GetFastRecoveryMultiplier();
-        float mediumRecoveryMultiplier = StaminaConstants.GetMediumRecoveryMultiplier();
-        float slowRecoveryMultiplier = StaminaConstants.GetSlowRecoveryMultiplier();
+        float fastRecoveryMultiplier = StaminaConfigBridge.GetFastRecoveryMultiplier();
+        float mediumRecoveryMultiplier = StaminaConfigBridge.GetMediumRecoveryMultiplier();
+        float slowRecoveryMultiplier = StaminaConfigBridge.GetSlowRecoveryMultiplier();
         
         if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
         {
@@ -467,16 +467,16 @@ class RealisticStaminaSpeedSystem
         switch (stance)
         {
             case 0: // 站姿
-                stanceRecoveryMultiplier = StaminaConstants.GetStandingRecoveryMultiplier();
+                stanceRecoveryMultiplier = StaminaConfigBridge.GetStandingRecoveryMultiplier();
                 break;
             case 1: // 蹲姿
                 stanceRecoveryMultiplier = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
                 break;
             case 2: // 趴姿
-                stanceRecoveryMultiplier = StaminaConstants.GetProneRecoveryMultiplier();
+                stanceRecoveryMultiplier = StaminaConfigBridge.GetProneRecoveryMultiplier();
                 break;
             default:
-                stanceRecoveryMultiplier = StaminaConstants.GetStandingRecoveryMultiplier();
+                stanceRecoveryMultiplier = StaminaConfigBridge.GetStandingRecoveryMultiplier();
                 break;
         }
         
@@ -493,8 +493,8 @@ class RealisticStaminaSpeedSystem
             float loadRatio = currentWeight / BODY_TOLERANCE_BASE; // 负重比例（相对于身体耐受基准）
             loadRatio = Math.Clamp(loadRatio, 0.0, 2.0); // 限制在0-2倍之间
             // 负重惩罚 = (负重比例)^2 * 惩罚系数
-            float loadRecoveryPenaltyCoeff = StaminaConstants.GetLoadRecoveryPenaltyCoeff();
-            float loadRecoveryPenaltyExponent = StaminaConstants.GetLoadRecoveryPenaltyExponent();
+            float loadRecoveryPenaltyCoeff = StaminaConfigBridge.GetLoadRecoveryPenaltyCoeff();
+            float loadRecoveryPenaltyExponent = StaminaConfigBridge.GetLoadRecoveryPenaltyExponent();
             loadRecoveryPenalty = Math.Pow(loadRatio, loadRecoveryPenaltyExponent) * loadRecoveryPenaltyCoeff;
         }
         
@@ -504,8 +504,8 @@ class RealisticStaminaSpeedSystem
         // 结果：最后10%的体力恢复速度会比前50%慢3-4倍
         // 战术意图：玩家经常会处于80%-90%的"亚健康"状态，只有长时间修整才能真正满血
         float marginalDecayMultiplier = 1.0;
-        float marginalDecayThreshold = StaminaConstants.GetMarginalDecayThreshold();
-        float marginalDecayCoeff = StaminaConstants.GetMarginalDecayCoeff();
+        float marginalDecayThreshold = StaminaConfigBridge.GetMarginalDecayThreshold();
+        float marginalDecayCoeff = StaminaConfigBridge.GetMarginalDecayCoeff();
         
         if (staminaPercent > marginalDecayThreshold)
         {
@@ -656,7 +656,7 @@ class RealisticStaminaSpeedSystem
         // - 基准负重（12kg，有效0kg）：1.0倍（正常消耗）
         // - 战斗负重（30kg，有效18kg，20%体重）：1.0 + 1.5 × 0.2 = 1.3倍（消耗增加30%）
         // - 最大负重（40.5kg，有效28.5kg，32%体重）：1.0 + 1.5 × 0.32 = 1.48倍（消耗增加48%）
-        float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();
+        float encumbranceStaminaDrainCoeff = StaminaConfigBridge.GetEncumbranceStaminaDrainCoeff();
         float staminaDrainMultiplier = 1.0 + (encumbranceStaminaDrainCoeff * bodyMassPercent);
         
         // 限制消耗倍数在合理范围内（1.0-3.0）
@@ -768,7 +768,7 @@ class RealisticStaminaSpeedSystem
         float E = M * (baseCoeff + velCoeff * (V - vOffset) * (V - vOffset) + G * (gradeBase + gradeVel * V * V));
         // 转换为每0.2s体力点
         // 转换为每秒体力消耗率（从配置管理器获取最新系数）
-        float energyToStamina = StaminaConstants.GetEnergyToStaminaCoeff();
+        float energyToStamina = StaminaConfigBridge.GetEnergyToStaminaCoeff();
         float drainPerSec = E * energyToStamina;
         // 每次 UpdateSpeedBasedOnStamina 调用间隔 0.2 秒
         return drainPerSec * 0.2;
@@ -870,14 +870,14 @@ class RealisticStaminaSpeedSystem
         float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm + steepDownhillPenalty) * terrainFactor * REFERENCE_WEIGHT;
         
         // debug: log intermediates when debug enabled
-        if (StaminaConstants.IsDebugEnabled())
+        if (StaminaConfigBridge.IsDebugEnabled())
         {
         }
         
         // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
         // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
         // 从0.0001降低到0.000015，减少约85%的体力消耗速度
-        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float energyToStaminaCoeff = StaminaConfigBridge.GetEnergyToStaminaCoeff();
         // clamp coefficient to sane range (avoid config typo)
         energyToStaminaCoeff = Math.Clamp(energyToStaminaCoeff, 0.0, 0.1);
         float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
@@ -1106,7 +1106,7 @@ class RealisticStaminaSpeedSystem
         float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
         
         // 将能量消耗率（W）转换为体力消耗率（%/s）
-        float energyToStaminaCoeff = StaminaConstants.GetEnergyToStaminaCoeff();
+        float energyToStaminaCoeff = StaminaConfigBridge.GetEnergyToStaminaCoeff();
         float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
         
         // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出

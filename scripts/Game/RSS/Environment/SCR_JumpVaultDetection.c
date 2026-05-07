@@ -85,7 +85,7 @@ class JumpVaultDetector
                 m_eLastStance = currentStance;
                 
                 // 调试输出（仅在客户端）
-                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RSS] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
                 }
@@ -99,7 +99,7 @@ class JumpVaultDetector
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
-                if (StaminaConstants.IsVerboseLoggingEnabled())
+                if (StaminaConfigBridge.IsVerboseLoggingEnabled())
                     Print("[RSS] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
                 m_eLastStance = currentStance;
                 return 0.0;
@@ -144,9 +144,9 @@ class JumpVaultDetector
                 
                 float finalJumpCost = 0.0;
                 // 物理模型计算跳跃消耗
-                float eta = StaminaConstants.GetJumpEfficiency();     // [SOFT] 从 Settings 读取，生理学约束 0.20-0.25
-                float hguess = StaminaConstants.GetJumpHeightGuess(); // [SOFT] 重心抬升高度估算
-                float vguess = StaminaConstants.GetJumpHorizSpeedGuess(); // [SOFT] 水平速度估算
+                float eta = StaminaConfigBridge.GetJumpEfficiency();     // [SOFT] 从 Settings 读取，生理学约束 0.20-0.25
+                float hguess = StaminaConfigBridge.GetJumpHeightGuess(); // [SOFT] 重心抬升高度估算
+                float vguess = StaminaConfigBridge.GetJumpHorizSpeedGuess(); // [SOFT] 水平速度估算
                 finalJumpCost = RealisticStaminaSpeedSystem.ComputeJumpCostPhys(
                     currentTotalWeight, hguess, vguess, eta);
                 
@@ -174,7 +174,7 @@ class JumpVaultDetector
                 }
                 
                 // 调试输出（仅在客户端）
-                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
@@ -219,7 +219,7 @@ class JumpVaultDetector
             if (!m_bIsVaulting && m_fLastVaultTime >= 0.0 && (currentTime - m_fLastVaultTime) < StaminaConstants.VAULT_COOLDOWN_SEC)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
-                if (StaminaConstants.IsVerboseLoggingEnabled())
+                if (StaminaConfigBridge.IsVerboseLoggingEnabled())
                     Print("[RSS] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
                 return 0.0;
             }
@@ -245,7 +245,7 @@ class JumpVaultDetector
                 float vaultCost = 0.0;
                 // 物理模型计算翻越初始消耗
                 // [HARD] eta_iso 从 Settings 读取（生理学约束 0.10-0.15），使用 GetClimbIsoEfficiency() 而非硬编码
-                float eta_iso = StaminaConstants.GetClimbIsoEfficiency();
+                float eta_iso = StaminaConfigBridge.GetClimbIsoEfficiency();
                 float vert = StaminaConstants.VAULT_VERT_LIFT_GUESS;          // [HARD] 垂直抬升估算 0.5m
                 float limbForce = currentTotalWeight * StaminaConstants.VAULT_LIMB_FORCE_RATIO; // [HARD] 四肢力 = 总重 × 0.5
                 vaultCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(
@@ -257,7 +257,7 @@ class JumpVaultDetector
                 m_fLastContinuousClimbTime = currentTime;
                 
                 // 调试输出（仅在客户端）
-                if (StaminaConstants.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
+                if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
                         Math.Round(vaultCost * 100.0).ToString());
@@ -285,7 +285,7 @@ class JumpVaultDetector
                     
                     float continuousClimbCost = 0.0;
                     // 物理模型计算持续攀爬消耗（参数与翻越初始消耗完全一致，从 Settings 读取）
-                    float eta_iso = StaminaConstants.GetClimbIsoEfficiency();
+                    float eta_iso = StaminaConfigBridge.GetClimbIsoEfficiency();
                     float vertSpeed = StaminaConstants.VAULT_VERT_LIFT_GUESS;
                     float limbForce = currentTotalWeight * StaminaConstants.VAULT_LIMB_FORCE_RATIO;
                     continuousClimbCost = RealisticStaminaSpeedSystem.ComputeClimbCostPhys(

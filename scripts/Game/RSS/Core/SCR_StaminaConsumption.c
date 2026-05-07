@@ -180,7 +180,7 @@ class StaminaConsumptionCalculator
 
         // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
         float originalBaseDrainRate = baseDrainRateByVelocity;
-        if (StaminaConstants.IsDebugBatchActive())
+        if (SCR_DebugBatchManager.IsDebugBatchActive())
         {
             int fbFlag = 0;
             if (usedFallback) fbFlag = 1;
@@ -191,7 +191,7 @@ class StaminaConsumptionCalculator
                 Math.Round(currentWeight * 10.0) / 10.0,
                 Math.Round(currentSpeed * 1000.0) / 1000.0,
                 Math.Round(gradePercent * 100.0) / 100.0);
-            StaminaConstants.AddDebugBatchLine(line1);
+            SCR_DebugBatchManager.AddDebugBatchLine(line1);
         }
         
         // 应用姿态修正（只在消耗时应用）
@@ -236,12 +236,12 @@ class StaminaConsumptionCalculator
         
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
         baseDrainRateByVelocity = originalBaseDrainRate;
-        if (StaminaConstants.IsDebugBatchActive())
+        if (SCR_DebugBatchManager.IsDebugBatchActive())
         {
             string line2 = string.Format("[RSS] ConsCalc: outBase=%1 total=%2",
                 Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
                 Math.Round(totalDrainRate * 1000.0) / 1000.0);
-            StaminaConstants.AddDebugBatchLine(line2);
+            SCR_DebugBatchManager.AddDebugBatchLine(line2);
         }
         
         return totalDrainRate;
@@ -261,12 +261,12 @@ class StaminaConsumptionCalculator
             if (currentStance == ECharacterStance.CROUCH)
             {
                 // 修复：使用配置参数而非硬编码常量
-                postureMultiplier = StaminaConstants.GetPostureCrouchMultiplier();
+                postureMultiplier = StaminaConfigBridge.GetPostureCrouchMultiplier();
             }
             else if (currentStance == ECharacterStance.PRONE)
             {
                 // 修复：使用配置参数而非硬编码常量
-                postureMultiplier = StaminaConstants.GetPostureProneMultiplier();
+                postureMultiplier = StaminaConfigBridge.GetPostureProneMultiplier();
             }
         }
         return postureMultiplier;

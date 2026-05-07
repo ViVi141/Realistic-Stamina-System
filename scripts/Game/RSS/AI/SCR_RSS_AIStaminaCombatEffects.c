@@ -4,7 +4,7 @@
 //! - 战斗技能：以 GetAISkillDefault() 对应数值为 100% 基准，有效值 = vRef × 体力比例，再映射回 EAISkill；
 //!   满体力 ResetAISkill() 恢复预制体设定，不会把「已设为最弱」的单位抬成更强档位。
 //!
-//! 开关：JSON m_bEnableAIStaminaCombatEffects（StaminaConstants.IsAIStaminaCombatEffectsEnabled）；专用服默认关，工作台默认开（见 SCR_RSS_ConfigManager #ifdef WORKBENCH）
+//! 开关：JSON m_bEnableAIStaminaCombatEffects（StaminaConfigBridge.IsAIStaminaCombatEffectsEnabled）；专用服默认关，工作台默认开（见 SCR_RSS_ConfigManager #ifdef WORKBENCH）
 
 class SCR_RSS_AIStaminaCombatEffects
 {
@@ -71,7 +71,7 @@ class SCR_RSS_AIStaminaCombatEffects
     //! 服务器 AI + 开关开启时，按体力缩放感知、射速；战斗技能按「预制体默认技能数值 × 体力比例」计算。
     static void ApplyStaminaToCombat(IEntity owner, float staminaPercent01)
     {
-        if (!StaminaConstants.IsAIStaminaCombatEffectsEnabled())
+        if (!StaminaConfigBridge.IsAIStaminaCombatEffectsEnabled())
             return;
         if (!owner)
             return;

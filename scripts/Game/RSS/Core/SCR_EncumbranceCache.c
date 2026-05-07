@@ -23,9 +23,9 @@ class EncumbranceCache
             float segment = ratio - 0.6;
             rawPenalty = 0.25 + 0.65 * (segment * segment);
         }
-        float coeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
+        float coeff = StaminaConfigBridge.GetEncumbranceSpeedPenaltyCoeff();
         rawPenalty = rawPenalty * (coeff / 0.20);
-        float max_pen = StaminaConstants.GetEncumbranceSpeedPenaltyMax();
+        float max_pen = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
         return Math.Clamp(rawPenalty, 0.0, max_pen);
     }
 
@@ -104,7 +104,7 @@ class EncumbranceCache
         {
             // 如果无法获取 inventoryManager，设置缓存无效
             m_bEncumbranceCacheValid = false;
-            if (StaminaConstants.IsDebugEnabled())
+            if (StaminaConfigBridge.IsDebugEnabled())
                 Print("[RSS] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
             return;
         }
@@ -125,7 +125,7 @@ class EncumbranceCache
         m_fCachedEncumbranceSpeedPenalty = ComputeSpeedPenaltyFromEffectiveWeight(effectiveWeight);
         
         // 计算体力消耗倍数
-        float encumbranceStaminaDrainCoeff = StaminaConstants.GetEncumbranceStaminaDrainCoeff();
+        float encumbranceStaminaDrainCoeff = StaminaConfigBridge.GetEncumbranceStaminaDrainCoeff();
         m_fCachedEncumbranceStaminaDrainMultiplier = 1.0 + (encumbranceStaminaDrainCoeff * m_fCachedBodyMassPercent);
         m_fCachedEncumbranceStaminaDrainMultiplier = Math.Clamp(m_fCachedEncumbranceStaminaDrainMultiplier, 1.0, 3.0);
         
