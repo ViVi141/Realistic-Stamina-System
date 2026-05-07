@@ -1175,6 +1175,18 @@ class StaminaConstants
         return INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR;
     }
 
+    // 获取低体力步行恢复区域阈值（体力百分比，默认 0.15 = 15%）
+    static float GetWalkRecoveryZoneThreshold()
+    {
+        return WALK_RECOVERY_ZONE_THRESHOLD;
+    }
+
+    // 获取低体力步行恢复速率（每 0.2s tick，默认 0.002 = 1%/s）
+    static float GetWalkRecoveryZoneRate()
+    {
+        return WALK_RECOVERY_ZONE_RATE;
+    }
+
     static float GetCamInertiaStartLagDuration() { return CAM_INERTIA_START_LAG_DURATION; }
     static float GetCamInertiaStartTiltDeg() { return CAM_INERTIA_START_TILT_DEG; }
     static float GetCamInertiaDecelOvershootDuration() { return CAM_INERTIA_DECEL_OVERSHOOT_DURATION; }

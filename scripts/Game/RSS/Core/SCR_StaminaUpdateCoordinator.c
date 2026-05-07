@@ -675,15 +675,6 @@ class StaminaUpdateCoordinator
             speedBeforeStop = epocState.GetSpeedBeforeStop();
         }
         
-        // 低体力恢复区域：体力低于阈值时，步行 (<SPRINT阈值) 可触发缓慢恢复
-        // 高于阈值时正常消耗，保持"正常人走路会累"的常识正确性
-        float walkRecoveryThreshold = StaminaConstants.GetWalkRecoveryZoneThreshold();
-        float walkRecoveryRatePerTick = StaminaConstants.GetWalkRecoveryZoneRate();
-        bool inWalkRecoveryZone = (staminaPercent < walkRecoveryThreshold 
-                                && currentSpeed > 0.1 
-                                && !useSwimmingModel
-                                && !isSprintActive);
-
         if (!isInEpocDelay)
         {
             RecoveryContext ctx = BuildRecoveryContext(
