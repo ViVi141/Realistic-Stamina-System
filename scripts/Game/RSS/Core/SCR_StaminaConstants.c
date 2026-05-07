@@ -270,30 +270,31 @@ class StaminaConstants
     // [修复] 与Python数字孪生保持一致，从0.00035降低到0.00015（降低57%）
     // 计算逻辑：1.0(体力) / 1333秒(22.2分钟) / 5(每秒tick数) = 0.00015
     // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
-    static const float BASE_RECOVERY_RATE = 0.00015; // 每0.2秒恢复0.015%（与Python一致）
+    // v4 optimizer: aligned with EliteStandard preset (2026-05)
+    static const float BASE_RECOVERY_RATE = 0.000153478; // 每0.2秒恢复0.0153%（与v4 EliteStandard一致）
     
     // 恢复率非线性系数（基于当前体力百分比）
-    static const float RECOVERY_NONLINEAR_COEFF = 0.5; // 非线性恢复系数（0.0-1.0）
+    static const float RECOVERY_NONLINEAR_COEFF = 0.7916386681694456; // v4 EliteStandard (2026-05)
     
     // 快速恢复期参数（刚停止运动后的快速恢复阶段）
     // 拟真平衡点：模拟"喘匀第一口氧气"
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
     static const float FAST_RECOVERY_DURATION_MINUTES = 0.4;  // 快速恢复期（分钟）：缩短至24秒，减少“刚停即猛回”体感
-    static const float FAST_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从2.5降低到1.6（降低36%）
+    static const float FAST_RECOVERY_MULTIPLIER = 2.395424393975942; // v4 EliteStandard (2026-05)
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
     static const float MEDIUM_RECOVERY_START_MINUTES = 0.4;  // 与快速恢复期衔接
     // [修复] 与Python数字孪生保持一致，从8.5改为5.0
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
-    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.4降低到1.3（降低7%）
+    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.1374814244785123; // v4 EliteStandard (2026-05)
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
     // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
     // 优化：提升到0.8倍（从0.7倍）
     static const float SLOW_RECOVERY_START_MINUTES = 10.0; // 慢速恢复期开始时间（分钟）
-    static const float SLOW_RECOVERY_MULTIPLIER = 0.6; // 慢速恢复期恢复速度倍数（从0.8降低到0.6，降低25%）
+    static const float SLOW_RECOVERY_MULTIPLIER = 0.4756093184784932; // v4 EliteStandard (2026-05)
     
     // 年龄对恢复速度的影响系数
     static const float AGE_RECOVERY_COEFF = 0.2; // 年龄恢复系数
@@ -312,9 +313,9 @@ class StaminaConstants
     // 趴姿：全身放松，最大化血液循环，+60%恢复速度
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
     // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
-    static const float STANDING_RECOVERY_MULTIPLIER = 1.3; // [修复] 与Python一致，从1.5降低到1.3（降低13%）
+    static const float STANDING_RECOVERY_MULTIPLIER = 1.1033940520181997; // v4 EliteStandard (2026-05)
     static const float CROUCHING_RECOVERY_MULTIPLIER = 1.4; // [修复] 与Python一致，从1.5降低到1.4（降低7%）
-    static const float PRONE_RECOVERY_MULTIPLIER = 1.6; // [修复] 与Python一致，从1.8降低到1.6（降低11%）
+    static const float PRONE_RECOVERY_MULTIPLIER = 2.3436692109309787; // v4 EliteStandard (2026-05)
     
     // ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
     // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -452,7 +453,7 @@ class StaminaConstants
     
     // ==================== [SOFT via Settings] Sprint（冲刺）相关参数 ====================
     // 运行时通过 GetSprintSpeedBoost() / GetSprintStaminaDrainMultiplier() 从配置管理器读取
-    static const float SPRINT_SPEED_BOOST              = 0.30; // [SOFT fallback] Sprint速度比Run快30%
+    static const float SPRINT_SPEED_BOOST              = 0.2561103503743016; // [SOFT fallback] v4 EliteStandard (2026-05)
     static const float SPRINT_MAX_SPEED_MULTIPLIER     = 1.0;  // [HARD] 100%游戏最大速度上限
     static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5;  // [SOFT fallback] Sprint消耗是Run的3.5×
     // 战术冲刺爆发时长：Sprint 前 N 秒内减轻负重对速度的惩罚，实现短时全速爆发体感
@@ -520,7 +521,7 @@ class StaminaConstants
     
     // [SOFT fallback] 能量到体力的转换系数
     // 此值由配置管理器动态获取（GetEnergyToStaminaCoeff()），此处仅为代码回退默认值
-    static const float ENERGY_TO_STAMINA_COEFF = 0.000015; // [SOFT fallback] 与 Python 数字孪生一致
+    static const float ENERGY_TO_STAMINA_COEFF = 7.173939269261512e-07; // [SOFT fallback] v4 EliteStandard (2026-05)
     
     // [HARD] 参考体重（Pandolf 模型归一化基准，与 CHARACTER_WEIGHT 保持一致）
     static const float REFERENCE_WEIGHT = 90.0; // [HARD] kg
@@ -794,7 +795,7 @@ class StaminaConstants
 
     // T1 负重代谢阻尼 / 恢复上限：fallback 仅在没有配置时使用，运行时从预设读取以与优化器同步
     static const float LOAD_METABOLIC_DAMPENING_FALLBACK = 0.70;
-    static const float MAX_RECOVERY_PER_TICK_FALLBACK = 0.0004;
+    static const float MAX_RECOVERY_PER_TICK_FALLBACK = 0.0005831263335868464; // v4 EliteStandard (2026-05)
 
     // ==================== 配置系统桥接方法 ====================
     
@@ -814,7 +815,7 @@ class StaminaConstants
                 return Math.Max(coeff, ENERGY_TO_STAMINA_COEFF_MIN);
             }
         }
-        return 0.000035; // 默认值
+        return 7.173939269261512e-07; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取基础恢复率（从配置管理器）
@@ -827,7 +828,7 @@ class StaminaConstants
             if (params)
                 return params.base_recovery_rate;
         }
-        return 0.00035; // 默认值（更新为0.00035，从0.0004降低）
+        return 0.000153478; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取站姿恢复倍数（从配置管理器）
@@ -840,7 +841,7 @@ class StaminaConstants
             if (params)
                 return params.standing_recovery_multiplier;
         }
-        return 1.5; // 默认值（从2.0降低到1.5）
+        return 1.1033940520181997; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取趴姿恢复倍数（从配置管理器）
@@ -853,7 +854,7 @@ class StaminaConstants
             if (params)
                 return params.prone_recovery_multiplier;
         }
-        return 1.8; // 默认值（从2.2降低到1.8）
+        return 2.3436692109309787; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取负重恢复惩罚系数（从配置管理器）
@@ -866,7 +867,7 @@ class StaminaConstants
             if (params)
                 return params.load_recovery_penalty_coeff;
         }
-        return 0.0004; // 默认值
+        return 5.401551119196543e-05; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取负重恢复惩罚指数（从配置管理器）
@@ -892,7 +893,7 @@ class StaminaConstants
             if (params)
                 return params.encumbrance_speed_penalty_coeff;
         }
-        return 0.20; // 默认值
+        return 0.12557037442961433; // v4 EliteStandard fallback (2026-05)
     }
     
     // 获取负重体力消耗系数（从配置管理器）
@@ -905,7 +906,7 @@ class StaminaConstants
             if (params)
                 return params.encumbrance_stamina_drain_coeff;
         }
-        return 1.5; // 默认值
+        return 1.9633666302334787; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取负重代谢阻尼（与 Python 优化器同步，避免测试与游戏表现差异）
@@ -1014,7 +1015,7 @@ class StaminaConstants
             if (params)
                 return params.posture_crouch_multiplier;
         }
-        return 2.0; // 默认值（蹲姿消耗是站姿的2倍）
+        return 2.437251840930866; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取趴姿消耗倍数（从配置管理器）
@@ -1028,7 +1029,7 @@ class StaminaConstants
             if (params)
                 return params.posture_prone_multiplier;
         }
-        return 2.5; // 默认值（趴姿消耗是站姿的2.5倍）
+        return 2.964831628856109; // v4 EliteStandard fallback (2026-05)
     }
 
     // ==================== 恢复模型参数配置方法 ====================
@@ -1043,7 +1044,7 @@ class StaminaConstants
             if (params)
                 return params.recovery_nonlinear_coeff;
         }
-        return 0.5; // 默认值
+        return 0.7916386681694456; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取快速恢复倍数（从配置管理器）
@@ -1056,7 +1057,7 @@ class StaminaConstants
             if (params)
                 return params.fast_recovery_multiplier;
         }
-        return 2.5; // 默认值
+        return 2.395424393975942; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取中等恢复倍数（从配置管理器）
@@ -1069,7 +1070,7 @@ class StaminaConstants
             if (params)
                 return params.medium_recovery_multiplier;
         }
-        return 1.4; // 默认值
+        return 1.1374814244785123; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取慢速恢复倍数（从配置管理器）
@@ -1082,7 +1083,7 @@ class StaminaConstants
             if (params)
                 return params.slow_recovery_multiplier;
         }
-        return 0.6; // 默认值
+        return 0.4756093184784932; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取最低体力阈值（从配置管理器）
@@ -1139,7 +1140,7 @@ class StaminaConstants
             if (params)
                 return params.sprint_speed_boost;
         }
-        return 0.30; // 默认值（30%）
+        return 0.2561103503743016; // v4 EliteStandard fallback (2026-05)
     }
 
     // 获取战术冲刺爆发时长（秒）；爆发期内负重对速度惩罚减轻
