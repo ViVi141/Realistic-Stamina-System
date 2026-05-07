@@ -11,7 +11,7 @@ from rss_pipeline_v4 import (
 twin = RSSDigitalTwin(RSSConstants())
 missions = MissionLibrary.all_missions()
 
-print("=== V4 Mission Smoke Test (default constants) ===\n")
+print("=== V4 Mission Smoke Test (default constants, 5 missions) ===\n")
 results = []
 for m in missions:
     r = simulate_mission(twin, m)

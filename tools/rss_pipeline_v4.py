@@ -158,14 +158,38 @@ class MissionLibrary:
             ],
         )
 
+    @staticmethod
+    def heavy_evacuation(load_kg: float = 45.0) -> Mission:
+        """
+        重载撤离 (10min, 45kg)
+        节奏: 战术撤退步行 → 穿越开阔地急跑 → 恢复行军 → 穿越公路 → 最后冲刺上车
+        覆盖 40kg+ 极端负重场景，确保优化器在重载下仍保持可玩性
+        """
+        return Mission(
+            name="重载撤离",
+            load_kg=load_kg,
+            description="45kg重载撤离，10分钟内间歇冲刺到达安全点",
+            phases=[
+                Phase(180, 2.0,  MovementType.WALK,  Stance.STAND,  0,   1.0, "战术撤退"),
+                Phase(20,  3.0,  MovementType.RUN,   Stance.STAND,  0,   1.2, "穿越开阔地"),
+                Phase(120, 2.0,  MovementType.WALK,  Stance.STAND,  0,   1.0, "恢复行军"),
+                Phase(20,  3.0,  MovementType.RUN,   Stance.STAND,  0,   1.2, "穿越公路"),
+                Phase(180, 2.0,  MovementType.WALK,  Stance.STAND,  3,   1.3, "最后接近"),
+                Phase(15,  3.8,  MovementType.SPRINT, Stance.STAND,  0,   1.0, "冲刺上车"),
+                Phase(60,  0.0,  MovementType.IDLE,  Stance.STAND,  0,   1.0, "安全抵达"),
+            ],
+        )
+
     @classmethod
     def all_missions(cls, load_30: float = 30.0, load_25: float = 25.0,
-                     load_35: float = 35.0, load_20: float = 20.0) -> List[Mission]:
+                     load_35: float = 35.0, load_20: float = 20.0,
+                     load_45: float = 45.0) -> List[Mission]:
         return [
             cls.patrol_contact(load_30),
             cls.urban_clearance(load_25),
             cls.mountain_approach(load_35),
             cls.vehicle_dismount(load_20),
+            cls.heavy_evacuation(load_45),
         ]
 
 # =============================================================================
@@ -265,8 +289,8 @@ def compute_metrics(results: List[MissionResult], params: Dict) -> Metrics:
 
     # ── 目标 1: 战斗耐力 ──────────────────────────────────────
     # 策略：取各任务运动阶段平均体力的加权平均，越低越差
-    # 权重：巡逻(0.35) > 山地(0.30) > 城镇(0.20) > 突击(0.15)
-    weights = {"巡逻接敌": 0.35, "山地接近": 0.30, "城镇清扫": 0.20, "载具下车突击": 0.15}
+    # 权重：巡逻(0.30) > 重载(0.25) > 山地(0.20) > 城镇(0.15) > 突击(0.10)
+    weights = {"巡逻接敌": 0.30, "重载撤离": 0.25, "山地接近": 0.20, "城镇清扫": 0.15, "载具下车突击": 0.10}
     weighted_mean = 0.0
     total_weight = 0.0
     for r in results:
