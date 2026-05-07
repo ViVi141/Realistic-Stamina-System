@@ -865,7 +865,7 @@ modded class SCR_CharacterControllerComponent
         StaminaConstants.FlushDebugBatch();
         
         m_bRssStaminaLoopActive = true;
-        game.GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
+        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
     }
     
     bool HasRssData()
