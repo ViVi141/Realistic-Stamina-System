@@ -32,7 +32,12 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         LoadFromSettings();
     }
 
-    override void OnTabShow() { super.OnTabShow(); UpdateVisibility(); LoadFromSettings(); }
+    override void OnTabShow()
+    {
+        super.OnTabShow();
+        UpdateVisibility();
+        LoadFromSettings();
+    }
 
     //------------------------------------------------------------------------------------------------
     override void OnTabHide()
@@ -119,7 +124,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     }
 
     //------------------------------------------------------------------------------------------------
-    protected SCR_RSS_Settings GetSettings() { return SCR_RSS_ConfigManager.GetSettings(); }
+    protected SCR_RSS_Settings GetSettings()
+    {
+        return SCR_RSS_ConfigManager.GetSettings();
+    }
 
     protected bool IsPlayerAdmin()
     {
@@ -131,10 +139,38 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
             || pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER);
     }
 
-    protected void SetSpin(SCR_SpinBoxComponent spin, bool value) { if (!spin) return; int i = 0; if (value) i = 1; spin.SetCurrentItem(i, false, false); }
-    protected bool GetSpin(SCR_SpinBoxComponent spin) { if (!spin) return false; return spin.GetCurrentIndex() != 0; }
-    protected void HideWidget(string name, bool hide) { Widget w = m_wRoot.FindAnyWidget(name); if (w) w.SetVisible(!hide); }
+    protected void SetSpin(SCR_SpinBoxComponent spin, bool value)
+    {
+        if (!spin) return;
+        int idx = 0;
+        if (value)
+            idx = 1;
+        spin.SetCurrentItem(idx, false, false);
+    }
 
-    protected SCR_SpinBoxComponent FindSpinBox(string name) { Widget w = m_wRoot.FindAnyWidget(name); if (!w) return null; return SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent)); }
-    protected SCR_ComboBoxComponent FindComboBox(string name) { Widget w = m_wRoot.FindAnyWidget(name); if (!w) return null; return SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent)); }
+    protected bool GetSpin(SCR_SpinBoxComponent spin)
+    {
+        if (!spin) return false;
+        return spin.GetCurrentIndex() != 0;
+    }
+
+    protected void HideWidget(string name, bool hide)
+    {
+        Widget w = m_wRoot.FindAnyWidget(name);
+        if (w) w.SetVisible(!hide);
+    }
+
+    protected SCR_SpinBoxComponent FindSpinBox(string name)
+    {
+        Widget w = m_wRoot.FindAnyWidget(name);
+        if (!w) return null;
+        return SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
+    }
+
+    protected SCR_ComboBoxComponent FindComboBox(string name)
+    {
+        Widget w = m_wRoot.FindAnyWidget(name);
+        if (!w) return null;
+        return SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent));
+    }
 }
