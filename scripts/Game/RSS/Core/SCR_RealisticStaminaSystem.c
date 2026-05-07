@@ -298,69 +298,8 @@ class RealisticStaminaSpeedSystem
         return CalculateCombatEncumbrancePercent(owner) > 1.0;
     }
     
-    // 计算负重对速度的影响（基于体重的真实模型）
-    // 
-    // 真实数学模型：基于 US Army 背包负重实验数据（Knapik et al., 1996; Quesada et al., 2000）
-    // 速度惩罚基于体重百分比，而不是最大负重百分比
-    // 速度惩罚 = β * (负重/体重)
-    // 其中：
-    //   β = ENCUMBRANCE_SPEED_PENALTY_COEFF（基于体重的速度惩罚系数）
-    //   负重/体重 = 负重占体重的百分比（Body Mass Percentage, BM%）
-    //
-    // 实验数据参考（基于体重百分比）：
-    // - 负重 0% BM 时：无影响
-    // - 负重 20-30% BM 时：速度下降约 5-10%
-    // - 负重 33% BM 时：速度下降约 6-7%（30kg ≈ 33%体重，90kg）
-    // - 负重 40-50% BM 时：速度下降约 15-20%
-    // - 负重 60-70% BM 时：速度下降约 24-30%
-    // - 负重 100% BM 时：速度下降约 35-40%
-    //
-    // 使用线性模型，因为文献显示速度下降与体重百分比基本线性相关
-    //
-    // @param owner 角色实体
-    // @return 速度惩罚值 (0.0-1.0)，表示速度减少的比例
-    // [已废弃 - 勿调用] CalculateEncumbranceSpeedPenalty
-    // 此函数使用旧的线性惩罚公式（speedPenalty = coeff × bodyMassPercent），
-    // 与当前系统采用的**三段非线性模型**不一致。
-    // 实际速度惩罚由 SCR_EncumbranceCache.UpdateCache() 计算并缓存，
-    // 请通过 EncumbranceCache.GetCachedEncumbranceSpeedPenalty() 获取正确值。
-    // 保留此函数仅供历史参考，不得在任何新代码中调用。
-    static float CalculateEncumbranceSpeedPenalty(IEntity owner)
-    {
-        // 获取当前负重（kg）
-        ChimeraCharacter character = ChimeraCharacter.Cast(owner);
-        if (!character)
-            return 0.0;
-        
-        SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
-        if (!characterInventory)
-            return 0.0;
-        
-        float currentWeight = characterInventory.GetTotalWeight();
-        if (currentWeight < 0.0)
-            return 0.0;
-        
-        // 计算有效负重（负载 = 装备重量 - 基准装备重量）
-        // GetTotalWeight() 返回的是装备/背包重量，不含身体重量
-        float effectiveWeight = Math.Max(currentWeight - BASE_WEIGHT, 0.0);
-
-        // 计算有效负重占体重的百分比（Body Mass Percentage）
-        float bodyMassPercent = effectiveWeight / CHARACTER_WEIGHT;
-
-        // [旧线性公式 - 已废弃] 速度惩罚 = β × (负重/体重)
-        // 当前系统改用三段非线性模型（见 SCR_EncumbranceCache.UpdateCache）：
-        //   ratio≤0.3: 0.15×ratio
-        //   0.3<ratio≤0.6: 0.045 + 0.35×(ratio-0.3)^1.5
-        //   ratio>0.6: 0.25 + 0.65×(ratio-0.6)²
-        float encumbranceSpeedPenaltyCoeff = StaminaConstants.GetEncumbranceSpeedPenaltyCoeff();
-        float speedPenalty = encumbranceSpeedPenaltyCoeff * bodyMassPercent;
-        
-        // 限制惩罚值在合理范围内（0.0-0.5，最多减少50%速度）
-        // 即使负重超过100%体重，速度惩罚也不超过50%
-        speedPenalty = Math.Clamp(speedPenalty, 0.0, 0.5);
-        
-        return speedPenalty;
-    }
+    // CalculateEncumbranceSpeedPenalty removed — replaced by SCR_EncumbranceCache.UpdateCache()'s
+    // three-segment non-linear model. See SCR_EncumbranceCache.c for the active implementation.
     
     // 计算坡度对体力消耗的影响倍数（改进的多维度模型，包含负重交互）
     // 
@@ -819,7 +758,9 @@ class RealisticStaminaSpeedSystem
         float G = gradePercent * 0.01; // 转换为小数
         
         float vOffset = PANDOLF_VELOCITY_OFFSET;
-        float baseCoeff = PANDOLF_BASE_COEFF;
+        // Align with CalculatePandolfEnergyExpenditure: apply fitness bonus (0.80)
+        float fitnessBonus = StaminaConstants.FIXED_PANDOLF_FITNESS_BONUS;
+        float baseCoeff = PANDOLF_BASE_COEFF * fitnessBonus;
         float velCoeff = PANDOLF_VELOCITY_COEFF;
         float gradeBase = PANDOLF_GRADE_BASE_COEFF;
         float gradeVel = PANDOLF_GRADE_VELOCITY_COEFF;
@@ -1175,52 +1116,14 @@ class RealisticStaminaSpeedSystem
         return staticDrainRate;
     }
     
-    // ==================== Santee 下坡修正模型（2001）[已由陡下坡惩罚项替代] ====================
-    // 基于 Santee et al. (2001) 的下坡修正模型。现消耗侧改用“缓下坡省能 + 陡下坡惩罚”显式项，
-    // 本函数不再被调用，仅保留供参考。
-    // Pandolf 原型在处理下坡（负坡度）时不够精确
-    // Santee 修正：当 G < -15% 时，需要用力"刹车"以防摔倒（离心收缩）
-    // 修正系数：μ = 1.0 - [G·(1 - G/15)/2]
-    // 其中 G 为负坡度百分比（例如 -15% = -15.0）
-    //
-    // @param gradePercent 坡度百分比（例如，-15% = -15.0，正数=上坡，负数=下坡）
-    // @return 下坡修正系数（0.7-1.0），用于修正 Pandolf 模型的坡度项
-    static float CalculateSanteeDownhillCorrection(float gradePercent)
-    {
-        // 只处理下坡（负坡度）
-        if (gradePercent >= 0.0)
-            return 1.0; // 上坡或平地，不需要修正
-        
-        float absGrade = Math.AbsFloat(gradePercent);
-        
-        // 缓坡（0% 到 -15%）：使用标准 Pandolf 模型，不需要修正
-        if (absGrade <= 15.0)
-            return 1.0;
-        
-        // 陡坡（超过 -15%）：应用 Santee 修正
-        // 修正系数：μ = 1.0 - [G·(1 - G/15)/2]
-        // 其中 G 为负数，所以需要处理符号
-        float correctionTerm = absGrade * (1.0 - absGrade / 15.0) / 2.0;
-        float correctionFactor = 1.0 - correctionTerm;
-        
-        // 限制修正系数在合理范围内（0.5-1.0）
-        // 修正系数越小，消耗越大（因为需要更多"刹车"力）
-        return Math.Clamp(correctionFactor, 0.5, 1.0);
-    }
+    // CalculateSanteeDownhillCorrection removed - replaced inline by the
+
     
     // ==================== Givoni-Goldman 模型（已弃用） ====================
-    // 此函数原用于在跑步/冲刺阶段切换至 Givoni-Goldman 能量模型。
-    //自 v3.12.0 起，所有速度阶段均采用 Pandolf 模型，因此该函数
-    //不再被调用，仅保留以便阅读和历史对比。
-    //
-    // @param velocity 当前速度（m/s）
-    // @param currentWeight 当前总重量（kg），包括身体重量和负重
-    // @param isRunning 是否为跑步模式（true=Run/Sprint，false=Walk）
-    // @return 跑步模式下的能量消耗率（%/s），始终返回0
+    // Still called from SCR_StaminaUpdateCoordinator.c legacy branch;
+    // returns 0.0 since v3.12.0 when all phases moved to Pandolf.
     static float CalculateGivoniGoldmanRunning(float velocity, float currentWeight, bool isRunning = true)
     {
-        // 已废弃：本函数不再执行任何计算，直接返回0。保留签名以满足链接兼容性。
-        // 原始实现已于 v3.12.0 迁移至 Pandolf 模型并从其他模块中移除。
         return 0.0;
     }
     

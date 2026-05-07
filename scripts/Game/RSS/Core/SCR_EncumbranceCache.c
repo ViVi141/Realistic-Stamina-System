@@ -161,30 +161,19 @@ class EncumbranceCache
             {
                 // 回退方案：手动计算所有必要存储的重量
                 array<BaseInventoryStorageComponent> storages = {};
-                float weaponWeight = 0.0;
-                float characterWeight = 0.0;
                 
                 // 按照官方 GetTotalWeightOfAllStorages() 方法的逻辑，手动添加必要的存储
                 BaseInventoryStorageComponent weaponStorage = m_pCachedInventoryComponent.GetWeaponStorage();
-                storages.Insert(weaponStorage); // 主副武器插槽
+                if (weaponStorage)
+                    storages.Insert(weaponStorage); // 主副武器插槽（仅非空时添加）
                 storages.Insert(m_pCachedInventoryComponent);                    // 衣服、背包、背心里的东西
                 
                 // 遍历所有存储，累加重量
                 foreach (BaseInventoryStorageComponent storage : storages)
                 {
                     if (storage)
-                    {
-                        float storageWeight = storage.GetTotalWeight();
-                        currentWeight += storageWeight;
-                        
-                        if (storage == weaponStorage)
-                            weaponWeight = storageWeight;
-                        else if (storage == m_pCachedInventoryComponent)
-                            characterWeight = storageWeight;
-                    }
+                        currentWeight += storage.GetTotalWeight();
                 }
-                
-
             }
         }
         else

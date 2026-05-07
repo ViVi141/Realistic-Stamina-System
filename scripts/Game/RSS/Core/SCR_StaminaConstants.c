@@ -782,7 +782,7 @@ class StaminaConstants
     // 气温相关常量
     static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值
     static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF   = 0.02; // [SOFT fallback] 每高1°C恢复率降低2%
-    static const float ENV_TEMPERATURE_COLD_THRESHOLD       =  0.0; // [HARD] °C，医学冷应激阈值
+    static const float ENV_TEMPERATURE_COLD_THRESHOLD       =  5.0; // [HARD] °C，北约STANAG冷应激阈值（原0°C几乎不触发，提升至5°C使温带地图生效）
     static const float ENV_TEMPERATURE_COLD_STATIC_PENALTY  = 0.03; // [SOFT fallback] 低温静态消耗增加
     static const float ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05; // [SOFT fallback] 低温恢复率惩罚
     

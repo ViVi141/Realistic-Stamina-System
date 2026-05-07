@@ -29,6 +29,9 @@ ENV/
 Thumbs.db
 desktop.ini
 
+# Executables
+*.exe
+
 # Generated images (optional - uncomment if you don't want to track generated images)
 # *.png
 

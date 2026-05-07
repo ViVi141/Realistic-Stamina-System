@@ -1149,6 +1149,9 @@ modded class SCR_CharacterControllerComponent
         RSS_CombatStim_UpdateBleedingScale();
     }
 
+    // Identity passthrough — kept as extension point for future stim read adjustments.
+    // Currently no phase modifies the stamina read; CSB active state applies drain multiplier
+    // in the consumption path instead (see RSS_IsCaffeineSodiumBenzoateActive()).
     protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
     {
         return staminaPercent;

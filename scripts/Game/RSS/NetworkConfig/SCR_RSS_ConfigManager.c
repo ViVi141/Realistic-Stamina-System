@@ -509,12 +509,6 @@ class SCR_RSS_ConfigManager
         FileIO.CopyFile(CONFIG_PATH, CONFIG_BACKUP_PATH);
     }
     
-    // 管理备份文件
-    protected static void ManageBackupFiles()
-    {
-        // No-op for single-backup strategy.
-    }
-    
     // 从备份恢复配置
     static bool RestoreFromBackup()
     {

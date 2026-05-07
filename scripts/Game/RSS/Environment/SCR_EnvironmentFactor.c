@@ -8,7 +8,8 @@ class EnvironmentFactor
     protected float m_fCachedHeatStressMultiplier = 1.0; // 缓存的热应激倍数
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
-    protected float m_fRainStopTime = -1.0; // 停止降雨的时间（用于湿重衰减）
+    protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于线性湿重衰减）
+    protected float m_fRainPeakWeight = 0.0; // 停雨瞬间的湿重峰值（kg），供线性衰减基准
     protected TimeAndWeatherManagerEntity m_pCachedWeatherManager; // 缓存的天气管理器引用
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
     protected IEntity m_pCachedOwner; // 缓存的角色实体引用（用于室内检测）
@@ -109,6 +110,7 @@ class EnvironmentFactor
         m_fCachedRainWeight = 0.0;
         m_fLastEnvironmentCheckTime = 0.0;
         m_fRainStopTime = -1.0;
+        m_fRainPeakWeight = 0.0;
         m_fLastRainIntensity = 0.0;
         m_pCachedWeatherManager = null;
         m_pCachedOwner = owner;
@@ -693,14 +695,14 @@ class EnvironmentFactor
 
     // ── 轻量级快速消耗倍数（v3.20.0 性能优化）────────────────────────────
     // 仅读取已缓存的环境值，不触发任何重新计算，供体力消耗快路径使用。
-    // 返回一个综合乘数，用于非Sprint情况下的简化消耗计算。
-    // 公式：(1 + mudFactor×0.3) × (1 + windDrag×0.1) × (1 + heatStress×0.5)
+    // 近似完整路径：(terrainFactor + mudPenaltyMax·mudFactor) × (1 + windDrag) × heatMultiplier
+    // 快路径系数与 ENV_MUD_PENALTY_MAX / ENV_WIND_RESISTANCE_COEFF 对齐
     float GetQuickEnvironmentMultiplier()
     {
-        float mult = 1.0 + m_fCachedMudFactor * 0.3;
+        float mult = 1.0 + m_fCachedMudFactor * StaminaConstants.ENV_MUD_PENALTY_MAX;
 
         if (m_fCachedWindDrag > 0.0)
-            mult = mult * (1.0 + m_fCachedWindDrag * 0.1);
+            mult = mult * (1.0 + m_fCachedWindDrag);
 
         if (m_fHeatStressPenalty > 0.05)
             mult = mult * (1.0 + m_fHeatStressPenalty * 0.5);
@@ -2001,8 +2003,8 @@ class EnvironmentFactor
         // 6. 获取地表湿度
         m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
         
-        // 7. 计算降雨湿重（基于降雨强度）
-        CalculateRainWetWeight(deltaTime);
+        // 7. 计算降雨湿重（基于降雨强度；需要 currentTime 计算线性衰减）
+        CalculateRainWetWeight(currentTime);
         
         // 8. 计算暴雨呼吸阻力
         CalculateRainBreathingPenalty();
@@ -2137,9 +2139,11 @@ class EnvironmentFactor
     }
     
     // 计算降雨湿重（基于降雨强度）
-    // @param deltaTime 时间增量（秒）
-    protected void CalculateRainWetWeight(float deltaTime)
+    // 降雨中：按强度非线性累积；停雨后：60秒线性衰减至0
+    // @param currentTime 当前世界时间（秒，绝对值）
+    protected void CalculateRainWetWeight(float currentTime)
     {
+        float deltaTime = currentTime - m_fLastUpdateTime;
         if (deltaTime <= 0)
             return;
         
@@ -2151,6 +2155,10 @@ class EnvironmentFactor
         
         if (isOutdoorAndRaining)
         {
+            // 重新下雨时重置衰减锚点，确保下次停雨的线性起点正确
+            m_fRainStopTime = -1.0;
+            m_fRainPeakWeight = 0.0;
+
             // 在室外且正在下雨：增加湿重
             // 计算湿重增加速率（非线性增长）
             float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
@@ -2165,22 +2173,29 @@ class EnvironmentFactor
         }
         else
         {
-            // 其他所有情况：减少湿重或为0
+            // 停雨或室内：线性衰减（60秒内从峰值减至0）
             if (m_fCachedRainWeight > 0.0)
             {
-                // 计算衰减速率
-                float decayRate = 1.0 / StaminaConstants.ENV_RAIN_WEIGHT_DURATION;
-                float decayAmount = m_fCachedRainWeight * decayRate * deltaTime;
-                
-                // 减少湿重
-                m_fCachedRainWeight = Math.Max(m_fCachedRainWeight - decayAmount, 0.0);
-                
-                // 如果湿重完全消失，重置状态
-                if (m_fCachedRainWeight <= 0.0)
+                // 刚停雨的第一帧：锚定当前湿重为衰减峰值
+                if (m_fRainStopTime < 0.0)
+                {
+                    m_fRainStopTime = currentTime;
+                    m_fRainPeakWeight = m_fCachedRainWeight;
+                }
+
+                float elapsed = currentTime - m_fRainStopTime;
+                float duration = StaminaConstants.ENV_RAIN_WEIGHT_DURATION;
+                if (elapsed >= duration)
                 {
                     m_fCachedRainWeight = 0.0;
                     m_fRainStopTime = -1.0;
+                    m_fRainPeakWeight = 0.0;
                     m_fLastRainIntensity = 0.0;
+                }
+                else
+                {
+                    // 线性衰减: W(t) = W_peak × (1 - t / D)
+                    m_fCachedRainWeight = m_fRainPeakWeight * (1.0 - elapsed / duration);
                 }
             }
         }

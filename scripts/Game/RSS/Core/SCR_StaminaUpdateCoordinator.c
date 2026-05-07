@@ -593,8 +593,8 @@ class StaminaUpdateCoordinator
             // 应用泥泞地形系数（修正地形因子）
             terrainFactor = terrainFactor + mudTerrainFactor;
 
-            // 应用降雨湿重（修正当前重量）
-            currentWeightWithWet = currentWeightWithWet + totalWetWeight;
+            // 注意：currentWeightWithWet 在调用方(PlayerBase)已经包含了 totalWetWeight，
+            // 此处不再重复累加，避免湿重被计入两次
 
 
                 // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
