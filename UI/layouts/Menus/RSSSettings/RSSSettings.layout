@@ -1,16 +1,16 @@
-VerticalLayoutWidgetClass {
+VerticalLayoutWidgetClass "{5932EB24D1397F02}" {
  Name "RSSSettingsRoot"
  Slot LayoutSlot "{54890CCE26EF3FDE}" {
   Padding 20 10 20 10
  }
  {
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F10}" {
    Name "PresetSection"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 4 0 2
    }
    {
-    TextWidgetClass {
+    TextWidgetClass "{5932EB24D1397F11}" {
      Name "CurrentPresetLabel"
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 0
@@ -23,19 +23,19 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F20}" {
    Name "PresetButtons"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 4 0 8
    }
    {
-    HorizontalLayoutWidgetClass {
+    HorizontalLayoutWidgetClass "{5932EB24D1397F21}" {
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 0
       VerticalAlign 0
      }
      {
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F22}" {
        Name "BtnElite"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 2 0 2 0
@@ -48,7 +48,7 @@ VerticalLayoutWidgetClass {
         SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F23}" {
        Name "BtnStandard"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 2 0 2 0
@@ -61,7 +61,7 @@ VerticalLayoutWidgetClass {
         SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F24}" {
        Name "BtnTactical"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 2 0 2 0
@@ -74,7 +74,7 @@ VerticalLayoutWidgetClass {
         SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F25}" {
        Name "BtnCustom"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 2 0 2 0
@@ -91,13 +91,13 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F30}" {
    Name "Separator1"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 4 0 4
    }
    {
-    ImageWidgetClass {
+    ImageWidgetClass "{5932EB24D1397F31}" {
      Name "SeparatorLine"
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 3
@@ -109,25 +109,25 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F40}" {
    Name "SwitchesSection"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 4 0 0
    }
    {
-    VerticalLayoutWidgetClass {
+    VerticalLayoutWidgetClass "{5932EB24D1397F41}" {
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 0
       VerticalAlign 0
      }
      {
-      OverlayWidgetClass {
+      OverlayWidgetClass "{5932EB24D1397F50}" {
        Name "RowDebug"
        Slot LayoutSlot "{58B32278C99818F2}" {
         Padding 0 3 0 3
        }
        {
-        CheckBoxWidgetClass {
+        CheckBoxWidgetClass "{5932EB24D1397F51}" {
          Name "ChkDebug"
          Slot OverlayWidgetSlot "{0000000000000100}" {
           HorizontalAlign 0
@@ -137,13 +137,13 @@ VerticalLayoutWidgetClass {
         }
        }
       }
-      OverlayWidgetClass {
+      OverlayWidgetClass "{5932EB24D1397F52}" {
        Name "RowHUD"
        Slot LayoutSlot "{58B32278C99818F2}" {
         Padding 0 3 0 3
        }
        {
-        CheckBoxWidgetClass {
+        CheckBoxWidgetClass "{5932EB24D1397F53}" {
          Name "ChkHUD"
          Slot OverlayWidgetSlot "{0000000000000100}" {
           HorizontalAlign 0
@@ -153,13 +153,13 @@ VerticalLayoutWidgetClass {
         }
        }
       }
-      OverlayWidgetClass {
+      OverlayWidgetClass "{5932EB24D1397F54}" {
        Name "RowDataExport"
        Slot LayoutSlot "{58B32278C99818F2}" {
         Padding 0 3 0 3
        }
        {
-        CheckBoxWidgetClass {
+        CheckBoxWidgetClass "{5932EB24D1397F55}" {
          Name "ChkDataExport"
          Slot OverlayWidgetSlot "{0000000000000100}" {
           HorizontalAlign 0
@@ -169,13 +169,13 @@ VerticalLayoutWidgetClass {
         }
        }
       }
-      OverlayWidgetClass {
+      OverlayWidgetClass "{5932EB24D1397F56}" {
        Name "RowMudSlip"
        Slot LayoutSlot "{58B32278C99818F2}" {
         Padding 0 3 0 3
        }
        {
-        CheckBoxWidgetClass {
+        CheckBoxWidgetClass "{5932EB24D1397F57}" {
          Name "ChkMudSlip"
          Slot OverlayWidgetSlot "{0000000000000100}" {
           HorizontalAlign 0
@@ -185,13 +185,13 @@ VerticalLayoutWidgetClass {
         }
        }
       }
-      OverlayWidgetClass {
+      OverlayWidgetClass "{5932EB24D1397F58}" {
        Name "RowAICombat"
        Slot LayoutSlot "{58B32278C99818F2}" {
         Padding 0 3 0 3
        }
        {
-        CheckBoxWidgetClass {
+        CheckBoxWidgetClass "{5932EB24D1397F59}" {
          Name "ChkAICombat"
          Slot OverlayWidgetSlot "{0000000000000100}" {
           HorizontalAlign 0
@@ -205,13 +205,13 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F60}" {
    Name "Separator2"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 8 0 8
    }
    {
-    ImageWidgetClass {
+    ImageWidgetClass "{5932EB24D1397F61}" {
      Name "SeparatorLine2"
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 3
@@ -223,19 +223,19 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F70}" {
    Name "ActionRow"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 4 0 4
    }
    {
-    HorizontalLayoutWidgetClass {
+    HorizontalLayoutWidgetClass "{5932EB24D1397F71}" {
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 0
       VerticalAlign 0
      }
      {
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F72}" {
        Name "BtnReload"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 4 0 4 0
@@ -248,7 +248,7 @@ VerticalLayoutWidgetClass {
         SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass {
+      ButtonWidgetClass "{5932EB24D1397F73}" {
        Name "BtnSave"
        Slot LayoutSlot "{54890CCD61050681}" {
         Padding 4 0 4 0
@@ -265,13 +265,13 @@ VerticalLayoutWidgetClass {
     }
    }
   }
-  OverlayWidgetClass {
+  OverlayWidgetClass "{5932EB24D1397F80}" {
    Name "StatusRow"
    Slot LayoutSlot "{58B32278C99818F2}" {
     Padding 0 8 0 0
    }
    {
-    TextWidgetClass {
+    TextWidgetClass "{5932EB24D1397F81}" {
      Name "StatusText"
      Slot OverlayWidgetSlot "{0000000000000100}" {
       HorizontalAlign 0
