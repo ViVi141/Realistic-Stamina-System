@@ -113,6 +113,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     //------------------------------------------------------------------------------------------------
     protected void ApplyAndSync()
     {
+        SCR_RSS_ConfigManager.Save();  // 持久化到 JSON（仅服务器写入）
         SCR_BaseGameMode gameMode = SCR_BaseGameMode.Cast(GetGame().GetGameMode());
         if (gameMode) gameMode.RSS_ReplicateConfigNow();
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
