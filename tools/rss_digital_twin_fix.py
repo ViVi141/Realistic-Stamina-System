@@ -87,23 +87,23 @@ class RSSConstants:
     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
 
     # 恢复系统
-    BASE_RECOVERY_RATE = 0.0003  # 增加基础恢复率
-    RECOVERY_NONLINEAR_COEFF = 0.8  # 增加恢复的非线性系数，使低体力时恢复更快
+    BASE_RECOVERY_RATE = 0.00015  # 与 C SCR_StaminaConstants.c 静态常量一致
+    RECOVERY_NONLINEAR_COEFF = 0.5  # 与 C 静态常量一致
     FAST_RECOVERY_DURATION_MINUTES = 0.4
-    FAST_RECOVERY_MULTIPLIER = 1.8  # 增加快速恢复倍数
+    FAST_RECOVERY_MULTIPLIER = 1.6  # 与 C 静态常量一致
     MEDIUM_RECOVERY_START_MINUTES = 0.4
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
-    MEDIUM_RECOVERY_MULTIPLIER = 1.5  # 增加中速恢复倍数
+    MEDIUM_RECOVERY_MULTIPLIER = 1.3  # 与 C 静态常量一致
     SLOW_RECOVERY_START_MINUTES = 10.0
-    SLOW_RECOVERY_MULTIPLIER = 0.8  # 增加慢速恢复倍数
+    SLOW_RECOVERY_MULTIPLIER = 0.6  # 与 C 静态常量一致
 
     # 姿态恢复倍数
-    STANDING_RECOVERY_MULTIPLIER = 1.5  # 增加站姿恢复倍数
-    CROUCHING_RECOVERY_MULTIPLIER = 1.6  # 增加蹲姿恢复倍数
-    PRONE_RECOVERY_MULTIPLIER = 1.8  # 增加趴姿恢复倍数
+    STANDING_RECOVERY_MULTIPLIER = 1.3  # 与 C 静态常量一致
+    CROUCHING_RECOVERY_MULTIPLIER = 1.4  # 与 C 静态常量一致
+    PRONE_RECOVERY_MULTIPLIER = 1.6  # 与 C 静态常量一致
 
     # 姿态消耗倍数（SCR_StaminaConstants POSTURE_CROUCH_MULTIPLIER=1.8, POSTURE_PRONE_MULTIPLIER=3.0）
-    POSTURE_CROUCH_MULTIPLIER = 1.5  # 减少蹲姿消耗倍数
+    POSTURE_CROUCH_MULTIPLIER = 1.8  # 与 C POSTURE_CROUCH_CONSUMPTION_MULTIPLIER 一致
     POSTURE_PRONE_MULTIPLIER = 2.5  # 减少趴姿消耗倍数
 
     # 恢复/消耗相关
@@ -116,8 +116,8 @@ class RSSConstants:
     ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5
     ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75
     ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 减少负重对消耗率的影响
-    LOAD_RECOVERY_PENALTY_COEFF = 0.00008  # 减少负重对恢复率的惩罚
-    LOAD_RECOVERY_PENALTY_EXPONENT = 1.8  # 减少负重对恢复率的惩罚指数
+    LOAD_RECOVERY_PENALTY_COEFF = 0.0001  # 与 C 静态常量一致
+    LOAD_RECOVERY_PENALTY_EXPONENT = 2.0  # 与 C 静态常量一致
 
     SPRINT_VELOCITY_THRESHOLD = 5.5
     SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] C 端已统一公式，Python twin 不应用此倍数
@@ -1023,7 +1023,7 @@ class RSSDigitalTwin:
         self.reset()
         c = self.constants
         heat_threshold = 30.0
-        cold_threshold = 0.0
+        cold_threshold = 5.0  # 与 C ENV_TEMPERATURE_COLD_THRESHOLD=5.0 一致（北约STANAG）
         if temperature_celsius is not None:
             self.environment_factor.temperature = float(temperature_celsius)
             if temperature_celsius > heat_threshold:
