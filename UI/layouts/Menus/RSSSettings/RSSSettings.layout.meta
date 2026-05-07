@@ -3,19 +3,15 @@ MetaFileClass {
  Configurations {
   LayoutResourceClass PC {
   }
-  LayoutResourceClass XBOX_ONE {
-   Requirement "UI"
+  LayoutResourceClass XBOX_ONE : PC {
   }
-  LayoutResourceClass XBOX_SERIES {
-   Requirement "UI"
+  LayoutResourceClass XBOX_SERIES : PC {
   }
-  LayoutResourceClass PS4 {
-   Requirement "UI"
+  LayoutResourceClass PS4 : PC {
   }
-  LayoutResourceClass PS5 {
-   Requirement "UI"
+  LayoutResourceClass PS5 : PC {
   }
-  LayoutResourceClass HEADLESS {
+  LayoutResourceClass HEADLESS : PC {
   }
  }
 }
