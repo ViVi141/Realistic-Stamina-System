@@ -27,14 +27,21 @@ class SCR_RSSSettingsSubMenu : SCR_SubMenuBase
         m_wChkAICombat = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkAICombat"));
 
         // 绑定预设按钮
-        BindButton("BtnElite", OnPresetElite);
-        BindButton("BtnStandard", OnPresetStandard);
-        BindButton("BtnTactical", OnPresetTactical);
-        BindButton("BtnCustom", OnPresetCustom);
+        SCR_ButtonTextComponent btn;
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnElite", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnPresetElite);
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnStandard", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnPresetStandard);
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnTactical", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnPresetTactical);
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnCustom", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnPresetCustom);
 
         // 绑定操作按钮
-        BindButton("BtnReload", OnReloadConfig);
-        BindButton("BtnSave", OnSaveAndSync);
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnReload", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnReloadConfig);
+        btn = SCR_ButtonTextComponent.GetButtonText("BtnSave", m_wRoot);
+        if (btn) btn.m_OnClicked.Insert(OnSaveAndSync);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -42,14 +49,6 @@ class SCR_RSSSettingsSubMenu : SCR_SubMenuBase
     {
         super.OnTabShow();
         RefreshAll();
-    }
-
-    //------------------------------------------------------------------------------------------------
-    protected void BindButton(string name, ScriptCaller callback)
-    {
-        SCR_ButtonTextComponent btn = SCR_ButtonTextComponent.GetButtonText(name, m_wRoot);
-        if (btn)
-            btn.m_OnClicked.Insert(callback);
     }
 
     //------------------------------------------------------------------------------------------------
