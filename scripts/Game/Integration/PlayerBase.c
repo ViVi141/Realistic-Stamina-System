@@ -55,6 +55,7 @@ modded class SCR_CharacterControllerComponent
     protected vector m_vComputedVelocity = vector.Zero;
     protected CompartmentAccessComponent m_pCompartmentAccess;
     protected CharacterAnimationComponent m_pAnimComponent;
+    protected ChimeraCharacter m_pCachedOwnerCharacter; // 缓存角色实体引用（避免每帧 Cast）
 
     protected float m_fAnimSpeedCompensation = 1.0;
     protected float m_fLastAnimCompensationUpdateTime = -1.0;
@@ -189,6 +190,7 @@ modded class SCR_CharacterControllerComponent
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
         {
+            m_pCachedOwnerCharacter = character;
             m_pCompartmentAccess = character.GetCompartmentAccessComponent();
             m_pAnimComponent = character.GetAnimationComponent();
         }
@@ -255,6 +257,10 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
+        // 性能优化：缓存引擎穿透调用，避免每帧多次 GetGame()/GetWorld()
+        Game game = GetGame();
+        World world = game.GetWorld();
+
         if (!ShouldProcessStaminaUpdate())
         {
             RSS_SetMudSlipCameraShake01(0.0);
@@ -281,10 +287,9 @@ modded class SCR_CharacterControllerComponent
         // 药效/OD 期间：已存在的 SCR_BleedingDamageEffect 不会每帧读取 GetBleedingScale()，且 Hijack 叠伤时可能写成未乘全局倍率的 DPS；每轮体力更新同步一次。
         if (Replication.IsServer() && SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase))
         {
-            ChimeraCharacter combatStimChar = ChimeraCharacter.Cast(owner);
-            if (combatStimChar)
+            if (m_pCachedOwnerCharacter)
             {
-                SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(combatStimChar.GetDamageManager());
+                SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(m_pCachedOwnerCharacter.GetDamageManager());
                 if (stimDmgMgr)
                     RSS_CombatStim_RefreshBleedingEffectsToMatchScale(stimDmgMgr);
             }
@@ -353,7 +358,7 @@ modded class SCR_CharacterControllerComponent
         int phaseNow = GetCurrentMovementPhase();
         bool isSprintActive = isSprintingNow || (phaseNow == 3);
         
-        float currentTimeForExerciseMs = GetGame().GetWorld().GetWorldTime();
+        float currentTimeForExerciseMs = world.GetWorldTime();
         float currentTime = currentTimeForExerciseMs / 1000.0; // 秒，供地形/环境/RPC节流等模块使用
         float terrainFactor = 1.0; // 默认值（铺装路面）
         if (m_pTerrainDetector)
@@ -515,7 +520,7 @@ modded class SCR_CharacterControllerComponent
             
             m_pStanceTransitionManager.UpdateFatigue(timeDeltaSec);
             
-            float currentTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float currentTimeSec = world.GetWorldTime() / 1000.0;
             float stanceSettleCost = m_pStanceTransitionManager.TrySettleWindow(currentTimeSec);
             if (stanceSettleCost > 0.0)
                 staminaPercent = staminaPercent - stanceSettleCost;
@@ -546,7 +551,7 @@ modded class SCR_CharacterControllerComponent
         
         if (m_pFatigueSystem)
         {
-            float currentTimeForFatigue = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+            float currentTimeForFatigue = world.GetWorldTime() / 1000.0; // 转换为秒
             m_pFatigueSystem.ProcessFatigueDecay(currentTimeForFatigue, currentSpeed);
         }
         
@@ -615,8 +620,8 @@ modded class SCR_CharacterControllerComponent
         if (Replication.IsServer() && !IsPlayerControlled())
             SCR_RSS_AIStaminaCombatEffects.ApplyStaminaToCombat(owner, staminaPercent);
 
-        bool isSprinting = IsSprinting();
-        int currentMovementPhase = GetCurrentMovementPhase();
+        bool isSprinting = isSprintingNow;
+        int currentMovementPhase = phaseNow;
 
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
@@ -695,7 +700,7 @@ modded class SCR_CharacterControllerComponent
         
         if (m_pEpocState && !useSwimmingModel)
         {
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+            float currentWorldTime = world.GetWorldTime() / 1000.0; // 转换为秒
             bool isInEpocDelay = StaminaRecoveryCalculator.UpdateEpocDelay(
                 m_pEpocState,
                 currentSpeed,
@@ -860,7 +865,7 @@ modded class SCR_CharacterControllerComponent
         StaminaConstants.FlushDebugBatch();
         
         m_bRssStaminaLoopActive = true;
-        GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
+        game.GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
     }
     
     bool HasRssData()
