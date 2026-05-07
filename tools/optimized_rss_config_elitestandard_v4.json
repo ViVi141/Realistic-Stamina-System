@@ -1,0 +1,24 @@
+{
+  "energy_to_stamina_coeff": 7.173939269261512e-07,
+  "base_recovery_rate": 0.00015347845665467625,
+  "standing_recovery_multiplier": 1.1033940520181997,
+  "crouching_recovery_multiplier": 2.1510019305450636,
+  "prone_recovery_multiplier": 2.3436692109309787,
+  "fast_recovery_multiplier": 2.395424393975942,
+  "medium_recovery_multiplier": 1.1374814244785123,
+  "slow_recovery_multiplier": 0.4756093184784932,
+  "encumbrance_speed_penalty_coeff": 0.12557037442961433,
+  "encumbrance_stamina_drain_coeff": 1.9633666302334787,
+  "load_recovery_penalty_coeff": 5.401551119196543e-05,
+  "posture_crouch_multiplier": 2.437251840930866,
+  "posture_prone_multiplier": 2.964831628856109,
+  "sprint_speed_boost": 0.2561103503743016,
+  "recovery_nonlinear_coeff": 0.7916386681694456,
+  "max_recovery_per_tick": 0.0005831263335868464,
+  "_metrics": {
+    "combat_endurance": 0.17983862199068334,
+    "recovery_efficiency": 0.0,
+    "parameter_realism": 0.06956913309352537
+  },
+  "_philosophy": "parameter_realism 最小 → 最贴近 C 参考值"
+}

@@ -8,19 +8,19 @@
 
 ```
 tools/
-├── README.md                                    # 📖 本文件
-├── rss_super_pipeline.py                        # 🎯 主优化管道（推荐运行，内置多目标优化）
-├── rss_digital_twin_fix.py                      # 🔬 数字孪生仿真器（被 pipeline 调用）
-├── stamina_constants.py                         # 📋 常数定义工具库
-├── calibrate_run_3_5km.py                       # 📐 3.5km/15:27 校准（最低体力 20%）
-├── calibrate_recovery.py                        # 📐 恢复时间校准
-├── embed_json_to_c.py                           # 📄 JSON → SCR_RSS_Settings.c 嵌入
-├── verify_json_params.py                        # ✅ JSON 参数校验
-├── rss_optimizer_gui.py                         # 🖥️ 优化器 GUI（可选）
-├── requirements.txt                             # 📦 Python 依赖列表
-├── optimized_rss_config_realism_super.json      # 📊 精英拟真配置
-├── optimized_rss_config_playability_super.json  # 📊 战术平衡配置 ⭐ 推荐
-└── optimized_rss_config_balanced_super.json     # 📊 保守配置
+├── README.md                                          # 📖 本文件
+├── rss_pipeline_v4.py                                 # 🎯 主优化管道（v4: 8场景 + 3目标）
+├── rss_digital_twin_fix.py                            # 🔬 数字孪生仿真器
+├── stamina_constants.py                               # 📋 常数定义工具库
+├── test_v4_smoke.py                                   # 🧪 v4 烟雾测试
+├── test_basic_fitness.py                              # 🧪 基础体能验证
+├── quick_verify.py                                    # 🧪 快速验证
+├── embed_json_to_c.py                                 # 📄 JSON → C 代码嵌入
+├── requirements.txt                                   # 📦 Python 依赖列表
+├── rss_optimizer_gui.py                               # 🖥️ 优化器 GUI（可选）
+├── optimized_rss_config_elitestandard_v4.json         # 📊 精英标准预设
+├── optimized_rss_config_standardmilsim_v4.json        # 📊 标准军事模拟预设
+└── optimized_rss_config_tacticalaction_v4.json        # 📊 战术行动预设
 ```
 
 ---
@@ -37,17 +37,18 @@ pip install -r requirements.txt
 ### 2. 运行优化管道
 
 ```bash
-python rss_super_pipeline.py
+python rss_pipeline_v4.py --trials 300 --jobs 4
 ```
 
 这将执行：
-- ✅ 可配置次数的 Optuna 多目标试验（默认 500，可在 pipeline 中改为 10000 等）
-- ✅ 多目标：Realism_Loss、Playability_Burden、Stability_Risk
-- ✅ 物理与逻辑约束验证（恢复倍数顺序、姿态消耗等）
-- ✅ 3 个 Pareto 最优预设生成
+- ✅ 300 次 Optuna 多目标试验（可配置 `--trials` 和 `--jobs`）
+- ✅ 3 目标：combat_endurance、recovery_efficiency、parameter_realism
+- ✅ 8 个真实 Arma 多阶段战斗场景（含环境压力：高温/低温/风雨）
+- ✅ 16 参数搜索空间（与 C 端 SCR_RSS_Params 对齐）
+- ✅ 3 个 Pareto 最优预设按设计哲学自动选择
 - ✅ 自动保存为 JSON 配置文件
 
-**预计耗时**: 默认 500 次约数分钟至十几分钟；若改为 10000 次约 1–3 小时（取决于计算机性能）
+**预计耗时**: 300 次约 15–30 分钟（4 线程）
 
 ### 3. 在游戏中应用配置
 
@@ -61,47 +62,48 @@ $profile:RealisticStaminaSystem.json
 
 ## 📄 文件详解
 
-### 🎯 rss_super_pipeline.py（主优化管道）
+### 🎯 rss_pipeline_v4.py（主优化管道）
 
-**用途**: 执行完整的 NSGA-II 多目标优化
+**用途**: 执行完整的 NSGA-II 多目标优化（v4 重新设计）
 
-**功能**:
-- 运行 Optuna 多目标优化（试验次数可配置，默认 500）
-- 三目标：Realism_Loss、Playability_Burden、Stability_Risk（含鲁棒性/稳定性测试）
-- 约束与合理性验证：
-  - ✅ 基础体能：0kg Run 3.5km/15:27 最低体力约 20%
-  - ✅ 恢复倍数顺序：prone > standing > slow；fast > medium > slow
-  - ✅ 姿态消耗：蹲姿/趴姿倍数 > 1，趴姿 > 蹲姿
-  - ✅ 参数范围与生物学/物理学逻辑
+**v4 对比旧 super_pipeline 的改进**:
+- 场景体系：4→8 个真实 Arma 多阶段战斗任务（含环境压力）
+- 指标：20+ 惩罚系数 → 3 个结果指标（combat_endurance / recovery_efficiency / parameter_realism）
+- 预设选择：按设计哲学选点（非单目标排序）
+- 搜索空间：41→16 参数（仅调校与 C 端 getter 对齐的核心参数）
 
 **优化目标**:
-1. 最小化拟真损失 (realism_loss) → EliteStandard
-2. 最小化可玩性负担 (playability_burden) → TacticalAction
-3. 平衡两者 (balanced) → StandardMilsim
+1. 最小化 `combat_endurance` → TacticalAction（最宽容）
+2. 最小化 `parameter_realism` → EliteStandard（最贴近 C 参考值）
+3. 均衡 → StandardMilsim（归一化距原点最近）
+
+**8 个战斗场景**:
+- 巡逻接敌 (30kg/20°C) | 沙漠巡逻 (30kg/35°C) | 地狱沙漠突围 (30kg/35°C/多冲刺)
+- 两栖登陆 (25kg/3m/s风) | 城镇清扫 (25kg) | 山地接近 (35kg)
+- 载具突击 (20kg) | 重载撤离 (45kg)
 
 **输出**:
-- 3 个 JSON 配置文件
-- SQLite 优化数据库 (`rss_super_optimization.db`)
-- 优化历史记录
+- 3 个 JSON 配置文件（`optimized_rss_config_*_v4.json`）
+- Optuna 优化日志
 
 **调用关系**:
 ```
-rss_super_pipeline.py（内置优化逻辑）
+rss_pipeline_v4.py（内置优化逻辑 + Optuna）
   └─> rss_digital_twin_fix.py (数字孪生仿真)
-  └─> stamina_constants.py (常数定义，若被引用)
+  └─> stamina_constants.py (常数定义)
 ```
 
 **运行示例**:
 ```bash
-python rss_super_pipeline.py
+python rss_pipeline_v4.py --trials 300 --jobs 4
 # 输出：
-# [INFO] Starting RSS Super Optimization Pipeline...
-# [INFO] Running Optuna optimization (500 trials, 可配置)...
-# [PROGRESS] Trial 1/500 | Best realism_loss=0.185 | Best playability_burden=425
+# [v4] 8 missions loaded
+# Trial 1/300 | Best combat_endurance=0.035 ...
 # ...
-# [SUCCESS] Optimization complete!
-# [SUCCESS] Generated 3 Pareto-optimal presets
-# [SUCCESS] Saved to: optimized_rss_config_*.json
+# === Presets ===
+# EliteStandard:  combat=0.180  recovery=0.000  realism=0.070
+# StandardMilsim: combat=0.103  recovery=0.000  realism=0.958
+# TacticalAction: combat=0.022  recovery=0.000  realism=2.931
 ```
 
 ---
@@ -115,7 +117,7 @@ python rss_super_pipeline.py
 - **Pandolf** 消耗、恢复率、姿态/负重/疲劳等（Givoni 模型已弃用，仅保留历史记录）
 - `RSSConstants`、`MovementType`、`Stance`、`EnvironmentFactor`
 
-**不直接运行** - 被 `rss_super_pipeline.py`、`calibrate_run_3_5km.py`、`calibrate_recovery.py` 等调用
+**不直接运行** - 被 `rss_pipeline_v4.py` 等调用
 
 详细公式与决策树见：[docs/数字孪生优化器计算逻辑文档.md](../docs/数字孪生优化器计算逻辑文档.md)
 
@@ -161,14 +163,14 @@ def validate_constraints(params, values):
 
 ---
 
-### 其他工具（校准 / 嵌入 / 校验 / GUI）
+### 其他工具
 
 | 脚本 | 用途 |
 |------|------|
-| **calibrate_run_3_5km.py** | 校准 `energy_to_stamina_coeff`，使 0kg Run 3.5km/15:27 结束时最低体力约 20% |
-| **calibrate_recovery.py** | 校准恢复相关参数（恢复时间等） |
+| **test_v4_smoke.py** | v4 管道烟雾测试 |
+| **test_basic_fitness.py** | 基础体能验证 |
+| **quick_verify.py** | 快速验证 |
 | **embed_json_to_c.py** | 将 JSON 预设嵌入到 `SCR_RSS_Settings.c` 中 |
-| **verify_json_params.py** | 校验 JSON 参数格式与范围 |
 | **rss_optimizer_gui.py** | 优化器图形界面（可选） |
 
 ---
@@ -193,69 +195,67 @@ pip install -r requirements.txt
 
 ### 📊 JSON 配置文件
 
-三个优化的预设配置文件，包含 41 个参数。
+三个优化的预设配置文件，包含 16 个调校参数（其余使用 C 端静态参考值）。
 
-#### 1. optimized_rss_config_realism_super.json
-**优化目标**: 最大化拟真度（最小化拟真损失）
+#### 1. optimized_rss_config_elitestandard_v4.json
+**优化目标**: parameter_realism 最小 → 最贴近 C 参考值
 
 **特征**:
-- 拟真损失: **0.1815** (最低)
-- 可玩性负担: 434.0
-- 特点: 更难玩、更接近现实
+- combat_endurance: **0.180**
+- parameter_realism: **0.070** (最低)
+- 特点: 严格拟真，每项参数都接近 C 端静态常量
 
 **适用场景**:
-- 🎯 硬核玩家（想要高难度体验）
-- 🎯 竞技模式（需要真实体力消耗）
-- 🎯 教学/军事训练模拟
+- 🎯 硬核拟真社区
+- 🎯 军事训练模拟
+- 🎯 竞技/PvP 服务器
 
-**样本参数**:
-```json
-{
-  "energy_to_stamina_coeff": 2.5057006371784408e-05,
-  "base_recovery_rate": 0.0001717787540783644,
-  "standing_recovery_multiplier": 1.105066137151609,
-  "sprint_stamina_drain_multiplier": 3.01,
-  ...
-}
+**核心参数**:
+```
+energy_to_stamina_coeff: 7.17e-7
+base_recovery_rate:      1.53e-4
+fast_recovery_multiplier: 2.39
 ```
 
-#### 2. optimized_rss_config_playability_super.json ⭐ 推荐
-**优化目标**: 最大化可玩性（最小化可玩性负担）
+#### 2. optimized_rss_config_standardmilsim_v4.json
+**优化目标**: 三目标均衡 → 拟真与可玩性最佳折中
 
 **特征**:
-- 拟真损失: 0.1816 (几乎相同)
-- 可玩性负担: **422.8** (最低)
-- 特点: 容易玩、平衡体验
+- combat_endurance: **0.103**
+- parameter_realism: **0.958**
+- 特点: 均衡折中，归一化距原点最近
 
 **适用场景**:
-- 🎯 **主流玩家（推荐这个）**
-- 🎯 普通游戏体验
+- 🎯 **主流 MILSIM 社区（推荐）**
 - 🎯 多人合作模式
 - 🎯 战术团队游戏
 
-**样本参数**:
-```json
-{
-  "energy_to_stamina_coeff": 2.5057006371784408e-05,
-  "base_recovery_rate": 0.0001972519934567765,
-  "standing_recovery_multiplier": 1.275494136257953,
-  "sprint_stamina_drain_multiplier": 2.45,
-  ...
-}
+**核心参数**:
+```
+energy_to_stamina_coeff: 5.20e-7
+base_recovery_rate:      1.97e-4
+fast_recovery_multiplier: 2.35
 ```
 
-#### 3. optimized_rss_config_balanced_super.json
-**优化目标**: 平衡拟真度和可玩性
+#### 3. optimized_rss_config_tacticalaction_v4.json
+**优化目标**: combat_endurance 最小 → 最宽容的体力系统
 
 **特征**:
-- 拟真损失: 0.1816
-- 可玩性负担: 422.8 (与playability相同)
-- 特点: 保守、稳定、容易调整
+- combat_endurance: **0.022** (最低)
+- parameter_realism: **2.931**
+- 特点: 高恢复/低消耗，允许连续高强度动作
 
 **适用场景**:
-- 🎯 服务器管理员（易于微调）
-- 🎯 保守游戏体验
-- 🎯 新手友好模式
+- 🎯 快节奏 PvP
+- 🎯 新手友好
+- 🎯 动作密集型玩法
+
+**核心参数**:
+```
+energy_to_stamina_coeff: 5.20e-7
+base_recovery_rate:      2.96e-4
+fast_recovery_multiplier: 2.35
+```
 
 ---
 
@@ -263,66 +263,62 @@ pip install -r requirements.txt
 
 ```
 ┌─────────────────────────────────────┐
-│  rss_super_pipeline.py (启动)        │
+│  rss_pipeline_v4.py (启动)           │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
-│ 加载 stamina_constants.py            │
-│ (获取游戏常数、医学模型参数)          │
+│ 加载 8 个多阶段战斗场景              │
+│ (巡逻/沙漠/两栖/城镇/山地/载具/重载)  │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
 │ 初始化 Optuna Study                  │
-│ (创建优化问题、设置目标函数)          │
+│ (3目标: endurance/recovery/realism)  │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
-│ 运行 10,000 次试验                   │
-│ (每次试验：参数取值→仿真→约束验证→目标值)│
+│ 运行 300 次试验（可配置）            │
+│ (每次：参数取值→8场景仿真→指标计算)   │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
 │ 提取 Pareto 前沿                     │
-│ (找到不可能同时改进的解集合)         │
+│ (combat_endurance ↔ parameter_realism)│
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
-│ 生成 3 个预设配置                    │
-│ (EliteStandard, TacticalAction,     │
-│  StandardMilsim)                     │
+│ 按设计哲学选择 3 个预设              │
+│ EliteStandard ← realism最小          │
+│ StandardMilsim ← 距原点最近          │
+│ TacticalAction ← endurance最小       │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────┐
 │ 保存为 JSON 文件                     │
-│ (optimized_rss_config_*.json)        │
+│ (optimized_rss_config_*_v4.json)     │
 └─────────────────────────────────────┘
 ```
 
 ---
 
-## 📊 性能基准
+## 📊 v4 优化结果（300 次试验，8 场景）
 
-### 完成时间（2英里 = 3218.7米）
+### 预设指标
 
-| 预设 | 目标完成时间 | 优化结果 | 精度 |
-|------|----------|--------|------|
-| EliteStandard | 927秒 (15:27) | 925.8秒 (15:26) | ✅ 提前1.2秒 |
-| TacticalAction | 927秒 (15:27) | 924.3秒 (15:24) | ✅ 提前2.7秒 |
-| StandardMilsim | 927秒 (15:27) | 925.5秒 (15:26) | ✅ 提前1.5秒 |
+| 预设 | combat_endurance | parameter_realism | 哲学 |
+|------|:---:|:---:|------|
+| EliteStandard | 0.180 | **0.070** | 最贴近 C 参考值 |
+| StandardMilsim | 0.103 | 0.958 | 三目标均衡折中 |
+| TacticalAction | **0.022** | 2.931 | 战斗最宽容 |
 
-### 恢复时间（从精疲力尽到90%体力）
-
-| 预设 | 目标恢复时间 | 优化结果 | 精度 |
-|------|----------|--------|------|
-| EliteStandard | 8-10分钟 | 9.2分钟 | ✅ 在目标范围内 |
-| TacticalAction | 8-10分钟 | 8.8分钟 | ✅ 在目标范围内 |
-| StandardMilsim | 8-10分钟 | 9.1分钟 | ✅ 在目标范围内 |
+- `combat_endurance`：越小 = 体力越耐用
+- `parameter_realism`：越小 = 越贴近 C 端静态参考常量
 
 ---
 
@@ -331,30 +327,23 @@ pip install -r requirements.txt
 ### 任务1: 重新运行优化
 
 ```bash
-# 删除旧的优化数据库
-rm rss_super_optimization.db rss_super_optimization.db-journal
-
-# 运行新的优化
-python rss_super_pipeline.py
+# 运行 v4 优化管道
+python rss_pipeline_v4.py --trials 300 --jobs 4
 ```
 
-### 任务2: 检查当前配置
+### 任务2: 烟雾测试（验证管道可运行）
 
 ```bash
-# 查看 TacticalAction 预设的 Sprint 倍数
-import json
-with open('optimized_rss_config_playability_super.json') as f:
-    config = json.load(f)
-    print(config['sprint_stamina_drain_multiplier'])
+python test_v4_smoke.py
 ```
 
 ### 任务3: 修改优化目标
 
-编辑 `rss_super_pipeline.py` 中的目标函数（如 `_run_trial` / 多目标返回值），调整 Realism_Loss、Playability_Burden、Stability_Risk 的权重或定义。
+编辑 `rss_pipeline_v4.py` 中的 `compute_metrics()` 函数，调整三个指标的权重或定义。
 
-### 任务4: 添加新的约束
+### 任务4: 添加新的战斗场景
 
-在 `rss_super_pipeline.py` 中与「物理约束条件」「稳定性风险」相关的逻辑里添加新约束（如恢复倍数、姿态倍数、参数上下界等），并计入 `constraint_penalty` 或 `stability_risk`。
+在 `rss_pipeline_v4.py` 的 `MissionLibrary` 中添加新场景定义（时长/速度/姿态/负重/环境）。
 
 ---
 
@@ -363,24 +352,19 @@ with open('optimized_rss_config_playability_super.json') as f:
 ### 运行时输出示例
 
 ```
-[INFO] RSS Super Optimization Pipeline v3.10.0
-[INFO] Starting optimization run...
-[INFO] Optuna Study created with seed=42
-
-[PROGRESS] Trial 1/500 - Best realism_loss: 0.185 | Best playability_burden: 425
-[PROGRESS] Trial 100/500 - Best realism_loss: 0.182 | Best playability_burden: 422
+[v4] 8 missions loaded
+[v4] Search space: 16 parameters
+Trial 1/300 | Best combat_endurance=0.035 | Best realism=0.085
+Trial 100/300 | Best combat_endurance=0.022 | Best realism=0.070
 ...
-[SUCCESS] Optimization complete!
-[SUCCESS] Total trials: 500 | Time: ~数分钟（可配置 n_trials 为 10000 等以延长）
-[SUCCESS] Pareto front size: 157 points
-[SUCCESS] Generated 3 presets:
-  - EliteStandard (realism=0.1815, playability=434.0)
-  - TacticalAction (realism=0.1816, playability=422.8) ⭐
-  - StandardMilsim (realism=0.1816, playability=422.8)
-[SUCCESS] Config files saved:
-  - optimized_rss_config_realism_super.json
-  - optimized_rss_config_playability_super.json
-  - optimized_rss_config_balanced_super.json
+=== Presets ===
+EliteStandard:  combat=0.180  recovery=0.000  realism=0.070
+StandardMilsim: combat=0.103  recovery=0.000  realism=0.958
+TacticalAction: combat=0.022  recovery=0.000  realism=2.931
+Config files saved:
+  - optimized_rss_config_elitestandard_v4.json
+  - optimized_rss_config_standardmilsim_v4.json
+  - optimized_rss_config_tacticalaction_v4.json
 ```
 
 ---
@@ -399,9 +383,8 @@ pip install -r requirements.txt
 **解决**: 优化器会自动保存进度到 SQLite 数据库，下次运行会继续
 
 ```bash
-# 如果需要从头开始
-rm rss_super_optimization.db rss_super_optimization.db-journal
-python rss_super_pipeline.py
+# 增加试验次数并重试
+python rss_pipeline_v4.py --trials 500 --jobs 4
 ```
 
 ### 问题3: 优化时间太长
@@ -429,13 +412,12 @@ python rss_super_pipeline.py
 
 ### 使用的医学模型
 - **Pandolf 模型**: 步行能量消耗 (Pandolf et al., 1977)
-- **Givoni-Goldman 模型**: 跑步代谢 (Givoni & Goldman, 1971)
 - **氧债模型**: 恢复过程 (Palumbo et al., 2018)
 
-### 游戏平衡参数
-- **完成时间**: 15分27秒 / 2英里
-- **恢复时间**: 8-10分钟
-- **约束数量**: 7个
+### v4 优化参数
+- **场景数**: 8 个多阶段战斗任务（负重 20–45 kg，含环境压力）
+- **搜索空间**: 16 个核心参数
+- **试验次数**: 300（可配置）
 
 ---
 
@@ -461,8 +443,8 @@ python rss_super_pipeline.py
 
 ---
 
-**最后更新**: 2026-01-30  
-**RSS 版本**: 3.11.1  
-**工具版本**: 与 RSS 主项目同步（3.11.1）  
-**优化版本**: Optuna 多目标（Realism / Playability / Stability）  
+**最后更新**: 2026-05-07  
+**RSS 版本**: 3.21.1  
+**工具版本**: v4 (rss_pipeline_v4.py)  
+**优化版本**: Optuna 多目标（endurance / recovery / realism）  
 **状态**: ✅ 生产就绪

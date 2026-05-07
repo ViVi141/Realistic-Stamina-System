@@ -98,7 +98,7 @@ def recovery_test(twin, weight, drain_duration, drain_speed, drain_type,
 
 
 def main():
-    json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+    json_path = SCRIPT_DIR / "optimized_rss_config_elitestandard_v4.json"
     if not json_path.exists():
         print(f"未找到: {json_path}")
         return

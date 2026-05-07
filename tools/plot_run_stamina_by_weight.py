@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-按 optimized_rss_config_realism_super.json 绘制铺装路面上各负重 Run 与 Sprint 的时间-体力图。
+按 optimized_rss_config_elitestandard_v4.json 绘制铺装路面上各负重 Run 与 Sprint 的时间-体力图。
 铺装路面：grade_percent=0，terrain_factor=1.0。
 上图：Run（各负重用该负重下的 run 速度）；下图：Sprint（各负重用该负重下的 sprint 速度）。
 """
@@ -66,7 +66,7 @@ def load_constants_from_json(json_path: Path) -> RSSConstants:
 
 
 def main():
-    json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+    json_path = SCRIPT_DIR / "optimized_rss_config_elitestandard_v4.json"
     if not json_path.exists():
         print(f"未找到配置: {json_path}")
         return 1
@@ -192,7 +192,7 @@ def main():
     ax_sprint.grid(True, alpha=0.3)
     ax_sprint.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
 
-    fig.suptitle("Paved road (grade=0, terrain=1.0) — optimized_rss_config_realism_super.json", fontsize=11, y=1.00)
+    fig.suptitle("Paved road (grade=0, terrain=1.0) — optimized_rss_config_elitestandard_v4.json", fontsize=11, y=1.00)
     fig.tight_layout()
     out_path = SCRIPT_DIR / "run_stamina_by_weight_paved.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")

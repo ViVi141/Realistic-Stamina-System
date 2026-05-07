@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-用数字孪生验证 tools/optimized_rss_config_realism_super.json 的 30kg 600m/1000m 剩余体力。
+用数字孪生验证 tools/optimized_rss_config_elitestandard_v4.json 的 30kg 600m/1000m 剩余体力。
 条件：移动速度 3.8 m/s，气温 32°C，风 NE 5.7 m/s（逆风按风阻计入）。
 硬约束：600m 剩余 >= 50%，1000m 剩余 >= 40%。若孪生通过而游戏不通过，说明 C 与孪生需对齐。
 """
@@ -28,7 +28,7 @@ def load_json_constants(json_path: str) -> RSSConstants:
 
 
 def main():
-    json_path = Path(__file__).parent / 'optimized_rss_config_realism_super.json'
+    json_path = Path(__file__).parent / 'optimized_rss_config_elitestandard_v4.json'
     if not json_path.exists():
         print(f"未找到: {json_path}")
         return

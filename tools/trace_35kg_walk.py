@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 35KG 理想环境「走一步」体力消耗追踪
-配置来源: optimized_rss_config_realism_super.json
+配置来源: optimized_rss_config_elitestandard_v4.json
 """
 import math
 

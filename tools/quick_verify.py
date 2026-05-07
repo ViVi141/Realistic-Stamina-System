@@ -6,7 +6,7 @@
 import traceback
 
 try:
-    from rss_super_pipeline import RSSSuperPipeline
+    from rss_pipeline_v4 import RSSSuperPipeline
 
     print("启动快速验证: 50 次迭代，单线程 (n_jobs=1)")
     pipeline = RSSSuperPipeline(n_trials=50, n_jobs=1, use_database=False)

@@ -13,7 +13,7 @@ from pathlib import Path
 class JsonToCEmbedder:
     """JSON到C文件的嵌入器"""
 
-    # Optuna 导出的 JSON 常省略固定项；与 rss_super_pipeline / SCR_RSS_Params defvalue 对齐，
+    # Optuna 导出的 JSON 常省略固定项；与 rss_pipeline_v4 / SCR_RSS_Params defvalue 对齐，
     # 缺键时仍写入 C，避免 Init*Defaults 被整段替换后丢失生理学常数或 Sprint 阈值。
     DEFAULT_PARAM_VALUES = {
         'encumbrance_speed_penalty_exponent': 1.5,
@@ -211,9 +211,9 @@ def main():
     
     # JSON文件路径（在tools目录下）
     json_files = {
-        'EliteStandard': project_root / "tools" / "optimized_rss_config_realism_super.json",
-        'StandardMilsim': project_root / "tools" / "optimized_rss_config_balanced_super.json",
-        'TacticalAction': project_root / "tools" / "optimized_rss_config_playability_super.json"
+        'EliteStandard': project_root / "tools" / "optimized_rss_config_elitestandard_v4.json",
+        'StandardMilsim': project_root / "tools" / "optimized_rss_config_standardmilsim_v4.json",
+        'TacticalAction': project_root / "tools" / "optimized_rss_config_tacticalaction_v4.json"
     }
     
     # 检查文件是否存在

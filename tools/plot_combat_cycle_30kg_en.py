@@ -4,7 +4,7 @@
 30KG Combat Cycle - Tactical Simulation
 Simulates realistic combat scenarios: Engagement -> Withdrawal -> Recovery -> Re-engagement
 
-默认读取 tools/optimized_rss_config_realism_super.json。
+默认读取 tools/optimized_rss_config_elitestandard_v4.json。
 可选第一个命令行参数指定 JSON（相对 tools 目录或绝对路径），用于对比三套优化输出。
 """
 
@@ -177,7 +177,7 @@ def create_tactical_cycle(load_kg, flat_run_speed, flat_walk_speed, sprint_speed
         (600.0, flat_run_speed, MovementType.RUN, Stance.STAND, "Approach", 0.0),  # 1200-1800s, flat
         (300.0, 0.0, MovementType.IDLE, Stance.PRONE, "Observation", 0.0),  # 1800-2100s, flat
         (100.0, sprint_speed, MovementType.SPRINT, Stance.STAND, "Assault", 0.0),  # 2100-2200s, flat
-        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "Engagement", 0.0),  # 与 rss_super_pipeline 交火段一致
+        (500.0, flat_run_speed, MovementType.RUN, Stance.CROUCH, "Engagement", 0.0),  # 与 rss_pipeline_v4 交火段一致
         (900.0, flat_walk_speed, MovementType.WALK, Stance.STAND, "Withdrawal", 0.0),  # 2700-3600s, flat
     ]
 
@@ -335,12 +335,12 @@ def plot_combat_cycle(time_list, stamina_list, recovery_rate_list, drain_rate_li
 
 def main():
     # 默认与脚本注释一致：拟真档。可传入参数对比三套预设，例如：
-    #   python plot_combat_cycle_30kg_en.py optimized_rss_config_playability_super.json
+    #   python plot_combat_cycle_30kg_en.py optimized_rss_config_tacticalaction_v4.json
     if len(sys.argv) > 1:
         arg = Path(sys.argv[1])
         json_path = arg if arg.is_absolute() else (SCRIPT_DIR / arg)
     else:
-        json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+        json_path = SCRIPT_DIR / "optimized_rss_config_elitestandard_v4.json"
     if not json_path.exists():
         print(f"Config not found: {json_path}")
         return 1
@@ -375,7 +375,7 @@ def main():
     if min_stamina < 0.23:
         print(
             "\n[WARNING] 战术战斗周期最低体力 {:.1%}，低于建议底线 23%。\n"
-            "  若已用新版 rss_super_pipeline：EliteStandard 会优先选 combat_cycle≥23% 的帕累托解；"
+            "  若已用新版 rss_pipeline_v4：EliteStandard 会优先选 combat_cycle≥23% 的帕累托解；"
             "若仍不达标，请增大 n_trials、略降 combat_cycle_min_stamina_req，或提高 combat_cycle_below_penalty_coeff 后重跑。\n".format(
                 min_stamina
             )

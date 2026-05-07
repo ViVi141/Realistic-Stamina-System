@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-按 optimized_rss_config_realism_super.json 绘制 30 kg 负重下 Run 的时间-体力图。
+按 optimized_rss_config_elitestandard_v4.json 绘制 30 kg 负重下 Run 的时间-体力图。
 分 4 张图分别展示：坡度、地面材质、逆风风速、环境温度 的影响。
 
 修复后的模型特性：
@@ -217,7 +217,7 @@ def plot_by_grade(constants, twin, flat_run_speed, current_weight):
                f"(C-side Tobler with boost+dampen, flat run = {flat_run_speed:.2f} m/s)")
     save_fig(fig,
              f"Paved road (load={LOAD_KG} kg, terrain=1.0)"
-             " — optimized_rss_config_realism_super.json",
+             " — optimized_rss_config_elitestandard_v4.json",
              SCRIPT_DIR / "run_stamina_by_grade_30kg.png")
 
     print(f"\n=== Grade (flat_run_speed={flat_run_speed:.3f} m/s) ===")
@@ -273,7 +273,7 @@ def plot_by_terrain(constants, twin, flat_run_speed, current_weight):
                f"(flat road, grade=0%, run speed = {flat_run_speed:.2f} m/s)")
     save_fig(fig,
              f"Terrain comparison (load={LOAD_KG} kg, grade=0%)"
-             " — optimized_rss_config_realism_super.json",
+             " — optimized_rss_config_elitestandard_v4.json",
              SCRIPT_DIR / "run_stamina_by_terrain_30kg.png")
 
     print(f"\n=== Terrain (run_speed={flat_run_speed:.3f} m/s, grade=0%) ===")
@@ -333,7 +333,7 @@ def plot_by_wind(constants, twin, flat_run_speed, current_weight):
                f" | tailwind saves up to 15%, headwind costs up to 100%")
     save_fig(fig,
              f"Wind comparison (load={LOAD_KG} kg, grade=0%, terrain=1.0)"
-             " — optimized_rss_config_realism_super.json",
+             " — optimized_rss_config_elitestandard_v4.json",
              SCRIPT_DIR / "run_stamina_by_wind_30kg.png")
 
     print(f"\n=== Wind (run_speed={flat_run_speed:.3f} m/s, grade=0%) ===")
@@ -397,7 +397,7 @@ def plot_by_temperature(constants, twin, flat_run_speed, current_weight):
                f"(AdjustEnergyForTemperature: cold<18C & hot>27C add extra Watts)")
     save_fig(fig,
              f"Temperature comparison (load={LOAD_KG} kg, grade=0%, terrain=1.0)"
-             " — optimized_rss_config_realism_super.json",
+             " — optimized_rss_config_elitestandard_v4.json",
              SCRIPT_DIR / "run_stamina_by_temperature_30kg.png")
 
     print(f"\n=== Temperature (run_speed={flat_run_speed:.3f} m/s, grade=0%) ===")
@@ -412,7 +412,7 @@ def plot_by_temperature(constants, twin, flat_run_speed, current_weight):
 # main
 # =========================================================================
 def main():
-    json_path = SCRIPT_DIR / "optimized_rss_config_realism_super.json"
+    json_path = SCRIPT_DIR / "optimized_rss_config_elitestandard_v4.json"
     if not json_path.exists():
         print(f"未找到配置: {json_path}")
         return 1
