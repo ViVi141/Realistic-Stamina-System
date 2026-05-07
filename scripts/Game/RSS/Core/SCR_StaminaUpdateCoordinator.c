@@ -560,7 +560,7 @@ class StaminaUpdateCoordinator
                 }
             }
             
-            float swimmingDrainRate = RealisticStaminaSpeedSystem.CalculateSwimmingStaminaDrain3D(computedVelocity, currentWeightWithWet);
+            float swimmingDrainRate = SCR_SwimmingStaminaModel.CalculateSwimmingStaminaDrain3D(computedVelocity, currentWeightWithWet);
             baseDrainRate = swimmingDrainRate * 0.2; // 转换为每0.2秒的消耗率
         }
         else
