@@ -61,6 +61,8 @@ class Mission:
     load_kg: float             # 装备负重（不含体重 90kg）
     phases: List[Phase]        # 阶段序列
     description: str = ""      # 任务描述
+    temperature: float = 20.0  # 环境温度 (°C)，默认 20°C 无热/冷应激
+    wind_speed: float = 0.0    # 风速 (m/s)，默认 0 无风阻
 
     @property
     def total_duration_s(self) -> float:
@@ -180,12 +182,61 @@ class MissionLibrary:
             ],
         )
 
+    @staticmethod
+    def amphibious_landing(load_kg: float = 25.0) -> Mission:
+        """
+        两栖登陆 (8min, 25kg)
+        节奏: 游泳上岸 → 湿重冲刺 → 蹲姿交火 → 推进
+        测试游泳模型 + 湿重衰减 + 上岸后立即战斗的极限场景
+        对应 Arma 抢滩登陆 / 河流渡河玩法
+        """
+        return Mission(
+            name="两栖登陆",
+            load_kg=load_kg,
+            temperature=20.0,  # 水温常温
+            wind_speed=3.0,    # 中等海风
+            description="25kg游泳上岸→湿重冲刺→交火，8分钟两栖突击",
+            phases=[
+                Phase(60,  1.2,  MovementType.WALK,   Stance.STAND,  0,  1.0, "游泳接近"),   # 游泳速度
+                Phase(20,  4.5,  MovementType.SPRINT, Stance.STAND,  0,  1.2, "上岸冲刺"),   # 湿重冲刺
+                Phase(90,  1.5,  MovementType.WALK,   Stance.CROUCH, 3,  1.0, "滩头交火"),   # 蹲姿战斗
+                Phase(120, 2.5,  MovementType.WALK,   Stance.STAND,  5,  1.3, "向内陆推进"),  # 上坡推进
+                Phase(90,  1.5,  MovementType.WALK,   Stance.CROUCH, 0,  1.0, "巩固阵地"),
+                Phase(120, 0.0,  MovementType.IDLE,   Stance.STAND,  0,  1.0, "任务结束"),
+            ],
+        )
+
+    @staticmethod
+    def desert_patrol(load_kg: float = 30.0) -> Mission:
+        """
+        沙漠巡逻 (12min, 30kg, 35°C)
+        节奏: 与巡逻接敌相同，但在高温环境下
+        测试热应激对体力消耗和恢复的影响
+        对应 Arma 沙漠地图（如 Arid）
+        """
+        return Mission(
+            name="沙漠巡逻",
+            load_kg=load_kg,
+            temperature=35.0,   # 沙漠高温
+            wind_speed=2.0,     # 轻微热风
+            description="30kg沙漠巡逻，35°C高温+2m/s热风，12分钟",
+            phases=[
+                Phase(420, 2.8,  MovementType.WALK,   Stance.STAND,  0,  1.0, "沙漠行军"),
+                Phase(30,  4.8,  MovementType.SPRINT, Stance.STAND,  0,  1.3, "冲刺接敌"),
+                Phase(90,  3.5,  MovementType.RUN,    Stance.STAND,  0,  1.3, "跑步推进"),
+                Phase(120, 1.5,  MovementType.WALK,   Stance.CROUCH, 0,  1.0, "交火"),
+                Phase(60,  2.8,  MovementType.WALK,   Stance.STAND,  0,  1.2, "撤离"),
+            ],
+        )
+
     @classmethod
     def all_missions(cls, load_30: float = 30.0, load_25: float = 25.0,
                      load_35: float = 35.0, load_20: float = 20.0,
                      load_45: float = 45.0) -> List[Mission]:
         return [
             cls.patrol_contact(load_30),
+            cls.desert_patrol(load_30),       # 环境压力测试
+            cls.amphibious_landing(load_25),  # 游泳+湿重测试
             cls.urban_clearance(load_25),
             cls.mountain_approach(load_35),
             cls.vehicle_dismount(load_20),
@@ -211,6 +262,28 @@ class MissionResult:
 def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
     """运行一个完整 Mission 的数字孪生仿真"""
     twin.reset()
+
+    # ── 设置环境因子 ──────────────────────────────────────────
+    if mission.temperature != 20.0 or mission.wind_speed > 0:
+        twin.environment_factor.temperature = mission.temperature
+        twin.environment_factor.wind_speed = mission.wind_speed
+        # 热应激: >30°C 时启用
+        if mission.temperature > 30.0:
+            c = twin.constants
+            coeff = getattr(c, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
+            twin.environment_factor.heat_stress = min(
+                (mission.temperature - 30.0) * coeff, 0.3)
+        # 冷应激: <5°C 时启用
+        if mission.temperature < 5.0:
+            c = twin.constants
+            cold_coeff = getattr(c, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY', 0.05)
+            twin.environment_factor.cold_stress = (5.0 - mission.temperature) * cold_coeff
+            twin.environment_factor.cold_static_penalty = (5.0 - mission.temperature) * 0.03
+        # 风阻: >1 m/s 时启用
+        if mission.wind_speed >= 1.0:
+            wind_coeff = getattr(twin.constants, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
+            twin._scenario_wind_drag = min(1.0, mission.wind_speed * wind_coeff)
+
     dt = 0.2
     current_time = 0.0
     stamina_trace = []
@@ -289,8 +362,9 @@ def compute_metrics(results: List[MissionResult], params: Dict) -> Metrics:
 
     # ── 目标 1: 战斗耐力 ──────────────────────────────────────
     # 策略：取各任务运动阶段平均体力的加权平均，越低越差
-    # 权重：巡逻(0.30) > 重载(0.25) > 山地(0.20) > 城镇(0.15) > 突击(0.10)
-    weights = {"巡逻接敌": 0.30, "重载撤离": 0.25, "山地接近": 0.20, "城镇清扫": 0.15, "载具下车突击": 0.10}
+    # 权重：巡逻(0.22) ≈ 沙漠(0.20) > 重载(0.18) > 山地(0.12) > 两栖(0.10) ≈ 城镇(0.10) > 突击(0.08)
+    weights = {"巡逻接敌": 0.22, "沙漠巡逻": 0.20, "重载撤离": 0.18,
+               "山地接近": 0.12, "两栖登陆": 0.10, "城镇清扫": 0.10, "载具下车突击": 0.08}
     weighted_mean = 0.0
     total_weight = 0.0
     for r in results:
