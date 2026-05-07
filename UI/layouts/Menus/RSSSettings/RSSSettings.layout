@@ -1,175 +1,234 @@
-HorizontalLayoutWidgetClass {
- Name "RSSSettings"
+FrameWidgetClass "{5932EB24D1397F01}" {
+ Name "rootRSSSettings"
  components {
-  SCR_RSSSettingsSubMenu "{5932EB24D1397F00}" {}
+  SCR_RSSSettingsSubMenu "{5932EB24D1397F02}" {}
  }
  {
-  ScrollLayoutWidgetClass "{000000009881A4C7}" {
-   Name "ScrollLayout0"
-   Slot LayoutSlot "{54890CCF086F1BB3}" {
-    Padding -2 72 2 0
-    SizeMode Fill
-    FillWeight 1.433
+  VerticalLayoutWidgetClass "{5932EB24D1397F03}" {
+   Name "MainLayout"
+   Slot LayoutSlot "{58B32278C99818F2}" {
+    Padding 30 20 30 20
+    HorizontalAlign 0
+    VerticalAlign 0
    }
-   Color 0.761 0.392 0.078 1
-   components {
-    SCR_GamepadScrollComponent "{5DE87ED7DB61D5F7}" {}
-   }
-   style Small
    {
-    VerticalLayoutWidgetClass "{00000000C099DEEF}" {
-     Name "Content"
-     Slot AlignableSlot "{54890CCE26EF3FDE}" {
-      HorizontalAlign 3
-      VerticalAlign 3
-      Padding -4 0 10 0
+    // ── 预设选择区域 ──
+    TextWidgetClass "{5932EB24D1397F04}" {
+     Name "TitlePreset"
+     Slot LayoutSlot "{58B32278C99818F2}" {}
+     Text "RSS Preset"
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+     "Font Size" 18
+     Color 0.6 0.8 1.0 1.0
+     "Exact Size" 1
+    }
+    VerticalLayoutWidgetClass "{5932EB24D1397F05}" {
+     Name "PresetContainer"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 10 5 10 10
+     }
+    }
+    TextWidgetClass "{5932EB24D1397F06}" {
+     Name "CurrentPresetLabel"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 8 4 8
+     }
+     Text "Active Preset: StandardMilsim"
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 14
+     Color 0.8 0.8 0.8 1.0
+     "Exact Size" 1
+    }
+    // ── 预设按钮行 ──
+    HorizontalLayoutWidgetClass "{5932EB24D1397F07}" {
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 4 4 4
      }
      {
-      VerticalLayoutWidgetClass "{5932EB24D1397F01}" : "{FEEEB639F2735BA1}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsTitle.layout" {
-       Name "TitlePreset"
-       Slot LayoutSlot "{58B32278C99818F2}" {}
-       components {
-        SCR_LabelComponent "{58B30C1A8E56F0FF}" {
-         m_sLabel "RSS Preset"
-         m_fPaddingTop 4
-        }
-       }
-       {
-        TextWidgetClass "{58B30C1F77EC7B4E}" {
-         Prefab "{58B30C1F77EC7B4E}"
-         Slot LayoutSlot "{58B30C1F77EC7B76}" {
-          Padding 39 4 39 20
-         }
-        }
-       }
-      }
-      ButtonWidgetClass "{5932EB24D1397F02}" : "{4B5AE6E64037FFB4}UI/layouts/WidgetLibrary/ComboBox/WLib_ComboBox.layout" {
-       Name "PresetSelector"
-       Slot LayoutSlot "{58A4F540041D9FC5}" {
-        Padding 4 4 4 4
-       }
-       components {
-        SCR_ComboBoxComponent "{546B1D464BC32853}" {
-         m_sLabel "Active Preset"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "EliteStandard" "StandardMilsim" "TacticalAction" "Custom"
-         }
-        }
-        SCR_ModularButtonComponent "{5E4C99F9B2FB5D32}" {}
-       }
-      }
-      VerticalLayoutWidgetClass "{5932EB24D1397F03}" : "{FEEEB639F2735BA1}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsTitle.layout" {
-       Name "TitleToggles"
-       Slot LayoutSlot "{58B32278C99818F2}" {}
-       components {
-        SCR_LabelComponent "{58B30C1A8E56F0FF}" {
-         m_sLabel "Server Options"
-         m_fPaddingTop 12
-        }
-       }
-       {
-        TextWidgetClass "{58B30C1F77EC7B4E}" {
-         Prefab "{58B30C1F77EC7B4E}"
-         Slot LayoutSlot "{58B30C1F77EC7B76}" {
-          Padding 39 4 39 20
-         }
-        }
-       }
-      }
-      ButtonWidgetClass "{5932EB24D1397F10}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleDebug"
+      ButtonWidgetClass "{5932EB24D1397F08}" {
+       Name "BtnElite"
        Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
+        Padding 2 2 2 2
        }
+       Text "EliteStandard"
+       "Exact Size" 1
+       SizeX 120
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.8 0.3 0.3 1.0
        components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "Debug Log"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass "{5932EB24D1397F11}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleHUD"
+      ButtonWidgetClass "{5932EB24D1397F09}" {
+       Name "BtnStandard"
        Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
+        Padding 2 2 2 2
        }
+       Text "StandardMilsim"
+       "Exact Size" 1
+       SizeX 120
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.3 0.5 0.8 1.0
        components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "HUD Display"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass "{5932EB24D1397F16}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleServerHUD"
+      ButtonWidgetClass "{5932EB24D1397F0A}" {
+       Name "BtnTactical"
        Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
+        Padding 2 2 2 2
        }
+       Text "TacticalAction"
+       "Exact Size" 1
+       SizeX 120
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.3 0.7 0.3 1.0
        components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "HUD Server Default"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
-      ButtonWidgetClass "{5932EB24D1397F13}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleMudSlip"
+      ButtonWidgetClass "{5932EB24D1397F0B}" {
+       Name "BtnCustom"
        Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
+        Padding 2 2 2 2
        }
+       Text "Custom"
+       "Exact Size" 1
+       SizeX 80
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.6 0.6 0.6 1.0
        components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "Mud Slip Mechanic"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
-       }
-      }
-      ButtonWidgetClass "{5932EB24D1397F14}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
-       Name "ToggleAICombat"
-       Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
-       }
-       components {
-        SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "AI Stamina Combat"
-         m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
-         m_aElementNames {
-          "Off" "On"
-         }
-         m_bUseLightArrows 1
-         m_bCycleMode 1
-        }
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
        }
       }
      }
     }
-   }
-  }
-  VerticalLayoutWidgetClass "{00000000AD5D4DAC}" {
-   Name "Description"
-   Slot LayoutSlot "{54890CCD7A457969}" {
-    SizeMode Fill
+    // ── 开关区域 ──
+    TextWidgetClass "{5932EB24D1397F0C}" {
+     Name "TitleToggles"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 0 12 0 6
+     }
+     Text "Toggles"
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+     "Font Size" 18
+     Color 0.6 0.8 1.0 1.0
+     "Exact Size" 1
+    }
+    CheckBoxWidgetClass "{5932EB24D1397F0D}" {
+     Name "ChkDebug"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 4 4 4
+     }
+     Text "Debug Log"
+     "Exact Size" 1
+     SizeX 200
+     SizeY 25
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 14
+     Color 0.9 0.9 0.9 1.0
+    }
+    CheckBoxWidgetClass "{5932EB24D1397F0E}" {
+     Name "ChkHUD"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 4 4 4
+     }
+     Text "HUD Display"
+     "Exact Size" 1
+     SizeX 200
+     SizeY 25
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 14
+     Color 0.9 0.9 0.9 1.0
+    }
+    CheckBoxWidgetClass "{5932EB24D1397F0F}" {
+     Name "ChkMudSlip"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 4 4 4
+     }
+     Text "Mud Slip Mechanic"
+     "Exact Size" 1
+     SizeX 200
+     SizeY 25
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 14
+     Color 0.9 0.9 0.9 1.0
+    }
+    CheckBoxWidgetClass "{5932EB24D1397F10}" {
+     Name "ChkAICombat"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 4 4 4
+     }
+     Text "AI Stamina Combat Effects"
+     "Exact Size" 1
+     SizeX 200
+     SizeY 25
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 14
+     Color 0.9 0.9 0.9 1.0
+    }
+    // ── 操作按钮 ──
+    HorizontalLayoutWidgetClass "{5932EB24D1397F11}" {
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 0 15 10 4
+     }
+     {
+      ButtonWidgetClass "{5932EB24D1397F12}" {
+       Name "BtnReload"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       Text "Reload Config"
+       "Exact Size" 1
+       SizeX 140
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.9 0.7 0.3 1.0
+       components {
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
+       }
+      }
+      ButtonWidgetClass "{5932EB24D1397F13}" {
+       Name "BtnSave"
+       Slot LayoutSlot "{54890CCD61050681}" {
+        Padding 4 4 4 4
+       }
+       Text "Save & Sync"
+       "Exact Size" 1
+       SizeX 140
+       SizeY 30
+       Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+       "Font Size" 13
+       Color 0.3 0.8 0.3 1.0
+       components {
+        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
+       }
+      }
+     }
+    }
+    // ── 状态文本 ──
+    TextWidgetClass "{5932EB24D1397F14}" {
+     Name "StatusText"
+     Slot LayoutSlot "{58B32278C99818F2}" {
+      Padding 4 8 4 4
+     }
+     Text ""
+     Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Regular.fnt"
+     "Font Size" 12
+     Color 0.5 0.9 0.5 1.0
+     "Exact Size" 1
+     SizeX 400
+     SizeY 20
+    }
    }
   }
  }
