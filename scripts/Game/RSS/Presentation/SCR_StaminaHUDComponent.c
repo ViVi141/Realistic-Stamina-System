@@ -43,6 +43,10 @@ class SCR_StaminaHUDComponent
     protected static float s_fDisplayStaminaPercent = 1.0;
     protected static const float STAMINA_DISPLAY_SMOOTH_ALPHA = 0.4;  // 指数平滑系数（每 50ms 更新约 3 次可追上 90%）
 
+    // 本地 HUD 覆盖：每个玩家可以独立开关自己的 HUD，不依赖服务器设置
+    protected static bool s_bLocalHUDOverride = true;  // true = 开启（默认），false = 玩家手动关闭
+    protected static bool s_bLocalHUDSet = false;      // 是否已设置过本地覆盖
+    
     // 速度显示平滑：从静止到全速时，HUD 数值渐变而非瞬时跳变
     protected static float s_fDisplaySpeedMultiplier = 1.0;
     protected static float s_fDisplayCurrentSpeed = 0.0;
@@ -143,9 +147,19 @@ class SCR_StaminaHUDComponent
         if (!GetGame() || !GetGame().GetWorkspace())
             return;
 
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
+        // 本地覆盖优先：如果玩家已手动切换过，使用本地设置
+        if (s_bLocalHUDSet)
+        {
+            if (s_bLocalHUDOverride)
+                Init();
+            else
+                Destroy();
             return;
+        }
+
+        // 否则跟随服务器设置
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings) return;
 
         if (settings.m_bHintDisplayEnabled)
             Init();
@@ -165,6 +179,20 @@ class SCR_StaminaHUDComponent
             s_fDisplayCurrentSpeed = 0.0;
             s_sCachedGroundMaterialLabel = "";
         }
+    }
+    
+    // 获取本地 HUD 覆盖状态
+    static bool GetLocalHUDEnabled()
+    {
+        return s_bLocalHUDOverride;
+    }
+    
+    // 设置本地 HUD 覆盖（每个玩家自己开关）
+    static void SetLocalHUDEnabled(bool enabled)
+    {
+        s_bLocalHUDOverride = enabled;
+        s_bLocalHUDSet = true;
+        SyncHintDisplayWithSettings();
     }
     
     // 检查是否已初始化

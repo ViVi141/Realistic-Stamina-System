@@ -1,29 +1,43 @@
-// RSS Settings SubMenu — 嵌入 SettingsSuperMenu 的标签页
-// 不经过游戏设置系统，直接读写 SCR_RSS_ConfigManager
+// RSS Settings SubMenu
+//   所有人可见：HUD 本地开关
+//   管理员额外：预设选择 + 服务器开关 + "应用 HUD 到服务器"按钮
+
 class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 {
     protected SCR_ComboBoxComponent m_wPresetSelector;
-    protected SCR_SpinBoxComponent m_wDebugToggle;
     protected SCR_SpinBoxComponent m_wHUDToggle;
+    protected SCR_SpinBoxComponent m_wDebugToggle;
     protected SCR_SpinBoxComponent m_wMudSlipToggle;
     protected SCR_SpinBoxComponent m_wAICombatToggle;
+
+    protected bool m_bIsAdmin;
 
     //------------------------------------------------------------------------------------------------
     override void OnTabCreate(Widget menuRoot, ResourceName buttonsLayout, int index)
     {
         super.OnTabCreate(menuRoot, buttonsLayout, index);
 
-        m_wPresetSelector    = FindComboBox("PresetSelector");
-        m_wDebugToggle       = FindSpinBox("ToggleDebug");
-        m_wHUDToggle         = FindSpinBox("ToggleHUD");
-        m_wMudSlipToggle     = FindSpinBox("ToggleMudSlip");
-        m_wAICombatToggle    = FindSpinBox("ToggleAICombat");
+        m_bIsAdmin = IsPlayerAdmin();
+
+        m_wPresetSelector  = FindComboBox("PresetSelector");
+        m_wHUDToggle       = FindSpinBox("ToggleHUD");
+        m_wDebugToggle     = FindSpinBox("ToggleDebug");
+        m_wMudSlipToggle   = FindSpinBox("ToggleMudSlip");
+        m_wAICombatToggle  = FindSpinBox("ToggleAICombat");
 
         // 预设下拉框 Change 事件
         if (m_wPresetSelector)
             m_wPresetSelector.m_OnChanged.Insert(OnPresetChanged);
 
-        // 从 RSS 配置加载当前值到控件
+        // 管理员额外：绑定 "Set Server HUD" 按钮
+        if (m_bIsAdmin)
+        {
+            SCR_ButtonTextComponent btn = SCR_ButtonTextComponent.GetButtonText("BtnServerHUD", m_wRoot);
+            if (btn) btn.m_OnClicked.Insert(OnSetServerHUD);
+        }
+
+        // 根据权限隐藏/显示控件
+        UpdateVisibility();
         LoadFromSettings();
     }
 
@@ -31,6 +45,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     override void OnTabShow()
     {
         super.OnTabShow();
+        UpdateVisibility();
         LoadFromSettings();
     }
 
@@ -38,13 +53,31 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     override void OnTabHide()
     {
         super.OnTabHide();
-        SaveToSettings();
-        ApplyAndSync();
+        if (m_bIsAdmin)
+            ApplyServerChanges();
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void UpdateVisibility()
+    {
+        // 管理员区域（预设、服务器开关）可见性
+        HideWidget("TitlePreset",    !m_bIsAdmin);
+        HideWidget("PresetSelector", !m_bIsAdmin);
+        HideWidget("TitleToggles",   !m_bIsAdmin);
+        HideWidget("ToggleDebug",    !m_bIsAdmin);
+        HideWidget("ToggleMudSlip",  !m_bIsAdmin);
+        HideWidget("ToggleAICombat", !m_bIsAdmin);
+        HideWidget("BtnServerHUD",   !m_bIsAdmin);
     }
 
     //------------------------------------------------------------------------------------------------
     protected void LoadFromSettings()
     {
+        // HUD：读取本地覆盖（或服务器默认）
+        SetSpin(m_wHUDToggle, SCR_StaminaHUDComponent.GetLocalHUDEnabled());
+
+        if (!m_bIsAdmin) return;
+
         SCR_RSS_Settings s = GetSettings();
         if (!s) return;
 
@@ -61,23 +94,38 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
             m_wPresetSelector.SetCurrentItem(idx, false, false);
         }
 
-        // 开关控件
-        SetSpin(m_wDebugToggle,      s.m_bDebugLogEnabled);
-        SetSpin(m_wHUDToggle,        s.m_bHintDisplayEnabled);
-        SetSpin(m_wMudSlipToggle,    s.m_bEnableMudSlipMechanism);
-        SetSpin(m_wAICombatToggle,   s.m_bEnableAIStaminaCombatEffects);
+        SetSpin(m_wDebugToggle,    s.m_bDebugLogEnabled);
+        SetSpin(m_wMudSlipToggle,  s.m_bEnableMudSlipMechanism);
+        SetSpin(m_wAICombatToggle, s.m_bEnableAIStaminaCombatEffects);
     }
 
     //------------------------------------------------------------------------------------------------
-    protected void SaveToSettings()
+    protected void ApplyServerChanges()
     {
+        if (!m_bIsAdmin) return;
+
         SCR_RSS_Settings s = GetSettings();
         if (!s) return;
 
-        s.m_bDebugLogEnabled               = GetSpin(m_wDebugToggle);
-        s.m_bHintDisplayEnabled            = GetSpin(m_wHUDToggle);
-        s.m_bEnableMudSlipMechanism        = GetSpin(m_wMudSlipToggle);
-        s.m_bEnableAIStaminaCombatEffects  = GetSpin(m_wAICombatToggle);
+        s.m_bDebugLogEnabled              = GetSpin(m_wDebugToggle);
+        s.m_bEnableMudSlipMechanism       = GetSpin(m_wMudSlipToggle);
+        s.m_bEnableAIStaminaCombatEffects = GetSpin(m_wAICombatToggle);
+
+        SCR_RSS_ConfigManager.Save();
+        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+    }
+
+    //------------------------------------------------------------------------------------------------
+    // HUD 开关变化时，立即更新本地覆盖（不需要点保存）
+    override void OnTabHide()
+    {
+        super.OnTabHide();
+
+        // 保存本地 HUD 状态
+        SCR_StaminaHUDComponent.SetLocalHUDEnabled(GetSpin(m_wHUDToggle));
+
+        if (m_bIsAdmin)
+            ApplyServerChanges();
     }
 
     //------------------------------------------------------------------------------------------------
@@ -96,8 +144,21 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 
         s.m_sSelectedPreset = preset;
         s.InitPresets(preset != "Custom");
+        SCR_RSS_ConfigManager.Save();
+        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
         LoadFromSettings();
-        ApplyAndSync();
+    }
+
+    //------------------------------------------------------------------------------------------------
+    // 管理员：将当前本地 HUD 状态推送到服务器默认
+    protected void OnSetServerHUD()
+    {
+        SCR_RSS_Settings s = GetSettings();
+        if (!s) return;
+
+        s.m_bHintDisplayEnabled = GetSpin(m_wHUDToggle);
+        SCR_RSS_ConfigManager.Save();
+        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 
     //------------------------------------------------------------------------------------------------
@@ -107,11 +168,14 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     }
 
     //------------------------------------------------------------------------------------------------
-    protected void ApplyAndSync()
+    protected bool IsPlayerAdmin()
     {
-        // Save() 内部已调用 ReplicateConfigToClients → RSS_ReplicateConfigNow
-        SCR_RSS_ConfigManager.Save();
-        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+        int playerId = GetGame().GetPlayerController().GetPlayerId();
+        PlayerManager pm = GetGame().GetPlayerManager();
+        if (!pm) return false;
+        return pm.HasPlayerRole(playerId, EPlayerRole.ADMINISTRATOR)
+            || pm.HasPlayerRole(playerId, EPlayerRole.SESSION_ADMINISTRATOR)
+            || pm.HasPlayerRole(playerId, EPlayerRole.GAME_MASTER);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -127,6 +191,12 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     {
         if (!spin) return false;
         return spin.GetCurrentIndex() != 0;
+    }
+
+    protected void HideWidget(string name, bool hide)
+    {
+        Widget w = m_wRoot.FindAnyWidget(name);
+        if (w) w.SetVisible(!hide);
     }
 
     protected SCR_SpinBoxComponent FindSpinBox(string name)
