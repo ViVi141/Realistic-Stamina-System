@@ -563,33 +563,84 @@ class RSSOptimizerV4:
 # =============================================================================
 # 预设提取
 # =============================================================================
-def extract_presets(study: optuna.Study, output_dir: str = ".") -> Dict:
-    """从 Pareto 前沿提取三个预设配置"""
+def extract_presets(study, output_dir: str = ".") -> Dict:
+    """从 Pareto 前沿按设计哲学提取三个预设
+
+    选择策略（利用三目标 trade-off）：
+      - EliteStandard  → parameter_realism 最小（最贴近 C 参考值）
+      - StandardMilsim → 三目标归一化后距离原点最近（最均衡）
+      - TacticalAction → combat_endurance 最小（最宽容，适合快节奏玩法）
+    """
     if not study or not study.best_trials:
         print("[V4] 无 Pareto 解，跳过预设提取")
         return {}
 
-    # 按目标排序取前三
-    trials = sorted(study.best_trials, key=lambda t: t.values[0])  # 按耐力排序
+    trials = study.best_trials
+    n = len(trials)
+
+    # 提取三目标值矩阵
+    values = np.array([[t.values[0], t.values[1], t.values[2]] for t in trials])
+
+    # ── 归一化到 [0, 1] ──────────────────────────────────────
+    v_min = values.min(axis=0)
+    v_max = values.max(axis=0)
+    v_range = v_max - v_min
+    v_range[v_range == 0] = 1.0  # 防止除零
+    v_norm = (values - v_min) / v_range
+
+    # ── EliteStandard: parameter_realism (idx=2) 最小 ─────────
+    idx_realism = int(np.argmin(values[:, 2]))
+    t_realism = trials[idx_realism]
+
+    # ── StandardMilsim: 归一化后到原点欧氏距离最小（最均衡）───
+    dist_to_origin = np.sqrt((v_norm ** 2).sum(axis=1))
+    idx_balanced = int(np.argmin(dist_to_origin))
+    t_balanced = trials[idx_balanced]
+
+    # ── TacticalAction: combat_endurance (idx=0) 最小 ──────────
+    idx_endurance = int(np.argmin(values[:, 0]))
+    # 如果和 EliteStandard 重叠，取 endurance 次优
+    if idx_endurance == idx_realism and n > 1:
+        sorted_by_endurance = np.argsort(values[:, 0])
+        for candidate in sorted_by_endurance:
+            if candidate != idx_realism:
+                idx_endurance = int(candidate)
+                break
+
+    # 如果 StandardMilsim 和其他两个重叠，放宽选择
+    used = {idx_realism, idx_endurance}
+    if idx_balanced in used and n > len(used):
+        candidates = [i for i in np.argsort(dist_to_origin) if i not in used]
+        if candidates:
+            idx_balanced = int(candidates[0])
+
+    t_endurance = trials[idx_endurance]
+
+    # ── 构建预设 ─────────────────────────────────────────────
+    selection = [
+        ("EliteStandard",  t_realism,   "parameter_realism 最小 → 最贴近 C 参考值"),
+        ("StandardMilsim", t_balanced,  "三目标均衡 → 拟真与可玩性折中"),
+        ("TacticalAction", t_endurance, "combat_endurance 最小 → 战斗最宽容"),
+    ]
 
     presets = {}
-    labels = ["EliteStandard", "StandardMilsim", "TacticalAction"]
-    for i, label in enumerate(labels):
-        if i >= len(trials):
-            break
-        t = trials[i]
+    for label, t, philosophy in selection:
         config = {k: float(v) for k, v in t.params.items()}
         config['_metrics'] = {
             'combat_endurance': float(t.values[0]),
             'recovery_efficiency': float(t.values[1]),
             'parameter_realism': float(t.values[2]),
         }
+        config['_philosophy'] = philosophy
         presets[label] = config
 
         path = os.path.join(output_dir, f"optimized_rss_config_{label.lower()}_v4.json")
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        print(f"[V4] 预设已保存: {path}")
+
+        print(f"[V4] {label}: {philosophy}")
+        print(f"       combat={t.values[0]:.4f}  recovery={t.values[1]:.4f}  realism={t.values[2]:.4f}")
+        print(f"       saved → {path}")
 
     return presets
 
