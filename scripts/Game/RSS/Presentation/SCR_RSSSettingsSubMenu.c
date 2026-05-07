@@ -186,6 +186,10 @@ class SCR_SettingBindingRSS : SCR_SettingsBindingBase
 
         SCR_SpinBoxComponent spin = SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
         if (spin)
-            spin.SetCurrentItem(value ? 1 : 0, false, false);
+        {
+            int idx = 0;
+            if (value) idx = 1;
+            spin.SetCurrentItem(idx, false, false);
+        }
     }
 }
