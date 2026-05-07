@@ -50,14 +50,6 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     }
 
     //------------------------------------------------------------------------------------------------
-    override void OnTabHide()
-    {
-        super.OnTabHide();
-        if (m_bIsAdmin)
-            ApplyServerChanges();
-    }
-
-    //------------------------------------------------------------------------------------------------
     protected void UpdateVisibility()
     {
         // 管理员区域（预设、服务器开关）可见性
