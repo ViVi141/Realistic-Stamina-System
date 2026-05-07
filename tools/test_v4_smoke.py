@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for rss_pipeline_v4.py — 7 missions with environment factors"""
+"""Smoke test for rss_pipeline_v4.py — 8 missions with environment factors"""
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -11,7 +11,7 @@ from rss_pipeline_v4 import (
 twin = RSSDigitalTwin(RSSConstants())
 missions = MissionLibrary.all_missions()
 
-print("=== V4 Mission Smoke Test (7 missions, with environment) ===\n")
+print("=== V4 Mission Smoke Test (8 missions) ===\n")
 results = []
 for m in missions:
     temp_info = f"temp={m.temperature}°C" if m.temperature != 20.0 else ""
@@ -23,7 +23,8 @@ for m in missions:
     r = simulate_mission(twin, m)
     results.append(r)
     status = "PASS" if r.completion_possible else "FAIL"
-    print(f"{status} {m.name}{env_note}: min={r.min_stamina:.3f}  active_mean={r.mean_stamina_active:.3f}  "
+    stamina_bar = "!" if r.min_stamina < 0.15 else ("*" if r.min_stamina < 0.30 else " ")
+    print(f"{status} [{stamina_bar}] {m.name}{env_note}: min={r.min_stamina:.3f}  active_mean={r.mean_stamina_active:.3f}  "
           f"rec={r.recovery_gain:.4f}  exh={r.exhaustion_duration_s:.0f}s")
 
 params = {

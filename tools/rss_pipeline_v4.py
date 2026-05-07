@@ -229,14 +229,40 @@ class MissionLibrary:
             ],
         )
 
+    @staticmethod
+    def hell_desert_breakout(load_kg: float = 30.0) -> Mission:
+        """
+        地狱沙漠突围 (15min, 30kg, 35°C)
+        节奏: 沙漠巡逻强度 ×2，含 60s 趴姿休整窗口
+        高温 + 长行军 + 3 冲刺 = 区分恢复参数的标尺场景
+        """
+        return Mission(
+            name="地狱沙漠突围",
+            load_kg=load_kg,
+            temperature=35.0,   # 与沙漠巡逻相同温度
+            wind_speed=2.0,     # 轻微热风
+            description="30kg/35°C/15min 地狱突围，默认min≈0.2，差恢复参数会崩",
+            phases=[
+                Phase(360, 2.8,  MovementType.WALK,   Stance.STAND,  0,  1.2, "沙漠行军"),
+                Phase(20,  4.8,  MovementType.SPRINT, Stance.STAND,  0,  1.3, "冲刺突破"),
+                Phase(120, 2.8,  MovementType.WALK,   Stance.STAND,  3,  1.2, "上坡行军"),
+                Phase(60,  0.0,  MovementType.IDLE,   Stance.PRONE,   0,  1.0, "趴姿休整"),
+                Phase(180, 2.5,  MovementType.WALK,   Stance.STAND,  0,  1.3, "持续行军"),
+                Phase(20,  4.5,  MovementType.SPRINT, Stance.STAND,  0,  1.3, "冲刺突破"),
+                Phase(120, 2.5,  MovementType.WALK,   Stance.STAND,  0,  1.2, "撤离行军"),
+                Phase(30,  0.0,  MovementType.IDLE,   Stance.STAND,  0,  1.0, "抵达"),
+            ],
+        )
+
     @classmethod
     def all_missions(cls, load_30: float = 30.0, load_25: float = 25.0,
                      load_35: float = 35.0, load_20: float = 20.0,
                      load_45: float = 45.0) -> List[Mission]:
         return [
             cls.patrol_contact(load_30),
-            cls.desert_patrol(load_30),       # 环境压力测试
-            cls.amphibious_landing(load_25),  # 游泳+湿重测试
+            cls.desert_patrol(load_30),         # 环境压力测试
+            cls.hell_desert_breakout(load_30),  # 极限高温 + 多冲刺
+            cls.amphibious_landing(load_25),    # 游泳+湿重测试
             cls.urban_clearance(load_25),
             cls.mountain_approach(load_35),
             cls.vehicle_dismount(load_20),
@@ -362,9 +388,9 @@ def compute_metrics(results: List[MissionResult], params: Dict) -> Metrics:
 
     # ── 目标 1: 战斗耐力 ──────────────────────────────────────
     # 策略：取各任务运动阶段平均体力的加权平均，越低越差
-    # 权重：巡逻(0.22) ≈ 沙漠(0.20) > 重载(0.18) > 山地(0.12) > 两栖(0.10) ≈ 城镇(0.10) > 突击(0.08)
-    weights = {"巡逻接敌": 0.22, "沙漠巡逻": 0.20, "重载撤离": 0.18,
-               "山地接近": 0.12, "两栖登陆": 0.10, "城镇清扫": 0.10, "载具下车突击": 0.08}
+    # 权重：地狱(0.22) > 巡逻(0.18) > 沙漠(0.16) > 重载(0.14) > 山地(0.10) > 两栖(0.08) ≈ 城镇(0.07) > 突击(0.05)
+    weights = {"地狱沙漠突围": 0.22, "巡逻接敌": 0.18, "沙漠巡逻": 0.16, "重载撤离": 0.14,
+               "山地接近": 0.10, "两栖登陆": 0.08, "城镇清扫": 0.07, "载具下车突击": 0.05}
     weighted_mean = 0.0
     total_weight = 0.0
     for r in results:
@@ -590,31 +616,40 @@ def extract_presets(study, output_dir: str = ".") -> Dict:
 
     # ── EliteStandard: parameter_realism (idx=2) 最小 ─────────
     idx_realism = int(np.argmin(values[:, 2]))
-    t_realism = trials[idx_realism]
-
-    # ── StandardMilsim: 归一化后到原点欧氏距离最小（最均衡）───
-    dist_to_origin = np.sqrt((v_norm ** 2).sum(axis=1))
-    idx_balanced = int(np.argmin(dist_to_origin))
-    t_balanced = trials[idx_balanced]
 
     # ── TacticalAction: combat_endurance (idx=0) 最小 ──────────
-    idx_endurance = int(np.argmin(values[:, 0]))
-    # 如果和 EliteStandard 重叠，取 endurance 次优
+    all_endurance_indices = np.argsort(values[:, 0])
+    idx_endurance = int(all_endurance_indices[0])
+    # 如果和 EliteStandard 是同一个 trial，取下一个
     if idx_endurance == idx_realism and n > 1:
-        sorted_by_endurance = np.argsort(values[:, 0])
-        for candidate in sorted_by_endurance:
-            if candidate != idx_realism:
-                idx_endurance = int(candidate)
+        for c in all_endurance_indices:
+            if int(c) != idx_realism:
+                idx_endurance = int(c)
                 break
 
-    # 如果 StandardMilsim 和其他两个重叠，放宽选择
+    # ── StandardMilsim: 归一化后到原点欧氏距离最小，但不与上面两个重复
+    dist_to_origin = np.sqrt((v_norm ** 2).sum(axis=1))
+    balanced_candidates = np.argsort(dist_to_origin)
     used = {idx_realism, idx_endurance}
+    idx_balanced = int(balanced_candidates[0])
     if idx_balanced in used and n > len(used):
-        candidates = [i for i in np.argsort(dist_to_origin) if i not in used]
-        if candidates:
-            idx_balanced = int(candidates[0])
+        for c in balanced_candidates:
+            if int(c) not in used:
+                idx_balanced = int(c)
+                break
 
+    t_realism = trials[idx_realism]
+    t_balanced = trials[idx_balanced]
     t_endurance = trials[idx_endurance]
+
+    # ── 多样性诊断 ────────────────────────────────────────────
+    unique_indices = len({idx_realism, idx_balanced, idx_endurance})
+    if unique_indices < 3:
+        print(f"[V4] 警告: 预设多样性不足 ({unique_indices}/3 个唯一点)")
+        print(f"       combat_endurance 范围: [{values[:,0].min():.4f}, {values[:,0].max():.4f}]")
+        print(f"       recovery_efficiency 范围: [{values[:,1].min():.4f}, {values[:,1].max():.4f}]")
+        print(f"       parameter_realism 范围: [{values[:,2].min():.4f}, {values[:,2].max():.4f}]")
+        print(f"       → 建议: 增加 trial 数或添加更极限的场景")
 
     # ── 构建预设 ─────────────────────────────────────────────
     selection = [

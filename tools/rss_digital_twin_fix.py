@@ -187,9 +187,19 @@ class RSSConstants:
     SLOPE_DOWNHILL_COEFF = 0.03
 
     def __init__(self, **kwargs):
+        # 构建 lowercase -> uppercase 映射（优化器传 lowercase，类属性是 uppercase）
+        upper_map = {}
+        for attr_name in dir(self.__class__):
+            if not attr_name.startswith('_') and attr_name.isupper():
+                upper_map[attr_name.lower()] = attr_name
+
         for key, value in kwargs.items():
+            # 先尝试原始 key
             if hasattr(self, key):
                 setattr(self, key, value)
+            # 再尝试 uppercase 映射
+            elif key.lower() in upper_map:
+                setattr(self, upper_map[key.lower()], value)
 
 
 def encumbrance_speed_penalty_base(constants, current_weight: float) -> float:
