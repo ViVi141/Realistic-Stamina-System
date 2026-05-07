@@ -111,16 +111,6 @@ HorizontalLayoutWidgetClass {
         }
        }
       }
-      ButtonWidgetClass "{5932EB24D1397F15}" {
-       Name "BtnServerHUD"
-       Slot LayoutSlot "{54890CCD61050681}" {
-        Padding 4 4 4 4
-       }
-       Text "Set as Server HUD Default"
-       components {
-        SCR_ButtonTextComponent "{58BACCB35F176B69}" {}
-       }
-      }
       ButtonWidgetClass "{5932EB24D1397F13}" : "{C9DF0E6590F6C388}UI/layouts/WidgetLibrary/SpinBox/WLib_SpinBox.layout" {
        Name "ToggleMudSlip"
        Slot LayoutSlot "{54890CCD61050681}" {
