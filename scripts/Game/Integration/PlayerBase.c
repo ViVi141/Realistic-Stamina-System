@@ -695,6 +695,17 @@ modded class SCR_CharacterControllerComponent
         if (RSS_IsCaffeineSodiumBenzoateActive())
             totalDrainRate = totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
         
+        // 低体力恢复区域：体力低于阈值时，步行/慢跑 (<SPRINT阈值) 转为缓慢恢复
+        // 生理学依据：极度疲劳时慢走有助于代谢废物清除，但不冲刺也能缓解肌肉紧张
+        float walkRecoveryThreshold = StaminaConstants.GetWalkRecoveryZoneThreshold();
+        float walkRecoveryRatePerTick = StaminaConstants.GetWalkRecoveryZoneRate();
+        if (!useSwimmingModel && !isSprintActive && staminaPercent < walkRecoveryThreshold && currentSpeed > 0.1)
+        {
+            totalDrainRate = -walkRecoveryRatePerTick;  // 负数 = 恢复
+            baseDrainRateByVelocity = -walkRecoveryRatePerTick;
+            baseDrainRateByVelocityForModule = -walkRecoveryRatePerTick;
+        }
+        
         if (baseDrainRateByVelocityForModule == 0.0 && baseDrainRateByVelocity > 0.0)
             baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
         

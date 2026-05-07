@@ -154,6 +154,8 @@ class StaminaConstants
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // m/s（跛行速度）
     static const float SPRINT_ENABLE_THRESHOLD = 0.15; // 0.15（15%），体力≥15%时才能Sprint；与意志力平台期0.25间隔10%避免窄窗
+    static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
+    static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
     
     // 坡度修正系数
     static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
