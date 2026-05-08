@@ -238,6 +238,12 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         }
     }
     
+    //! 析构函数：实体删除时取消 MonitorStamina 的 CallLater，防止 use-after-free
+    void ~SCR_CharacterStaminaComponent()
+    {
+        StopStaminaMonitor();
+    }
+
     // 组件初始化时启动监控
     // 注意：使用 OnInit 而不是 OnPostInit（如果基类支持）
     // 如果基类不支持 OnInit，监控将在 SetAllowNativeStaminaSystem(false) 时启动

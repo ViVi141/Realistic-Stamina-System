@@ -8,8 +8,12 @@ modded class SCR_InventoryStorageManagerComponent : ScriptedInventoryStorageMana
         // 调用父类方法
         super.OnItemRemoved(storageOwner, item);
         
+        IEntity owner = GetOwner();
+        if (!owner)
+            return;
+        
         // 获取角色控制器组件
-        SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(GetOwner().FindComponent(SCR_CharacterControllerComponent));
+        SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
         if (characterController)
         {
             // 通知角色控制器组件更新负重缓存
@@ -23,8 +27,12 @@ modded class SCR_InventoryStorageManagerComponent : ScriptedInventoryStorageMana
         // 调用父类方法
         super.OnItemAdded(storageOwner, item);
         
+        IEntity owner = GetOwner();
+        if (!owner)
+            return;
+        
         // 获取角色控制器组件
-        SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(GetOwner().FindComponent(SCR_CharacterControllerComponent));
+        SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
         if (characterController)
         {
             // 通知角色控制器组件更新负重缓存

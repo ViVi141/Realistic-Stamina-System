@@ -75,10 +75,74 @@ modded class SCR_CharacterControllerComponent
     protected float m_fRssMudSlipCameraShake01 = 0.0;
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected bool m_bRssStaminaLoopActive = false;
+    protected bool m_bIsDeleted = false; // 实体删除标记：阻止 CallLater 回调在删除后继续触发
     
     // ====== perf: AI 桥方法节流（高密度 AI 减负）======
     protected float m_fLastAiBridgeTickTime = -1.0;
     protected static const float AI_BRIDGE_THROTTLE_SEC = 0.5; // 500ms，引擎 AI 行为树更新间隔为 0.55s
+
+    //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
+    //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
+    //! 参考 SCR_StaminaOverride.c 中 StopStaminaMonitor() 的 Callqueue.Remove() 模式。
+    void ~SCR_CharacterControllerComponent()
+    {
+        m_bIsDeleted = true;
+        m_bRssStaminaLoopActive = false;
+
+        // 取消所有待执行的 CallLater 回调（引擎层面移除，彻底杜绝 use-after-free）
+        if (GetGame() && GetGame().GetCallqueue())
+        {
+            GetGame().GetCallqueue().Remove(UpdateSpeedBasedOnStamina);
+            GetGame().GetCallqueue().Remove(StartSystem);
+            GetGame().GetCallqueue().Remove(EnsureRssStaminaLoopIfNeeded);
+            GetGame().GetCallqueue().Remove(EnsureAiStaminaLoopOnServer);
+            GetGame().GetCallqueue().Remove(RSS_WaitForGameModeConfig);
+            GetGame().GetCallqueue().Remove(CollectSpeedSample);
+            GetGame().GetCallqueue().Remove(InitStaminaHUD);
+            GetGame().GetCallqueue().Remove(RSS_MudSlip_FinishRagdoll);
+        }
+
+        // 移除所有 InputManager 监听器（防止实体删除后跳跃事件回调到已释放的 this）
+        if (GetGame())
+        {
+            InputManager inputManager = GetGame().GetInputManager();
+            if (inputManager)
+            {
+                inputManager.RemoveActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
+            }
+        }
+
+        // 清理 AI 恢复注册表（防止其他 AI tick 遍历已删除实体）
+        IEntity owner = GetOwner();
+        if (owner && !IsPlayerControlled())
+            SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+
+        // 清理 UISignalBridge 的实体引用
+        if (m_pUISignalBridge)
+            m_pUISignalBridge.Cleanup();
+
+        // 清零所有缓存引用
+        m_pCachedOwnerCharacter = null;
+        m_pStaminaComponent = null;
+        m_pCompartmentAccess = null;
+        m_pAnimComponent = null;
+        m_pCachedInventoryComponent = null;
+        m_pJumpVaultDetector = null;
+        m_pStanceTransitionManager = null;
+        m_pExerciseTracker = null;
+        m_pCollapseTransition = null;
+        m_pSlopeSpeedTransition = null;
+        m_pTerrainDetector = null;
+        m_pMudSlipRunner = null;
+        m_pEnvironmentFactor = null;
+        m_pFatigueSystem = null;
+        m_pEncumbranceCache = null;
+        m_pUISignalBridge = null;
+        m_pEpocState = null;
+        m_pNetworkSyncManager = null;
+    }
     
     override void OnInit(IEntity owner)
     {
@@ -216,6 +280,8 @@ modded class SCR_CharacterControllerComponent
 
     void RSS_WaitForGameModeConfig()
     {
+        if (m_bIsDeleted || !GetOwner())
+            return;
         if (Replication.IsServer())
             return;
         if (!m_bRssWaitingGameModeConfig)
@@ -254,15 +320,23 @@ modded class SCR_CharacterControllerComponent
 
     void UpdateSpeedBasedOnStamina()
     {
+        if (m_bIsDeleted)
+            return;
         IEntity owner = GetOwner();
         if (!owner)
         {
-            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS, false);
+            m_bIsDeleted = true;
+            RSS_NotifyEntityDeleting();
             return;
         }
 
-        Game game = GetGame();
-        World world = game.GetWorld();
+        if (!GetGame())
+        {
+            m_bIsDeleted = true;
+            RSS_NotifyEntityDeleting();
+            return;
+        }
+        World world = GetGame().GetWorld();
 
         if (!ShouldProcessStaminaUpdate())
         {
@@ -313,6 +387,9 @@ modded class SCR_CharacterControllerComponent
                 }
             }
         }
+
+        // 药效/OD 期间：非玩家实体（如 AI 被注射）也需要刷新流血倍率
+        if (!isPlayer && Replication.IsServer() && SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase))
         {
             if (m_pCachedOwnerCharacter)
             {
@@ -981,9 +1058,15 @@ modded class SCR_CharacterControllerComponent
 
     void CollectSpeedSample()
     {
+        if (m_bIsDeleted)
+            return;
         IEntity owner = GetOwner();
         if (!owner)
+        {
+            m_bIsDeleted = true;
+            RSS_NotifyEntityDeleting();
             return;
+        }
         
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (!character)
@@ -1483,6 +1566,9 @@ modded class SCR_CharacterControllerComponent
     {
         super.OnControlledByPlayer(owner, controlled);
 
+        if (m_bIsDeleted)
+            return;
+
         if (m_pTerrainDetector)
             m_pTerrainDetector.SetIsAiEntity(!controlled);
 
@@ -1591,7 +1677,11 @@ modded class SCR_CharacterControllerComponent
 
     void StartSystem()
     {
+        if (m_bIsDeleted || !GetOwner())
+            return;
         if (!ShouldProcessStaminaUpdate())
+            return;
+        if (!GetGame())
             return;
         m_bRssStaminaLoopActive = true;
         int intervalMs = SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs(this);
@@ -1603,6 +1693,8 @@ modded class SCR_CharacterControllerComponent
 
     void EnsureRssStaminaLoopIfNeeded()
     {
+        if (m_bIsDeleted)
+            return;
         if (!ShouldProcessStaminaUpdate())
             return;
         if (m_bRssStaminaLoopActive)
@@ -1612,6 +1704,8 @@ modded class SCR_CharacterControllerComponent
 
     void EnsureAiStaminaLoopOnServer()
     {
+        if (m_bIsDeleted || !GetOwner())
+            return;
         if (!Replication.IsServer() || IsPlayerControlled())
             return;
         if (m_bRssStaminaLoopActive)
@@ -1620,11 +1714,52 @@ modded class SCR_CharacterControllerComponent
         if (m_iAiLoopRetryCount > AI_LOOP_MAX_RETRIES)
             return;
         StartSystem();
-        if (!m_bRssStaminaLoopActive)
+        if (!m_bRssStaminaLoopActive && GetGame())
             GetGame().GetCallqueue().CallLater(EnsureAiStaminaLoopOnServer, 3000, false);
     }
 
 
+
+    //! 实体即将被删除时调用：清理所有引用、停止 CallLater 循环、注销静态注册表
+    void RSS_NotifyEntityDeleting()
+    {
+        if (m_bIsDeleted)
+            return;
+        m_bIsDeleted = true;
+        m_bRssStaminaLoopActive = false;
+        
+        IEntity owner = GetOwner();
+        
+        // 清理静态 AI 恢复注册表中的悬空引用
+        if (owner && !IsPlayerControlled())
+            SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+        
+        // 清理 UISignalBridge 的实体引用
+        if (m_pUISignalBridge)
+            m_pUISignalBridge.Cleanup();
+        
+        // 清零所有缓存的引擎组件引用（防止悬空指针访问）
+        m_pCachedOwnerCharacter = null;
+        m_pStaminaComponent = null;
+        m_pCompartmentAccess = null;
+        m_pAnimComponent = null;
+        m_pCachedInventoryComponent = null;
+        
+        // 清理子模块引用（ref 类型可延迟 GC）
+        m_pJumpVaultDetector = null;
+        m_pStanceTransitionManager = null;
+        m_pExerciseTracker = null;
+        m_pCollapseTransition = null;
+        m_pSlopeSpeedTransition = null;
+        m_pTerrainDetector = null;
+        m_pMudSlipRunner = null;
+        m_pEnvironmentFactor = null;
+        m_pFatigueSystem = null;
+        m_pEncumbranceCache = null;
+        m_pUISignalBridge = null;
+        m_pEpocState = null;
+        m_pNetworkSyncManager = null;
+    }
 
     protected void RSS_UpdateTacticalSprintState()
     {

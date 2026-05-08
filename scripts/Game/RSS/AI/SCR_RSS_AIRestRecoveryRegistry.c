@@ -79,4 +79,14 @@ class SCR_RSS_AIRestRecoveryRegistry
         if (idx >= 0)
             s_aRestRecoveryEntities.RemoveOrdered(idx);
     }
+
+    //------------------------------------------------------------------------------------------------
+    //! 实体删除时的安全清理：从静态数组中移除该 entity 的所有引用。
+    //! 由 PlayerBase::RSS_NotifyEntityDeleting() 调用，防止悬空 IEntity 引用导致崩溃。
+    static void CleanupEntity(IEntity owner)
+    {
+        if (!owner)
+            return;
+        ClearRestRecovery(owner);
+    }
 }

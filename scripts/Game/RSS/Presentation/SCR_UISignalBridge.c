@@ -84,6 +84,14 @@ class UISignalBridge
         m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, value);
     }
 
+    //! 实体删除时清理所有引用，防止悬空指针访问。
+    void Cleanup()
+    {
+        m_pOwner = null;
+        m_pSignalsManager = null;
+        m_iExhaustionSignal = -1;
+    }
+
     protected bool TryResolveSignals()
     {
         if (!m_pOwner)

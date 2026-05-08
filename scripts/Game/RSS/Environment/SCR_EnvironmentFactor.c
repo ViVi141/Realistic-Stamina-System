@@ -9,11 +9,12 @@ class EnvironmentFactor
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
     
     // ====== 引擎 GlobalSignalsManager 信号索引（perf: 替代 C++ 桥接调用）======
-    protected ref GameSignalsManager m_pGlobalSignals;
-    protected int m_iSignalRainIntensity = -1;
-    protected int m_iSignalWindSpeed     = -1;
-    protected int m_iSignalTOD           = -1; // "TimeOfDay"
-    protected int m_iSignalWetness       = -1;
+    // 改为静态：所有 EnvironmentFactor 实例共享同一组信号索引，避免每实体 AddOrFindSignal
+    protected static ref GameSignalsManager s_pGlobalSignals;
+    protected static int s_iSignalRainIntensity = -1;
+    protected static int s_iSignalWindSpeed     = -1;
+    protected static int s_iSignalTOD           = -1; // "TimeOfDay"
+    protected static int s_iSignalWetness       = -1;
     
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
     protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于线性湿重衰减）
@@ -161,14 +162,17 @@ class EnvironmentFactor
                 m_pCachedWeatherManager = chimeraWorld.GetTimeAndWeatherManager();
         }
 
-        // perf: 注册引擎 GlobalSignalsManager 信号索引，用内存读取替代 C++ 桥接
-        m_pGlobalSignals = GetGame().GetSignalsManager();
-        if (m_pGlobalSignals)
+        // perf: 全局信号索引（静态，所有实例共享，仅首次注册）
+        if (!s_pGlobalSignals)
         {
-            m_iSignalRainIntensity = m_pGlobalSignals.AddOrFindSignal("RainIntensity");
-            m_iSignalWindSpeed     = m_pGlobalSignals.AddOrFindSignal("WindSpeed");
-            m_iSignalTOD           = m_pGlobalSignals.AddOrFindSignal("TimeOfDay");
-            m_iSignalWetness       = m_pGlobalSignals.AddOrFindSignal("Wetness");
+            s_pGlobalSignals = GetGame().GetSignalsManager();
+            if (s_pGlobalSignals)
+            {
+                s_iSignalRainIntensity = s_pGlobalSignals.AddOrFindSignal("RainIntensity");
+                s_iSignalWindSpeed     = s_pGlobalSignals.AddOrFindSignal("WindSpeed");
+                s_iSignalTOD           = s_pGlobalSignals.AddOrFindSignal("TimeOfDay");
+                s_iSignalWetness       = s_pGlobalSignals.AddOrFindSignal("Wetness");
+            }
         }
 
         // perf: 缓存纬度（地图常数，初始化后永不变化）
@@ -733,11 +737,11 @@ class EnvironmentFactor
 
     // ==================== 私有方法 ====================
     
-    // ── 信号读取辅助（perf: GlobalSignalsManager 内存读取，回退到 C++ 桥接）──
+    // ── 信号读取辅助（perf: 静态 GlobalSignalsManager 内存读取，回退到 C++ 桥接）──
     protected float ReadSignalRainIntensity()
     {
-        if (m_pGlobalSignals && m_iSignalRainIntensity >= 0)
-            return m_pGlobalSignals.GetSignalValue(m_iSignalRainIntensity);
+        if (s_pGlobalSignals && s_iSignalRainIntensity >= 0)
+            return s_pGlobalSignals.GetSignalValue(s_iSignalRainIntensity);
         if (m_pCachedWeatherManager)
             return m_pCachedWeatherManager.GetRainIntensity();
         return 0.0;
@@ -745,8 +749,8 @@ class EnvironmentFactor
     
     protected float ReadSignalWindSpeed()
     {
-        if (m_pGlobalSignals && m_iSignalWindSpeed >= 0)
-            return m_pGlobalSignals.GetSignalValue(m_iSignalWindSpeed);
+        if (s_pGlobalSignals && s_iSignalWindSpeed >= 0)
+            return s_pGlobalSignals.GetSignalValue(s_iSignalWindSpeed);
         if (m_pCachedWeatherManager)
             return m_pCachedWeatherManager.GetWindSpeed();
         return 0.0;
@@ -754,8 +758,8 @@ class EnvironmentFactor
     
     protected float ReadSignalTOD()
     {
-        if (m_pGlobalSignals && m_iSignalTOD >= 0)
-            return m_pGlobalSignals.GetSignalValue(m_iSignalTOD);
+        if (s_pGlobalSignals && s_iSignalTOD >= 0)
+            return s_pGlobalSignals.GetSignalValue(s_iSignalTOD);
         if (m_pCachedWeatherManager)
             return m_pCachedWeatherManager.GetTimeOfTheDay();
         return 12.0;
@@ -763,8 +767,8 @@ class EnvironmentFactor
     
     protected float ReadSignalWetness()
     {
-        if (m_pGlobalSignals && m_iSignalWetness >= 0)
-            return m_pGlobalSignals.GetSignalValue(m_iSignalWetness);
+        if (s_pGlobalSignals && s_iSignalWetness >= 0)
+            return s_pGlobalSignals.GetSignalValue(s_iSignalWetness);
         if (m_pCachedWeatherManager)
             return m_pCachedWeatherManager.GetCurrentWetness();
         return 0.0;
