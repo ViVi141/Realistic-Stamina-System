@@ -7,6 +7,14 @@ class EnvironmentFactor
     // ==================== 状态变量 ====================
     protected float m_fCachedHeatStressMultiplier = 1.0; // 缓存的热应激倍数
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
+    
+    // ====== 引擎 GlobalSignalsManager 信号索引（perf: 替代 C++ 桥接调用）======
+    protected ref GameSignalsManager m_pGlobalSignals;
+    protected int m_iSignalRainIntensity = -1;
+    protected int m_iSignalWindSpeed     = -1;
+    protected int m_iSignalTOD           = -1; // "TimeOfDay"
+    protected int m_iSignalWetness       = -1;
+    
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
     protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于线性湿重衰减）
     protected float m_fRainPeakWeight = 0.0; // 停雨瞬间的湿重峰值（kg），供线性衰减基准
@@ -53,7 +61,12 @@ class EnvironmentFactor
     // ====== 温度计算相关参数（P1 实现） ======
     protected float m_fTempUpdateInterval = 5.0; // 温度步进间隔（秒），默认5s（实时每5秒更新）
     protected float m_fLastTemperatureUpdateTime = 0.0; // 上次温度更新时间（秒）
-
+    
+    // ====== 云因子缓存（perf: 避免每5s做字符串匹配的 InferCloudFactor）======
+    protected float m_fCachedCloudFactor = 0.0;
+    protected float m_fLastCloudFactorUpdateTime = -999.0;
+    protected const float CLOUD_FACTOR_CACHE_DURATION = 30.0; // 30秒缓存，云量变化以分钟计
+    
     // 位置变化触发温度重算（v3.20.0 性能优化）
     // 玩家移动超过阈值时提前触发，静止时回退到时间间隔，减少不必要的重算
     protected vector m_vLastTempCalcPosition = vector.Zero; // 上次温度计算时的位置
@@ -148,17 +161,35 @@ class EnvironmentFactor
                 m_pCachedWeatherManager = chimeraWorld.GetTimeAndWeatherManager();
         }
 
+        // perf: 注册引擎 GlobalSignalsManager 信号索引，用内存读取替代 C++ 桥接
+        m_pGlobalSignals = GetGame().GetSignalsManager();
+        if (m_pGlobalSignals)
+        {
+            m_iSignalRainIntensity = m_pGlobalSignals.AddOrFindSignal("RainIntensity");
+            m_iSignalWindSpeed     = m_pGlobalSignals.AddOrFindSignal("WindSpeed");
+            m_iSignalTOD           = m_pGlobalSignals.AddOrFindSignal("TimeOfDay");
+            m_iSignalWetness       = m_pGlobalSignals.AddOrFindSignal("Wetness");
+        }
+
+        // perf: 缓存纬度（地图常数，初始化后永不变化）
+        if (m_pCachedWeatherManager)
+        {
+            float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
+            if (engLat != 0.0)
+                m_fLatitude = engLat;
+        }
+
         // 初始化实时检测缓存（若引擎可用）
         if (m_pCachedWeatherManager)
         {
-            m_fLastKnownTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            m_fLastKnownTOD = ReadSignalTOD();
             int y, mo, d;
             m_pCachedWeatherManager.GetDate(y, mo, d);
             m_iLastKnownYear = y;
             m_iLastKnownMonth = mo;
             m_iLastKnownDay = d;
-            m_fLastKnownRainIntensity = m_pCachedWeatherManager.GetRainIntensity();
-            m_fLastKnownWindSpeed = m_pCachedWeatherManager.GetWindSpeed();
+            m_fLastKnownRainIntensity = ReadSignalRainIntensity();
+            m_fLastKnownWindSpeed = ReadSignalWindSpeed();
             m_bLastKnownOverrideTemperature = m_pCachedWeatherManager.GetOverrideTemperature();
             float sr = 0.0;
             float ss = 0.0;
@@ -272,6 +303,9 @@ class EnvironmentFactor
         
         // 初始化室内检测模块
         m_pIndoorDetector = new SCR_EnvironmentIndoorDetection();
+        
+        // perf: 随机偏移环境检测相位，避免多实体（尤其是AI）在同一帧集中触发5s更新
+        m_fLastEnvironmentCheckTime = m_fLastEnvironmentCheckTime + Math.RandomFloat(0.0, StaminaConstants.ENV_CHECK_INTERVAL);
         }
     }
 
@@ -391,12 +425,12 @@ class EnvironmentFactor
         bool forceUpdate = false;
         if (m_pCachedWeatherManager)
         {
-            // 快速采样当前引擎状态
-            float currTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            // 快速采样当前引擎状态（perf: 优先使用信号内存读取）
+            float currTOD = ReadSignalTOD();
             int y, mo, d;
             m_pCachedWeatherManager.GetDate(y, mo, d);
-            float currRain = m_pCachedWeatherManager.GetRainIntensity();
-            float currWind = m_pCachedWeatherManager.GetWindSpeed();
+            float currRain = ReadSignalRainIntensity();
+            float currWind = ReadSignalWindSpeed();
             bool currOverrideTemp = m_pCachedWeatherManager.GetOverrideTemperature();
             float sr = 0.0;
             float ss = 0.0;
@@ -486,14 +520,14 @@ class EnvironmentFactor
         // 同步更新实时检测缓存（记录当前引擎状态，供下一次比较）
         if (m_pCachedWeatherManager)
         {
-            m_fLastKnownTOD = m_pCachedWeatherManager.GetTimeOfTheDay();
+            m_fLastKnownTOD = ReadSignalTOD();
             int y, mo, d;
             m_pCachedWeatherManager.GetDate(y, mo, d);
             m_iLastKnownYear = y;
             m_iLastKnownMonth = mo;
             m_iLastKnownDay = d;
-            m_fLastKnownRainIntensity = m_pCachedWeatherManager.GetRainIntensity();
-            m_fLastKnownWindSpeed = m_pCachedWeatherManager.GetWindSpeed();
+            m_fLastKnownRainIntensity = ReadSignalRainIntensity();
+            m_fLastKnownWindSpeed = ReadSignalWindSpeed();
             m_bLastKnownOverrideTemperature = m_pCachedWeatherManager.GetOverrideTemperature();
             float sr = 0.0;
             float ss = 0.0;
@@ -508,13 +542,13 @@ class EnvironmentFactor
         {
             if (m_pCachedWeatherManager)
             {
-                float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+                float lat = m_fLatitude; // perf: 缓存纬度
                 int year, month, day;
                 m_pCachedWeatherManager.GetDate(year, month, day);
                 int n = DayOfYear(year, month, day);
-                float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-                float cloud = InferCloudFactor();
-                float rain = m_pCachedWeatherManager.GetRainIntensity();
+                float tod = ReadSignalTOD();
+                float cloud = GetCloudFactorCached();
+                float rain = ReadSignalRainIntensity();
                 float altM = GetCurrentAltitudeMeters(owner);
                 float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
@@ -699,6 +733,42 @@ class EnvironmentFactor
 
     // ==================== 私有方法 ====================
     
+    // ── 信号读取辅助（perf: GlobalSignalsManager 内存读取，回退到 C++ 桥接）──
+    protected float ReadSignalRainIntensity()
+    {
+        if (m_pGlobalSignals && m_iSignalRainIntensity >= 0)
+            return m_pGlobalSignals.GetSignalValue(m_iSignalRainIntensity);
+        if (m_pCachedWeatherManager)
+            return m_pCachedWeatherManager.GetRainIntensity();
+        return 0.0;
+    }
+    
+    protected float ReadSignalWindSpeed()
+    {
+        if (m_pGlobalSignals && m_iSignalWindSpeed >= 0)
+            return m_pGlobalSignals.GetSignalValue(m_iSignalWindSpeed);
+        if (m_pCachedWeatherManager)
+            return m_pCachedWeatherManager.GetWindSpeed();
+        return 0.0;
+    }
+    
+    protected float ReadSignalTOD()
+    {
+        if (m_pGlobalSignals && m_iSignalTOD >= 0)
+            return m_pGlobalSignals.GetSignalValue(m_iSignalTOD);
+        if (m_pCachedWeatherManager)
+            return m_pCachedWeatherManager.GetTimeOfTheDay();
+        return 12.0;
+    }
+    
+    protected float ReadSignalWetness()
+    {
+        if (m_pGlobalSignals && m_iSignalWetness >= 0)
+            return m_pGlobalSignals.GetSignalValue(m_iSignalWetness);
+        if (m_pCachedWeatherManager)
+            return m_pCachedWeatherManager.GetCurrentWetness();
+        return 0.0;
+    }
 
     // 查询当前海拔（米）：有 owner 时用 SCR_TerrainHelper.GetTerrainY，否则用配置 m_fAltitudeMeters
     protected float GetCurrentAltitudeMeters(IEntity owner)
@@ -807,6 +877,18 @@ class EnvironmentFactor
     protected float InferCloudFactor()
     {
         return SCR_EnvironmentAstronomyMath.InferCloudFactor(m_fCachedRainIntensity, m_fCachedSurfaceWetness, m_pCachedWeatherManager);
+    }
+
+    // 云因子缓存包装（perf: 30s TTL，避免每5s做字符串匹配 + C++桥接）
+    protected float GetCloudFactorCached()
+    {
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        if (currentTime - m_fLastCloudFactorUpdateTime > CLOUD_FACTOR_CACHE_DURATION)
+        {
+            m_fCachedCloudFactor = InferCloudFactor();
+            m_fLastCloudFactorUpdateTime = currentTime;
+        }
+        return m_fCachedCloudFactor;
     }
 
 
@@ -1035,20 +1117,22 @@ class EnvironmentFactor
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
         
         // 5. 获取当前气温：通用经验模型（纬度+季节+海拔+昼夜+天气），不依赖物理求解，兼容各模组地图
+        // perf: 仅首帧无条件初始化，之后严格按时间/位置触发，避免每5s双重计算
         if (m_pCachedWeatherManager)
         {
-            float lat = m_pCachedWeatherManager.GetCurrentLatitude();
+            float lat = m_fLatitude; // perf: 缓存纬度，地图常数无需每次查询
             int year, month, day;
             m_pCachedWeatherManager.GetDate(year, month, day);
             int n = DayOfYear(year, month, day);
-            float tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-            float cloud = InferCloudFactor();
-            float rain = m_pCachedWeatherManager.GetRainIntensity();
-            float altM = GetCurrentAltitudeMeters(owner);
-            float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
-
+            
+            // 首帧无条件初始化（仅一次）
             if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
             {
+                float tod = ReadSignalTOD();
+                float cloud = GetCloudFactorCached();
+                float rain = ReadSignalRainIntensity();
+                float altM = GetCurrentAltitudeMeters(owner);
+                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
                 if (owner)
@@ -1071,11 +1155,11 @@ class EnvironmentFactor
 
             if (timeTrigger || posTrigger)
             {
-                tod = m_pCachedWeatherManager.GetTimeOfTheDay();
-                cloud = InferCloudFactor();
-                rain = m_pCachedWeatherManager.GetRainIntensity();
-                altM = GetCurrentAltitudeMeters(owner);
-                T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                float tod = ReadSignalTOD();
+                float cloud = GetCloudFactorCached();
+                float rain = ReadSignalRainIntensity();
+                float altM = GetCurrentAltitudeMeters(owner);
+                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
                 m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
@@ -1168,21 +1252,17 @@ class EnvironmentFactor
     // @return 降雨强度（0.0-1.0）
     protected float CalculateRainIntensityFromAPI()
     {
-        return SCR_EnvironmentWeatherApi.CalculateRainIntensityFromAPI(m_pCachedWeatherManager);
-    }
-    
-    // 基于状态名称判断降雨强度（回退方案）
-    // @return 降雨强度（0.0-1.0）
-    protected float CalculateRainIntensityFromStateName()
-    {
+        float rainIntensity = ReadSignalRainIntensity();
+        if (rainIntensity > StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
+            return rainIntensity;
         return SCR_EnvironmentWeatherApi.CalculateRainIntensityFromStateName(m_pCachedWeatherManager);
     }
     
-    // 从API获取风速
+    // 从API获取风速（perf: 信号内存读取）
     // @return 风速（m/s）
     protected float CalculateWindSpeedFromAPI()
     {
-        return SCR_EnvironmentWeatherApi.CalculateWindSpeedFromAPI(m_pCachedWeatherManager);
+        return ReadSignalWindSpeed();
     }
     
     // 从API获取风向
@@ -1212,7 +1292,7 @@ class EnvironmentFactor
     // @return 地表湿度（0.0-1.0）
     protected float CalculateSurfaceWetnessFromAPI()
     {
-        return SCR_EnvironmentWeatherApi.CalculateSurfaceWetnessFromAPI(m_pCachedWeatherManager);
+        return ReadSignalWetness();
     }
     
     // 计算降雨湿重（基于降雨强度）

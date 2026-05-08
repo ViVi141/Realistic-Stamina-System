@@ -11,7 +11,7 @@ class SCR_EnvironmentIndoorDetection
     protected ref TraceParam m_pTraceParamEnclosed;
     protected bool m_bIndoorDebug = false;
 
-    protected const float INDOOR_CHECK_INTERVAL = 1.0;
+    protected const float INDOOR_CHECK_INTERVAL = 2.0; // perf: 1→2，室内/室外切换频率低
 
     // ==================== 调试开关 ====================
 

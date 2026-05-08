@@ -38,7 +38,7 @@ class EncumbranceCache
     protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存的库存组件引用
     protected SCR_InventoryStorageManagerComponent m_pCachedInventoryManager; // 缓存的库存管理器组件（避免每 tick FindComponent）
     protected float m_fLastCheckTime = 0.0; // 上次检查时间（秒）
-    protected const float ENCUMBRANCE_CHECK_INTERVAL = 0.2; // 轮询间隔（秒），结合事件驱动减少 GetTotalWeightOfAllStorages 调用
+    protected const float ENCUMBRANCE_CHECK_INTERVAL = 0.5; // 轮询间隔（秒），perf: 0.2→0.5，事件驱动已覆盖变更
 
     // ==================== 公共方法 ====================
     

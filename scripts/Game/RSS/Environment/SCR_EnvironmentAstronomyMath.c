@@ -83,12 +83,15 @@ class SCR_EnvironmentAstronomyMath
                 {
                     string s = currentWeatherState.GetStateName();
                     s.ToLower();
+                    // perf: 按覆盖度降序排列，尽早命中退出
                     if (s.Contains("storm") || s.Contains("heavy"))
                         cloud = Math.Max(cloud, 0.95);
+                    else if (s.Contains("overcast"))
+                        cloud = Math.Max(cloud, 0.7);
                     else if (s.Contains("rain") || s.Contains("shower"))
                         cloud = Math.Max(cloud, 0.6);
-                    else if (s.Contains("cloud") || s.Contains("overcast"))
-                        cloud = Math.Max(cloud, 0.6);
+                    else if (s.Contains("cloud"))
+                        cloud = Math.Max(cloud, 0.45);
                     else if (s.Contains("partly") || s.Contains("few"))
                         cloud = Math.Max(cloud, 0.25);
                 }

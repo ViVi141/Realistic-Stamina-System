@@ -529,7 +529,7 @@ class StaminaConstants
     static const float ENV_MAX_TOTAL_WET_WEIGHT = 10.0; // kg，总湿重上限（游泳+降雨）
     
     // 环境因子检测频率（性能优化）
-    static const float ENV_CHECK_INTERVAL = 5.0; // 秒，环境因子检测间隔
+    static const float ENV_CHECK_INTERVAL = 10.0; // 秒，环境因子检测间隔（perf: 5→10，天气变化缓慢无需高频）
     
     // 室内检测参数
     static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
@@ -581,7 +581,7 @@ class StaminaConstants
     static const bool RSS_PERF_AI_DISTANCE_LOD_ENABLED = true;
     static const float RSS_PERF_AI_LOD_NEAR_M = 400.0;
     static const float RSS_PERF_AI_LOD_FAR_M = 1200.0;
-    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 100;
+    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 200; // perf: 100→200，高密度 AI 减负。体力变化是秒级，200ms 精度足够
     static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
     static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
     //! 群组「是否存在战场危险」判定缓存秒数；避免每 AI 每 tick 遍历全组成员（与 SCR_RSS_AIGroupStaminaProxy 一致）

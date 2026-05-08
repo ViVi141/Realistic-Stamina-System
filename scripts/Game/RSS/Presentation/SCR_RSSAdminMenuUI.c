@@ -14,6 +14,8 @@ class SCR_RSSAdminMenuUI
     protected CheckBoxWidget m_wChkDataExport;
     protected CheckBoxWidget m_wChkMudSlip;
     protected CheckBoxWidget m_wChkAICombat;
+    protected CheckBoxWidget m_wChkDisableAI;
+    protected CheckBoxWidget m_wChkDisableAIStamina;
 
     //------------------------------------------------------------------------------------------------
     // 当 TabView 创建 RSS 标签内容时调用（由 SCR_RSSSettingsTab 触发）
@@ -61,6 +63,8 @@ class SCR_RSSAdminMenuUI
         m_wChkDataExport = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDataExport"));
         m_wChkMudSlip = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkMudSlip"));
         m_wChkAICombat = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkAICombat"));
+        m_wChkDisableAI = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDisableAI"));
+        m_wChkDisableAIStamina = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDisableAIStamina"));
 
         // 绑定预设按钮
         SCR_ButtonTextComponent btn;
@@ -100,6 +104,8 @@ class SCR_RSSAdminMenuUI
         if (m_wChkDataExport) m_wChkDataExport.SetChecked(settings.m_bDataExportEnabled);
         if (m_wChkMudSlip)  m_wChkMudSlip.SetChecked(settings.m_bEnableMudSlipMechanism);
         if (m_wChkAICombat) m_wChkAICombat.SetChecked(settings.m_bEnableAIStaminaCombatEffects);
+        if (m_wChkDisableAI) m_wChkDisableAI.SetChecked(settings.m_bDisableAIAllCalc);
+        if (m_wChkDisableAIStamina) m_wChkDisableAIStamina.SetChecked(settings.m_bDisableAIStaminaCalc);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -157,6 +163,8 @@ class SCR_RSSAdminMenuUI
         if (m_wChkDataExport) settings.m_bDataExportEnabled = m_wChkDataExport.IsChecked();
         if (m_wChkMudSlip)  settings.m_bEnableMudSlipMechanism = m_wChkMudSlip.IsChecked();
         if (m_wChkAICombat) settings.m_bEnableAIStaminaCombatEffects = m_wChkAICombat.IsChecked();
+        if (m_wChkDisableAI) settings.m_bDisableAIAllCalc = m_wChkDisableAI.IsChecked();
+        if (m_wChkDisableAIStamina) settings.m_bDisableAIStaminaCalc = m_wChkDisableAIStamina.IsChecked();
     }
 
     //------------------------------------------------------------------------------------------------

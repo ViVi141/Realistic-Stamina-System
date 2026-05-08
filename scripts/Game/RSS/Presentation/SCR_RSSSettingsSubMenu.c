@@ -10,6 +10,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected SCR_SpinBoxComponent m_wDebugToggle;
     protected SCR_SpinBoxComponent m_wMudSlipToggle;
     protected SCR_SpinBoxComponent m_wAICombatToggle;
+    protected SCR_SpinBoxComponent m_wDisableAIToggle;
+    protected SCR_SpinBoxComponent m_wDisableAIStaminaToggle;
     protected bool m_bIsAdmin;
 
     //------------------------------------------------------------------------------------------------
@@ -24,6 +26,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         m_wDebugToggle     = FindSpinBox("ToggleDebug");
         m_wMudSlipToggle   = FindSpinBox("ToggleMudSlip");
         m_wAICombatToggle  = FindSpinBox("ToggleAICombat");
+        m_wDisableAIToggle       = FindSpinBox("ToggleDisableAI");
+        m_wDisableAIStaminaToggle = FindSpinBox("ToggleDisableAIStamina");
 
         if (m_wPresetSelector)
             m_wPresetSelector.m_OnChanged.Insert(OnPresetChanged);
@@ -57,6 +61,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
                 s.m_bDebugLogEnabled              = GetSpin(m_wDebugToggle);
                 s.m_bEnableMudSlipMechanism       = GetSpin(m_wMudSlipToggle);
                 s.m_bEnableAIStaminaCombatEffects = GetSpin(m_wAICombatToggle);
+                s.m_bDisableAIAllCalc       = GetSpin(m_wDisableAIToggle);
+                s.m_bDisableAIStaminaCalc   = GetSpin(m_wDisableAIStaminaToggle);
                 SCR_RSS_ConfigManager.Save();
                 SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
             }
@@ -73,6 +79,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         HideWidget("ToggleServerHUD",  !m_bIsAdmin);
         HideWidget("ToggleMudSlip",    !m_bIsAdmin);
         HideWidget("ToggleAICombat",   !m_bIsAdmin);
+        HideWidget("ToggleDisableAI",         !m_bIsAdmin);
+        HideWidget("ToggleDisableAIStamina",  !m_bIsAdmin);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -91,6 +99,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         SetSpin(m_wDebugToggle,    s.m_bDebugLogEnabled);
         SetSpin(m_wMudSlipToggle,  s.m_bEnableMudSlipMechanism);
         SetSpin(m_wAICombatToggle, s.m_bEnableAIStaminaCombatEffects);
+        SetSpin(m_wDisableAIToggle,       s.m_bDisableAIAllCalc);
+        SetSpin(m_wDisableAIStaminaToggle, s.m_bDisableAIStaminaCalc);
 
         if (m_wPresetSelector)
         {

@@ -76,6 +76,10 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected bool m_bRssStaminaLoopActive = false;
     
+    // ====== perf: AI 桥方法节流（高密度 AI 减负）======
+    protected float m_fLastAiBridgeTickTime = -1.0;
+    protected static const float AI_BRIDGE_THROTTLE_SEC = 0.5; // 500ms，引擎 AI 行为树更新间隔为 0.55s
+    
     override void OnInit(IEntity owner)
     {
         super.OnInit(owner);
@@ -291,10 +295,24 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         
-        RSS_CombatStim_OnTickTransitions();
+        // perf: AI 快速路径 — 跳过 AI 不需要的玩家专属逻辑
+        bool isPlayer = IsPlayerControlled();
+        
+        if (isPlayer)
+        {
+            RSS_CombatStim_OnTickTransitions();
 
-        // 药效/OD 期间：已存在的 SCR_BleedingDamageEffect 不会每帧读取 GetBleedingScale()，且 Hijack 叠伤时可能写成未乘全局倍率的 DPS；每轮体力更新同步一次。
-        if (Replication.IsServer() && SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase))
+            // 药效/OD 期间：流血倍率刷新
+            if (Replication.IsServer() && SCR_CombatStimStateMachine.IsActive(m_iCombatStimPhase))
+            {
+                if (m_pCachedOwnerCharacter)
+                {
+                    SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(m_pCachedOwnerCharacter.GetDamageManager());
+                    if (stimDmgMgr)
+                        RSS_CombatStim_RefreshBleedingEffectsToMatchScale(stimDmgMgr);
+                }
+            }
+        }
         {
             if (m_pCachedOwnerCharacter)
             {
@@ -362,7 +380,7 @@ modded class SCR_CharacterControllerComponent
             m_bHasLastPositionSample = false;  // 离开游泳时重置
         }
         
-        RSS_UpdateTacticalSprintState();
+        if (isPlayer) RSS_UpdateTacticalSprintState();
         bool isSprintingNow = IsSprinting();
         int phaseNow = GetCurrentMovementPhase();
         bool isSprintActive = isSprintingNow || (phaseNow == 3);
@@ -413,8 +431,16 @@ modded class SCR_CharacterControllerComponent
         else
             m_sLastSpeedSource = "Server";
 
+        // AI 仅速度模式：应用速度倍率后跳过体力消耗/恢复链
+        if (!isPlayer && StaminaConfigBridge.IsAiStaminaCalcDisabled())
+        {
+            m_bRssStaminaLoopActive = true;
+            GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
+            return;
+        }
+
         bool isCriticalData = (staminaPercent <= 0.05 || (m_pNetworkSyncManager && m_pNetworkSyncManager.GetLastReportedStaminaPercent() > 0.5 && staminaPercent <= 0.1));
-        if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
+        if (isPlayer && !Replication.IsServer() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
         {
             int syncType = 0;
             if (isCriticalData)
@@ -439,17 +465,19 @@ modded class SCR_CharacterControllerComponent
         if (isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
         
-        WetWeightUpdateResult wetWeightResult = SwimmingStateManager.UpdateWetWeight(
-            m_bWasSwimming,
-            isSwimming,
-            currentTime,
-            m_fWetWeightStartTime,
-            m_fCurrentWetWeight,
-            owner);
-        m_fWetWeightStartTime = wetWeightResult.wetWeightStartTime;
-        m_fCurrentWetWeight = wetWeightResult.currentWetWeight;
-        
-        m_bWasSwimming = isSwimming;
+        if (isPlayer)
+        {
+            WetWeightUpdateResult wetWeightResult = SwimmingStateManager.UpdateWetWeight(
+                m_bWasSwimming,
+                isSwimming,
+                currentTime,
+                m_fWetWeightStartTime,
+                m_fCurrentWetWeight,
+                owner);
+            m_fWetWeightStartTime = wetWeightResult.wetWeightStartTime;
+            m_fCurrentWetWeight = wetWeightResult.currentWetWeight;
+            m_bWasSwimming = isSwimming;
+        }
         
         float heatStressMultiplier = 1.0;
         if (m_pEnvironmentFactor)
@@ -459,7 +487,7 @@ modded class SCR_CharacterControllerComponent
         if (m_pEnvironmentFactor)
             rainWeight = m_pEnvironmentFactor.GetRainWeight();
 
-        if (RSS_IsCaffeineSodiumBenzoateActive())
+        if (isPlayer && RSS_IsCaffeineSodiumBenzoateActive())
         {
             heatStressMultiplier = 1.0;
             rainWeight = 0.0;
@@ -473,7 +501,7 @@ modded class SCR_CharacterControllerComponent
 
         bool useSwimmingModel = isSwimming;
 
-        if (m_pStaminaComponent && m_pJumpVaultDetector)
+        if (isPlayer && m_pStaminaComponent && m_pJumpVaultDetector)
         {
             SignalsManagerComponent signalsManager = null;
             if (m_pUISignalBridge)
@@ -620,14 +648,24 @@ modded class SCR_CharacterControllerComponent
         {
             RSS_SetMudSlipCameraShake01(0.0);
         }
-        SCR_RSS_AIStaminaBridge.TickAbortRestRecoveryIfBattlefieldDanger(owner);
-        SCR_RSS_AIStaminaBridge.ApplyOnFootMovementPolicy(this, owner, staminaPercent);
-        SCR_RSS_AIGroupRestCoordinator.TryScheduleGroupRestFromStamina(owner, staminaPercent);
-        SCR_RSS_AIGroupRestCoordinator.TryCompleteGroupRestDefendWaypointIfReady(owner);
-        SCR_RSS_AICoverSeeker.TickVerifyCombatCover(owner);
+        // perf: AI 桥方法 500ms 节流，减少高密度 AI 时的 FindComponent/Cast 开销
+        if (!IsPlayerControlled() && (currentTime - m_fLastAiBridgeTickTime < AI_BRIDGE_THROTTLE_SEC))
+        {
+            // 节流中：跳过桥方法
+        }
+        else
+        {
+            if (!IsPlayerControlled())
+                m_fLastAiBridgeTickTime = currentTime;
+            SCR_RSS_AIStaminaBridge.TickAbortRestRecoveryIfBattlefieldDanger(owner);
+            SCR_RSS_AIStaminaBridge.ApplyOnFootMovementPolicy(this, owner, staminaPercent);
+            SCR_RSS_AIGroupRestCoordinator.TryScheduleGroupRestFromStamina(owner, staminaPercent);
+            SCR_RSS_AIGroupRestCoordinator.TryCompleteGroupRestDefendWaypointIfReady(owner);
+            SCR_RSS_AICoverSeeker.TickVerifyCombatCover(owner);
 
-        if (Replication.IsServer() && !IsPlayerControlled())
-            SCR_RSS_AIStaminaCombatEffects.ApplyStaminaToCombat(owner, staminaPercent);
+            if (Replication.IsServer() && !IsPlayerControlled())
+                SCR_RSS_AIStaminaCombatEffects.ApplyStaminaToCombat(owner, staminaPercent);
+        }
 
         bool isSprinting = isSprintingNow;
         int currentMovementPhase = phaseNow;
@@ -701,7 +739,7 @@ modded class SCR_CharacterControllerComponent
             
         }
 
-        if (RSS_IsCaffeineSodiumBenzoateActive())
+        if (isPlayer && RSS_IsCaffeineSodiumBenzoateActive())
             totalDrainRate = totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
         
         // 低体力恢复区域：体力<阈值时步行/慢跑转为恢复
@@ -768,7 +806,7 @@ modded class SCR_CharacterControllerComponent
             staminaPercent = newTargetStamina;
         }
         
-        if (m_pUISignalBridge)
+        if (isPlayer && m_pUISignalBridge)
         {
             m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate, false);
         }
@@ -1537,7 +1575,12 @@ modded class SCR_CharacterControllerComponent
             }
         }
         if (Replication.IsServer() && !IsPlayerControlled())
+        {
+            // 完全禁用 AI RSS 计算：交还引擎处理体力
+            if (StaminaConfigBridge.IsAiAllCalcDisabled())
+                return false;
             return true;
+        }
         return false;
     }
 

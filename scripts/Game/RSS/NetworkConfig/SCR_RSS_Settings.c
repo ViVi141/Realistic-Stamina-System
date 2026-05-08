@@ -16,8 +16,9 @@ class SCR_RSS_Settings
     static const int PARAMS_ARRAY_SIZE = 47;  // 必须与 WriteParamsToArray/ApplyParamsFromArray 字段数一致
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
-    //! 与 WriteSettingsToArrays / ApplySettingsFromArrays 末尾布尔数量一致；旧版为 15 / 16（见 LEGACY）
-    static const int SETTINGS_BOOLS_SIZE = 17;
+    //! 与 WriteSettingsToArrays / ApplySettingsFromArrays 末尾布尔数量一致；旧版见 LEGACY
+    static const int SETTINGS_BOOLS_SIZE = 19;
+    static const int SETTINGS_BOOLS_SIZE_LEGACY_17 = 17;
     static const int SETTINGS_BOOLS_SIZE_LEGACY_16 = 16;
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
@@ -391,6 +392,12 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 
     [Attribute("true", UIWidgets.CheckBox, "AI stamina combat: scale perception, fire rate, EAISkill by stamina. Workbench default ON; dedicated server uses JSON (default OFF). | 体力影响 AI 感知/射速/战斗技能；工作台默认开启，专用服见 JSON（默认关闭）")]
     bool m_bEnableAIStaminaCombatEffects;
+    
+    [Attribute("false", UIWidgets.CheckBox, "AI: disable ALL RSS calculations for AI. Engine handles stamina completely. Also disables AI combat effects. | 完全禁用 AI 的 RSS 计算，体力交还引擎处理。同时关闭 AI 战斗效果")]
+    bool m_bDisableAIAllCalc;
+    
+    [Attribute("false", UIWidgets.CheckBox, "AI: disable stamina calc only. Keep speed multiplier from RSS, skip drain/recovery. | 仅禁用 AI 体力计算，仍保留 RSS 速度倍率")]
+    bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
     int m_iDataExportIntervalMs;
@@ -685,6 +692,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outBools.Insert(s.m_bDataExportEnabled);
         outBools.Insert(s.m_bEnableMudSlipMechanism);
         outBools.Insert(s.m_bEnableAIStaminaCombatEffects);
+        outBools.Insert(s.m_bDisableAIAllCalc);
+        outBools.Insert(s.m_bDisableAIStaminaCalc);
     }
 
     static void ApplySettingsFromArrays(SCR_RSS_Settings s, array<float> floats, array<int> ints, array<bool> bools)
@@ -744,6 +753,32 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bDataExportEnabled = bools[bi++];
             s.m_bEnableMudSlipMechanism = bools[bi++];
             s.m_bEnableAIStaminaCombatEffects = bools[bi++];
+            s.m_bDisableAIAllCalc = bools[bi++];
+            s.m_bDisableAIStaminaCalc = bools[bi++];
+        }
+        else if (bools && bools.Count() >= SETTINGS_BOOLS_SIZE_LEGACY_17)
+        {
+            int bi = 0;
+            // ... (identical to above 17 bools, omit 2 new ones)
+            s.m_bDebugLogEnabled = bools[bi++];
+            s.m_bVerboseLogging = bools[bi++];
+            s.m_bLogToFile = bools[bi++];
+            s.m_bHintDisplayEnabled = bools[bi++];
+            s.m_bEnableHeatStress = bools[bi++];
+            s.m_bEnableRainWeight = bools[bi++];
+            s.m_bEnableWindResistance = bools[bi++];
+            s.m_bEnableMudPenalty = bools[bi++];
+            s.m_bUseEngineTemperature = bools[bi++];
+            s.m_bUseEngineTimezone = bools[bi++];
+            s.m_bMapOverWater = bools[bi++];
+            s.m_bEnableFatigueSystem = bools[bi++];
+            s.m_bEnableMetabolicAdaptation = bools[bi++];
+            s.m_bEnableIndoorDetection = bools[bi++];
+            s.m_bDataExportEnabled = bools[bi++];
+            s.m_bEnableMudSlipMechanism = bools[bi++];
+            s.m_bEnableAIStaminaCombatEffects = bools[bi++];
+            s.m_bDisableAIAllCalc = false;
+            s.m_bDisableAIStaminaCalc = false;
         }
         else if (bools && bools.Count() >= SETTINGS_BOOLS_SIZE_LEGACY_16)
         {
@@ -765,6 +800,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bDataExportEnabled = bools[bi++];
             s.m_bEnableMudSlipMechanism = bools[bi++];
             s.m_bEnableAIStaminaCombatEffects = false;
+            s.m_bDisableAIAllCalc = false;
+            s.m_bDisableAIStaminaCalc = false;
         }
         else if (bools && bools.Count() >= SETTINGS_BOOLS_SIZE_LEGACY)
         {
@@ -786,6 +823,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             s.m_bDataExportEnabled = bools[bi++];
             s.m_bEnableMudSlipMechanism = false;
             s.m_bEnableAIStaminaCombatEffects = false;
+            s.m_bDisableAIAllCalc = false;
+            s.m_bDisableAIStaminaCalc = false;
         }
 
         // 数据导出开关仅服务器生效，客户端收到配置后强制关闭，避免客户端写文件

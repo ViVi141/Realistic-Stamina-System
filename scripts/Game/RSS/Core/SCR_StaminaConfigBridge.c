@@ -616,6 +616,24 @@ class StaminaConfigBridge
             return false;
         return settings.m_bEnableAIStaminaCombatEffects;
     }
+
+    //! 完全禁用 AI RSS 计算（交还引擎）。勾选时同时关闭 AI combat 效果。
+    static bool IsAiAllCalcDisabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        return settings.m_bDisableAIAllCalc;
+    }
+
+    //! 仅禁用 AI 体力消耗/恢复计算，仍保留 RSS 速度倍率
+    static bool IsAiStaminaCalcDisabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        return settings.m_bDisableAIStaminaCalc;
+    }
     
     // 检查是否启用疲劳积累系统
     static bool IsFatigueSystemEnabled()
