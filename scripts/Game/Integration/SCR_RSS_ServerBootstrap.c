@@ -37,7 +37,11 @@ modded class SCR_BaseGameMode
     [RplProp(onRplName: "OnRssConfigReplicated")]
     protected bool m_bRssAICombat;
 
-    protected bool m_bRssConfigInitialized = false;
+    [RplProp(onRplName: "OnRssConfigReplicated")]
+    protected bool m_bRssDisableAIAll;
+
+    [RplProp(onRplName: "OnRssConfigReplicated")]
+    protected bool m_bRssDisableAIStamina;
 
     //! 服务端数据导出链是否在跑
     protected bool m_bRssDataExportLoopRunning = false;
@@ -144,6 +148,8 @@ modded class SCR_BaseGameMode
         m_bRssDataExport     = settings.m_bDataExportEnabled;
         m_bRssMudSlip        = settings.m_bEnableMudSlipMechanism;
         m_bRssAICombat       = settings.m_bEnableAIStaminaCombatEffects;
+        m_bRssDisableAIAll   = settings.m_bDisableAIAllCalc;
+        m_bRssDisableAIStamina = settings.m_bDisableAIStaminaCalc;
 
         // Custom 预设：额外复制 47 参数
         string preset = settings.m_sSelectedPreset;
@@ -161,7 +167,6 @@ modded class SCR_BaseGameMode
                 m_aRssCustomParams.Clear();
         }
 
-        m_bRssConfigInitialized = true;
         Replication.BumpMe();
     }
 
@@ -170,8 +175,11 @@ modded class SCR_BaseGameMode
     protected void OnRssConfigReplicated()
     {
         if (Replication.IsServer()) return;
-        if (!m_bRssConfigInitialized) return;
-        if (!m_sRssConfigVersion || !m_sRssSelectedPreset) return;
+        // m_bRssConfigInitialized 未参与 Rpl 复制，客户端恒为 false 会误拦截；改为校验已复制的字段。
+        if (!m_sRssConfigVersion || m_sRssConfigVersion == "")
+            return;
+        if (!m_sRssSelectedPreset || m_sRssSelectedPreset == "")
+            return;
 
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings)
@@ -196,6 +204,11 @@ modded class SCR_BaseGameMode
         settings.m_bDataExportEnabled            = m_bRssDataExport;
         settings.m_bEnableMudSlipMechanism       = m_bRssMudSlip;
         settings.m_bEnableAIStaminaCombatEffects = m_bRssAICombat;
+        settings.m_bDisableAIAllCalc             = m_bRssDisableAIAll;
+        settings.m_bDisableAIStaminaCalc         = m_bRssDisableAIStamina;
+
+        // 与 SCR_RSS_Settings 旧版同步路径一致：客户端记录“服务器是否开启导出”，供 GetServerDataExportEnabled / 体力上报使用。
+        SCR_RSS_ConfigManager.SetServerDataExportEnabled(m_bRssDataExport);
 
         SCR_RSS_ConfigManager.SetServerConfigApplied(true);
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();

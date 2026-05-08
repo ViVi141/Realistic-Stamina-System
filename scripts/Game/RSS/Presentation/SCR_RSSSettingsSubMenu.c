@@ -78,8 +78,14 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
             }
             else
             {
+                // 本 Tab 无 DataExport 控件：保留服务器当前值，避免误关导出。
+                bool dataExportKeep = false;
+                SCR_RSS_Settings sExport = GetSettings();
+                if (sExport)
+                    dataExportKeep = sExport.m_bDataExportEnabled;
+
                 // 专用服务器管理员客户端：通过 RPC 推送到服务端
-                SendConfigToServer("", debugLog, hudServer, false, mudSlip, aiCombat, disableAI, disableAISt);
+                SendConfigToServer("", debugLog, hudServer, dataExportKeep, mudSlip, aiCombat, disableAI, disableAISt);
             }
             SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
         }
@@ -152,11 +158,14 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         }
         else
         {
+            // InitPresets 可能重置开关；先保留当前同步得到的 DataExport，再改预设。
+            bool dataExportKeep = s.m_bDataExportEnabled;
+
             // 专用服务器管理员客户端：通过 RPC 推送预设变更
             s.m_sSelectedPreset = preset;  // 临时更新本地显示
             s.InitPresets(preset != "Custom");
             SendConfigToServer(preset, GetSpin(m_wDebugToggle), GetSpin(m_wHUDServer),
-                false, GetSpin(m_wMudSlipToggle), GetSpin(m_wAICombatToggle),
+                dataExportKeep, GetSpin(m_wMudSlipToggle), GetSpin(m_wAICombatToggle),
                 GetSpin(m_wDisableAIToggle), GetSpin(m_wDisableAIStaminaToggle));
         }
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();

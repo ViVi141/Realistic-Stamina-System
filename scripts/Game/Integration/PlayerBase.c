@@ -1539,14 +1539,22 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner) return;
 
-        int pid = GetGame().GetPlayerController().GetPlayerId();
+        // 专用服务器上 GetPlayerController() 不是 RPC 发起者；必须用当前实体对应的玩家 ID。
         PlayerManager pm = GetGame().GetPlayerManager();
         if (!pm) return;
+
+        int pid = pm.GetPlayerIdFromControlledEntity(owner);
+        if (pid <= 0)
+        {
+            Print("[RSS] RPC_AdminUpdateConfig: no controlling player for entity");
+            return;
+        }
+
         if (!pm.HasPlayerRole(pid, EPlayerRole.ADMINISTRATOR)
             && !pm.HasPlayerRole(pid, EPlayerRole.SESSION_ADMINISTRATOR)
             && !pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER))
         {
-            Print("[RSS] RPC_AdminUpdateConfig: access denied for non-admin");
+            PrintFormat("[RSS] RPC_AdminUpdateConfig: access denied for playerId=%1", pid);
             return;
         }
 
