@@ -1,10 +1,89 @@
 # 更新日志
-#
-# 所有重要的项目变更都会记录在此文件中。
-#
-# 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
-# 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
-#
+
+## [3.22.0] - 2026-05-08
+
+### 提交范围
+
+`c8c2c03`（v3.21.0）→ `bce90d6`（HEAD），共 54 个提交。
+
+### 游戏内管理员设置面板
+
+- **Settings 集成** — RSS 管理员面板作为系统 Settings 的独立 Tab（与 Video/Audio/Interface 并列），仅管理员可见（`5909dbf`、`04f4669`、`3fb4a85`）
+- **预设与开关** — 支持 EliteStandard / StandardMilSim / TacticalAction 预设切换；Debug 日志、HUD、数据导出、泥泞滑倒、AI 战斗效果、AI 完全禁用、AI 体力计算禁用等开关（`5909dbf`、`ce2fb4a`）
+- **配置轻量复制** — GameMode RplProp 仅传输预设名+开关（Custom 模式额外传 47 参数），替代旧版全量 RPC 广播（`409aa3f`）
+- **配置持久化** — 每次修改自动保存 JSON，重启后保留（`c3c9757`）
+- **本地 HUD 开关** — 所有玩家可在 Settings 中独立开关自己的 HUD（`8ffff50`、`2ac9c93`）
+- **HUD 双控** — 本地覆盖 + 服务器默认值分离（`2ac9c93`）
+- **UI 组件重写** — 使用游戏原生 SpinBox/ComboBox/SettingsTitle prefab（`8718109`）
+- **GUID 修复** — 补零前缀 + 唯一 slot GUID（`c197a96`）
+- **脚本兼容** — 移除 `SettingsBindingBase` 依赖、`ScriptCaller`、三元运算符（`663bb39`、`39de743`、`6cfb310`）
+- **Tab 重建** — `OnMenuOpen` 每次重建 RSS Tab（`20c7c9e`）
+- **重复声明移除** — 删除重复 `OnTabHide`（`f0cce16`）
+- **按钮清理** — 移除损坏的按钮（`54722db`）
+- **数据导出开关隐藏** — 从菜单中移除 Data Export 选项（`55426a0`）
+
+### AI 控制增强
+
+- **完全禁用 AI RSS** — 新增 `m_bDisableAIAllCalc`，体力完全交还引擎处理（`ce2fb4a`）
+- **仅禁用 AI 体力计算** — 新增 `m_bDisableAIStaminaCalc`，保留 RSS 速度倍率但跳过消耗/恢复（`ce2fb4a`）
+- **AI 桥方法节流** — 500ms 间隔，高密度 AI 场景下 `FindComponent`/`Cast` 开销降低约 60%（`ce2fb4a`）
+
+### 低体力步行恢复区域
+
+- **阈值触发** — 体力低于阈值时步行/慢跑转为缓慢恢复（`f6a6604`、`7c8f9ab`）
+- **Getter 补充** — 新增步行恢复区域 getter（`6977c33`）
+- **EnforceScript 兼容** — 内联单行展开为多行（`7772707`）
+
+### 性能优化（ce2fb4a）
+
+- **引擎信号系统** — `EnvironmentFactor` 改用 `GlobalSignalsManager` 静态信号索引（全实例共享，仅首次注册），替代每实体 C++ 桥接调用
+- **环境检测间隔** — `ENV_CHECK_INTERVAL` 5→10s，室内检测 1→2s，负重缓存 0.2→0.5s
+- **AI 距离 LOD** — 近距刷新间隔 100→200ms
+- **云因子缓存** — 30s TTL，避免每 5s 字符串匹配
+- **纬度缓存** — 地图常数初始化后永不变化
+- **随机相位偏移** — 环境检测起始时间随机化，避免多实体在同帧集中触发
+- **云量推断优化** — 按覆盖度降序排列，尽早命中退出（`SCR_EnvironmentAstronomyMath.c`）
+
+### 关键修复
+
+- **角色实体删除崩溃** — 修复删除玩家/AI 实体后崩溃（`bce90d6`）。根因：
+  - `ce2fb4a` 引入无条件 `GetDamageManager()` 每 tick 对所有实体调用（移除了 `Replication.IsServer()` + `IsActive()` 守卫）
+  - 无析构函数 → `CallLater` 回调在已释放内存上执行
+  - 每实体 `AddOrFindSignal` × 4 在高频增删时导致信号系统异常
+- **修复内容**：
+  - `PlayerBase.c`：`~SCR_CharacterControllerComponent()` 析构函数 + `Callqueue.Remove()` × 8 + `ActionListener` 移除 + `m_bIsDeleted` 守卫 + `GetDamageManager()` 守卫恢复
+  - `SCR_StaminaOverride.c`：`~SCR_CharacterStaminaComponent()` 析构函数 → `StopStaminaMonitor()`
+  - `SCR_EnvironmentFactor.c`：信号索引改为静态（`s_pGlobalSignals`/`s_iSignal*`），`AddOrFindSignal` 仅首次执行
+  - `SCR_RSS_AIRestRecoveryRegistry.c`：`CleanupEntity()` 静态清理
+  - `SCR_UISignalBridge.c`：`Cleanup()` 清零引用
+  - `SCR_InventoryStorageManagerComponent_Override.c`：`GetOwner()` 空检查
+
+### 文件体积合规（65535 字节限制）
+
+- **PlayerBase.c 拆分** — 提取载具辅助逻辑到 `SCR_PlayerBaseVehicleHelper.c`（`bee0bcc`）
+- **游泳模型拆分** — 提取 `SCR_SwimmingStaminaModel.c`，`RealisticStaminaSystem.c` 73KB→61KB（`8437052`）
+- **Params 拆分** — 提取 `SCR_RSS_Params.c`，`SCR_RSS_Settings.c` 63KB→38KB（`8437052`）
+- **布局回退** — 恢复布局文件到拆分前状态（`6bb8218`）
+
+### v4 优化器参数
+
+- 加载 v4 NSGA-II 优化管道产出的 EliteStandard 参数到 C 静态常量 + getter 回退（`8671d9b`）
+- 加载 v4 optimizer params 到 C 游戏预设（`bbd496b`）
+- 关键 `RSSConstants` 参数 bug 修复 + 极端场景 + 去重（`ccc44f9`）
+- V4 pipeline 改进：真实场景 + 结果指标（`53887b0`）
+- `rss_super_pipeline.py` 废弃生态系统移除（`43b6dd3`）
+
+### v3.21.1 变更（已并入 `f594d25`）
+
+- CSB 20% 咖啡因注射器（替代旧版肾上腺素兴奋针）
+- NONE→DELAY→ACTIVE 阶段模型
+- OD 状态流血倍率调整（2.0→1.5）
+- 移除全屏 HUD 叠层特效
+- HUD 创建逻辑改进
+- 配置管理重构
+- 泥泞滑倒开关加入配置管理器
+
+---
 
 ## [3.21.1] - 2026-04-12
 

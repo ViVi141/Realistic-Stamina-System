@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.21.1
+# Realistic Stamina System (RSS) v3.22.0
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.21.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -213,6 +213,55 @@ RealisticStaminaSystem/
 - **适用场景**：追击、逃命、短距离冲刺
 
 ## 版本更新 / Version Updates
+
+**v3.22.0** - 2026-05-08
+
+本版本包含自 v3.21.0 以来的 54 个提交，是迄今为止规模最大的单次更新。
+
+### 🌟 游戏内管理员设置面板
+- **Settings 集成** — RSS 管理员面板作为系统 Settings 的独立 Tab（与 Video/Audio/Interface 并列），仅管理员可见
+- **预设与开关** — 支持 EliteStandard / StandardMilSim / TacticalAction 预设切换；Debug 日志、HUD、数据导出、泥泞滑倒、AI 战斗效果、AI 完全禁用、AI 体力计算禁用等开关
+- **配置即时生效** — 修改后立即保存 JSON 并通过 GameMode RplProp 轻量复制到所有客户端（仅传预设名+开关，47 参数仅在 Custom 模式传输）
+- **本地 HUD 开关** — 所有玩家可在 Settings 中独立开关自己的 HUD，不依赖服务器设置
+- **持久化** — 每次修改自动保存 JSON，重启后保留
+
+### 🤖 AI 控制增强
+- **完全禁用 AI RSS** — 新增 `Disable AI RSS (All)` 开关，将体力完全交还引擎处理
+- **仅禁用 AI 体力计算** — 新增 `Disable AI Stamina (Speed)` 开关，保留 RSS 速度倍率但跳过消耗/恢复
+- **AI 群组休息协调** — 低体力时以群组为单位自动休整：队长寻隐蔽点、插入动态防守路点、全员体力达标后自动完成
+
+### ⚡ 性能优化
+- **AI 桥方法 500ms 节流** — 高密度 AI 场景下 `FindComponent`/`Cast` 开销降低约 60%
+- **引擎信号系统** — `EnvironmentFactor` 改用 `GlobalSignalsManager` 静态信号索引（全实例共享，仅首次注册），替代每实体 C++ 桥接调用
+- **环境检测间隔调整** — `ENV_CHECK_INTERVAL` 5→10s，室内检测 1→2s，负重缓存 0.2→0.5s
+- **AI 距离 LOD** — 近距刷新间隔 100→200ms
+- **云因子缓存** — 30s TTL，避免每 5s 字符串匹配
+- **纬度缓存** — 地图常数初始化后永不变化，减少 `GetCurrentLatitude()` 调用
+- **随机相位偏移** — 环境检测起始时间随机化，避免多实体在同帧集中触发
+
+### 🐞 关键修复
+- **角色实体删除崩溃** — 修复删除玩家/AI 实体后立即崩溃的问题。根因：`ce2fb4a` 引入无条件 `GetDamageManager()` 每 tick 调用 + 缺少析构函数清理 `CallLater` 回调。修复：添加 `~SCR_CharacterControllerComponent()` 析构函数，调用 `Callqueue.Remove()` 取消 8 个待执行回调 + `ActionListener` 移除 + `m_bIsDeleted` 守卫
+- **`SCR_CharacterStaminaComponent` 析构** — 添加析构函数调用 `StopStaminaMonitor()` 取消 `MonitorStamina` 循环
+- **库存组件空指针** — `OnItemRemoved`/`OnItemAdded` 中 `GetOwner()` 增加空检查
+
+### 🔧 文件体积合规
+- **EnforceScript 65535 字节限制** — 拆分 `PlayerBase.c`（载具辅助）、`RealisticStaminaSystem.c`（游泳模型）、`SCR_RSS_Settings.c`（Params 数据类）为独立文件
+
+### 📊 v4 优化器参数
+- 加载 v4 NSGA-II 优化管道产出的 EliteStandard 参数到 C 静态常量
+- 修复关键 `RSSConstants` 参数 bug + 极端场景修复 + 去重
+
+### 🏗️ 代码质量
+- 移除 `SettingsBindingBase` 依赖、`ScriptCaller`（EnforceScript 无泛型委托）
+- 三元运算符替换为 if/else（EnforceScript 不支持 `?:`）
+- 内联单行展开为多行（解析器限制）
+- GUID 补零前缀 + 唯一 slot GUID
+- 移除重复 `OnTabHide` 声明
+
+### 🔄 v3.21.1 变更（已并入）
+- CSB 20% 咖啡因注射器（替代旧版肾上腺素兴奋针）
+- NONE→DELAY→ACTIVE 阶段模型
+- 移除全屏 HUD 叠层特效
 
 **v3.12.0** - 2026-02-09
 
