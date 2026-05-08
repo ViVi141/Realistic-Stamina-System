@@ -1,5 +1,13 @@
 # 更新日志
 
+## [3.22.1] - 2026-05-08
+
+### 修复
+
+- **`.et` GUID 不匹配** — 创建 `CombatStimInjection_01.et.meta`、`CombatStimInjection_01_base.et.meta`（`EntityTemplateResourceClass`），移除 `.gitignore` 中 `*.et.meta` 排除规则，确保 GUID 跨机器一致（解决 `RESOURCES (E): Wrong GUID` 错误）
+- **专用服管理员设置无法保存/同步** — 管理员在 Settings → RSS Tab 修改预设/开关后，JSON 未写入、客户端未收到。根因：设置 UI 运行在管理员客户端，`Save()` → `CanWriteConfig()` 在客户端返回 `false` 直接退出。修复：新增 `RPC_AdminUpdateConfig`（`RplRcver.Server`），`SCR_RSSSettingsSubMenu` / `SCR_RSSAdminMenuUI` 客户端时通过 `SendConfigToServer()` 推送，服务端 `AdminApplyAndSave()` 落库 + 复制
+- **`CURRENT_VERSION`** → 3.22.1
+
 ## [3.22.0] - 2026-05-08
 
 ### 提交范围

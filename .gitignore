@@ -3,7 +3,7 @@
 *.rdb.meta
 *.gproj.meta
 UserMaps.desc.meta
-*.et.meta
+# *.et.meta  — removed: GUIDs must be versioned to avoid cross-machine mismatch
 
 # Python cache
 __pycache__/

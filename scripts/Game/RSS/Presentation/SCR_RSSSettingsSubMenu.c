@@ -54,18 +54,34 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         // 管理员：服务器开关写入
         if (m_bIsAdmin)
         {
-            SCR_RSS_Settings s = GetSettings();
-            if (s)
+            bool debugLog    = GetSpin(m_wDebugToggle);
+            bool hudServer   = GetSpin(m_wHUDServer);
+            bool mudSlip     = GetSpin(m_wMudSlipToggle);
+            bool aiCombat    = GetSpin(m_wAICombatToggle);
+            bool disableAI   = GetSpin(m_wDisableAIToggle);
+            bool disableAISt = GetSpin(m_wDisableAIStaminaToggle);
+
+            if (Replication.IsServer())
             {
-                s.m_bHintDisplayEnabled           = GetSpin(m_wHUDServer);
-                s.m_bDebugLogEnabled              = GetSpin(m_wDebugToggle);
-                s.m_bEnableMudSlipMechanism       = GetSpin(m_wMudSlipToggle);
-                s.m_bEnableAIStaminaCombatEffects = GetSpin(m_wAICombatToggle);
-                s.m_bDisableAIAllCalc       = GetSpin(m_wDisableAIToggle);
-                s.m_bDisableAIStaminaCalc   = GetSpin(m_wDisableAIStaminaToggle);
-                SCR_RSS_ConfigManager.Save();
-                SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+                // 监听服务器：直接写入内存 + 保存 JSON + 复制
+                SCR_RSS_Settings s = GetSettings();
+                if (s)
+                {
+                    s.m_bHintDisplayEnabled           = hudServer;
+                    s.m_bDebugLogEnabled              = debugLog;
+                    s.m_bEnableMudSlipMechanism       = mudSlip;
+                    s.m_bEnableAIStaminaCombatEffects = aiCombat;
+                    s.m_bDisableAIAllCalc             = disableAI;
+                    s.m_bDisableAIStaminaCalc         = disableAISt;
+                    SCR_RSS_ConfigManager.Save();
+                }
             }
+            else
+            {
+                // 专用服务器管理员客户端：通过 RPC 推送到服务端
+                SendConfigToServer("", debugLog, hudServer, false, mudSlip, aiCombat, disableAI, disableAISt);
+            }
+            SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
         }
     }
 
@@ -126,11 +142,37 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         else if (index == 2)  preset = "TacticalAction";
         else                  preset = "Custom";
         if (preset == s.m_sSelectedPreset) return;
-        s.m_sSelectedPreset = preset;
-        s.InitPresets(preset != "Custom");
-        SCR_RSS_ConfigManager.Save();
+
+        if (Replication.IsServer())
+        {
+            // 监听服务器：直接修改 + 保存 + 复制
+            s.m_sSelectedPreset = preset;
+            s.InitPresets(preset != "Custom");
+            SCR_RSS_ConfigManager.Save();
+        }
+        else
+        {
+            // 专用服务器管理员客户端：通过 RPC 推送预设变更
+            s.m_sSelectedPreset = preset;  // 临时更新本地显示
+            s.InitPresets(preset != "Custom");
+            SendConfigToServer(preset, GetSpin(m_wDebugToggle), GetSpin(m_wHUDServer),
+                false, GetSpin(m_wMudSlipToggle), GetSpin(m_wAICombatToggle),
+                GetSpin(m_wDisableAIToggle), GetSpin(m_wDisableAIStaminaToggle));
+        }
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
         LoadFromSettings();
+    }
+
+    //! 通过本地玩家控制器的 RPC 将配置推送到服务端
+    protected void SendConfigToServer(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
+    {
+        IEntity player = SCR_PlayerController.GetLocalControlledEntity();
+        if (!player) return;
+
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            player.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl)
+            ctrl.RPC_AdminUpdateConfig(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
     }
 
     //------------------------------------------------------------------------------------------------

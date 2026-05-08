@@ -1527,6 +1527,33 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
+    //! 管理员客户端 → 服务端：推送配置变更（预设 + 开关）
+    //! 服务端收到后写入 JSON 并复制到所有客户端
+    [RplRpc(RplChannel.Reliable, RplRcver.Server)]
+    void RPC_AdminUpdateConfig(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
+    {
+        if (!Replication.IsServer())
+            return;
+
+        // 验证调用者是否为管理员
+        IEntity owner = GetOwner();
+        if (!owner) return;
+
+        int pid = GetGame().GetPlayerController().GetPlayerId();
+        PlayerManager pm = GetGame().GetPlayerManager();
+        if (!pm) return;
+        if (!pm.HasPlayerRole(pid, EPlayerRole.ADMINISTRATOR)
+            && !pm.HasPlayerRole(pid, EPlayerRole.SESSION_ADMINISTRATOR)
+            && !pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER))
+        {
+            Print("[RSS] RPC_AdminUpdateConfig: access denied for non-admin");
+            return;
+        }
+
+        SCR_RSS_ConfigManager.AdminApplyAndSave(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
+        Print("[RSS] Admin config applied & replicated from client request");
+    }
+
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, float serverTimestamp)
     {

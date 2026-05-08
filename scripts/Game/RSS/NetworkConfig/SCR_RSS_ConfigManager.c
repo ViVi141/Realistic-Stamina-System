@@ -1,14 +1,14 @@
 // RSS配置管理器 - 使用Reforger官方标准
 // 负责从服务器Profile目录读取或生成JSON配置文件
 // 建议路径: scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c
-// 版本: v3.22.0
+// 版本: v3.22.1
 
 class SCR_RSS_ConfigManager
 {
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.22.0";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.22.1";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -1024,6 +1024,39 @@ class SCR_RSS_ConfigManager
         
         ReplicateConfigToClients();
         Print("[RSS_ConfigManager] Forced config sync to all clients");
+    }
+
+    //! 服务端：管理员客户端通过 RPC 推送的配置变更在此落地
+    //! @param preset       预设名（为空则不更改预设）
+    //! @param debugLog ... 各开关值
+    static void AdminApplyAndSave(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
+    {
+        if (!Replication.IsServer())
+            return;
+
+        SCR_RSS_Settings s = GetSettings();
+        if (!s)
+            return;
+
+        // 预设变更：仅在非空且与当前不同时触发 InitPresets
+        if (preset && preset != "" && preset != s.m_sSelectedPreset)
+        {
+            PrintFormat("[RSS_ConfigManager] Admin changed preset: %1 -> %2", s.m_sSelectedPreset, preset);
+            s.m_sSelectedPreset = preset;
+            s.InitPresets(preset != "Custom");
+        }
+
+        // 应用开关
+        s.m_bDebugLogEnabled              = debugLog;
+        s.m_bHintDisplayEnabled           = hintDisplay;
+        s.m_bDataExportEnabled            = dataExport;
+        s.m_bEnableMudSlipMechanism       = mudSlip;
+        s.m_bEnableAIStaminaCombatEffects = aiCombat;
+        s.m_bDisableAIAllCalc             = disableAI;
+        s.m_bDisableAIStaminaCalc         = disableAIStamina;
+
+        // 写入 JSON 并复制到所有客户端
+        Save();
     }
 
     // Server: push current settings via GameMode replication (native-style).

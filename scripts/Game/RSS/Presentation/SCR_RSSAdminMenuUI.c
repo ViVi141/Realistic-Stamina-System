@@ -179,53 +179,59 @@ class SCR_RSSAdminMenuUI
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 
+    //! 通过本地玩家控制器的 RPC 将配置推送到服务端
+    protected void SendConfigToServer(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
+    {
+        IEntity player = SCR_PlayerController.GetLocalControlledEntity();
+        if (!player) return;
+
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            player.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl)
+            ctrl.RPC_AdminUpdateConfig(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
+    }
+
+    protected bool IsChkChecked(CheckBoxWidget chk)
+    {
+        if (!chk) return false;
+        return chk.IsChecked();
+    }
+
     //------------------------------------------------------------------------------------------------
-    protected void OnPresetElite()
-    {
-        SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
-        settings.m_sSelectedPreset = "EliteStandard";
-        settings.InitPresets(true);
-        SaveSwitchesToSettings();
-        TriggerReplication();
-        RefreshUI();
-        SetStatus("Preset: EliteStandard — applied & synced");
-    }
+    protected void OnPresetElite()   { ApplyPreset("EliteStandard", true);  }
+    protected void OnPresetStandard(){ ApplyPreset("StandardMilsim", true); }
+    protected void OnPresetTactical() { ApplyPreset("TacticalAction", true); }
+    protected void OnPresetCustom()   { ApplyPreset("Custom", false); }
 
-    protected void OnPresetStandard()
+    protected void ApplyPreset(string preset, bool forceRefresh)
     {
         SCR_RSS_Settings settings = GetSettings();
         if (!settings) return;
-        settings.m_sSelectedPreset = "StandardMilsim";
-        settings.InitPresets(true);
-        SaveSwitchesToSettings();
-        TriggerReplication();
-        RefreshUI();
-        SetStatus("Preset: StandardMilsim — applied & synced");
-    }
 
-    protected void OnPresetTactical()
-    {
-        SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
-        settings.m_sSelectedPreset = "TacticalAction";
-        settings.InitPresets(true);
-        SaveSwitchesToSettings();
-        TriggerReplication();
-        RefreshUI();
-        SetStatus("Preset: TacticalAction — applied & synced");
-    }
-
-    protected void OnPresetCustom()
-    {
-        SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
-        settings.m_sSelectedPreset = "Custom";
-        settings.InitPresets(false);
-        SaveSwitchesToSettings();
-        TriggerReplication();
-        RefreshUI();
-        SetStatus("Preset: Custom — applied & synced");
+        if (Replication.IsServer())
+        {
+            // 监听服务器：直接修改 + 保存 + 复制
+            settings.m_sSelectedPreset = preset;
+            settings.InitPresets(forceRefresh);
+            SaveSwitchesToSettings();
+            SCR_RSS_ConfigManager.Save();
+            TriggerReplication();
+            RefreshUI();
+            SetStatus("Preset: " + preset + " — applied & synced");
+        }
+        else
+        {
+            // 专用服务器管理员客户端：临时更新本地显示 + RPC 推送
+            settings.m_sSelectedPreset = preset;
+            settings.InitPresets(forceRefresh);
+            SaveSwitchesToSettings();
+            SendConfigToServer(preset, IsChkChecked(m_wChkDebug), IsChkChecked(m_wChkHUD),
+                IsChkChecked(m_wChkDataExport), IsChkChecked(m_wChkMudSlip),
+                IsChkChecked(m_wChkAICombat), IsChkChecked(m_wChkDisableAI),
+                IsChkChecked(m_wChkDisableAIStamina));
+            RefreshUI();
+            SetStatus("Preset: " + preset + " — sent to server");
+        }
     }
 
     protected void OnReloadConfig()
@@ -256,7 +262,12 @@ class SCR_RSSAdminMenuUI
         }
         else
         {
-            SetStatus("Settings saved locally (server sync required)");
+            // 专用服务器管理员客户端：通过 RPC 推送到服务端
+            SendConfigToServer("", IsChkChecked(m_wChkDebug), IsChkChecked(m_wChkHUD),
+                IsChkChecked(m_wChkDataExport), IsChkChecked(m_wChkMudSlip),
+                IsChkChecked(m_wChkAICombat), IsChkChecked(m_wChkDisableAI),
+                IsChkChecked(m_wChkDisableAIStamina));
+            SetStatus("Settings sent to server & syncing to all clients");
         }
     }
 }
