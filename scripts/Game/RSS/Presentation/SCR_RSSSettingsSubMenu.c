@@ -181,7 +181,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
             player.FindComponent(SCR_CharacterControllerComponent));
         if (ctrl)
-            ctrl.RPC_AdminUpdateConfig(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
+            ctrl.RSS_RequestAdminConfigUpdate(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
     }
 
     //------------------------------------------------------------------------------------------------

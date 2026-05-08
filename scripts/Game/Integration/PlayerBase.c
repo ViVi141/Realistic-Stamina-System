@@ -1527,6 +1527,18 @@ modded class SCR_CharacterControllerComponent
         }
     }
 
+    //! 客户端 → 服务端：必须用本方法包装 Rpc()，依据引擎源码约定，而非猜测。
+    //! - GenericComponent：Rpc 为 proto protected（外部/UI 类无法调用 Rpc）。
+    //! - 官方用法示例：SCR_ChimeraCharacter.SetIllumination → Rpc(RPC_SetIllumination_S, …)；
+    //!   RPC_* 标 [RplRpc(…, RplRcver.Server)]，由 Rpc() 发到服务端执行。
+    //! 若从 UI 直接调用 RPC_AdminUpdateConfig(...)，等同本地普通函数调用，首行 IsServer 守卫即 return，不会走网络。
+    void RSS_RequestAdminConfigUpdate(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
+    {
+        if (Replication.IsServer())
+            return;
+        Rpc(RPC_AdminUpdateConfig, preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
+    }
+
     //! 管理员客户端 → 服务端：推送配置变更（预设 + 开关）
     //! 服务端收到后写入 JSON 并复制到所有客户端
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
