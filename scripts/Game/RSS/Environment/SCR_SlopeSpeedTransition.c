@@ -14,8 +14,13 @@ class SlopeSpeedTransition
     // ==================== 常量 ====================
     protected const float TRANSITION_DURATION = 5.0;   // 过渡持续时间（秒）
     protected const float CHANGE_THRESHOLD = 0.02;     // 变化阈值，低于此值不触发过渡
-    // 立即提速阈值：仅当目标比当前平滑值高出至少此量时才取消平滑、立即提速，避免上坡中细微缓坡造成频繁加速
+    // 立即提速阈值（带滞回）：仅当目标比当前平滑值高出至少此量时才取消平滑、
+    // 立即提速。配合 SNAP_UP_HYST 滞回窗口防止缓坡（2°-3°）时 Tobler 输出
+    // 在 0.92~1.0 之间波动导致每次 gain ≥ 阈值都触发即时跳转。
+    // 原理：进入"即时提速"后，必须回落至阈值以下才重新启用平滑过渡。
     protected const float SNAP_UP_THRESHOLD = 0.08;
+    protected const float SNAP_UP_HYST = 0.03;           // 滞回窗口：增益从此值以下重新上升才视为新事件
+    protected bool m_bSnapUpActive = false;               // 当前是否处于即时提速后的"锁定"状态
 
     // ==================== 公共方法 ====================
 
@@ -27,6 +32,7 @@ class SlopeSpeedTransition
         m_fTransitionTargetValue = 1.0;
         m_fTransitionStartTime = -1.0;
         m_bLastSuppressSlope = false;
+        m_bSnapUpActive = false;
     }
 
     // 通知过渡器当前帧是否处于坡度抑制（室内）状态。
@@ -43,6 +49,7 @@ class SlopeSpeedTransition
             m_fTransitionStartValue = 1.0;
             m_fTransitionTargetValue = 1.0;
             m_fTransitionStartTime = -1.0;
+            m_bSnapUpActive = false;
         }
         m_bLastSuppressSlope = suppress;
     }
@@ -55,13 +62,18 @@ class SlopeSpeedTransition
     {
         targetScaleFactor = Math.Clamp(targetScaleFactor, 0.15, 1.0);
 
-        // 仅当目标速度比当前平滑值「明显」更大（如从陡坡到平地，差值 ≥ SNAP_UP_THRESHOLD）时才取消平滑、立即提速，避免上坡中细微缓坡造成频繁加速
+        // SNAP 滞回逻辑：仅在脱离滞回窗口后重新达到阈值才触发即时提速
         float gain = targetScaleFactor - m_fCurrentSmoothedScale;
-        if (gain >= SNAP_UP_THRESHOLD)
+        if (m_bSnapUpActive)
+        {
+            m_bSnapUpActive = (gain >= SNAP_UP_HYST);
+        }
+        if (!m_bSnapUpActive && gain >= SNAP_UP_THRESHOLD)
         {
             m_fCurrentSmoothedScale = targetScaleFactor;
             m_fTransitionTargetValue = targetScaleFactor;
             m_fTransitionStartTime = -1.0;
+            m_bSnapUpActive = true;
             return m_fCurrentSmoothedScale;
         }
 

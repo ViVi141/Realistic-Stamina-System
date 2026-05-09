@@ -53,7 +53,7 @@ class StaminaConstants
     // 精疲力尽阈值
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // m/s（跛行速度）
-    static const float SPRINT_ENABLE_THRESHOLD = 0.15; // 0.15（15%），体力≥15%时才能Sprint；与意志力平台期0.25间隔10%避免窄窗
+    static const float SPRINT_ENABLE_THRESHOLD = 0.18; // 0.18（18%），体力≥18%时才能Sprint；与 WALK_RECOVERY_ZONE_THRESHOLD(0.15) 之间留 3% 缓冲区，避免"步行恢复区"与"允许冲刺"在 0.15 处边界冲突
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
     static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
     
@@ -390,7 +390,8 @@ class StaminaConstants
     static const float CAM_BOB_UPHILL_SWAY_AMPLITUDE = 0.012;   // 上坡左右摇摆幅度（米）
     static const float CAM_BOB_UPHILL_SWAY_FREQ = 0.6;           // 低频（Hz）
     static const float CAM_BOB_UPHILL_SLOPE_DEG_MIN = 8.0;      // 坡度超过此度数才启用上坡摇摆（度）
-    // 调试倍率：设为 3.0～5.0 可明显看出镜头惯性/颠簸是否生效，确认后改回 1.0
+    // 生产稳定值 1.0。曾用于调试（3.0-5.0 放大观察效果），确认正常后固定在此值。
+    // 如果需要检查镜头惯性/颠簸是否生效，可临时调高，记得改回。
     static const float CAM_DEBUG_STRENGTH = 1;
     // 冲刺时视野：与战术爆发联动（Burst +5° / Cruise +2°），疲劳/Limp 时收窄（-2°）
     static const float CAM_SPRINT_FOV_BURST_DEG = 5.0;   // 爆发期 (0~8s) FOV 加宽
@@ -568,6 +569,18 @@ class StaminaConstants
     static const float ENV_MUD_SLIPPERY_THRESHOLD = 0.3; // 积水阈值（高于此值触发滑倒风险）
     static const float ENV_MUD_SPRINT_PENALTY = 0.1; // 泥泞时Sprint速度惩罚
     static const float ENV_MUD_SLIP_RISK_BASE = 0.005; // 基础滑倒风险（每0.2秒，与 EnvironmentFactor.CalculateSlipRisk 一致）
+    // =====================================================================
+    // ## DESIGN NOTE: Mud slip camera & trigger thresholds
+    // Current values (9-12Hz, Roll 6°, Pitch 3.4°, Yaw 2.9°) were tuned to
+    // produce noticeable "instability" feedback before a ragdoll event.  The
+    // 8-12Hz band overlaps with the human vestibular resonance range, which
+    // may cause motion sickness during prolonged (>30s) muddy traversal.
+    //
+    // Tuning recommendations for a future pass:
+    //   - Shift frequency to 6-8Hz (below resonance band)
+    //   - Add adaptive decay: reduce amplitude by 50% after 10s continuous slip stress
+    //   - Raise GAP_EPSILON_DICE to 0.012 to reduce false-positive ragdolls on gravel
+    // =====================================================================
     // 泥泞滑倒游戏效果（短 Ragdoll + 体力惩罚），由 MudSlipEffects + PlayerBase 消费
     static const float ENV_MUD_SLIP_GLOBAL_SCALE = 1.5; // 总强度倍率（Poisson λ）；由 2.5×0.6 下调以压低 1s 复合触发率
     static const float ENV_MUD_SLIP_MIN_SPEED_MS = 1.6; // 低于此水平速度不判滑倒（m/s）；AI 预警限速与此对齐

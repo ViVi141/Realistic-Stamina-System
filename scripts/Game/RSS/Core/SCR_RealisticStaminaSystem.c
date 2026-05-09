@@ -938,7 +938,11 @@ class RealisticStaminaSpeedSystem
             toblerMultiplier = Math.Min(toblerMultiplier, StaminaConstants.DOWNHILL_SPEED_MAX_MULTIPLIER);
         }
 
-        // 坡度对速度的限制再减少 30%：倍率向 1.0 拉近 30%，使上坡更快、下坡增益略收
+        // 坡度速度倍率缩减 30%（设计意图）：
+        // Tobler 函数在缓坡（3°~8°）的输出约 0.85~0.95，乘 UPHILL_SPEED_BOOST(1.15)
+        // 后约 0.98~1.09。直接应用会导致玩家在肉眼不可察的微坡上也被减速。
+        // 缩减 30% 后：缓坡≈0.99~1.06（几乎无感），15°陡坡≈0.73（仍明显降速）。
+        // 这保持了"陡坡有体感、缓坡不折腾"的平衡。
         toblerMultiplier = 1.0 + 0.7 * (toblerMultiplier - 1.0);
         toblerMultiplier = Math.Clamp(toblerMultiplier, 0.15, StaminaConstants.DOWNHILL_SPEED_MAX_MULTIPLIER);
 
@@ -964,12 +968,9 @@ class RealisticStaminaSpeedSystem
     }
     
     // ==================== 地形系数系统（基于实际测试数据的插值映射）====================
-    // 地形系数常量（基于 Pandolf 模型研究）
-    static const float TERRAIN_FACTOR_PAVED = 1.0;        // 铺装路面
-    static const float TERRAIN_FACTOR_DIRT = 1.1;         // 碎石路
-    static const float TERRAIN_FACTOR_GRASS = 1.2;        // 高草丛
-    static const float TERRAIN_FACTOR_BRUSH = 1.5;        // 重度灌木丛
-    static const float TERRAIN_FACTOR_SAND = 1.8;         // 软沙地
+    // 地形系数常量（引用 StaminaConstants 以消除重复）
+    // 之前此处有独立的 TERRAIN_FACTOR_* 局部常量，与 StaminaConstants.TERRAIN_FACTOR_*
+    // 重复定义（值完全一致）。移除去重，统一通过 StaminaConstants.TERRAIN_FACTOR_* 访问。
     
     // 根据密度值获取地形系数（插值映射，与 tools/EST_AllGameMaterialDensities.csv 对齐校准）
     // 典型 g/cm³：snow 0.35 | grass/heather 0.5 | grass_lush 1.2 | dirt/soil 1.33 | sand 1.63 |
@@ -980,7 +981,7 @@ class RealisticStaminaSpeedSystem
     static float GetTerrainFactorFromDensity(float density)
     {
         if (density <= 0.0)
-            return TERRAIN_FACTOR_PAVED;
+            return StaminaConstants.TERRAIN_FACTOR_PAVED;
 
         // 低密：积雪 / 极干草地（CSV snow 0.35；grass_dry 0.3）— 明显难于铺装
         if (density <= 0.36)
@@ -991,11 +992,11 @@ class RealisticStaminaSpeedSystem
 
         // 0.36~0.72：草地/植被/木质道具等混叠，维持与历史行为接近的 η=1.0
         if (density <= 0.72)
-            return TERRAIN_FACTOR_PAVED;
+            return StaminaConstants.TERRAIN_FACTOR_PAVED;
 
         // 0.72~1.13：室内地坪、地毯等
         if (density <= 1.13)
-            return TERRAIN_FACTOR_PAVED;
+            return StaminaConstants.TERRAIN_FACTOR_PAVED;
 
         // 1.13~1.2：地毯(1.13)→草丛(grass_lush 1.2)
         if (density <= 1.2)
@@ -1044,7 +1045,7 @@ class RealisticStaminaSpeedSystem
 
         // 2.2~2.42：沥青、混凝土（2.243、2.3）
         if (density <= 2.42)
-            return TERRAIN_FACTOR_PAVED;
+            return StaminaConstants.TERRAIN_FACTOR_PAVED;
 
         // 2.42~2.76：块石/石材路面（cobblestone/stone 2.75）
         if (density <= 2.76)

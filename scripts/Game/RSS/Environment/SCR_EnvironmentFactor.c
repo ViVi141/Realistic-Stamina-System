@@ -84,6 +84,9 @@ class EnvironmentFactor
     protected float m_fAerosolOpticalDepth = 0.14; // 简化的大气光学厚度用于透过率估计
     protected float m_fSurfaceEmissivity = 0.98; // 地表发射率
     protected float m_fCachedSurfaceTemperature = 20.0; // 缓存的近地面温度（°C）
+    
+    // 上次应用的配置版本（用于检测管理员实时修改，触发 ApplySettings）
+    protected static string s_lastAppliedConfigVersion = "";
 
     // 物理模型可调系数（可从 SCR_RSS_Settings 读取）
     protected float m_fCloudBlockingCoeff = 0.7; // 云层遮挡短波的系数（经验）
@@ -464,6 +467,20 @@ class EnvironmentFactor
                 forceUpdate = true;
             if (hasSS && Math.AbsFloat(ss - m_fLastKnownSunsetHour) > 0.01)
                 forceUpdate = true;
+        }
+
+        // CRITICAL FIX: Check if RSS config has been reloaded (admin changed settings).
+        // ApplySettings() reads temperature/physics coefficients from SCR_RSS_Settings;
+        // without this periodic check, admin changes only take effect on entity re-initialization.
+        SCR_RSS_Settings rssSettings = SCR_RSS_ConfigManager.GetSettings();
+        if (rssSettings)
+        {
+            string currentCfgVer = rssSettings.m_sConfigVersion;
+            if (currentCfgVer != s_lastAppliedConfigVersion)
+            {
+                ApplySettings();
+                s_lastAppliedConfigVersion = currentCfgVer;
+            }
         }
 
         if (!forceUpdate && (currentTime - m_fLastEnvironmentCheckTime < StaminaConstants.ENV_CHECK_INTERVAL))

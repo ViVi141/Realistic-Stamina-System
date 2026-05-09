@@ -16,7 +16,11 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     protected bool m_bIsMonitoring = false;
 
     // 监控间隔（毫秒）。16=60Hz 与服务器同步，50/100 可降低 CPU 占用
-    protected const int STAMINA_MONITOR_INTERVAL_MS = 50;
+    // DESIGN: 200ms matches UpdateSpeedBasedOnStamina main loop interval.
+    // 50ms provided no measurable benefit because SetTargetStamina already
+    // double-checks and corrects on every write. 200ms is sufficient to catch
+    // engine-origin stamina changes that bypass AddStamina().
+    protected const int STAMINA_MONITOR_INTERVAL_MS = 200;
     
     // 标记：是否是我们自己的调用（避免循环）
     protected bool m_bIsOurOwnCall = false;
@@ -111,8 +115,10 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         m_bIsMonitoring = true;
         
         // 启动监控循环（检查原生系统干扰并纠正）
-        // STAMINA_MONITOR_INTERVAL_MS：50ms 平衡性能与同步；16ms 可匹配 60Hz 服务器
-        GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
+        // STAMINA_MONITOR_INTERVAL_MS：200ms 与主力循环同步
+        // CRITICAL FIX: GetGame() may be null during late initialization / teardown.
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
     
     // 停止主动监控
@@ -122,7 +128,10 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         m_bIsMonitoring = false;
         
         // 移除所有可能存在的 CallLater 调用，确保不会再执行
-        GetGame().GetCallqueue().Remove(MonitorStamina);
+        // CRITICAL FIX: GetGame() may return null during game exit / teardown.
+        // Without this check, the destructor path crashes with Access Violation at 0x0.
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().Remove(MonitorStamina);
     }
     
     // 监控体力值（定期调用，确保完全覆盖原生系统）
@@ -174,7 +183,8 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             CorrectStaminaToTarget();
         }
         
-        GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
     
     // 设置目标体力值（由我们的自定义系统调用）
@@ -234,7 +244,18 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         }
         else
         {
-            StartStaminaMonitor();
+            // CRITICAL FIX: Only start the 50ms monitor loop for player-controlled
+            // entities. AI stamina is managed by the server's UpdateSpeedBasedOnStamina,
+            // and the OnStaminaDrain override plus CorrectStaminaToTarget in
+            // SetTargetStamina already provide sufficient protection without a
+            // per-entity 50ms polling loop. This eliminates ~1280 calls/sec for 64 AI.
+            IEntity owner = GetOwner();
+            if (owner)
+            {
+                SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
+                if (ctrl && ctrl.IsPlayerControlled())
+                    StartStaminaMonitor();
+            }
         }
     }
     

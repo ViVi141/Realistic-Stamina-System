@@ -178,19 +178,11 @@ class EncumbranceCache
         }
         else
         {
-            // 无角色实体时的回退方案
-            float weaponWeight = 0.0;
-            currentWeight = m_pCachedInventoryComponent.GetTotalWeight();
-            
-            // 添加武器存储重量
-            BaseInventoryStorageComponent weaponStorage = m_pCachedInventoryComponent.GetWeaponStorage();
-            if (weaponStorage)
-            {
-                weaponWeight = weaponStorage.GetTotalWeight();
-                currentWeight += weaponWeight;
-            }
-            
-
+            // CRITICAL FIX: owner entity is null, mark cache invalid immediately.
+            // Previously the fallback calculation could keep the cache nominally
+            // valid when weight hadn't changed beyond the 0.1kg threshold.
+            m_bEncumbranceCacheValid = false;
+            return;
         }
         
         // 如果重量变化超过0.1kg，重新计算缓存（避免微小浮点误差触发）

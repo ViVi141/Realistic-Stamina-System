@@ -24,7 +24,11 @@ modded class CharacterCamera1stPerson
         if (!rssController)
             return;
 
-        float worldTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        Game game = GetGame();
+        if (!game) return;
+        World world = game.GetWorld();
+        if (!world) return;
+        float worldTimeSec = world.GetWorldTime() / 1000.0;
         float staminaPercent = GetStaminaPercent();
 
         float targetRaw = ComputeTargetSprintFovBonus(rssController, worldTimeSec, staminaPercent);
@@ -141,6 +145,15 @@ modded class CharacterCamera1stPerson
         CharacterStaminaComponent staminaComp = CharacterStaminaComponent.Cast(m_OwnerCharacter.FindComponent(CharacterStaminaComponent));
         if (!staminaComp)
             return 1.0;
+        // CRITICAL FIX: Use GetTargetStamina() (RSS authoritative) instead of
+        // GetStamina() (native engine raw value). The Camera runs at 60fps while
+        // MonitorStamina only corrects every 200ms. Reading GetStamina() causes
+        // the raw value to oscillate between correction cycles, making the sprint
+        // FOV bounce between burst/cruise/limp targets — visible as "jitter on
+        // screen edges" that players reported even with mud slip disabled.
+        SCR_CharacterStaminaComponent rssStamina = SCR_CharacterStaminaComponent.Cast(staminaComp);
+        if (rssStamina)
+            return rssStamina.GetTargetStamina();
         return staminaComp.GetStamina();
     }
 }

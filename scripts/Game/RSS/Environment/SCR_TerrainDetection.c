@@ -14,6 +14,8 @@ class TerrainDetector
     protected const float TERRAIN_CHECK_INTERVAL_IDLE = 2.0; // 地形检测间隔（秒，静止时，优化性能）
     protected const float IDLE_THRESHOLD_TIME = 1.0; // 静止判定阈值（秒，超过此时间视为静止）
     protected ref TraceParam m_pTraceParamGround; // 复用的 TraceParam（GetTerrainDensity）
+    // 复用的 playerIds 数组（避免每 AI 每 2 秒 new 分配）
+    protected static ref array<int> s_aReusablePlayerIds;
 
     // ==================== 距离LOD状态变量 ====================
     // AI 实体按与最近玩家的距离分档降低检测频率，减少射线追踪开销
@@ -139,17 +141,24 @@ class TerrainDetector
         if (!pm)
             return float.MAX;
 
-        array<int> playerIds = new array<int>();
-        pm.GetPlayers(playerIds);
-        if (playerIds.IsEmpty())
+        // CRITICAL FIX: Use static array to avoid allocating a new array<int>
+        // every 2 seconds per AI entity (100 AI × 0.5/s = 50 allocations/sec).
+        // Static array is reused across all TerrainDetector instances.
+        if (!s_aReusablePlayerIds)
+            s_aReusablePlayerIds = new array<int>();
+        else
+            s_aReusablePlayerIds.Clear();
+        pm.GetPlayers(s_aReusablePlayerIds);
+        if (s_aReusablePlayerIds.IsEmpty())
             return float.MAX;
 
         vector ownerPos = owner.GetOrigin();
         float minDistSq = float.MAX;
 
-        for (int i = 0, cnt = playerIds.Count(); i < cnt; i++)
+        int nPlayers = s_aReusablePlayerIds.Count();
+        for (int i = 0; i < nPlayers; i++)
         {
-            PlayerController pc = pm.GetPlayerController(playerIds[i]);
+            PlayerController pc = pm.GetPlayerController(s_aReusablePlayerIds.Get(i));
             if (!pc)
                 continue;
             IEntity playerEnt = pc.GetControlledEntity();

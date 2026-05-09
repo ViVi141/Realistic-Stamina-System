@@ -92,6 +92,7 @@ modded class SCR_BaseGameMode
         EnvironmentFactor.ResetGlobalSignalsCache();
         SCR_RSS_AIRestRecoveryRegistry.ClearAllForNewWorldSession();
         SCR_StaminaHUDComponent.Destroy();
+        SCR_DebugBatchManager.ResetForNewWorld();   // 重置调试批次时间戳，防止重载世界后无输出
         m_iRssLoadRetries = 0;
 
         super.OnGameStart();
@@ -172,7 +173,7 @@ modded class SCR_BaseGameMode
         m_bRssDebugLog       = settings.m_bDebugLogEnabled;
         m_bRssHintDisplay    = settings.m_bHintDisplayEnabled;
         m_bRssDataExport     = settings.m_bDataExportEnabled;
-        m_bRssMudSlip        = settings.m_bEnableMudSlipMechanism;
+        m_bRssMudSlip        = false;  // forced OFF — mud slip disabled pending camera tuning
         m_bRssAICombat       = settings.m_bEnableAIStaminaCombatEffects;
         m_bRssDisableAIAll   = settings.m_bDisableAIAllCalc;
         m_bRssDisableAIStamina = settings.m_bDisableAIStaminaCalc;
@@ -230,7 +231,7 @@ modded class SCR_BaseGameMode
         settings.m_bDebugLogEnabled              = m_bRssDebugLog;
         settings.m_bHintDisplayEnabled           = m_bRssHintDisplay;
         settings.m_bDataExportEnabled            = m_bRssDataExport;
-        settings.m_bEnableMudSlipMechanism       = m_bRssMudSlip;
+        settings.m_bEnableMudSlipMechanism       = false;  // forced OFF — mud slip disabled pending camera tuning (server value ignored)
         settings.m_bEnableAIStaminaCombatEffects = m_bRssAICombat;
         settings.m_bDisableAIAllCalc             = m_bRssDisableAIAll;
         settings.m_bDisableAIStaminaCalc         = m_bRssDisableAIStamina;

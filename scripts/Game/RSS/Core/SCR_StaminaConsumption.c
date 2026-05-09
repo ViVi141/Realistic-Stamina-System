@@ -59,6 +59,8 @@ class StaminaConsumptionCalculator
 
             // 应用温度修正
             float fastBase = baseDrainRateByVelocity;
+            // Save pre-temp value for baseDrainRateByVelocity output (to match full path)
+            float preTempBase = fastBase;
             if (environmentFactor && fastBase > 0.0)
                 fastBase = environmentFactor.AdjustEnergyForTemperature(fastBase);
 
@@ -76,10 +78,13 @@ class StaminaConsumptionCalculator
             // 应用负重消耗倍数
             fastDrain = fastDrain * encumbranceStaminaDrainMultiplier;
 
-            // 输出基础消耗率（不含姿态修正，用于恢复计算）
-            baseDrainRateByVelocity = fastBase / postureMultiplier; // 还原姿态修正前的值
-            if (postureMultiplier <= 0.0)
-                baseDrainRateByVelocity = fastBase;
+            // CRITICAL FIX: Output preTempBase (before temperature adjustment) as
+            // baseDrainRateByVelocity, matching the full-path behavior where
+            // originalBaseDrainRate saves the value before AdjustEnergyForTemperature.
+            // Previously we output fastBase/postureMultiplier which included the
+            // temperature adjustment, causing recovery calculations to receive
+            // an inflated base drain rate.
+            baseDrainRateByVelocity = preTempBase;
 
             return fastDrain;
         }

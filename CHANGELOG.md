@@ -1,5 +1,50 @@
 # 更新日志
 
+## [3.22.7] - 2026-05-10
+
+### 代码审查修复（基于 RSS_CODE_REVIEW_REPORT）
+
+本轮修复源于对全部 65 个 C 文件的深度代码审查，共修正 17 项 Bug + 5 项设计改进。
+
+#### 🔴 关键修复（CRITICAL — 可能导致崩溃或逻辑严重错误）
+
+- **退出游戏崩溃**（`Access violation at 0x0`）— `StopStaminaMonitor()` / `StartStaminaMonitor()` / `MonitorStamina()` 中 `GetGame()` 返回 null 时直接解引 `GetCallqueue()`。修复：三个入口均增加 `if (GetGame() && GetGame().GetCallqueue())` 守卫（`SCR_StaminaOverride.c`）。
+- **屏幕边缘抖动**（"jitter on screen edge"）— `CharacterCamera1stPerson.GetStaminaPercent()` 读取 `GetStamina()`（原生引擎原始值）而非 `GetTargetStamina()`（RSS 权威值）。体力在 200ms 纠正周期内漂移，导致 Sprint FOV 在 burst/cruise/limp 之间来回切换。修复：优先使用 `SCR_CharacterStaminaComponent.GetTargetStamina()`（`CharacterCamera1stPerson.c`）。
+- **OD 致死路径不恢复流血倍率** — `Kill()` 前未将 `m_fRSS_CombatStimBleedingBaseline` 写回 `SetBleedingScale()`，导致死后流血倍率维持 OD 期的高值。修复：Kill 前先 Reset（`PlayerBase.c`）。
+- **静态共享结果对象竞态** — `s_pResultSpeedCalc` / `s_pResultBaseDrainRate` / `s_pRecoveryCtx` 在高密度 AI 并发调用时互相覆盖。修复：每次调用 `new` 独立实例（`SCR_StaminaUpdateCoordinator.c`）。
+- **Givoni-Goldman 死代码产生零消耗** — 回退分支 `CalculateGivoniGoldmanRunning()` 自 v3.12.0 返回 0.0，当 `currentMovementPhase < 0` 时消耗率为 0。修复：移除该分支，回退路径统一走 Pandolf（`SCR_StaminaUpdateCoordinator.c`）。
+- **PlayerBase 主循环中 GetGame().GetWorld() 未判空** — `UpdateSpeedBasedOnStamina` / `CollectSpeedSample` 中 `world.GetWorldTime()` 可能在退出阶段触发 Access Violation。修复：增加 `!world` 检查后直接 return（`PlayerBase.c`）。
+
+#### ⚠️ 主要修复（MAJOR — 逻辑错误或设计缺陷）
+
+- **MonitorStamina AI 性能开销** — AI 实体也启动 50ms 轮询循环（64 AI × 20/s = 1280 calls/s）。修复：仅玩家实体启动 MonitorStamina；AI 依赖 `OnStaminaDrain` + `SetTargetStamina` 双重保护（`SCR_StaminaOverride.c`）。
+- **负重缓存状态不一致** — `CheckAndUpdate` 中 `ownerEntity` 为 null 时不标记缓存失效，后续 `IsCacheValid()` 返回陈旧数据。修复：owner 为 null 时立即 `m_bEncumbranceCacheValid = false`（`SCR_EncumbranceCache.c`）。
+- **消耗快路径 baseDrainRateByVelocity 输出不一致** — 快路径输出了温度修正后的值，而完整路径保存温度修正前的值，导致恢复计算基线不一致。修复：快路径改为输出 `preTempBase`（`SCR_StaminaConsumption.c`）。
+- **疲劳衰减条件不可达** — `fatigueTimeDelta < 1.0` 条件导致在 >1s 的 CallLater 间隔下衰减永不执行。移除条件 + 添加 `m_fLastFatigueDecayTime` 更新（`SCR_FatigueSystem.c`）。
+- **坡度过渡 SNAP_UP_THRESHOLD 无滞回** — 缓坡（2-3°）时 Tobler 输出在 0.92~1.0 波动，反复触发即时跳转绕过 5 秒平滑。修复：增加 `m_bSnapUpActive` 滞回状态（`SCR_SlopeSpeedTransition.c`）。
+- **写 JSON 无原子性** — `Save()` 直接写入主文件，中断导致损坏。修复：先写 `.tmp`，`CopyFile`+`DeleteFile` 替换（`SCR_RSS_ConfigManager.c`）。
+- **游泳模型 v³ 溢出** — 未 clamp 的合速度（7m/s→343³）产生 42,875W 中间值，远超 2000W 上限。修复：vTotal 立方前 clamp 到 7.0m/s（`SCR_SwimmingStaminaModel.c`）。
+- **EnforceScript 编译兼容性修复** — `FileIO.RenameFile` 不存在（改为 Copy+Delete）、方法内 `static` 变量不支持（提升为类级）、`const string + .tmp` 表达式不可用（改为局部变量）（`SCR_RSS_ConfigManager.c` / `SCR_TerrainDetection.c` / `SCR_EnvironmentFactor.c`）。
+- **数据导出关闭后 RPC 继续上报** — ShouldSync 通过后 GetServerDataExportEnabled() 可能已关闭。修复：RPC 前二次检查（`PlayerBase.c`）。
+
+#### 🏗️ 设计改进
+
+- **MonitorStamina 间隔 50→200ms** — 与主循环同步，玩家端从 20→5 calls/s（`SCR_StaminaOverride.c`）。
+- **SPRINT_ENABLE_THRESHOLD 0.15→0.18** — 与 WALK_RECOVERY_ZONE(0.15) 留 3% 缓冲区（`SCR_StaminaConstants.c`）。
+- **疲劳恢复可达性** — `FATIGUE_DECAY_MIN_REST_TIME` 60→15s，衰减率 5x，满疲劳恢复从 600s→~80s（`SCR_FatigueSystem.c`）。
+- **地形系数常量去重** — 删除 `SCR_RealisticStaminaSystem` 中重复的 `TERRAIN_FACTOR_*`，统一引用 `StaminaConstants`（`SCR_RealisticStaminaSystem.c`）。
+- **泥泞滑倒强制禁用** — UI 控件对所有人隐藏、AdminApply/RPC/ConfigLoad 全路径强制 false；镜头参数待调优后开放（6 文件修改）。
+- **EnvironmentFactor 配置热加载** — `UpdateEnvironmentFactors` 中周期性检测配置版本变化，自动调用 `ApplySettings()`（`SCR_EnvironmentFactor.c`）。
+- **DebugBatchManager 跨世界重置** — 新增 `ResetForNewWorld()`，Workbench 重载时在 `OnGameStart` 调用（`SCR_DebugBatchManager.c` + `SCR_RSS_ServerBootstrap.c`）。
+- **CAM_DEBUG_STRENGTH 注释清理** — 消除"临时调试状态"歧义（`SCR_StaminaConstants.c`）。
+
+#### 📦 其他
+
+- **CURRENT_VERSION** → 3.22.7
+- **新增代码审查报告**：`docs/RSS_CODE_REVIEW_REPORT_v3.22.6.md`
+- **修改文件**：13 个源文件 + 1 个报告文档
+
+
 ## [3.22.6] - 2026-05-10
 
 ### 表现与第一人称

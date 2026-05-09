@@ -130,4 +130,15 @@ class SCR_DebugBatchManager
         nextTime = currentTime + interval;
         return true;
     }
+
+    //! 新世界开始时调用，重置所有静态时间戳，避免 Workbench 重载世界后
+    //! 前几秒无调试输出的问题。
+    static void ResetForNewWorld()
+    {
+        s_fNextDebugBatchTime = 0.0;
+        s_bDebugBatchActive = false;
+        s_bTempStepAddedThisBatch = false;
+        s_bEngineTODAddedThisBatch = false;
+        s_fLastBatchFlushTime = -999.0;
+    }
 }

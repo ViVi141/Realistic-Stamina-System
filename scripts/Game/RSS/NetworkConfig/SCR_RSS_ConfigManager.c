@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.22.6";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "3.22.7";  // 当前模组版本
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -59,13 +59,13 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bHintDisplayEnabled = true;
         m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
-        m_Settings.m_bEnableMudSlipMechanism = true;
+        m_Settings.m_bEnableMudSlipMechanism = false;  // NOTE: disabled pending camera tuning (see StaminaConstants design note)
         m_Settings.m_bEnableAIStaminaCombatEffects = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip ON, AI stamina combat ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip OFF (tuning pending), AI stamina combat ON.");
         return;
         #endif
 
@@ -284,6 +284,12 @@ class SCR_RSS_ConfigManager
         
         Print("[RSS] Realistic Stamina System v" + CURRENT_VERSION + " initialized (Debug: " + debugStatus + ", Hint: " + hintStatus + ", Preset: " + presetName + ")");
         
+        // Hard force: mud slip always OFF (pending camera tuning — see StaminaConstants)
+        m_Settings.m_bEnableMudSlipMechanism = false;
+        #ifdef WORKBENCH
+            m_Settings.m_bEnableMudSlipMechanism = false;
+        #endif
+        
         // 打印当前预设的关键参数值（调试用）
         SCR_RSS_Params activeParams = m_Settings.GetActiveParams();
         if (activeParams)
@@ -465,7 +471,7 @@ class SCR_RSS_ConfigManager
         return Replication.IsServer();
     }
     
-    // 保存配置文件
+    // 保存配置文件（原子写入：先写临时文件再 rename）
     static void Save()
     {
         if (!m_Settings) m_Settings = new SCR_RSS_Settings();
@@ -476,15 +482,43 @@ class SCR_RSS_ConfigManager
             UpdateConfigCache();
             return;
         }
+
+        // CRITICAL FIX: Atomic write — write to temp file first, then rename.
+        // This prevents JSON corruption from crashes during SaveToFile.
+        string temp_path = CONFIG_PATH + ".tmp";
         
-        // 创建配置备份
+        // 创建配置备份（基于当前已验证的旧文件）
         CreateConfigBackup();
         
-        // 使用官方的JsonSaveContext
+        // 写入临时文件
         SCR_JsonSaveContext saveContext = new SCR_JsonSaveContext();
         saveContext.WriteValue("", m_Settings);
-        saveContext.SaveToFile(CONFIG_PATH);
-        Print("[RSS_ConfigManager] Settings saved to " + CONFIG_PATH);
+        saveContext.SaveToFile(temp_path);
+        
+        // 验证临时文件存在后再替换主文件
+        // NOTE: EnforceScript does not have FileIO.RenameFile(), so we use
+        // CopyFile + DeleteFile as the atomicity approximation.
+        // True atomic rename would require engine-level MoveFileEx support.
+        if (FileIO.FileExists(temp_path))
+        {
+            // 删除旧主文件（如有）
+            if (FileIO.FileExists(CONFIG_PATH))
+                FileIO.DeleteFile(CONFIG_PATH);
+            // CopyFile + DeleteFile = pseudo-atomic: if copy succeeds, config is intact
+            if (FileIO.CopyFile(temp_path, CONFIG_PATH))
+            {
+                FileIO.DeleteFile(temp_path);
+                Print("[RSS_ConfigManager] Settings saved atomically to " + CONFIG_PATH);
+            }
+            else
+            {
+                Print("[RSS_ConfigManager] ERROR: Failed to copy temp file, config may be lost!");
+            }
+        }
+        else
+        {
+            Print("[RSS_ConfigManager] ERROR: Temp file not written, config NOT saved!");
+        }
         
         // 更新配置缓存
         UpdateConfigCache();
@@ -1050,7 +1084,7 @@ class SCR_RSS_ConfigManager
         s.m_bDebugLogEnabled              = debugLog;
         s.m_bHintDisplayEnabled           = hintDisplay;
         s.m_bDataExportEnabled            = dataExport;
-        s.m_bEnableMudSlipMechanism       = mudSlip;
+        s.m_bEnableMudSlipMechanism       = false;  // forced OFF — mud slip disabled pending camera tuning
         s.m_bEnableAIStaminaCombatEffects = aiCombat;
         s.m_bDisableAIAllCalc             = disableAI;
         s.m_bDisableAIStaminaCalc         = disableAIStamina;

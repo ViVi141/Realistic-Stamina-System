@@ -61,7 +61,8 @@ class SCR_SwimmingStaminaModel
         float dynamicPower = 0.0;
         if (velocity > StaminaConstants.SWIMMING_MIN_SPEED)
         {
-            float velocityCubed = velocity * velocity * velocity; // v³
+            float vClamped = Math.Clamp(velocity, 0.0, 7.0);
+            float velocityCubed = vClamped * vClamped * vClamped; // v³
             dynamicPower = 0.5 * StaminaConstants.SWIMMING_WATER_DENSITY * velocityCubed * 
                           StaminaConstants.SWIMMING_DRAG_COEFFICIENT * StaminaConstants.SWIMMING_FRONTAL_AREA;
             
@@ -146,6 +147,10 @@ class SCR_SwimmingStaminaModel
             // 物理原理：P_total ∝ |v_total|^3 = (sqrt(v_x^2 + v_y^2))^3
             // 而不是：|v_x|^3 + |v_y|^3
             float vTotal = Math.Sqrt(vH * vH + vY * vY);
+            // CRITICAL FIX: Clamp vTotal before cubing to prevent overflow.
+            // Unclamped 7.0m/s gives 42,875W which exceeds SWIMMING_MAX_TOTAL_POWER (2000)
+            // but the intermediate multiplication may overflow on some platforms.
+            vTotal = Math.Clamp(vTotal, 0.0, 7.0);
             float vTotalCubed = vTotal * vTotal * vTotal; // 合速度的立方
 
             // 使用合速度计算阻力功率

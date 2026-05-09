@@ -33,13 +33,10 @@ class RecoveryContext
 
 class StaminaUpdateCoordinator
 {
-    // ── 静态共享结果对象 ──────────────────────────────────────────────────────
-    // 【使用约定】每次调用后立即读取返回值，不得跨调用持有引用。
-    // 同一帧内若需要两次调用结果，须将第一次返回值的字段复制到局部变量后再发起第二次调用，
-    // 否则第二次调用会覆盖同一对象导致第一次结果丢失。
-    protected static ref SpeedCalculationResult s_pResultSpeedCalc;
-    protected static ref BaseDrainRateResult s_pResultBaseDrainRate;
-    protected static ref RecoveryContext s_pRecoveryCtx;
+    // ── 结果对象（每次调用新分配，消除静态共享竞态）──
+    // 高密度 AI 并行调用时静态共享对象会导致数据覆盖。
+    // 修复：移除 s_pResultSpeedCalc / s_pResultBaseDrainRate，
+    // BuildRecoveryContext 每次 new RecoveryContext()，调用方读取后即可释放。
 
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
@@ -175,9 +172,11 @@ class StaminaUpdateCoordinator
         }
         else
         {
-            // 向后兼容：基于速度的原始逻辑
-            bool isRunning = (currentSpeed > 2.2);
-
+            // CRITICAL FIX: Removed Givoni-Goldman dead branch.
+            // CalculateGivoniGoldmanRunning() has returned 0.0 since v3.12.0,
+            // so the `isRunning` sub-branch produced zero drain — effectively
+            // infinite stamina whenever movementPhase < 0 (fallback path).
+            // Now all movement types use Pandolf unconditionally.
             if (currentSpeed < 0.1)
             {
                 // 静态负重站立消耗（Pandolf 静态项）
@@ -187,19 +186,6 @@ class StaminaUpdateCoordinator
                 float staticDrainRate = RealisticStaminaSpeedSystem.CalculateStaticStandingCost(bodyWeight, loadWeight);
                 staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
                 baseDrainRate = staticDrainRate * 0.2; // 每0.2秒
-            }
-            else if (isRunning)
-            {
-                // Backward-compatibility path: previous versions used the Givoni-Goldman
-                // running formula for speeds >2.2 m/s.  The current system no longer
-                // invokes this branch during normal operation because movement-phase
-                // logic now routes everything through Pandolf.  We keep it here solely
-                // so that older config presets or saved data still produce a plausible
-                // drain value if they somehow re-enter this legacy branch.
-                float runningDrainRate = RealisticStaminaSpeedSystem.CalculateGivoniGoldmanRunning(currentSpeed, currentWeightWithWet, true);
-                runningDrainRate = runningDrainRate * terrainFactor;
-                runningDrainRate = runningDrainRate * (1.0 + windDrag);
-                baseDrainRate = runningDrainRate * 0.2;
             }
             else
             {
@@ -505,8 +491,7 @@ class StaminaUpdateCoordinator
         // 确保currentSpeed不超过物理上限
         currentSpeed = Math.Min(currentSpeed, 7.0);
         
-        if (!s_pResultSpeedCalc)
-            s_pResultSpeedCalc = new SpeedCalculationResult();
+        SpeedCalculationResult s_pResultSpeedCalc = new SpeedCalculationResult();
         s_pResultSpeedCalc.currentSpeed = currentSpeed;
         s_pResultSpeedCalc.lastPositionSample = currentPos;
         s_pResultSpeedCalc.hasLastPositionSample = true;
@@ -613,8 +598,7 @@ class StaminaUpdateCoordinator
             // 因此不再需要对固定 Sprint 基线做特殊处理。
         }
         
-        if (!s_pResultBaseDrainRate)
-            s_pResultBaseDrainRate = new BaseDrainRateResult();
+        BaseDrainRateResult s_pResultBaseDrainRate = new BaseDrainRateResult();
         s_pResultBaseDrainRate.baseDrainRate = baseDrainRate;
         s_pResultBaseDrainRate.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
         return s_pResultBaseDrainRate;
@@ -766,8 +750,7 @@ class StaminaUpdateCoordinator
         float heatStressMultiplier,
         float currentSpeed)
     {
-        if (!s_pRecoveryCtx)
-            s_pRecoveryCtx = new RecoveryContext();
+        RecoveryContext s_pRecoveryCtx = new RecoveryContext();
 
         if (inVehicle)
         {

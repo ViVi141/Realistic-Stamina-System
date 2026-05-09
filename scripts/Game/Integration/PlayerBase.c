@@ -343,6 +343,12 @@ modded class SCR_CharacterControllerComponent
             return;
         }
         World world = GetGame().GetWorld();
+        if (!world)
+        {
+            m_bIsDeleted = true;
+            RSS_NotifyEntityDeleting();
+            return;
+        }
 
         if (!ShouldProcessStaminaUpdate())
         {
@@ -523,6 +529,8 @@ modded class SCR_CharacterControllerComponent
         }
 
         bool isCriticalData = (staminaPercent <= 0.05 || (m_pNetworkSyncManager && m_pNetworkSyncManager.GetLastReportedStaminaPercent() > 0.5 && staminaPercent <= 0.1));
+        // CRITICAL FIX: Double-check GetServerDataExportEnabled() after ShouldSync.
+        // If admin disabled data export between ShouldSync and Rpc(), we skip sending.
         if (isPlayer && !Replication.IsServer() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())
         {
             int syncType = 0;
@@ -530,6 +538,10 @@ modded class SCR_CharacterControllerComponent
                 syncType = 1;
             if (m_pNetworkSyncManager.ShouldSync(currentTime, syncType))
             {
+                // Re-check before sending RPC: admin may have disabled data export
+                // in the split second between the outer check and here.
+                if (!SCR_RSS_ConfigManager.GetServerDataExportEnabled())
+                    return;
                 Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight, currentTime, isCriticalData);
                 if (isCriticalData && IsRssDebugEnabled())
                     PrintFormat("[RSS] Critical stamina event reported (stamina=%1)", staminaPercent);
@@ -1081,6 +1093,12 @@ modded class SCR_CharacterControllerComponent
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         
+        if (!GetGame())
+        {
+            m_bIsDeleted = true;
+            RSS_NotifyEntityDeleting();
+            return;
+        }
         World world = GetGame().GetWorld();
         if (!world)
             return;
@@ -1318,6 +1336,20 @@ modded class SCR_CharacterControllerComponent
 
         if (shouldDie)
         {
+            // CRITICAL FIX: Reset bleeding scale to baseline BEFORE Kill(),
+            // because RSS_CombatStim_UpdateBleedingScale() will not be called
+            // after the Kill path returns.
+            if (m_fRSS_CombatStimBleedingBaseline >= 0.0)
+            {
+                SCR_CharacterDamageManagerComponent dmgMgrOd = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
+                if (dmgMgrOd)
+                {
+                    dmgMgrOd.SetBleedingScale(m_fRSS_CombatStimBleedingBaseline, true);
+                    RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgrOd);
+                }
+                m_fRSS_CombatStimBleedingBaseline = -1.0;
+            }
+
             SCR_CharacterDamageManagerComponent damageMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
             if (damageMgr)
             {

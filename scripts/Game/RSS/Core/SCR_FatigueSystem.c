@@ -6,8 +6,14 @@ class FatigueSystem
 {
     // ==================== 状态变量 ====================
     protected float m_fFatigueAccumulation = 0.0; // 疲劳积累值（0.0-1.0），影响最大体力上限
-    protected const float FATIGUE_DECAY_RATE = 0.0001; // 疲劳恢复率（每0.2秒），长时间休息时疲劳逐渐减少
-    protected const float FATIGUE_DECAY_MIN_REST_TIME = 60.0; // 疲劳恢复所需的最小休息时间（秒），需要长时间休息
+    // DESIGN NOTE: Reduced FATIGUE_DECAY_MIN_REST_TIME from 60 to 15 seconds
+    // and increased FATIGUE_DECAY_RATE 5x (0.0001→0.0005) to make the fatigue
+    // system actually reachable in gameplay. Previous values required 60s
+    // uninterrupted rest + 600s to fully recover from max fatigue (30% cap),
+    // which is effectively unreachable in PvP. New values: 15s to start
+    // recovery, ~80s to full recovery from max fatigue.
+    protected const float FATIGUE_DECAY_RATE = 0.0005; // 疲劳恢复率（每0.2秒），长时间休息时疲劳逐渐减少
+    protected const float FATIGUE_DECAY_MIN_REST_TIME = 15.0; // 疲劳恢复所需的最小休息时间（秒），15秒喘口气即可
     protected float m_fLastFatigueDecayTime = 0.0; // 上次疲劳恢复检查时间
     protected float m_fLastRestStartTime = -1.0; // 上次开始休息的时间（-1表示未休息）
     protected const float MAX_FATIGUE_PENALTY = 0.3; // 最大疲劳惩罚（30%），即疲劳积累最高时可降低30%最大体力上限
@@ -58,12 +64,16 @@ class FatigueSystem
                 
                 if (restDuration >= FATIGUE_DECAY_MIN_REST_TIME)
                 {
-                    // 满足长时间休息条件：开始疲劳恢复
+                    // CRITICAL FIX: Removed the `fatigueTimeDelta < 1.0` condition that
+                    // prevented decay from ever applying when the loop interval exceeded 1s,
+                    // or when m_fLastFatigueDecayTime was only updated on successful decay.
+                    // Now decays on every tick that meets the rest duration requirement.
                     float fatigueTimeDelta = currentTime - m_fLastFatigueDecayTime;
-                    if (fatigueTimeDelta > 0.0 && fatigueTimeDelta < 1.0)
+                    if (fatigueTimeDelta > 0.0)
                     {
                         // 疲劳逐渐恢复（每0.2秒恢复 FATIGUE_DECAY_RATE）
                         m_fFatigueAccumulation = Math.Max(m_fFatigueAccumulation - (FATIGUE_DECAY_RATE * (fatigueTimeDelta / 0.2)), 0.0);
+                        m_fLastFatigueDecayTime = currentTime;
                     }
                 }
                 // 否则：休息时间不足，疲劳不恢复
