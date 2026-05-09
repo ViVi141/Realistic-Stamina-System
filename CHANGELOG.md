@@ -1,5 +1,15 @@
 # 更新日志
 
+## [3.22.6] - 2026-05-10
+
+### 表现与第一人称
+
+- **仅原生表现开关** — `StaminaConstants.RSS_PRESENTATION_NATIVE_ONLY`（默认 `true`）：为 `true` 时只保留引擎原生相机/屏效/相关音频链，不叠加 RSS 自定义（冲刺 FOV、泥泞镜头、CombatStim 首针再生屏效、OD 去饱和、冲刺发闷音频变量）。`IsRssPresentationNativeOnly()` 供各 `modded` 表现类判断。设为 `false` 可恢复全部 RSS 自定义表现。
+- **冲刺 FOV 稳态** — 跛行阈值滞回（0.17 / 0.24）、目标 FOV 指数平滑（τ≈0.14s）、`CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC` 8°/s，减轻体力复制抖动导致的边缘闪烁感。
+- **泥泞镜头** — 泥泞机制关闭时 `ApplyMudSlipCameraShake` 立即清零平滑状态并仅写回基础 FOV，避免残留路径。
+
+- **`CURRENT_VERSION`** → 3.22.6
+
 ## [3.22.5] - 2026-05-09
 
 ### 修复

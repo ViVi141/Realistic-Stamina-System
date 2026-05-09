@@ -1,0 +1,5 @@
+v3.22.6 (2026-05-10)
+
+Presentation: RSS_PRESENTATION_NATIVE_ONLY (default true) keeps vanilla camera/screen/audio effects only; set false in SCR_StaminaConstants to re-enable RSS sprint FOV, mud-slip camera, CombatStim regen/OD visuals, and optional sprint audio muffle.
+
+Sprint FOV: limp hysteresis, smoothed target, lower max rate; mud-slip camera path clears when mud mechanism is off.

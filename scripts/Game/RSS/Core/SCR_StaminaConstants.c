@@ -12,6 +12,11 @@ class StaminaConstants
     // ==================== [HARD] 游戏配置常量 ====================
     // 0kg 下实测：Sprint 最大 5.5 m/s，Run 最大 3.8 m/s
     static const float GAME_MAX_SPEED = 5.5; // m/s（0kg 冲刺最大速度）
+
+    // ==================== 表现层：仅原生 / 屏蔽 RSS 自定义 ====================
+    // true：只保留引擎原生相机与屏效；不应用 RSS 自定义（冲刺 FOV、泥泞镜头、CombatStim 首针/OD 屏效、冲刺发闷音频变量等）。
+    // false：启用上述 RSS 自定义表现。体力与速度等数值逻辑与此开关无关。
+    static const bool RSS_PRESENTATION_NATIVE_ONLY = true;
     
     // ==================== [SOFT via Settings] 军事体力系统模型常量（基于速度阈值）====================
     // 基于速度阈值的分段消耗率系统 - 以下阈值为游戏设计参数，可通过预设间接影响
@@ -395,7 +400,11 @@ class StaminaConstants
     static const float CAM_SPRINT_FOV_BONUS_DEG = 5.0;    // [保留] 兼容旧逻辑，实际以 BURST/CRUISE/LIMP 为准
     static const float CAM_SPRINT_FOV_BLEND_UP_SEC = 0.2;   // 进入冲刺时 FOV 过渡时长（秒）
     static const float CAM_SPRINT_FOV_BLEND_DOWN_SEC = 0.25; // 退出冲刺时 FOV 过渡时长（秒）
-    static const float CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC = 12.0; // FOV 加成变化速率上限（度/秒），保证全链路无突变
+    static const float CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC = 8.0; // FOV 加成变化速率上限（度/秒）；略降以减轻边缘「抽动感」
+    // 体力在阈值附近复制抖动时，跛行 FOV 会反复开关导致屏幕边缘闪烁；用滞回 + 目标平滑抑制
+    static const float CAM_SPRINT_FOV_LIMP_HYST_STAMINA_LOW = 0.17;  // 低于此进入跛行 FOV
+    static const float CAM_SPRINT_FOV_LIMP_HYST_STAMINA_HIGH = 0.24; // 高于此退出跛行 FOV
+    static const float CAM_SPRINT_FOV_TARGET_SMOOTH_TAU_SEC = 0.14;   // 冲刺 FOV 目标指数平滑时间常数（秒）
     // ==================== [HARD] Pandolf 能量消耗模型系数（Pandolf et al., 1977 原始值）====================
     // 以下系数均来自 Pandolf et al., 1977 论文的实验测量结果，属于 HARD CONFIG。
     // Python 数字孪生必须与这些值完全同步，否则优化器输出与游戏实际行为将产生系统性偏差。
@@ -751,6 +760,11 @@ class StaminaConstants
     static float GetCamSprintFovBlendUpSec() { return CAM_SPRINT_FOV_BLEND_UP_SEC; }
     static float GetCamSprintFovBlendDownSec() { return CAM_SPRINT_FOV_BLEND_DOWN_SEC; }
     static float GetCamSprintFovMaxRateDegPerSec() { return CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC; }
+    static float GetCamSprintFovLimpHystStaminaLow() { return CAM_SPRINT_FOV_LIMP_HYST_STAMINA_LOW; }
+    static float GetCamSprintFovLimpHystStaminaHigh() { return CAM_SPRINT_FOV_LIMP_HYST_STAMINA_HIGH; }
+    static float GetCamSprintFovTargetSmoothTauSec() { return CAM_SPRINT_FOV_TARGET_SMOOTH_TAU_SEC; }
+    //! @return true 时使用仅原生表现（跳过 RSS 自定义屏效/相机/相关音频覆盖）
+    static bool IsRssPresentationNativeOnly() { return RSS_PRESENTATION_NATIVE_ONLY; }
     // ==================== 姿态转换成本常量（Posture Transition Cost 2.0 - 乳酸堆积模型）====================
     // 核心思路：单次动作很轻，连续动作剧增。模拟肌肉在连续负重深蹲时从有氧到无氧的转变。
     // 生理学依据：肌肉在连续爆发时会产生乳酸堆积，导致肌肉疲劳和力量下降

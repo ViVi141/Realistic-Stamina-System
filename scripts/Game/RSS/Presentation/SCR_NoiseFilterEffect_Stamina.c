@@ -12,6 +12,9 @@ modded class SCR_NoiseFilterEffect
     {
         super.DisplayUpdate(owner, timeSlice);
 
+        if (StaminaConstants.IsRssPresentationNativeOnly())
+            return;
+
         if (m_bDisplaySuspended || !m_pCharacterEntity)
             return;
 

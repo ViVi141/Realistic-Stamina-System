@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.22.5
+# Realistic Stamina System (RSS) v3.22.6
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.22.5-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.6-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -218,6 +218,14 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*.json        # 优化后的配置文件（3 个预设）
     └── README.md                          # Tools 工具集文档
 ```
+
+## v3.22.6 版本更新 / v3.22.6 Updates
+
+**2026-05-10**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.6]**）
+
+- **版本** - `CURRENT_VERSION` **3.22.6**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **仅原生表现** - `RSS_PRESENTATION_NATIVE_ONLY` 默认 `true`：只保留引擎原生相机/屏效/相关音频，不应用 RSS 自定义表现；`false` 时恢复冲刺 FOV、泥泞镜头、CombatStim 首针/OD 屏效与可选冲刺发闷。
+- **冲刺 FOV** - 体力滞回与目标平滑、变化速率上限 8°/s；泥泞机制关闭时镜头应力路径立即清零。
 
 ## v3.22.5 版本更新 / v3.22.5 Updates
 

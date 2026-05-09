@@ -7,6 +7,12 @@ modded class SCR_RegenerationScreenEffect
 
     override void UpdateEffect(float timeSlice)
     {
+        if (StaminaConstants.IsRssPresentationNativeOnly())
+        {
+            super.UpdateEffect(timeSlice);
+            return;
+        }
+
         if (m_pCharacterEntity)
         {
             SCR_CharacterControllerComponent rssController = SCR_CharacterControllerComponent.Cast(m_pCharacterEntity.GetCharacterController());

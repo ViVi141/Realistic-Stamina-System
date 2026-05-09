@@ -5,12 +5,17 @@
 modded class CharacterCamera1stPerson
 {
     protected float m_fSprintFovBonusCurrent = 0.0; // 当前 FOV 加成（度），平滑趋近目标 Burst/Cruise/Limp
+    protected float m_fSprintFovTargetSmoothed = 0.0; // 冲刺 FOV 目标（度）经低通后的值，抑制体力复制抖动
+    protected bool m_bFovLimpHysteresisActive = false; // 跛行 FOV 滞回：避免体力在 0.2 附近反复横跳
     protected float m_fMudSlipShakeSmoothed01 = 0.0;
     protected float m_fMudSlipShakePhaseRad = 0.0;
 
     override void OnUpdate(float pDt, out ScriptedCameraItemResult pOutResult)
     {
         super.OnUpdate(pDt, pOutResult);
+
+        if (StaminaConstants.IsRssPresentationNativeOnly())
+            return;
 
         if (!m_ControllerComponent || !m_OwnerCharacter)
             return;
@@ -22,7 +27,15 @@ modded class CharacterCamera1stPerson
         float worldTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
         float staminaPercent = GetStaminaPercent();
 
-        float targetFovBonus = ComputeTargetSprintFovBonus(rssController, worldTimeSec, staminaPercent);
+        float targetRaw = ComputeTargetSprintFovBonus(rssController, worldTimeSec, staminaPercent);
+        float tauTarget = StaminaConstants.GetCamSprintFovTargetSmoothTauSec();
+        float alphaTarget = 1.0;
+        if (tauTarget > 0.0001 && pDt > 0.0)
+            alphaTarget = 1.0 - Math.Pow(2.718281828, -pDt / tauTarget);
+        if (alphaTarget > 1.0)
+            alphaTarget = 1.0;
+        m_fSprintFovTargetSmoothed = m_fSprintFovTargetSmoothed + (targetRaw - m_fSprintFovTargetSmoothed) * alphaTarget;
+        float targetFovBonus = m_fSprintFovTargetSmoothed;
         float blendUpSec = StaminaConstants.GetCamSprintFovBlendUpSec();
         float blendDownSec = StaminaConstants.GetCamSprintFovBlendDownSec();
         float blendSec = blendUpSec;
@@ -55,6 +68,14 @@ modded class CharacterCamera1stPerson
 
     protected void ApplyMudSlipCameraShake(float pDt, SCR_CharacterControllerComponent rssController, float fovBase, out ScriptedCameraItemResult pOutResult)
     {
+        if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
+        {
+            m_fMudSlipShakeSmoothed01 = 0.0;
+            m_fMudSlipShakePhaseRad = 0.0;
+            pOutResult.m_fFOV = fovBase;
+            return;
+        }
+
         float targetStress = rssController.RSS_GetMudSlipCameraShake01();
         float smoothRate = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
         float blend = smoothRate * pDt;
@@ -93,8 +114,13 @@ modded class CharacterCamera1stPerson
 
     protected float ComputeTargetSprintFovBonus(SCR_CharacterControllerComponent rssController, float worldTimeSec, float staminaPercent)
     {
-        float limpThreshold = StaminaConstants.GetCamSprintFovLimpStaminaThreshold();
-        if (staminaPercent < limpThreshold)
+        float limpLow = StaminaConstants.GetCamSprintFovLimpHystStaminaLow();
+        float limpHigh = StaminaConstants.GetCamSprintFovLimpHystStaminaHigh();
+        if (staminaPercent < limpLow)
+            m_bFovLimpHysteresisActive = true;
+        else if (staminaPercent > limpHigh)
+            m_bFovLimpHysteresisActive = false;
+        if (m_bFovLimpHysteresisActive)
             return StaminaConstants.GetCamSprintFovLimpDeg();
         if (!rssController.IsSprinting())
             return 0.0;

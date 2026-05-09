@@ -444,7 +444,7 @@ python rss_pipeline_v4.py --trials 500 --jobs 4
 ---
 
 **最后更新**: 2026-05-07  
-**RSS 版本**: 3.22.5  
+**RSS 版本**: 3.22.6  
 **工具版本**: v4 (rss_pipeline_v4.py)  
 **优化版本**: Optuna 多目标（endurance / recovery / realism）  
 **状态**: ✅ 生产就绪
