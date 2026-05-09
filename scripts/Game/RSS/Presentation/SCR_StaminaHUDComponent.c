@@ -125,7 +125,20 @@ class SCR_StaminaHUDComponent
     static void Init()
     {
         if (s_Instance)
-            return;
+        {
+            if (!GetGame() || !GetGame().GetWorkspace())
+            {
+                Destroy();
+            }
+            else if (s_Instance.m_wRoot)
+            {
+                return;
+            }
+            else
+            {
+                Destroy();
+            }
+        }
         
         // 检查配置是否启用
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -273,7 +286,8 @@ class SCR_StaminaHUDComponent
     {
         if (m_wRoot)
         {
-            m_wRoot.RemoveFromHierarchy();
+            if (GetGame() && GetGame().GetWorkspace())
+                m_wRoot.RemoveFromHierarchy();
             m_wRoot = null;
         }
         m_wTextStamina = null;
@@ -293,6 +307,11 @@ class SCR_StaminaHUDComponent
     // 更新显示
     protected void UpdateDisplay()
     {
+        if (!GetGame() || !GetGame().GetWorkspace())
+            return;
+        if (!m_wRoot)
+            return;
+
         // 计算各项数值（体力、速度使用平滑后的显示值，避免瞬时跳变）
         int staminaPct = Math.Clamp(Math.Round(s_fDisplayStaminaPercent * 100.0), 0, 100);
         int speedPct = Math.Round(s_fDisplaySpeedMultiplier * 100.0);

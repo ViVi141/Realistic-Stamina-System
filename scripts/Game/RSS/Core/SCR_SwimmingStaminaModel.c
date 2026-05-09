@@ -1,5 +1,5 @@
 // Swimming Stamina Model - 3D physics-based swimming energy expenditure
-// Extracted from SCR_RealisticStaminaSystem.c (v3.22.1 split)
+// Extracted from SCR_RealisticStaminaSystem.c (v3.22.5 split)
 //
 // Physics model: F_d = 0.5 * rho * v^2 * C_d * A
 // References:

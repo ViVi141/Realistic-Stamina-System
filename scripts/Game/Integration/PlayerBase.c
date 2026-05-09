@@ -280,7 +280,11 @@ modded class SCR_CharacterControllerComponent
 
     void RSS_WaitForGameModeConfig()
     {
-        if (m_bIsDeleted || !GetOwner())
+        if (m_bIsDeleted)
+            return;
+        if (!GetGame() || !GetGame().GetWorld())
+            return;
+        if (!GetOwner())
             return;
         if (Replication.IsServer())
             return;
@@ -290,6 +294,8 @@ modded class SCR_CharacterControllerComponent
         if (SCR_RSS_ConfigManager.IsServerConfigApplied())
         {
             m_bRssWaitingGameModeConfig = false;
+            if (GetGame().GetCallqueue())
+                GetGame().GetCallqueue().Remove(RSS_WaitForGameModeConfig);
             return;
         }
 
@@ -1653,6 +1659,10 @@ modded class SCR_CharacterControllerComponent
 
     void InitStaminaHUD()
     {
+        if (m_bIsDeleted)
+            return;
+        if (!GetOwner())
+            return;
         SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 

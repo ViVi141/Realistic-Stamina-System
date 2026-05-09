@@ -1,5 +1,5 @@
 // RSS Parameter Model - serializable configuration parameters
-// Extracted from SCR_RSS_Settings.c (v3.22.1 split)
+// Extracted from SCR_RSS_Settings.c (v3.22.5 split)
 // Contains all 47 tunable float parameters used by the stamina system.
 //
 

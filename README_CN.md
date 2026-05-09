@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.21.1
+# Realistic Stamina System (RSS) v3.22.5
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.21.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.5-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -218,6 +218,14 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*.json        # 优化后的配置文件（3 个预设）
     └── README.md                          # Tools 工具集文档
 ```
+
+## v3.22.5 版本更新 / v3.22.5 Updates
+
+**2026-05-09**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.5]**）
+
+- **版本** - `CURRENT_VERSION` **3.22.5**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **退出崩溃热修** - 客户端关游戏 / 断线时对空指针读取导致的 Access violation：`RSS_WaitForGameModeConfig` 判空与同步成功后移除重复 `CallLater`；GameMode 扩展析构与回调入口守卫；体力 HUD 在 Workspace 已销毁时不刷新 / 不强制移出层级；`InitStaminaHUD` 在组件已删除或无 Owner 时跳过。
+- **Workbench 重载世界** - `OnGameStart` 清空 `EnvironmentFactor` 全局天气信号静态缓存、AI 休整注册表与 HUD 单例，避免「重载脚本 + 重载世界」后仍使用已销毁的 `GameSignalsManager` 或旧 Widget 导致 `0x0` 读。
 
 ## v3.21.1 版本更新 / v3.21.1 Updates
 

@@ -89,4 +89,11 @@ class SCR_RSS_AIRestRecoveryRegistry
             return;
         ClearRestRecovery(owner);
     }
+
+    //! 新世界会话开始时清空列表，避免 Workbench 重载世界后仍保留已释放实体的 IEntity 引用。
+    static void ClearAllForNewWorldSession()
+    {
+        if (s_aRestRecoveryEntities)
+            s_aRestRecoveryEntities.Clear();
+    }
 }

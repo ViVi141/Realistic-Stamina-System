@@ -1,5 +1,15 @@
 # 更新日志
 
+## [3.22.5] - 2026-05-09
+
+### 修复
+
+- **退出游戏时客户端 Access violation（对 `0x0` 非法读）** — 多人仅装 RSS 时，断线/关游戏阶段高概率复现。根因包括：`RSS_WaitForGameModeConfig` 由 `CallLater` 每秒重复调度，在仍未校验 `GetGame()` / `GetWorld()` 时读取世界时间；配置从 GameMode 复制到位后未 `Remove` 该重复回调。修复：`PlayerBase` 中入口判空，同步成功后移除定时器；`InitStaminaHUD` 在组件已删除或无 Owner 时不执行。
+- **GameMode 扩展关机路径** — `SCR_RSS_ServerBootstrap`：`~SCR_BaseGameMode` 中 `Remove(DeferredRssConfigLoad)`、`Remove(RssServerDataExportTick)`；`DeferredRssConfigLoad`、`RssServerDataExportTick`、`OnRssConfigReplicated` 开头增加 `GetGame()` 守卫；`RssServerDataExportTick` 在 `GetGame()` 为空时停止导出循环标志。
+- **体力 HUD 销毁与刷新** — `SCR_StaminaHUDComponent`：`UpdateDisplay` 在 `GetGame()`、Workspace 或根 Widget 无效时直接返回；`DestroyHUD` 仅在仍存在 Workspace 时 `RemoveFromHierarchy`，避免退出阶段对已拆 UI 调用。
+- **Workbench 重载脚本 + 重载世界** — 脚本静态缓存仍指向上一世界的 `GameSignalsManager` / 旧 HUD / AI 休整实体列表时，易在 `GetSignalValue` 或 UI 上 `0x0` 读崩溃。修复：`EnvironmentFactor.ResetGlobalSignalsCache()` 在每次 `OnGameStart` 清空全局信号静态引用；`SCR_RSS_AIRestRecoveryRegistry.ClearAllForNewWorldSession()` 清空休整列表；`SCR_StaminaHUDComponent.Destroy()` 于新会话开始强制释放单例；`Init()` 若单例根 Widget 或 Workspace 已失效则先 `Destroy` 再建；`m_iRssLoadRetries` 于 `OnGameStart` 归零。
+- **`CURRENT_VERSION`** → 3.22.5
+
 ## [3.22.1] - 2026-05-08
 
 ### 修复

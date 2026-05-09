@@ -1416,4 +1416,16 @@ class EnvironmentFactor
 
         m_fSurfaceWetnessPenalty = SCR_EnvironmentPenaltyMath.CalculateSurfaceWetnessPenalty(m_fCachedSurfaceWetness, stance);
     }
+
+    //! 新 GameMode / 世界开始时调用（由 SCR_BaseGameMode::OnGameStart 触发）。
+    //! Workbench「重载脚本 + 重载世界」后，静态 s_pGlobalSignals 可能仍指向已销毁的管理器，
+    //! 继续 GetSignalValue 会 Access violation。清空后由下一次 Initialize 重新绑定当前 GetGame。
+    static void ResetGlobalSignalsCache()
+    {
+        s_pGlobalSignals = null;
+        s_iSignalRainIntensity = -1;
+        s_iSignalWindSpeed = -1;
+        s_iSignalTOD = -1;
+        s_iSignalWetness = -1;
+    }
 }

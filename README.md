@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.22.1
+# Realistic Stamina System (RSS) v3.22.5
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.22.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.5-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -213,6 +213,10 @@ RealisticStaminaSystem/
 - **适用场景**：追击、逃命、短距离冲刺
 
 ## 版本更新 / Version Updates
+
+**v3.22.5** - 2026-05-09
+
+热修复：退出游戏 / 断线时客户端对空指针读取导致的崩溃（`RSS_WaitForGameModeConfig` 与 GameMode `CallLater` 清理、HUD 在 Workspace 已销毁时的防护）；Workbench 中重载脚本/世界时清空环境信号与 HUD 等静态缓存，避免悬空 `GameSignalsManager`。详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.5]**。
 
 **v3.22.1** - 2026-05-08
 

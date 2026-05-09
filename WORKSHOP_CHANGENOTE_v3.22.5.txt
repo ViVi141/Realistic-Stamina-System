@@ -1,0 +1,5 @@
+v3.22.5 (2026-05-09)
+
+Hotfix: client crash on exit / disconnect (Access violation, null read). Hardens RSS_WaitForGameModeConfig (GetGame/GetWorld checks, stop repeating CallLater after config sync), GameMode bootstrap CallLater cleanup in destructor, and Stamina HUD teardown when Workspace is already gone.
+
+Workbench: on world / script reload, reset EnvironmentFactor global signal cache, clear AI rest-recovery registry, destroy HUD singleton, and retry config load counter — avoids stale native pointers from the previous session.

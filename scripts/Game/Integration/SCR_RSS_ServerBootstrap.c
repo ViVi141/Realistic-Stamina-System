@@ -46,6 +46,17 @@ modded class SCR_BaseGameMode
     //! 服务端数据导出链是否在跑
     protected bool m_bRssDataExportLoopRunning = false;
 
+    //! 退出/销毁时取消 CallLater，避免回调在 GameMode 或 World 释放后仍执行（空指针读）。
+    void ~SCR_BaseGameMode()
+    {
+        m_bRssDataExportLoopRunning = false;
+        if (GetGame() && GetGame().GetCallqueue())
+        {
+            GetGame().GetCallqueue().Remove(DeferredRssConfigLoad);
+            GetGame().GetCallqueue().Remove(RssServerDataExportTick);
+        }
+    }
+
     //------------------------------------------------------------------------------------------------
     void RSS_ReplicateConfigNow()
     {
@@ -77,6 +88,12 @@ modded class SCR_BaseGameMode
     //------------------------------------------------------------------------------------------------
     override void OnGameStart()
     {
+        // Workbench / 重载世界：先清空跨世界复用的脚本静态缓存，避免悬空原生引用（信号、HUD、AI 列表）。
+        EnvironmentFactor.ResetGlobalSignalsCache();
+        SCR_RSS_AIRestRecoveryRegistry.ClearAllForNewWorldSession();
+        SCR_StaminaHUDComponent.Destroy();
+        m_iRssLoadRetries = 0;
+
         super.OnGameStart();
         if (GetGame())
             GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
@@ -85,6 +102,9 @@ modded class SCR_BaseGameMode
     //------------------------------------------------------------------------------------------------
     protected void DeferredRssConfigLoad()
     {
+        if (!GetGame())
+            return;
+
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
@@ -114,6 +134,12 @@ modded class SCR_BaseGameMode
     //------------------------------------------------------------------------------------------------
     protected void RssServerDataExportTick()
     {
+        if (!GetGame())
+        {
+            m_bRssDataExportLoopRunning = false;
+            return;
+        }
+
         if (!Replication.IsServer())
         {
             m_bRssDataExportLoopRunning = false;
@@ -175,6 +201,8 @@ modded class SCR_BaseGameMode
     protected void OnRssConfigReplicated()
     {
         if (Replication.IsServer()) return;
+        if (!GetGame())
+            return;
         // m_bRssConfigInitialized 未参与 Rpl 复制，客户端恒为 false 会误拦截；改为校验已复制的字段。
         if (!m_sRssConfigVersion || m_sRssConfigVersion == "")
             return;
