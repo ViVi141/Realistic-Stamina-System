@@ -55,6 +55,15 @@ modded class SCR_BaseGameMode
             GetGame().GetCallqueue().Remove(DeferredRssConfigLoad);
             GetGame().GetCallqueue().Remove(RssServerDataExportTick);
         }
+
+        // CRITICAL FIX: Release static ref to this world's GameSignalsManager before
+        // the engine destroys it. When a character was placed then deleted in Workbench,
+        // EnvironmentFactor.Initialize() set s_pGlobalSignals (static ref) to the world's
+        // GameSignalsManager. The entity destructor does NOT clear this static ref.
+        // Without this cleanup, s_pGlobalSignals holds a strong reference to a C++ object
+        // that will be freed during destroy-game, causing Access Violation at 0x0.
+        EnvironmentFactor.ResetGlobalSignalsCache();
+        SCR_DebugBatchManager.ResetForNewWorld();
     }
 
     //------------------------------------------------------------------------------------------------
@@ -91,7 +100,7 @@ modded class SCR_BaseGameMode
         // Workbench / 重载世界：先清空跨世界复用的脚本静态缓存，避免悬空原生引用（信号、HUD、AI 列表）。
         EnvironmentFactor.ResetGlobalSignalsCache();
         SCR_RSS_AIRestRecoveryRegistry.ClearAllForNewWorldSession();
-        SCR_StaminaHUDComponent.Destroy();
+        SCR_StaminaHUDComponent.OnNewWorldSession();
         SCR_DebugBatchManager.ResetForNewWorld();   // 重置调试批次时间戳，防止重载世界后无输出
         m_iRssLoadRetries = 0;
 

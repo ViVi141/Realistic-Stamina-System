@@ -1,5 +1,13 @@
 # 更新日志
 
+## [3.22.8] - 2026-05-10
+
+### 修复
+
+- **Workbench 重载世界崩溃** — 空世界放置角色后删除，再停止运行重载世界时，destroy game 阶段 `Access violation at 0x0`。根因：`EnvironmentFactor` 的静态 `s_pGlobalSignals`（`ref GameSignalsManager`）在角色删除时未释放，仍持有对即将销毁世界的 `GameSignalsManager` 强引用；引擎销毁该对象时解引悬空指针。修复：`~SCR_BaseGameMode()` 中调用 `EnvironmentFactor.ResetGlobalSignalsCache()` + `SCR_DebugBatchManager.ResetForNewWorld()` 提前释放静态引用（`SCR_RSS_ServerBootstrap.c`）。同步为 `~SCR_CharacterControllerComponent()` 增加 `GetGame()` 判空回退（`PlayerBase.c`）。
+
+- **修改文件**：`SCR_RSS_ServerBootstrap.c`、`PlayerBase.c`
+
 ## [3.22.7] - 2026-05-10
 
 ### 代码审查修复（基于 RSS_CODE_REVIEW_REPORT）

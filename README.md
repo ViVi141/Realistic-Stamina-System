@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.22.7
+# Realistic Stamina System (RSS) v3.22.8
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.22.7-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.8-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -213,6 +213,10 @@ RealisticStaminaSystem/
 - **适用场景**：追击、逃命、短距离冲刺
 
 ## 版本更新 / Version Updates
+
+**v3.22.8** - 2026-05-10
+
+修复：Workbench 放置角色后删除，再停止运行重载世界时 destroy game 阶段 Access violation at 0x0 崩溃。详见 CHANGELOG.md **[3.22.8]**。
 
 **v3.22.7** - 2026-05-10
 

@@ -55,6 +55,12 @@ class SCR_StaminaHUDComponent
     // 上一次显示的值（用于减少不必要的更新）
     protected string m_sLastDisplayedText = "";
     
+    // 世界 session 代际计数器：Workbench 重载脚本+世界后递增。
+    // 用于 DestroyHUD 判断 widget 是否还属于当前 world session，
+    // 避免对旧 session 已释放的 C++ widget 调用 RemoveFromHierarchy 导致崩溃。
+    protected static int s_iWorldGeneration = 0;
+    protected int m_iCreatedInGeneration = -1;
+    
     // ==================== 公共静态方法 ====================
     
     // 更新所有数据（从外部调用）
@@ -193,6 +199,16 @@ class SCR_StaminaHUDComponent
             s_sCachedGroundMaterialLabel = "";
         }
     }
+
+    //! 新 world session 开始前调用（由 SCR_BaseGameMode::OnGameStart 触发）。
+    //! 递增代际计数器 + 销毁旧 HUD。递增后的 s_iWorldGeneration 与旧 HUD 实例的
+    //! m_iCreatedInGeneration 不再匹配，DestroyHUD 跳过 RemoveFromHierarchy，
+    //! 避免对上一 session 已释放的 C++ widget 操作导致崩溃。
+    static void OnNewWorldSession()
+    {
+        s_iWorldGeneration++;
+        Destroy();
+    }
     
     // 获取本地 HUD 覆盖状态
     static bool GetLocalHUDEnabled()
@@ -275,8 +291,11 @@ class SCR_StaminaHUDComponent
         if (m_wTextWet) widgetCount++;
         if (m_wTextTime) widgetCount++;
         
+        // 记录创建时的 world generation，用于跨 session 的悬空检测
+        m_iCreatedInGeneration = s_iWorldGeneration;
+
         if (StaminaConfigBridge.IsDebugEnabled())
-            Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets");
+            Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets (gen=" + s_iWorldGeneration.ToString() + ")");
         return true;
     }
     
@@ -286,7 +305,13 @@ class SCR_StaminaHUDComponent
     {
         if (m_wRoot)
         {
-            if (GetGame() && GetGame().GetWorkspace())
+            // CRITICAL FIX: Check world generation before calling RemoveFromHierarchy.
+            // After Workbench reloads scripts+world, this DestroyHUD may be called
+            // for a HUD created in a previous world session. Its m_wRoot points to
+            // a C++ widget object that was freed when the old workspace was destroyed.
+            // Calling RemoveFromHierarchy on a stale widget = Access violation at 0x0.
+            // Normal entity deletion (in-game delete / game stop): generation matches.
+            if (GetGame() && GetGame().GetWorkspace() && m_iCreatedInGeneration == s_iWorldGeneration)
                 m_wRoot.RemoveFromHierarchy();
             m_wRoot = null;
         }

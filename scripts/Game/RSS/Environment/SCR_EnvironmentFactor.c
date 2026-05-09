@@ -1434,6 +1434,39 @@ class EnvironmentFactor
         m_fSurfaceWetnessPenalty = SCR_EnvironmentPenaltyMath.CalculateSurfaceWetnessPenalty(m_fCachedSurfaceWetness, stance);
     }
 
+    //! 清除本实例中所有指向上一世界引擎对象的引用。
+    //! Workbench 重载世界时，SCR_CharacterControllerComponent.OnInit 的 guard 跳过重初始化，
+    //! 但本实例内部的 m_pCachedWeatherManager 仍指向已销毁的 TimeAndWeatherManagerEntity。
+    //! 后续 UpdateEnvironmentFactors 中 ReadSignal* 的回退分支访问该悬空指针导致 Access violation。
+    //! 调用此方法后，所有 ReadSignal* 回退分支安全返回默认值，且 UpdateEnvironmentFactors
+    //! 顶部的「!m_pCachedWeatherManager → 重新获取」逻辑将被触发，重新绑定新世界的天气管理器。
+    void ClearStaleReferences()
+    {
+        // 核心修复：清空悬空的天气管理器引用
+        m_pCachedWeatherManager = null;
+
+        // 清空陈旧的实体引用（下一帧 UpdateEnvironmentFactors 会通过 owner 参数重新设置）
+        m_pCachedOwner = null;
+
+        // 重置时间缓存，迫使所有环境因子在下次更新时从新世界重新采样
+        m_fLastEnvironmentCheckTime = 0.0;
+        m_fLastUpdateTime = 0.0;
+        m_fLastTemperatureUpdateTime = 0.0;
+        m_fLastCloudFactorUpdateTime = -999.0;
+        m_bTempPositionInitialized = false;
+
+        // 重置实时变更检测缓存，避免与旧世界的缓存值进行差异比较
+        m_fLastKnownTOD = -1.0;
+        m_iLastKnownYear = -1;
+        m_iLastKnownMonth = -1;
+        m_iLastKnownDay = -1;
+        m_fLastKnownRainIntensity = -1.0;
+        m_fLastKnownWindSpeed = -1.0;
+        m_bLastKnownOverrideTemperature = false;
+        m_fLastKnownSunriseHour = -1.0;
+        m_fLastKnownSunsetHour = -1.0;
+    }
+
     //! 新 GameMode / 世界开始时调用（由 SCR_BaseGameMode::OnGameStart 触发）。
     //! Workbench「重载脚本 + 重载世界」后，静态 s_pGlobalSignals 可能仍指向已销毁的管理器，
     //! 继续 GetSignalValue 会 Access violation。清空后由下一次 Initialize 重新绑定当前 GetGame。

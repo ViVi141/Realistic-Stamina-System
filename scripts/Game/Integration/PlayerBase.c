@@ -87,6 +87,45 @@ modded class SCR_CharacterControllerComponent
     void ~SCR_CharacterControllerComponent()
     {
         m_bIsDeleted = true;
+
+        // CRITICAL FIX: Guard against GetGame() being null or returning a
+        // partially-destroyed Game during world teardown. When the engine
+        // destroys the game world, GetGame() may return a stale pointer
+        // whose GetCallqueue()/GetWorkspace() resolve to 0x0.
+        if (!GetGame())
+        {
+            // Game is already gone — skip all cleanup that requires engine services.
+            // Fall through to null all ref fields to prevent future misuse.
+            m_pCachedOwnerCharacter = null;
+            m_pStaminaComponent = null;
+            m_pCompartmentAccess = null;
+            m_pAnimComponent = null;
+            m_pCachedInventoryComponent = null;
+            m_pJumpVaultDetector = null;
+            m_pStanceTransitionManager = null;
+            m_pExerciseTracker = null;
+            m_pCollapseTransition = null;
+            m_pSlopeSpeedTransition = null;
+            m_pTerrainDetector = null;
+            m_pMudSlipRunner = null;
+            m_pEnvironmentFactor = null;
+            m_pFatigueSystem = null;
+            m_pEncumbranceCache = null;
+            m_pUISignalBridge = null;
+            m_pEpocState = null;
+            m_pNetworkSyncManager = null;
+            return;
+        }
+
+        // CRITICAL FIX: Destroy HUD before the workspace is destroyed.
+        // Without this, the HUD singleton (s_Instance) persists with stale widget
+        // references (m_wRoot) after the entity is deleted.
+        // When OnGameStart later calls SCR_StaminaHUDComponent.Destroy(),
+        // DestroyHUD tries m_wRoot.RemoveFromHierarchy() on a freed C++ widget
+        // object, causing Access Violation at 0x0. Also fixes "Resources are leaking"
+        // assertion because the widget was never removed from the widget tree.
+        SCR_StaminaHUDComponent.Destroy();
+
         m_bRssStaminaLoopActive = false;
 
         // 取消所有待执行的 CallLater 回调（引擎层面移除，彻底杜绝 use-after-free）
@@ -151,6 +190,34 @@ modded class SCR_CharacterControllerComponent
         if (!owner)
             return;
         
+        // CRITICAL FIX: Workbench script reload detection.
+        // After script+world reload, OnInit runs on the SAME C++ component object
+        // from the previous session. The old sub-modules (ref fields) were created
+        // with the old script layout. Re-initializing through the new code can
+        // crash (Access violation at offset ~0x28) because the old object's field
+        // offsets don't match the new script layout.
+        // Skip re-init if this is a script reload scenario.
+        if (m_pStaminaComponent || m_pCollapseTransition || m_pEnvironmentFactor)
+        {
+            // We're being re-initialized on an existing component.
+            // The sub-modules were already created in the previous session.
+            // If they're still valid (script layout unchanged), calling OnInit
+            // again would only start duplicate CallLater timers.
+            // If layout changed, accessing old fields crashes.
+            // Either way, skipping is the safest path.
+            m_bIsDeleted = false;
+
+            // CRITICAL FIX: Clear stale engine references in EnvironmentFactor
+            // from the previous world session. The old m_pCachedWeatherManager
+            // still points to the destroyed TimeAndWeatherManagerEntity, causing
+            // Access violation when UpdateEnvironmentFactors calls ReadSignal*
+            // fallback branches. See ClearStaleReferences() doc for details.
+            if (m_pEnvironmentFactor)
+                m_pEnvironmentFactor.ClearStaleReferences();
+
+            return;
+        }
+
         if (Replication.IsServer())
         {
             SCR_RSS_ConfigManager.Load();
@@ -273,8 +340,12 @@ modded class SCR_CharacterControllerComponent
         {
             // Wait for GameMode replicated config to arrive; do not actively request via RPC.
             m_bRssWaitingGameModeConfig = true;
-            m_fRssConfigWaitStartTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, true);
+            if (GetGame() && GetGame().GetWorld())
+                m_fRssConfigWaitStartTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            // CRITICAL FIX: Use non-repeating CallLater (false) + self-reschedule at tail.
+            // Repeating (true) causes duplicate callbacks after Workbench script reload,
+            // because C++ object persists and OnInit registers another instance.
+            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, false);
         }
     }
 
@@ -309,6 +380,11 @@ modded class SCR_CharacterControllerComponent
                 Print("[RSS] 等待 GameMode 同步配置超时。请确认服务器端 RSS 已加载且复制正常。");
             }
         }
+        
+        // Self-reschedule: continue waiting. Non-repeating (false) avoids duplicate
+        // callbacks after Workbench script reload.
+        if (m_bRssWaitingGameModeConfig)
+            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, false);
     }
     
     protected int m_iAiLoopRetryCount = 0;

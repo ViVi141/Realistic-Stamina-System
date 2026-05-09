@@ -1,8 +1,0 @@
-v3.22.1
-
----
-
-- 修复 `.et` 资源 GUID 不匹配问题：创建 `CombatStimInjection_01.et.meta` 和 `CombatStimInjection_01_base.et.meta`，移除 `.gitignore` 中 `*.et.meta` 排除规则，确保 GUID 跨机器一致
-- 修复专用服务器上管理员菜单设置无法保存和同步的问题：新增 `RPC_AdminUpdateConfig` RPC 通道，管理员客户端通过 RPC 推送配置变更到服务端，服务端写入 JSON 并复制到所有客户端
-- `SCR_RSSSettingsSubMenu` 和 `SCR_RSSAdminMenuUI` 增加 `Replication.IsServer()` 分支，客户端时通过 `SendConfigToServer()` 推送，listen server 保持直接写入
-- `SCR_RSS_ConfigManager` 新增 `AdminApplyAndSave()` 服务端落库方法
