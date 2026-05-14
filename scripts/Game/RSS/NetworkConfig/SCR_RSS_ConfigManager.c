@@ -144,7 +144,7 @@ class SCR_RSS_ConfigManager
             {
                 // --- 配置优先级说明 ---
                 // 1) 运行期动态配置优先：游戏内读取的均为本 ConfigManager 提供的值（当前选中预设或服务器配置）。
-                //    工具/脚本中的常量（如 tools/stamina_constants.py）仅影响优化器与离线工具，不覆盖运行时。
+                //    Python v4 优化管道（tools/rss_pipeline_v4 等）产出的 JSON 仅用于预设/嵌入，不覆盖本管理器运行期已加载值。
                 // 2) Custom 预设：仅做字段补全，不覆盖用户已在 JSON 中设置的值。
                 // 3) 非 Custom 预设：使用代码内最新 Optuna 默认值覆盖内存并写回 JSON，确保预设与模组版本一致。
                 // --- 核心修复逻辑开始 ---

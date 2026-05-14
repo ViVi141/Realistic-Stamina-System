@@ -150,13 +150,15 @@ RealisticStaminaSystem/
 │   └── Items/
 │       └── Medicine/
 │           └── CombatStimInjection_01/   # CSB 注射器预制体
-└── tools/                                # 开发工具和脚本
-    ├── rss_super_pipeline.py              # NSGA-II 主优化管道
-    ├── rss_digital_twin_fix.py            # 数字孪生仿真器
-    ├── stamina_constants.py               # 常数定义工具库
-    ├── requirements.txt                   # Python依赖包
-    ├── optimized_rss_config_*.json        # 优化后的配置文件（3个预设）
-    └── README.md                          # Tools模块完整使用指南
+└── tools/                                # v4 优化管道（Python）
+    ├── rss_pipeline_v4.py                # Optuna v4 主入口
+    ├── rss_digital_twin_fix.py           # 数字孪生（供管线引用）
+    ├── embed_json_to_c.py                # JSON → C 嵌入（可选）
+    ├── test_v4_smoke.py                  # 8 场景烟雾测试（无 Optuna）
+    ├── quick_verify.py                   # 少量 trial 快速跑通
+    ├── requirements.txt                  # numpy、optuna
+    ├── optimized_rss_config_*_v4.json  # 三份预设
+    └── README.md                         # 工具说明
 ```
 
 ## 系统特性

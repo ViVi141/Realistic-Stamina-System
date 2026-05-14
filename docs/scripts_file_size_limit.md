@@ -85,7 +85,7 @@
 
 ### 优先级 4：SCR_EnvironmentFactor.c（58.0 KB → 目标 ≤45 KB）
 
-已在 `scripts_refactor_mapping.md` 中规划，此处只确认拆分顺序：
+`SCR_EnvironmentFactor` 过大时的拆分顺序建议如下：
 
 | 提取批次 | 目标文件 | 提取内容 |
 |----------|----------|---------|
@@ -171,7 +171,6 @@ if any(v[0] == "BLOCK" for v in violations):
 本规则与以下文档联动：
 
 - [scripts_naming_and_layout_rules.md](scripts_naming_and_layout_rules.md) — 命名与分层约束
-- [scripts_refactor_mapping.md](scripts_refactor_mapping.md) — 拆分归属映射
 - [CHANGELOG.md](../CHANGELOG.md) — 拆分记录（`refactor` 标签）
 
 任何拆分行为必须在 CHANGELOG 中以 `### 🏗️ 重构` 条目记录，标注原文件大小 → 拆分后各文件大小。

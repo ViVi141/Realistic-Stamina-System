@@ -126,7 +126,7 @@ Key paths (see `README_CN.md` for the full tree):
 - `scripts/Game/RSS/MudSlip/`: mud-slip mechanics
 - `scripts/Game/RSS/Presentation/`: HUD, debug, UI signals, camera inertia
 - `scripts/Game/Components/Gadgets/`: combat stim items & state machine
-- `tools/`: Python optimization pipeline & analysis scripts
+- `tools/`: v4 Python optimization pipeline only (`rss_pipeline_v4.py`, twin, smoke tests, embed script, preset JSON)
 
 ## Installation
 
@@ -137,18 +137,17 @@ Key paths (see `README_CN.md` for the full tree):
 
 ## Tools (Python)
 
-The `tools/` directory contains the core optimization pipeline:
+The `tools/` directory contains **only** the v4 optimization stack:
 
-- `rss_super_pipeline.py` - Core NSGA-II optimization pipeline (10,000 trials)
-- `stamina_constants.py` - Constant definition library
-- `optimized_rss_config_*.json` - Optimized configuration files (3 presets)
-- `requirements.txt` - Python dependencies
-- `README.md` - Complete toolset documentation
+- `rss_pipeline_v4.py` — Optuna NSGA-II pipeline (multi-objective, 8 missions)
+- `rss_digital_twin_fix.py` — digital twin used by the pipeline
+- `embed_json_to_c.py` — optional embed of JSON presets into `SCR_RSS_Settings.c`
+- `test_v4_smoke.py` / `quick_verify.py` — smoke and short-run checks
+- `optimized_rss_config_*_v4.json` — three shipped presets
+- `requirements.txt` — `numpy`, `optuna`
+- `README.md` — tool usage (Chinese)
 
-Notes:
-- The tools directory has been optimized to keep only the core NSGA-II pipeline
-- All generated charts have been removed to reduce repository size
-- Dependencies: Python + `numpy` + `matplotlib` for the optimization pipeline
+See `tools/README.md` for commands.
 
 ## Contributing
 

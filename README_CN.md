@@ -210,13 +210,15 @@ RealisticStaminaSystem/
 │   └── Items/
 │       └── Medicine/
 │           └── CombatStimInjection_01/   # CSB 注射器预制体
-└── tools/                                # 开发工具和脚本
-    ├── rss_super_pipeline.py             # NSGA-II 主优化管道
-    ├── rss_digital_twin_fix.py           # 数字孪生仿真器
-    ├── stamina_constants.py              # 常数定义工具库
-    ├── requirements.txt                   # Python 依赖
-    ├── optimized_rss_config_*.json        # 优化后的配置文件（3 个预设）
-    └── README.md                          # Tools 工具集文档
+└── tools/                                # v4 优化管道（Python）
+    ├── rss_pipeline_v4.py                # Optuna v4 主入口
+    ├── rss_digital_twin_fix.py           # 数字孪生（供管线引用）
+    ├── embed_json_to_c.py                # JSON → C 嵌入（可选）
+    ├── test_v4_smoke.py                  # 8 场景烟雾测试（无 Optuna）
+    ├── quick_verify.py                   # 少量 trial 快速跑通
+    ├── requirements.txt                  # numpy、optuna
+    ├── optimized_rss_config_*_v4.json   # 三份预设
+    └── README.md                         # 工具说明
 ```
 
 ## v3.22.8 版本更新 / v3.22.8 Updates
@@ -259,7 +261,7 @@ RealisticStaminaSystem/
 ### 配置与工具
 
 - **预设与嵌入** - `SCR_RSS_Params` 与 `embed_json_to_c.py`、三份 `optimized_rss_config_*_super.json`、`SCR_RSS_Settings.c` 同步；嵌入脚本支持 JSON 缺省时的固定默认值，避免丢失生理学常数字段。
-- **优化管线与绘图** - `rss_super_pipeline.py`（GUI / 默认行为）、`plot_combat_cycle_30kg_en.py` 更新。
+- **优化管线与绘图** - 优化管线与绘图工具更新（该时期脚本名见 CHANGELOG；现行工具见 [tools/README.md](tools/README.md)）。
 - **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` = **3.20.6**。
 
 ### 区间内其它变更（摘要）

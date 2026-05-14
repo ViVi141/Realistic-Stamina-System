@@ -648,7 +648,7 @@ class SCR_StaminaHUDComponent
             return "NW";
     }
     
-    // 获取地面类型字符串（基于物理密度，与 tools/EST_AllGameMaterialDensities.csv 对齐）
+    // 获取地面类型字符串（基于物理密度，与 MaterialTerrainTable / 体力链密度映射一致）
     // 典型：snow≤0.36 | 木/矮草 0.36~0.72 | 地板≤1.13 | grass_lush 1.2 | dirt/soil 1.33 |
     //       sand/gravel/pebbles 1.55~1.86 | 铺装 2.2~2.42 | cobble/stone 2.75 | tiles ~2.94
     protected string GetGroundTypeStr(float density)

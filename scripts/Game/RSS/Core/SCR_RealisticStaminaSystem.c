@@ -728,7 +728,7 @@ class RealisticStaminaSpeedSystem
         if (velocity < dynamicThreshold)
         {
             // 速度 < 动态阈值：恢复
-            return -0.05; // Rest恢复（负数），每0.2秒，基于 stamina_constants.py 的正确值
+            return -0.05; // Rest恢复（负数），每0.2秒，与恢复模型调参一致
         }
         
         // 所有移动阶段使用 Pandolf 公式计算消耗，再乘以负重因子。
@@ -972,7 +972,7 @@ class RealisticStaminaSpeedSystem
     // 之前此处有独立的 TERRAIN_FACTOR_* 局部常量，与 StaminaConstants.TERRAIN_FACTOR_*
     // 重复定义（值完全一致）。移除去重，统一通过 StaminaConstants.TERRAIN_FACTOR_* 访问。
     
-    // 根据密度值获取地形系数（插值映射，与 tools/EST_AllGameMaterialDensities.csv 对齐校准）
+    // 根据密度值获取地形系数（插值映射，与 MaterialTerrainTable 内嵌密度表一致）
     // 典型 g/cm³：snow 0.35 | grass/heather 0.5 | grass_lush 1.2 | dirt/soil 1.33 | sand 1.63 |
     //            gravel 1.682 | pebbles 1.7~1.79 | asphalt/concrete 2.243~2.3 | cobble/stone 2.75 | tiles_stone 2.94
     // 说明：密度无法区分同区间不同材质（如木 0.65 与草 0.5），0.36~0.72 仍保持 η≈1.0 以兼容木箱等

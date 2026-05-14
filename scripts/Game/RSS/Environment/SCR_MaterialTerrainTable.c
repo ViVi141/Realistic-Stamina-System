@@ -1,5 +1,4 @@
-// 自动生成：python tools/generate_material_terrain_table.py
-// 数据源：tools/EST_AllGameMaterialDensities.csv（basename -> g/cm³）
+// 材质资源基准名 -> 物理密度 (g/cm³) -> 地形系数查表（仓库内嵌维护；与体力链密度-系数映射一致）。
 
 class MaterialTerrainTable
 {

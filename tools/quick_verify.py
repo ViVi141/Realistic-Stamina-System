@@ -1,25 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-快速验证脚本：运行 RSSSuperPipeline 少量迭代以检查稳定性与 BUG 检测
+快速验证：少量 Optuna trial，确认 rss_pipeline_v4 与数字孪生可运行。
+输出写入临时目录，不覆盖仓库内 optimized_rss_config_*_v4.json。
 """
+import os
+import sys
+import tempfile
 import traceback
 
-try:
-    from rss_pipeline_v4 import RSSSuperPipeline
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-    print("启动快速验证: 50 次迭代，单线程 (n_jobs=1)")
-    pipeline = RSSSuperPipeline(n_trials=50, n_jobs=1, use_database=False)
-    results = pipeline.optimize(study_name="test_quick_verify")
 
-    print("优化完成，提取并导出 BUG 报告...")
-    pipeline.export_bug_report("test_quick_verify_bug_report.json")
+def main():
+    try:
+        from rss_pipeline_v4 import RSSOptimizerV4, extract_presets
 
-    print("总结: ")
-    print(f"  帕累托解数量: {results.get('n_solutions', 0)}")
-    print(f"  总 BUG 数量: {len(pipeline.bug_reports)}")
+        print("启动快速验证: 24 次 trial，单线程，加速模式（临时目录输出）")
+        with tempfile.TemporaryDirectory() as tmp:
+            opt = RSSOptimizerV4(n_trials=24, n_jobs=1, fast_mode=True)
+            study = opt.run(study_name="rss_quick_verify")
+            presets = extract_presets(study, tmp)
+            n_best = len(study.best_trials) if study else 0
+            print("总结:")
+            print("  Pareto 前沿 trial 数: %d" % n_best)
+            print("  写出预设键: %s" % (", ".join(sorted(presets.keys())) if presets else "(无)"))
+    except Exception:
+        print("快速验证失败：")
+        traceback.print_exc()
+        raise
 
-except Exception as e:
-    print("快速验证失败：")
-    traceback.print_exc()
-    raise
+
+if __name__ == "__main__":
+    main()
