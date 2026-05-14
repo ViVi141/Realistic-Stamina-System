@@ -81,6 +81,11 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastAiBridgeTickTime = -1.0;
     protected static const float AI_BRIDGE_THROTTLE_SEC = 0.5; // 500ms，引擎 AI 行为树更新间隔为 0.55s
 
+    // ====== RSS AI 体力状态机成员变量 ======
+    protected ERSS_AIStaminaState m_eRssAIStaminaState = ERSS_AIStaminaState.FRESH;
+    protected float m_fRssAiTimeStationarySec = 0.0;
+    protected float m_fRssLastAiDebugPrintTime = -1.0;
+
     //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
     //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
     //! 参考 SCR_StaminaOverride.c 中 StopStaminaMonitor() 的 Callqueue.Remove() 模式。
@@ -156,7 +161,8 @@ modded class SCR_CharacterControllerComponent
         // 清理 AI 恢复注册表（防止其他 AI tick 遍历已删除实体）
         IEntity owner = GetOwner();
         if (owner && !IsPlayerControlled())
-            SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+            // [REMOVED v3.23.0] SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+            // 新架构中不再使用 RecoveryRegistry，cleanup 由 GroupSync.ClearAll 替代
 
         // 清理 UISignalBridge 的实体引用
         if (m_pUISignalBridge)
@@ -433,16 +439,7 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
-        if (Replication.IsServer() && !IsPlayerControlled())
-        {
-            if (SCR_RSS_AIGroupStaminaProxy.ProcessFollowerProxySync(this, owner))
-            {
-                RSS_SetMudSlipCameraShake01(0.0);
-                m_bRssStaminaLoopActive = true;
-                GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, StaminaConstants.RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS, false);
-                return;
-            }
-        }
+        // [REMOVED v3.23.0] 旧群组代理逻辑已废弃。AI 体力计算频率由 GetSpeedUpdateIntervalMs 统一控制。
         
         if (SCR_PlayerBaseVehicleHelper.HandleVehicleStaminaUpdate(
                 this, owner, m_pCompartmentAccess, m_pStaminaComponent,
@@ -813,29 +810,75 @@ modded class SCR_CharacterControllerComponent
                     IsRssDebugEnabled());
             }
 
-            SCR_RSS_AIStaminaBridge.MaybeApplyMudSlipSpeedCap(this, owner);
         }
         else
         {
             RSS_SetMudSlipCameraShake01(0.0);
         }
-        // perf: AI 桥方法 500ms 节流，减少高密度 AI 时的 FindComponent/Cast 开销
+        // =====================================================================
+        // RSS AI 体力集成 — 新模块链 (v3.23.0)
+        // =====================================================================
+        // perf: AI 模块节流
         if (!IsPlayerControlled() && (currentTime - m_fLastAiBridgeTickTime < AI_BRIDGE_THROTTLE_SEC))
         {
-            // 节流中：跳过桥方法
+            // 节流中
         }
         else
         {
             if (!IsPlayerControlled())
                 m_fLastAiBridgeTickTime = currentTime;
-            SCR_RSS_AIStaminaBridge.TickAbortRestRecoveryIfBattlefieldDanger(owner);
-            SCR_RSS_AIStaminaBridge.ApplyOnFootMovementPolicy(this, owner, staminaPercent);
-            SCR_RSS_AIGroupRestCoordinator.TryScheduleGroupRestFromStamina(owner, staminaPercent);
-            SCR_RSS_AIGroupRestCoordinator.TryCompleteGroupRestDefendWaypointIfReady(owner);
-            SCR_RSS_AICoverSeeker.TickVerifyCombatCover(owner);
 
-            if (Replication.IsServer() && !IsPlayerControlled())
-                SCR_RSS_AIStaminaCombatEffects.ApplyStaminaToCombat(owner, staminaPercent);
+            if (Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
+            {
+                // 1. 更新体力状态机
+                bool isStationary = (currentSpeed < 0.05);
+                float timeStationarySec;
+                if (isStationary)
+                {
+                    timeStationarySec = m_fRssAiTimeStationarySec + (currentTime - m_fLastAiBridgeTickTime);
+                }
+                else
+                {
+                    timeStationarySec = 0.0;
+                }
+                if (isStationary)
+                    m_fRssAiTimeStationarySec = timeStationarySec;
+
+                float fatigueVal;
+                if (m_pFatigueSystem)
+                    fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
+                else
+                    fatigueVal = 0.0;
+
+                ERSS_AIStaminaState aiState = SCR_RSS_AIStaminaState.Tick(
+                    staminaPercent,
+                    fatigueVal,
+                    isStationary,
+                    timeStationarySec,
+                    m_eRssAIStaminaState);
+
+                // 2. 五级移动限速
+                EAIThreatState threat = EAIThreatState.SAFE;
+                if (!IsPlayerControlled())
+                {
+                    threat = SCR_RSS_AIGroupSync.GetThreatState(owner);
+                }
+                bool isThreatened = (threat == EAIThreatState.THREATENED);
+                SCR_RSS_AISpeedCap.Apply(this, owner, aiState, staminaPercent, isThreatened);
+
+                // 3. 行为过滤
+                SCR_RSS_AIIntentFilter.Apply(owner, aiState, isThreatened);
+
+                // 4. 战斗衰减
+                SCR_RSS_AICombatDecay.Apply(owner, aiState);
+
+                // 5. 检查休息路点完成条件（体力恢复达标则提前完成）
+                if (!IsPlayerControlled() && SCR_RSS_AIGroupSync.IsGroupRestWaypointActive(owner))
+                {
+                    SCR_RSS_AIGroupSync.TryCompleteRestWaypointIfStaminaRecovered(owner, staminaPercent);
+                }
+
+            }
         }
 
         bool isSprinting = isSprintingNow;
@@ -985,17 +1028,60 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
 
+        // AI 调试日志（使用 Print 直接输出，不受 DebugBatchManager batch 窗口限制）
         if (owner != SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled())
         {
-            string movementStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-            string aiLine = string.Format("[RSS] AI: %1 | 体力=%2%% 速度倍=%3 速度=%4m/s 类型=%5 | 来源:%6",
-                owner.GetName(),
-                Math.Round(staminaPercent * 100.0).ToString(),
-                Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
-                Math.Round(currentSpeed * 10.0) / 10.0,
-                movementStr,
-                m_sLastSpeedSource);
-            SCR_RSS_AIStaminaBridge.AppendAIDebugLine(aiLine);
+            // 每 AI 每 30s 输出一行，避免刷屏
+            float nowMs = GetGame().GetWorld().GetWorldTime();
+            if (m_fRssLastAiDebugPrintTime < 0.0 || (nowMs - m_fRssLastAiDebugPrintTime) >= 30000.0)
+            {
+                m_fRssLastAiDebugPrintTime = nowMs;
+                string movementStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+                string stateStr = SCR_RSS_AIStaminaState.StateToString(m_eRssAIStaminaState);
+                float fatigueVal = 0.0;
+                if (m_pFatigueSystem)
+                    fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
+
+                PrintFormat("[RSS] AI: %1 | 状态=%2 体力=%3%% 疲劳=%4% 负重=%5kg 速度倍=%6 速度=%7m/s %8 | %9",
+                    owner.GetName(),
+                    stateStr,
+                    Math.Round(staminaPercent * 100.0).ToString(),
+                    Math.Round(fatigueVal * 100.0).ToString(),
+                    Math.Round(currentWeight * 10.0) / 10.0,
+                    Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+                    Math.Round(currentSpeed * 10.0) / 10.0,
+                    movementStr,
+                    m_sLastSpeedSource);
+
+                // 群组分散
+                if (Replication.IsServer())
+                {
+                    AIControlComponent aiCtrl = AIControlComponent.Cast(owner.FindComponent(AIControlComponent));
+                    if (aiCtrl)
+                    {
+                        AIAgent agent = aiCtrl.GetAIAgent();
+                        if (agent)
+                        {
+                            AIGroup parentGroup = agent.GetParentGroup();
+                            if (parentGroup)
+                            {
+                                SCR_AIGroup scrGrp = SCR_AIGroup.Cast(parentGroup);
+                                if (scrGrp)
+                                {
+                                    float spread = CalcAiGroupSpreadM(scrGrp);
+                                    if (spread > 0.0)
+                                    {
+                                        PrintFormat("[RSS] Group: id=%1 分散=%2m 成员=%3",
+                                            scrGrp.GetGroupID().ToString(),
+                                            Math.Round(spread * 10.0) / 10.0,
+                                            GetAliveMemberCount(scrGrp).ToString());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
@@ -1056,7 +1142,8 @@ modded class SCR_CharacterControllerComponent
                 debugParams.speedSource = m_sLastSpeedSource;
                 if (needDebugOutput) {
                     DebugDisplay.OutputDebugInfo(debugParams);
-                    SCR_RSS_AIStaminaBridge.FlushAIDebugLinesToBatch();
+                    // [v3.23.0] 调试行已直接写入 BatchManager，无需 Flush
+                    // SCR_RSS_AIStaminaBridge.FlushAIDebugLinesToBatch();
                 }
                 if (needHintOutput) DebugDisplay.OutputHintInfo(debugParams);
             }
@@ -1496,12 +1583,16 @@ modded class SCR_CharacterControllerComponent
 
     bool RSS_IsAiMudSlipBlockedBySafety(IEntity owner)
     {
-        return SCR_RSS_AIMudSlipPolicy.IsBlockedBySafety(this, owner);
+        // [v3.23.0] MudSlipPolicy 已移除。非玩家 AI 在 SAFE 状态下阻止泥泞滑倒掷骰。
+        if (IsPlayerControlled())
+            return false;
+        return true;
     }
 
     bool RSS_ShouldAiAllowMudSlipRagdoll(IEntity owner)
     {
-        return SCR_RSS_AIMudSlipPolicy.ShouldAllowRagdoll(this, owner);
+        // [v3.23.0] 与 RSS_IsAiMudSlipBlockedBySafety 一致：非玩家 AI 不掷骰
+        return !RSS_IsAiMudSlipBlockedBySafety(owner);
     }
 
     float RSS_GetLastAppliedSpeedMultiplier()
@@ -1837,19 +1928,87 @@ modded class SCR_CharacterControllerComponent
 
     protected int GetSpeedUpdateIntervalMs()
     {
-        return SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs(this);
+        // 玩家：高速刷新（~60Hz）
+        if (IsPlayerControlled())
+            return StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS;
+
+        // AI：按距最近玩家的距离分档，减少远处 AI 的计算开销
+        if (!Replication.IsServer())
+            return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
+
+        IEntity ownerEntity = GetOwner();
+        if (!ownerEntity)
+            return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
+
+        // 找最近玩家的距离
+        float distM = -1.0;
+        PlayerManager pm = GetGame().GetPlayerManager();
+        if (pm)
+        {
+            array<int> playerIds = {};
+            pm.GetPlayers(playerIds);
+            float nearM = 99999.0;
+            for (int pi = 0; pi < playerIds.Count(); pi++)
+            {
+                IEntity pe = pm.GetPlayerControlledEntity(playerIds.Get(pi));
+                if (pe)
+                {
+                    float d = vector.Distance(ownerEntity.GetOrigin(), pe.GetOrigin());
+                    if (d < nearM)
+                        nearM = d;
+                }
+            }
+            if (nearM < 99999.0)
+                distM = nearM;
+        }
+
+        if (distM < 0.0 || distM <= StaminaConstants.RSS_PERF_AI_LOD_NEAR_M)
+            return StaminaConstants.RSS_PERF_AI_LOD_NEAR_INTERVAL_MS;
+        if (distM <= StaminaConstants.RSS_PERF_AI_LOD_FAR_M)
+            return StaminaConstants.RSS_PERF_AI_LOD_MID_INTERVAL_MS;
+        return StaminaConstants.RSS_PERF_AI_LOD_FAR_INTERVAL_MS;
+    }
+
+    //! 在 Workbench 编辑器中，预览实体不应启动体力 tick
+    //! 特征：有 CharacterControllerComponent + AIControlComponent + 无玩家控制 + 无 AI 群组
+    protected bool IsWorkbenchPreviewEntity()
+    {
+        #ifdef WORKBENCH
+        IEntity owner = GetOwner();
+        if (!owner)
+            return true;
+        if (IsPlayerControlled())
+            return false;
+        // 查找 AI 组件
+        AIControlComponent aiCtrl = AIControlComponent.Cast(owner.FindComponent(AIControlComponent));
+        if (!aiCtrl)
+            return true;  // 无 AI 控制组件 = 不是真实 AI
+        AIAgent agent = aiCtrl.GetAIAgent();
+        if (!agent)
+            return true;  // 无 AI Agent = 不是真实 AI
+        // 真实 AI 一定有父群组（SCR_AIGroup 或引擎 group）
+        AIGroup parentGroup = agent.GetParentGroup();
+        if (!parentGroup)
+            return true;
+        return false;
+        #else
+        return false;
+        #endif
     }
 
     void StartSystem()
     {
         if (m_bIsDeleted || !GetOwner())
             return;
+        // Workbench 预览实体不启动体力 tick
+        if (IsWorkbenchPreviewEntity())
+            return;
         if (!ShouldProcessStaminaUpdate())
             return;
         if (!GetGame())
             return;
         m_bRssStaminaLoopActive = true;
-        int intervalMs = SCR_RSS_AIStaminaBridge.GetSpeedUpdateIntervalMs(this);
+        int intervalMs = GetSpeedUpdateIntervalMs();
         GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, intervalMs, false);
         
         if (IsRssDebugEnabled())
@@ -1885,6 +2044,64 @@ modded class SCR_CharacterControllerComponent
 
 
 
+    // ====== 群组调试辅助方法 ======
+    //! 计算群组成员间最大分散距离（存活成员间的 max distance）
+    static float CalcAiGroupSpreadM(SCR_AIGroup scrGrp)
+    {
+        if (!scrGrp)
+            return -1.0;
+        array<AIAgent> agents = {};
+        int ac = scrGrp.GetAgents(agents);
+        if (ac < 2)
+            return -1.0;
+
+        float maxDist = 0.0;
+        for (int i = 0; i < ac - 1; i++)
+        {
+            AIAgent agI = agents.Get(i);
+            if (!agI)
+                continue;
+            IEntity ceI = agI.GetControlledEntity();
+            if (!ceI)
+                continue;
+            for (int j = i + 1; j < ac; j++)
+            {
+                AIAgent agJ = agents.Get(j);
+                if (!agJ)
+                    continue;
+                IEntity ceJ = agJ.GetControlledEntity();
+                if (!ceJ)
+                    continue;
+                float d = vector.Distance(ceI.GetOrigin(), ceJ.GetOrigin());
+                if (d > maxDist)
+                    maxDist = d;
+            }
+        }
+        return maxDist;
+    }
+
+    //! 获取群组中存活成员数量
+    static int GetAliveMemberCount(SCR_AIGroup scrGrp)
+    {
+        if (!scrGrp)
+            return 0;
+        array<AIAgent> agents = {};
+        int ac = scrGrp.GetAgents(agents);
+        int alive = 0;
+        for (int i = 0; i < ac; i++)
+        {
+            AIAgent ag = agents.Get(i);
+            if (!ag)
+                continue;
+            IEntity ce = ag.GetControlledEntity();
+            if (!ce)
+                continue;
+            if (SCR_RSS_AIGroupSync.IsAliveAndActionable(ce))
+                alive++;
+        }
+        return alive;
+    }
+
     //! 实体即将被删除时调用：清理所有引用、停止 CallLater 循环、注销静态注册表
     void RSS_NotifyEntityDeleting()
     {
@@ -1897,7 +2114,8 @@ modded class SCR_CharacterControllerComponent
         
         // 清理静态 AI 恢复注册表中的悬空引用
         if (owner && !IsPlayerControlled())
-            SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+            // [REMOVED v3.23.0] SCR_RSS_AIRestRecoveryRegistry.CleanupEntity(owner);
+            // 新架构中不再使用 RecoveryRegistry，cleanup 由 GroupSync.ClearAll 替代
         
         // 清理 UISignalBridge 的实体引用
         if (m_pUISignalBridge)

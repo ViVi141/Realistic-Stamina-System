@@ -609,31 +609,76 @@ class StaminaConstants
     //! 群组「是否存在战场危险」判定缓存秒数；避免每 AI 每 tick 遍历全组成员（与 SCR_RSS_AIGroupStaminaProxy 一致）
     //! v3.20.0: 缓存时间从 0.5s 延长至 1.0s，减少高密度场景下的全组扫描频率（约 -50% 扫描次数）。
     static const float RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC = 1.0;
-    // AI 徒步：当前体力低于此比例且 AI 意图为快跑时，降级为 WALK（与「撞墙」区间大致衔接）
-    static const float RSS_AI_ONFOOT_STAMINA_WALK_THRESHOLD = 0.28;
-    //! AI 群组低体力自动休整（动态防守路点等）：功能完善中，勿依赖；开启前请自行验证。当前默认关闭。
-    static const bool RSS_AI_GROUP_REST_ENABLED = false;
-    static const float RSS_AI_GROUP_REST_STAMINA_THRESHOLD = 0.25;
-    static const float RSS_AI_GROUP_REST_COOLDOWN_SEC = 90.0;
-    static const float RSS_AI_GROUP_REST_COVER_TRACE_RADIUS_M = 22.0;
-    static const float RSS_AI_GROUP_REST_COVER_OFFSET_FROM_WALL_M = 1.2;
-    static const float RSS_AI_GROUP_REST_DEFEND_HOLD_SEC = 45.0;
-    //! 进入休整路线后，体力恢复到该比例以上才解除「恢复锁定」（允许按 AI 意图快跑等）；低于此值期间强制步行
-    static const float RSS_AI_REST_RECOVERY_RESUME_STAMINA_MIN = 0.5;
-    //! 群组低体力休整：动态插入的防守路点（默认官方 AIWaypoint_Defend）
-    static const ResourceName RSS_AI_GROUP_REST_DEFEND_WAYPOINT_PREFAB = "{93291E72AC23930F}Prefabs/AI/Waypoints/AIWaypoint_Defend.et";
-    //! 为 true 时由队长用 GetBestCover 定隐蔽点再插路点；false 则仅用射线近似蔽护
-    static const bool RSS_AI_GROUP_REST_USE_ENGINE_COVER = true;
-    //! 与官方 SCR_AIFindCover 等一致，步兵寻路世界名
-    static const string RSS_AI_COVER_NAVMESH_WORLD_NAME = "Soldiers";
-    static const int RSS_AI_COVER_QUERY_MAX_COVERS = 25;
-    static const float RSS_AI_COVER_QUERY_SECTOR_DIST_MAX_M = 120.0;
-    static const float RSS_AI_COVER_NAVMESH_AREA_COST_SCALE = 0.33333334;
-    //! 开关见 JSON：m_bEnableAIStaminaCombatEffects（StaminaConfigBridge.IsAIStaminaCombatEffectsEnabled）
-    //! 体力为 0 时 SetPerceptionFactor 下限；体力为 1 时为 1.0
-    static const float RSS_AI_STAMINA_COMBAT_PERCEPTION_MIN = 0.35;
-    //! 体力为 0 时 SetFireRateCoef 下限；体力为 1 时为 1.0
-    static const float RSS_AI_STAMINA_COMBAT_FIRE_RATE_MIN = 0.35;
+    // ==========================================================================
+    // [SOFT] AI 体力状态机 — 转移阈值（可在预设中调整）
+    // ==========================================================================
+    static const float RSS_AI_STATE_FRESH_DOWN = 0.80;           // FRESH → WINDED
+    static const float RSS_AI_STATE_WINDED_DOWN = 0.50;          // WINDED → FATIGUED
+    static const float RSS_AI_STATE_WINDED_UP = 0.85;            // WINDED → FRESH（滞回）
+    static const float RSS_AI_STATE_FATIGUED_DOWN = 0.25;        // FATIGUED → EXHAUSTED
+    static const float RSS_AI_STATE_FATIGUED_UP = 0.55;          // FATIGUED → WINDED（滞回）
+    static const float RSS_AI_STATE_EXHAUSTED_DOWN = 0.10;       // EXHAUSTED → COLLAPSED
+    static const float RSS_AI_STATE_EXHAUSTED_UP = 0.30;         // EXHAUSTED → FATIGUED（滞回）
+    static const float RSS_AI_STATE_COLLAPSE_THRESHOLD = 0.05;   // 强制恢复触发线
+    static const float RSS_AI_STATE_FORCE_RECOVER_DELAY_SEC = 5.0; // 强制恢复前静止时长
+    static const float RSS_AI_STATE_RECOVER_TO_EXHAUSTED = 0.15; // RECOVERING → EXHAUSTED
+    static const float RSS_AI_STATE_RECOVER_TO_FATIGUED = 0.30;  // RECOVERING → FATIGUED
+
+    // ==========================================================================
+    // [SOFT] AI 移动限速 — 按体力状态的 OverrideMaxSpeed 上限
+    // ==========================================================================
+    static const float RSS_AI_SPEED_FATIGUED_LIMIT = 0.65;       // FATIGUED 时限速 65%
+    static const float RSS_AI_SPEED_EXHAUSTED_LIMIT = 0.40;      // EXHAUSTED 时限速 40%
+    static const float RSS_AI_SPEED_RECOVERING_MIN = 0.30;       // RECOVERING 时最低速度倍率
+    static const float RSS_AI_SPEED_CONTINUOUS_MIN = 0.30;       // 连续衰减曲线下限
+
+    // ==========================================================================
+    // [SOFT] AI 战斗衰减矩阵 — 感知 / 射速 / 技能（6 状态）
+    // ==========================================================================
+    static const float RSS_AI_COMBAT_PERCEPTION_WINDED     = 0.95;
+    static const float RSS_AI_COMBAT_FIRE_RATE_WINDED      = 1.00;
+    static const float RSS_AI_COMBAT_SKILL_WINDED          = 0.95;
+    static const float RSS_AI_COMBAT_PERCEPTION_FATIGUED   = 0.80;
+    static const float RSS_AI_COMBAT_FIRE_RATE_FATIGUED    = 0.85;
+    static const float RSS_AI_COMBAT_SKILL_FATIGUED        = 0.80;
+    static const float RSS_AI_COMBAT_PERCEPTION_EXHAUSTED  = 0.60;
+    static const float RSS_AI_COMBAT_FIRE_RATE_EXHAUSTED   = 0.60;
+    static const float RSS_AI_COMBAT_SKILL_EXHAUSTED       = 0.55;
+    static const float RSS_AI_COMBAT_PERCEPTION_COLLAPSED  = 0.40;
+    static const float RSS_AI_COMBAT_FIRE_RATE_COLLAPSED   = 0.30;
+    static const float RSS_AI_COMBAT_SKILL_COLLAPSED       = 0.30;
+    static const float RSS_AI_COMBAT_PERCEPTION_RECOVERING = 0.80;
+    static const float RSS_AI_COMBAT_FIRE_RATE_RECOVERING  = 0.90;
+    static const float RSS_AI_COMBAT_SKILL_RECOVERING      = 0.80;
+
+    // ==========================================================================
+    // [SOFT] AI 群组协同 — 预扫描 + 步速 + 休息
+    // ==========================================================================
+    static const float RSS_AI_GROUP_SYNC_FIT_THRESHOLD = 0.70;
+    static const float RSS_AI_GROUP_SYNC_TIRING_THRESHOLD = 0.40;
+    static const float RSS_AI_GROUP_SYNC_SPENT_THRESHOLD = 0.20;
+    static const float RSS_AI_GROUP_SYNC_TIRING_INSERT_DIST_M = 300.0;
+    static const float RSS_AI_GROUP_SYNC_COOLDOWN_SEC = 90.0;
+    static const float RSS_AI_GROUP_SYNC_PACE_MIN = 0.15;
+    static const ResourceName RSS_AI_GROUP_SYNC_WAIT_WAYPOINT_PREFAB = "{73A8E1C2D5F14906}Prefabs/AI/Waypoints/AIWaypoint_Wait.et";
+    static const ResourceName RSS_AI_GROUP_SYNC_DEFEND_WAYPOINT_PREFAB = "{93291E72AC23930F}Prefabs/AI/Waypoints/AIWaypoint_Defend.et";
+
+    // ==========================================================================
+    // [SOFT] AI 伤害-体力联动
+    // ==========================================================================
+    static const float RSS_AI_INJURY_DRAIN_MILD = 1.15;
+    static const float RSS_AI_INJURY_RECOVERY_MILD = 0.85;
+    static const float RSS_AI_INJURY_DRAIN_MODERATE = 1.4;
+    static const float RSS_AI_INJURY_RECOVERY_MODERATE = 0.6;
+    static const float RSS_AI_INJURY_DRAIN_SEVERE = 1.8;
+    static const float RSS_AI_INJURY_RECOVERY_SEVERE = 0.3;
+    static const float RSS_AI_INJURY_DRAIN_CRITICAL = 2.5;
+    static const float RSS_AI_INJURY_RECOVERY_CRITICAL = 0.1;
+
+    // ==========================================================================
+    // [SOFT] AI 行为过滤 — 常量
+    // ==========================================================================
+    static const float RSS_AI_INTENT_WAIT_PROMOTED_PRIORITY = 100.0;
     // 以下为旧版乘法模型遗留，滑倒判定已改为 ACOF/RCOF（见 MudSlipEffects）
     static const float ENV_MUD_SLIP_SPEED_COEFF = 0.14; // 未使用
     static const float ENV_MUD_SLIP_SPRINT_MULT = 2.3; // 未使用

@@ -679,4 +679,38 @@ class StaminaConfigBridge
             return settings.m_iEnvironmentUpdateInterval;
         return 5000;
     }
+
+    // ==========================================================================
+    // AI 模块配置桥接
+    // ==========================================================================
+
+    //! AI 体力集成总开关（复用现有 combat effects 开关）
+    static bool IsAIStaminaIntegrationEnabled()
+    {
+        return IsAIStaminaCombatEffectsEnabled();
+    }
+
+    //! AI 行为过滤开关（与 combat effects 同开关）
+    static bool IsAIIntentFilterEnabled()
+    {
+        return IsAIStaminaCombatEffectsEnabled();
+    }
+
+    //! AI 自适应群组步速开关（与 combat effects 同开关）
+    static bool IsAIAdaptivePaceEnabled()
+    {
+        return IsAIStaminaCombatEffectsEnabled();
+    }
+
+    //! AI 群组休息开关（与 combat effects 同开关）
+    static bool IsAIGroupRestEnabled()
+    {
+        return IsAIStaminaCombatEffectsEnabled();
+    }
+
+    //! AI 伤害联动开关（与 combat effects 同开关）
+    static bool IsAIInjuryLinkEnabled()
+    {
+        return IsAIStaminaCombatEffectsEnabled();
+    }
 }
