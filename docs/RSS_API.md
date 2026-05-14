@@ -2,6 +2,13 @@
 
 供其他模组从 RSS 获取玩家体力状态与环境信息的接口。
 
+## 实现位置（与代码一致）
+
+| 内容 | 路径 |
+|------|------|
+| API 入口 | `scripts/Game/RSS/NetworkConfig/SCR_RSS_API.c`（`SCR_RSS_API`、`RSS_PlayerInfo`、`RSS_EnvironmentInfo`） |
+| 数据导出 | `scripts/Game/RSS/NetworkConfig/SCR_RSS_DataExport.c`（`SCR_RSS_DataExport`、`RSS_ExportData`、`RSS_ExportPlayerEntry`） |
+
 ## 依赖
 
 - 模组需依赖 RSS 模组（`Realistic Stamina System`）
@@ -118,7 +125,7 @@ if (envInfo.isValid)
 - **格式**：JSON，含 `timestamp` 与 `players` 数组
 - **用途**：供外部应用（命令控制台等）轮询读取
 
-JSON 示例：
+JSON 示例（字段与 `RSS_ExportPlayerEntry` / `RSS_ExportData` 对齐，见 `SCR_RSS_DataExport.c`）：
 
 ```json
 {
@@ -143,6 +150,10 @@ JSON 示例：
   ]
 }
 ```
+
+`timestamp` 由 `GetGame().GetWorld().GetWorldTime()` 写入（`RSS_ExportData.timestamp`，引擎世界时间毫秒；**不是** Unix Epoch 秒，读取方按需解释或仅作序列号）。
+
+> 若 `GetEnvironmentInfo` 在导出时刻无效，则 `temperature` / `rainIntensity` / `windSpeed` / `isIndoor` 会回落为代码中的默认值（见 `SCR_RSS_DataExport.ExportToFile()`）。
 
 配置项（在 `RealisticStaminaSystem.json` 中）：
 

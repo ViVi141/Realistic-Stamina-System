@@ -1,7 +1,8 @@
 # RSS 项目引擎 API 使用清单
 
 > 统计范围：`scripts/` 目录下所有 `.c` 文件  
-> 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*`、`StaminaConstants`、`RealisticStaminaSpeedSystem` 等项目内部类）
+> 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*`、`StaminaConstants`、`RealisticStaminaSpeedSystem` 等项目内部类）  
+> **路径约定**：文中 `PlayerBase.c` 均指 `scripts/Game/Integration/PlayerBase.c`（`modded class SCR_CharacterControllerComponent`）。
 
 ---
 

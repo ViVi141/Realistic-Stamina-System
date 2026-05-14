@@ -2,7 +2,7 @@
 
 本文说明 **Realistic Stamina System (RSS)** 对 **AI 角色** 的影响范围，以及在何种条件下模组会做出何种 **额外决策**（与纯官方 AI 行为树、移动指令的差异）。
 
-实现集中在 `SCR_RSS_AIStaminaBridge.c`、`PlayerBase.c`（`SCR_CharacterControllerComponent` 模组化）、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`；**泥泞滑倒**与 **体力→AI 战斗表现** 另见 `SCR_RSS_MudSlipRunner.c`、`SCR_RSS_AIStaminaCombatEffects.c` 与 `SCR_EnvironmentFactor.c`（滑倒风险）。服主开关见 **RSS JSON**：`m_bEnableMudSlipMechanism`、`m_bEnableAIStaminaCombatEffects`（`SCR_RSS_Settings.c`）；数值阈值见 `SCR_StaminaConstants.c`。
+实现集中在 `scripts/Game/RSS/AI/SCR_RSS_AIStaminaBridge.c`、`scripts/Game/Integration/PlayerBase.c`（`SCR_CharacterControllerComponent` 模组化）、`scripts/Game/RSS/AI/SCR_RSS_AIGroupRestCoordinator.c`、`scripts/Game/RSS/AI/SCR_RSS_AICoverSeeker.c`、`scripts/Game/RSS/AI/SCR_RSS_AIRestRecoveryRegistry.c`；**泥泞滑倒**与 **体力→AI 战斗表现** 另见 `scripts/Game/RSS/MudSlip/SCR_RSS_MudSlipRunner.c`、`scripts/Game/RSS/AI/SCR_RSS_AIStaminaCombatEffects.c` 与 `scripts/Game/RSS/Environment/SCR_EnvironmentFactor.c`（滑倒风险）。服主开关见 **RSS JSON**：`m_bEnableMudSlipMechanism`、`m_bEnableAIStaminaCombatEffects`（`scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c`）；数值阈值见 `scripts/Game/RSS/Core/SCR_StaminaConstants.c`。
 
 ---
 
@@ -299,4 +299,4 @@ flowchart TD
 
 ---
 
-*文档版本与实现对齐：请以仓库内 `SCR_RSS_AIStaminaBridge.c`、`SCR_RSS_AIStaminaCombatEffects.c`、`SCR_RSS_AIGroupRestCoordinator.c`、`SCR_RSS_AICoverSeeker.c`、`SCR_RSS_AIRestRecoveryRegistry.c`、`SCR_StaminaConstants.c`、`SCR_RSS_Settings.c` 与 `PlayerBase.c` 为准。*
+*文档版本与实现对齐：请以仓库内 `scripts/Game/RSS/AI/SCR_RSS_AIStaminaBridge.c`、`scripts/Game/RSS/AI/SCR_RSS_AIStaminaCombatEffects.c`、`scripts/Game/RSS/AI/SCR_RSS_AIGroupRestCoordinator.c`、`scripts/Game/RSS/AI/SCR_RSS_AICoverSeeker.c`、`scripts/Game/RSS/AI/SCR_RSS_AIRestRecoveryRegistry.c`、`scripts/Game/RSS/Core/SCR_StaminaConstants.c`、`scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c` 与 `scripts/Game/Integration/PlayerBase.c` 为准。*

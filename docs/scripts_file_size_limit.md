@@ -8,17 +8,19 @@
 
 ---
 
-## 当前违规文件（2026-05-08）
+## 当前高风险文件（2026-05-15 实测）
 
-| 文件 | 大小 | 超出/余量 |
-|------|------|-----------|
-| `scripts/Game/RSS/Core/SCR_RealisticStaminaSystem.c` | 73.1 KB | ❌ **超限 +8.1 KB** |
-| `scripts/Game/Integration/PlayerBase.c` | 64.0 KB | ⚠️ **仅余 43 字节** |
-| `scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c` | 62.9 KB | ⚠️ 余 1.1 KB |
-| `scripts/Game/RSS/Core/SCR_StaminaConstants.c` | 59.7 KB | 余 4.2 KB |
-| `scripts/Game/RSS/Environment/SCR_EnvironmentFactor.c` | 58.0 KB | 余 6.0 KB |
+> 在仓库根目录执行下方 PowerShell 可复现字节数。65535 字节为 EnforceScript 硬上限。
 
-> 检查命令（PowerShell）：
+| 文件 | 大小 | 相对 64 KB |
+|------|------|--------------|
+| `scripts/Game/Integration/PlayerBase.c` | 78891 字节（约 77.0 KB） | **超出约 12.9 KB** |
+| `scripts/Game/RSS/Environment/SCR_EnvironmentFactor.c` | 64620 字节（约 63.1 KB） | 余量约 0.9 KB |
+| `scripts/Game/RSS/Core/SCR_StaminaConstants.c` | 62883 字节（约 61.4 KB） | 余量约 2.5 KB |
+| `scripts/Game/RSS/Core/SCR_RealisticStaminaSystem.c` | 61758 字节（约 60.3 KB） | 余量约 3.6 KB |
+| `scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c` | 41210 字节（约 40.2 KB） | 余量充足 |
+
+> 检查命令（PowerShell，仓库根目录）：
 > ```powershell
 > Get-ChildItem -Path scripts -Recurse -Filter '*.c' | ForEach-Object {
 >     if ($_.Length -gt 60000) {
@@ -29,51 +31,36 @@
 
 ---
 
-## 拆分计划（2026-05-08）
+## 拆分计划（与当前仓库对齐，2026-05-15）
 
-### 优先级 1：SCR_RealisticStaminaSystem.c（73.1 KB → 目标 ≤55 KB）
+### 优先级 1：`PlayerBase.c`（唯一仍超 64 KB 上限）
 
-**当前结构**：1 个类 `RealisticStaminaSpeedSystem`，22 个 static 方法，1329 行。
+`modded class SCR_CharacterControllerComponent` 仍约 **1916 行 / 77 KB**。应继续将 CSB、泥泞代理、RPC 大块迁往 `RSS/` 下独立 helper（见仓库内 `SCR_CombatStim*`、`SCR_RSS_MudSlipRunner.c` 等已有拆分方向）。
 
-| 提取批次 | 目标文件 | 提取的方法 | 行数 | 预估节省 |
-|----------|----------|-----------|------|---------|
-| **批次 A**（首选） | `RSS/Core/SCR_SwimmingStaminaModel.c` | `CalculateSwimmingStaminaDrain()` (L1145–1231) + `CalculateSwimmingStaminaDrain3D()` (L1233–1310) | ~167 行 | **~9 KB** → 64 KB |
-| **批次 B**（若 A 后仍紧张） | `RSS/Core/SCR_TerrainDensityMapper.c` | `GetTerrainFactorFromDensity()` (L980–1075) | ~95 行 | ~5 KB → ~59 KB |
-| **批次 C**（可选） | `RSS/Core/SCR_RecoveryRateModel.c` | `CalculateMultiDimensionalRecoveryRate()` (L395–549) | ~154 行 | ~9 KB（注意：此函数被 `SCR_StaminaRecovery.c` 内部调用，需确认引用链） |
+### 优先级 2：`SCR_EnvironmentFactor.c`（接近上限）
 
-**推荐路线**：先执行批次 A（游泳提取），这是最内聚的子系统——仅被 `StaminaUpdateCoordinator.CalculateBaseDrainRate()` 调用，无文件内交叉引用。如果抽取后文件仍 ≥60 KB，再追加批次 B。
+约 **63 KB**，新增逻辑前宜按领域拆到 `SCR_EnvironmentWeatherApi.c` / `SCR_EnvironmentPenaltyMath.c` 等已有卫星文件（见本文件后续「SCR_EnvironmentFactor」小节）。
 
-**批次 A 详细操作**：
-1. 新建 `scripts/Game/RSS/Core/SCR_SwimmingStaminaModel.c`
-2. 声明 `class SCR_SwimmingStaminaModel { ... }`，将两个游泳方法移入，`static` 保持不变
-3. 原文件中调用 `SCR_SwimmingStaminaModel.CalculateSwimmingStaminaDrain3D(...)` 替换直接调用
-4. 常量引用（`StaminaConstants.SWIMMING_*`）在新文件中直接使用，无需桥接
+### 优先级 3：`SCR_RealisticStaminaSystem.c`
+
+约 **60 KB / 约 932 行**；游泳消耗已迁至 `scripts/Game/RSS/Core/SCR_SwimmingStaminaModel.c`。若再次逼近上限，可再抽 **地形密度→系数** 等纯函数块。
+
+### 优先级 4：`SCR_RSS_Settings.c`
+
+约 **40 KB**；若未来膨胀，可维持原方案将 `SCR_RSS_Params` 独立为 `SCR_RSS_Params.c`（见下表历史备忘）。
 
 ---
 
-### 优先级 2：PlayerBase.c（62.4 KB → 目标 ≤50 KB）
+### 附：历史拆分备忘（行号/行数仅供回忆，以当前文件为准）
 
-**当前结构**：1 个 modded 类 `SCR_CharacterControllerComponent`，41 个方法，1609 行。
+| 方向 | 说明 |
+|------|------|
+| 游泳模型 | 已实现：`SCR_SwimmingStaminaModel.c` |
+| Params 独立 | 仍可选：`SCR_RSS_Params` → `SCR_RSS_Params.c` |
+| PlayerBase 减负 | CSB / 泥泞 / RPC 外移（见上优先级 1） |
 
-| 提取批次 | 目标文件 | 提取的方法 | 行数 | 预估节省 |
-|----------|----------|-----------|------|---------|
-| **批次 A**（首选） | `RSS/NetworkConfig/SCR_PlayerBaseCombatStim.c` | CSB 全量：`RSS_GetCombatStimPhase()` (L1011)、`RSS_IsCaffeineSodiumBenzoateActive()` (L1016)、`RSS_IsCombatStimOverdosed()` (L1021)、`RSS_CombatStim_ComputeBleedingBaseRateForEffect()` (L1027)、`RSS_CombatStim_RefreshBleedingEffectsToMatchScale()` (L1046)、`RSS_CombatStim_UpdateBleedingScale()` (L1065)、`RSS_CombatStim_AdjustStaminaRead()` (L1146)、`RSS_CombatStim_OnTickTransitions()` (L1090–1150)、`RSS_CombatStim_OnInjectServer()` (L1152–1215)、`RPC_CombatStimSyncToOwner()` (L1223–1235) | ~250 行 | **~14 KB** → 48 KB |
-| **批次 B**（可选） | `RSS/MudSlip/SCR_PlayerBaseMudSlipDelegates.c` | 泥泞滑倒代理：`RSS_TriggerMudSlipRagdoll()` (L1232)、`RSS_MudSlip_FinishRagdoll()` (L1240)、`RSS_SetMudSlipCameraShake01()` (L1247)、`RSS_GetMudSlipCameraShake01()` (L1252)、`RSS_IsRagdollActiveForCamera()` (L1257)、`RSS_IsAiMudSlipBlockedBySafety()` (L1262)、`RSS_ShouldAiAllowMudSlipRagdoll()` (L1267)、`RSS_GetLastAppliedSpeedMultiplier()` (L1272) | ~45 行 | ~2.5 KB |
-| **批次 C**（远期） | `RSS/NetworkConfig/SCR_PlayerBaseNetworkSync.c` | `RPC_ClientReportStamina()` (L1289–1407) + `RPC_ServerSyncSpeedMultiplier()` (L1410–1432) | ~142 行 | ~8 KB |
+#### SCR_RSS_Params 独立（操作步骤备忘）
 
-**推荐路线**：执行批次 A（CSB 提取）。CSB 状态机是 PlayerBase 中最独立、最大的逻辑块——有独立常量类 (`SCR_CombatStimConstants`)、独立状态机类 (`SCR_CombatStimStateMachine`)，PlayerBase 中的方法只是"桥接 + RPC 壳"。提取后的目标文件放在 `RSS/NetworkConfig/`（因为它与 RPC 同步紧密相关），作为 helper 类（非 modded），由 PlayerBase 委托调用。
-
----
-
-### 优先级 3：SCR_RSS_Settings.c（62.9 KB → 目标 ≤45 KB）
-
-**当前结构**：2 个类——`SCR_RSS_Params`（L9–356，~347 行）和 `SCR_RSS_Settings`（L357–1143，~786 行）。
-
-| 提取批次 | 目标文件 | 提取内容 | 行数 | 预估节省 |
-|----------|----------|---------|------|---------|
-| **批次 A**（首选） | `RSS/NetworkConfig/SCR_RSS_Params.c` | 完整 `class SCR_RSS_Params`（L9–356）：所有 47 个参数字段 + `InitEliteStandardDefaults()`、`InitStandardMilsimDefaults()`、`InitTacticalActionDefaults()`、`PARAMS_ARRAY_SIZE` | ~347 行 | **~19 KB** → 44 KB |
-
-**批次 A 详细操作**：
 1. 新建 `scripts/Game/RSS/NetworkConfig/SCR_RSS_Params.c`
 2. 将 `class SCR_RSS_Params { ... }` 完整移入
 3. `SCR_RSS_Settings.c` 中保留对 `SCR_RSS_Params` 的引用（`m_EliteStandard`、`m_StandardMilsim`、`m_TacticalAction`、`m_Custom` 四个成员）
@@ -83,9 +70,9 @@
 
 ---
 
-### 优先级 4：SCR_EnvironmentFactor.c（58.0 KB → 目标 ≤45 KB）
+### `SCR_EnvironmentFactor.c` 领域拆分（预防性）
 
-`SCR_EnvironmentFactor` 过大时的拆分顺序建议如下：
+以下文件在仓库中已存在，用于把环境计算从单体中摊薄：
 
 | 提取批次 | 目标文件 | 提取内容 |
 |----------|----------|---------|
@@ -98,10 +85,10 @@
 ## 执行顺序总览
 
 ```
-第 1 步: SCR_RealisticStaminaSystem.c → 提取游泳模型        (73 KB → ~64 KB)  ← 立即执行，已超限
-第 2 步: PlayerBase.c → 提取 CSB 状态机                      (62 KB → ~48 KB)  ← 紧随其后
-第 3 步: SCR_RSS_Settings.c → 提取 SCR_RSS_Params            (63 KB → ~44 KB)  ← 安全余量修复
-第 4 步: SCR_EnvironmentFactor.c → 按基线分三批               (58 KB → ~45 KB)  ← 预防性拆分
+第 1 步: PlayerBase.c → 继续外移 CSB / 泥泞 / RPC（仍超 64 KB）
+第 2 步: SCR_EnvironmentFactor.c → 按领域维持卫星文件分担（接近 64 KB）
+第 3 步: SCR_RealisticStaminaSystem.c → 视增长再抽地形/恢复纯函数块（游泳已拆至 SCR_SwimmingStaminaModel.c）
+第 4 步: SCR_RSS_Settings.c → 视需要再拆 SCR_RSS_Params.c
 ```
 
 每一步完成后验证：编译通过 + 单机冲刺/恢复 + 配置同步。

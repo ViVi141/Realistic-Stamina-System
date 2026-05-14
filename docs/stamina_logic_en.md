@@ -16,15 +16,15 @@
 
 ```
 Stamina System (Realistic Stamina System)
-├── Constants (SCR_StaminaConstants.c)
-├── Consumption (SCR_StaminaConsumption.c)
-├── Recovery (SCR_StaminaRecovery.c)
-├── Core System (SCR_RealisticStaminaSystem.c)
-├── Update Coordinator (SCR_StaminaUpdateCoordinator.c)
-├── Speed Calculation (SCR_SpeedCalculation.c)
-├── Environment Factors (SCR_EnvironmentFactor.c)
-├── Fatigue System (SCR_FatigueSystem.c)
-└── Exercise Tracking (SCR_ExerciseTracking.c)
+├── scripts/Game/RSS/Core/SCR_StaminaConstants.c
+├── scripts/Game/RSS/Core/SCR_StaminaConsumption.c
+├── scripts/Game/RSS/Core/SCR_StaminaRecovery.c
+├── scripts/Game/RSS/Core/SCR_RealisticStaminaSystem.c
+├── scripts/Game/RSS/Core/SCR_StaminaUpdateCoordinator.c
+├── scripts/Game/RSS/Core/SCR_SpeedCalculation.c
+├── scripts/Game/RSS/Environment/SCR_EnvironmentFactor.c
+├── scripts/Game/RSS/Core/SCR_FatigueSystem.c
+└── scripts/Game/RSS/Core/SCR_ExerciseTracking.c
 ```
 
 ### 1.2 Update Cycle
@@ -336,7 +336,7 @@ Note: current implementation uses lower static coefficients (1.2/1.6) to reduce 
 
 ```python
 if staminaPercent >= 0.25:
-    speedMultiplier = TARGET_RUN_SPEED_MULTIPLIER  # 0.7115 (3.7 m/s)
+    speedMultiplier = TARGET_RUN_SPEED_MULTIPLIER  # ~0.691 (3.8 m/s / 5.5 m/s)
 elif staminaPercent >= 0.05:
     t = (staminaPercent - 0.05) / (0.25 - 0.05)
     smoothT = t * t * (3 - 2 * t)
@@ -683,7 +683,7 @@ Where `S = tan(θ)`, θ = slope angle (degrees); `TOBLER_W_AT_FLAT_KMH = 5.039` 
 
 **Design notes:**
 - **Formula shape**: Preserves Tobler curve—uphill and steep downhill both reduce speed (physiology-based)
-- **Normalization**: Flat (S=0) = 1.0 so 0 kg flat Sprint reaches engine max 5.2 m/s; Tobler peak (6 km/h) would give flat ≈ 84%
+- **Normalization**: Flat (S=0) = 1.0 so 0 kg flat Sprint reaches engine max 5.5 m/s; Tobler peak (6 km/h) would give flat ≈ 84%
 - **Steep slope floor**: Minimum multiplier 0.15 to avoid extreme slopes becoming too slow
 
 File location: SCR_RealisticStaminaSystem.c - `CalculateSlopeAdjustedTargetSpeed`
@@ -700,7 +700,7 @@ The following constants are hardcoded and cannot be changed via config:
 
 | Constant | Value | Description | File Location |
 |---------|-------|-------------|---------------|
-| `GAME_MAX_SPEED` | 5.2 m/s | Game max speed | SCR_StaminaConstants.c L9 |
+| `GAME_MAX_SPEED` | 5.5 m/s | Game max speed | SCR_StaminaConstants.c |
 | `CHARACTER_WEIGHT` | 90.0 kg | Character weight | SCR_StaminaConstants.c L109 |
 | `CHARACTER_AGE` | 22.0 years | Character age | SCR_StaminaConstants.c L113 |
 | `BASE_WEIGHT` | 1.36 kg | Base load | SCR_StaminaConstants.c L232 |
@@ -711,8 +711,8 @@ The following constants are hardcoded and cannot be changed via config:
 
 | Constant | Value | Description | File Location |
 |---------|-------|-------------|---------------|
-| `SPRINT_VELOCITY_THRESHOLD` | 5.2 m/s | Sprint speed threshold | SCR_StaminaConstants.c L16 |
-| `RUN_VELOCITY_THRESHOLD` | 3.7 m/s | Run speed threshold | SCR_StaminaConstants.c L17 |
+| `SPRINT_VELOCITY_THRESHOLD` | 5.5 m/s | Sprint speed threshold | SCR_StaminaConstants.c |
+| `RUN_VELOCITY_THRESHOLD` | 3.8 m/s | Run speed threshold | SCR_StaminaConstants.c |
 | `WALK_VELOCITY_THRESHOLD` | 3.2 m/s | Walk speed threshold | SCR_StaminaConstants.c L18 |
 | `RECOVERY_THRESHOLD_NO_LOAD` | 2.5 m/s | Recovery threshold without load | SCR_StaminaConstants.c L21 |
 | `DRAIN_THRESHOLD_COMBAT_LOAD` | 1.5 m/s | Drain threshold at 30 kg | SCR_StaminaConstants.c L22 |
@@ -724,7 +724,7 @@ The following constants are hardcoded and cannot be changed via config:
 | `INITIAL_STAMINA_AFTER_ACFT` | 1.0 (100 percent) | Initial stamina | SCR_StaminaConstants.c L41 |
 | `EXHAUSTION_THRESHOLD` | 0.0 (0 percent) | Exhaustion threshold | SCR_StaminaConstants.c L44 |
 | `EXHAUSTION_LIMP_SPEED` | 1.0 m/s | Base limp speed (used as minimum; actual exhaustion speed now scales with encumbrance) | SCR_StaminaConstants.c L45 |
-| `SPRINT_ENABLE_THRESHOLD` | 0.15 (15 percent) | Min stamina to sprint | SCR_StaminaConstants.c L46 |
+| `SPRINT_ENABLE_THRESHOLD` | 0.18 (18 percent) | Min stamina to sprint | SCR_StaminaConstants.c |
 | `MIN_RECOVERY_STAMINA_THRESHOLD` | 0.2 (20 percent) | Min recovery stamina | SCR_StaminaConstants.c L212 |
 | `MIN_RECOVERY_REST_TIME_SECONDS` | 3.0 s | Rest time at low stamina | SCR_StaminaConstants.c L213 |
 
@@ -763,12 +763,14 @@ The following constants are hardcoded and cannot be changed via config:
 | `PANDOLF_STATIC_COEFF_2` | 1.6 | Static load coefficient (W/kg) | SCR_StaminaConstants.c L300 |
 | `REFERENCE_WEIGHT` | 90.0 kg | Reference weight | SCR_StaminaConstants.c L307 |
 
-#### 4.1.7 Givoni-Goldman Model Constants
+#### 4.1.7 Givoni-Goldman model (removed from C)
 
-| Constant | Value | Description | File Location |
-|---------|-------|-------------|---------------|
-| `GIVONI_CONSTANT` | 0.8 | Running constant (W/kg*m^2/s^2) | SCR_StaminaConstants.c L310 |
-| `GIVONI_VELOCITY_EXPONENT` | 2.2 | Velocity exponent | SCR_StaminaConstants.c L311 |
+> **`GIVONI_*` symbols are not defined** in `SCR_StaminaConstants.c` anymore. Running/walking drain uses **Pandolf** via the coordinator. The table below is **historical reference only**.
+
+| Name (historical) | Value | Note |
+|---------|-------|------|
+| `GIVONI_CONSTANT` | 0.8 | Legacy constant (removed) |
+| `GIVONI_VELOCITY_EXPONENT` | 2.2 | Legacy exponent (removed) |
 
 #### 4.1.8 Terrain Factors
 
@@ -785,7 +787,7 @@ The following constants are hardcoded and cannot be changed via config:
 | Constant | Value | Description | File Location |
 |---------|-------|-------------|---------------|
 | `RECOVERY_STARTUP_DELAY_SECONDS` | 3.0 s | Recovery startup delay | SCR_StaminaConstants.c L326 |
-| `EPOC_DELAY_SECONDS` | 0.5 s | EPOC delay | SCR_StaminaConstants.c L332 |
+| `EPOC_DELAY_SECONDS` | 2.0 s | EPOC delay | SCR_StaminaConstants.c |
 | `EPOC_DRAIN_RATE` | 0.001 per 0.2s | EPOC base drain rate | SCR_StaminaConstants.c L333 |
 
 #### 4.1.10 Fitness Constants
@@ -816,7 +818,7 @@ The following constants are hardcoded and cannot be changed via config:
 
 | Constant | Value | Description | File Location |
 |---------|-------|-------------|---------------|
-| `TARGET_RUN_SPEED` | 3.7 m/s | Target run speed | SCR_StaminaConstants.c L60 |
+| `TARGET_RUN_SPEED` | 3.8 m/s | Target run speed | SCR_StaminaConstants.c |
 | `TARGET_RUN_SPEED_MULTIPLIER` | 0.7115 | Target run speed multiplier | SCR_StaminaConstants.c L61 |
 | `WILLPOWER_THRESHOLD` | 0.25 (25 percent) | Willpower threshold | SCR_StaminaConstants.c L65 |
 | `SMOOTH_TRANSITION_START` | 0.25 (25 percent) | Smooth transition start | SCR_StaminaConstants.c L70 |
@@ -1096,7 +1098,7 @@ These only apply in the Custom preset:
 
 ### A. Config Structure
 
-Config path: scripts/Game/Components/Stamina/SCR_RSS_Settings.c
+Config path: scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c
 
 ```c
 class SCR_RSS_Params
