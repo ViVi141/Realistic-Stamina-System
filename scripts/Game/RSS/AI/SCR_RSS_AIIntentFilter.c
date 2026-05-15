@@ -1,14 +1,11 @@
 //! RSS AI Intent Filter — 行为意图过滤
 //!
-//! 在体力状态极端时（EXHAUSTED / COLLAPSED）：
-//!   过滤攻击和追击行为，替换为 Wait / FindFirePosition
-//!
-//! 通过 FindActionOfType + SetPriority 提权实现（非直接替换行为树）
+//! 力竭时禁用 Attack / 追击 / 个别移动行为，并抬高 Wait。
+//! Attack 使用 CustomEvaluate()，SetPriority(0) 无效；改用 SetStateAllActionsOfType(COMPLETED)。
 
 class SCR_RSS_AIIntentFilter
 {
     //------------------------------------------------------------------------------------------------
-    //! 主入口
     static void Apply(IEntity owner, ERSS_AIStaminaState state, ERSS_AIStaminaState prevState, bool isThreatened)
     {
         if (!StaminaConfigBridge.IsAIIntentFilterEnabled())
@@ -26,7 +23,7 @@ class SCR_RSS_AIIntentFilter
         bool isRestrictive = IsRestrictiveState(state);
 
         if (wasRestrictive && !isRestrictive)
-            RestoreCombatPriorities(utility);
+            RestoreCombatActions(utility);
 
         switch (state)
         {
@@ -60,7 +57,6 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! EXHAUSTED + 非被压制 → 禁止主动攻击和追击
     protected static void ApplyExhaustedFilter(SCR_AIUtilityComponent utility, bool isThreatened)
     {
         if (isThreatened)
@@ -72,7 +68,6 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! COLLAPSED → 禁止所有移动行为（保留自卫射击）
     protected static void ApplyCollapsedFilter(SCR_AIUtilityComponent utility, bool isThreatened)
     {
         BlockActionType(utility, SCR_AIMoveIndividuallyBehavior);
@@ -85,7 +80,6 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! RECOVERING → 禁止重新主动出击，直到体力恢复
     protected static void ApplyRecoveringFilter(SCR_AIUtilityComponent utility)
     {
         BlockActionType(utility, SCR_AIMoveAndInvestigateBehavior);
@@ -93,7 +87,7 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    protected static void RestoreCombatPriorities(SCR_AIUtilityComponent utility)
+    protected static void RestoreCombatActions(SCR_AIUtilityComponent utility)
     {
         if (!utility)
             return;
@@ -134,10 +128,13 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
+    //! 禁用行为：COMPLETED 使 CustomEvaluate / 选型跳过该类型（含 SCR_AIAttackBehavior）。
     protected static void BlockActionType(SCR_AIUtilityComponent utility, typename actionType)
     {
         if (!utility)
             return;
+
+        utility.SetStateAllActionsOfType(actionType, EAIActionState.COMPLETED, true);
 
         AIActionBase action = utility.FindActionOfType(actionType);
         SCR_AIActionBase scrAct = SCR_AIActionBase.Cast(action);
@@ -151,12 +148,12 @@ class SCR_RSS_AIIntentFilter
         if (!utility)
             return;
 
+        utility.SetStateAllActionsOfType(actionType, EAIActionState.EVALUATED, true);
+
         AIActionBase action = utility.FindActionOfType(actionType);
         SCR_AIActionBase scrAct = SCR_AIActionBase.Cast(action);
         if (scrAct)
-        {
             scrAct.SetPriorityLevel(SCR_AIActionBase.PRIORITY_LEVEL_NORMAL);
-        }
     }
 
     //------------------------------------------------------------------------------------------------

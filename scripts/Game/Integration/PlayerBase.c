@@ -1630,6 +1630,16 @@ modded class SCR_CharacterControllerComponent
         return m_fLastRssSpeedMultiplierApplied;
     }
 
+    ERSS_AIStaminaState RSS_GetAIStaminaState()
+    {
+        return m_eRssAIStaminaState;
+    }
+
+    void RSS_SetAIStaminaState(ERSS_AIStaminaState state)
+    {
+        m_eRssAIStaminaState = state;
+    }
+
     protected string GetPlayerLabel(IEntity entity)
     {
         return SCR_PlayerBaseConfigHelper.GetPlayerLabel(entity);

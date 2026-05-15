@@ -10,7 +10,7 @@
 | `scripts/Game/Integration/SCR_AIGroup_RSS.c` | `modded SCR_AIGroup`：注册/注销 GroupSync 路点事件 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6 态体力状态机（滞回） |
 | `scripts/Game/RSS/AI/SCR_RSS_AISpeedCap.c` | 移动类型 + `OverrideMaxSpeed` |
-| `scripts/Game/RSS/AI/SCR_RSS_AIIntentFilter.c` | 力竭时压低 Attack/追击，恢复时还原优先级 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIIntentFilter.c` | 力竭时 `SetStateAllActionsOfType(COMPLETED)` 禁用 Attack/追击；恢复时 `EVALUATED` |
 | `scripts/Game/RSS/AI/SCR_RSS_AICombatDecay.c` | 感知 / 射速 / 技能衰减 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIGroupSync.c` | 路点预扫描、休息路点插入、自适应队长步速 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIGroupStaminaProxy.c` | 远距非交战群组：仅队长全量算体力 |
@@ -21,7 +21,7 @@
 
 | 字段 | 作用 |
 |------|------|
-| `m_bEnableAIStaminaCombatEffects` | **总开关**：状态机、限速、意图过滤、战斗衰减、群组协同、伤害联动 |
+| `m_bEnableAIStaminaCombatEffects` | **总开关**：状态机、限速、意图过滤、战斗衰减、群组协同、伤害联动（**新建 JSON 默认 false**；服主可在菜单开启） |
 | `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
 | `m_bDisableAIStaminaCalc` | 仍算速度倍率，跳过 Pandolf 消耗/恢复 |
 | `m_bEnableMudSlipMechanism` | 泥泞滑倒（默认关，与 AI 泥泞巡逻逻辑独立） |
@@ -30,7 +30,7 @@
 
 在 `UpdateSpeedBasedOnStamina` 中（与玩家共用 Pandolf 环境模型）：
 
-1. **群组代理**（远距 >800m、非交战）：队员同步队长体力与速度后 `return`；队长每 5s 全量算一次消耗/恢复。
+1. **群组代理**（远距 >800m、非交战）：队员同步队长体力、速度、状态机与限速/意图/战斗衰减后 `return`；队长每 5s 全量算一次消耗/恢复。
 2. 速度倍率 → `OverrideMaxSpeed`
 3. **AI 桥接**（500ms 节流）：状态机 → 限速 → 意图过滤 → 战斗衰减 → 休息路点提前完成
 4. Pandolf 消耗/恢复 → `UpdateStaminaValue`（含 **伤害联动** 倍率）
@@ -57,7 +57,7 @@
 | 事件 | 行为 |
 |------|------|
 | 路点添加 | 12 方向射线预扫描掩体休息点并缓存 |
-| 路点完成 | 按群组中位数体力插入 `RSS_AIRest` Wait/Defend；自适应队长步速 |
+| 路点完成 | 在**已完成路点的队列后继**前插入 `RSS_AIRest`；自适应队长步速 |
 | 休息路点进行中 | 中位数体力 ≥70% 时提前 `CompleteWaypoint` |
 
 群组体力分级：`GROUP_FIT` ≥70% / `GROUP_TIRING` 40–70% / `GROUP_FATIGUED` 20–40% / `GROUP_SPENT` <20%。  

@@ -12,6 +12,12 @@
 - **距离 LOD 开关** — `GetSpeedUpdateIntervalMs` 尊重 `RSS_PERF_AI_DISTANCE_LOD_ENABLED`。
 - **文档** — 重写 `docs/RSS_AI_行为说明.md`，更新 `README_CN.md` AI 目录树。
 
+### AI（审查修复）
+
+- **意图过滤禁 Attack 生效** — `SCR_RSS_AIIntentFilter` 对 Attack/追击等使用 `SetStateAllActionsOfType(..., COMPLETED)`（`CustomEvaluate` 忽略 `SetPriority`）；恢复时设回 `EVALUATED`。
+- **休息路点插入目标** — `SCR_RSS_AIGroupSync.ResolveNextWaypointAfter` 取已完成路点的队列后继，避免 `GetCurrentWaypoint` 指向错误路点。
+- **代理队员 AI 表现同步** — `ApplyFollowerSync` 同步队长状态机标签，并施加限速/意图/战斗衰减（与队长一致）。
+
 ## [3.22.8] - 2026-05-10
 
 ### 修复

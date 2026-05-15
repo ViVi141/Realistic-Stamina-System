@@ -183,8 +183,7 @@ class SCR_RSS_AIGroupSync
         }
 
         // ---------- 4. 休息判定 ----------
-
-        AIWaypoint nextWp = scrGrp.GetCurrentWaypoint();
+        AIWaypoint nextWp = ResolveNextWaypointAfter(scrGrp, wp);
 
         switch (groupState)
         {
@@ -213,6 +212,31 @@ class SCR_RSS_AIGroupSync
         }
     }
 
+
+    //------------------------------------------------------------------------------------------------
+    //! 路点完成后取「队列中紧随 completedWp 的下一个」；避免 GetCurrentWaypoint 仍指向已完成路点。
+    protected static AIWaypoint ResolveNextWaypointAfter(SCR_AIGroup scrGrp, AIWaypoint completedWp)
+    {
+        if (!scrGrp || !completedWp)
+            return null;
+
+        array<AIWaypoint> wps = {};
+        int n = scrGrp.GetWaypoints(wps);
+        for (int i = 0; i < n; i++)
+        {
+            if (wps.Get(i) == completedWp)
+            {
+                if (i + 1 < n)
+                    return wps.Get(i + 1);
+                return null;
+            }
+        }
+
+        AIWaypoint current = scrGrp.GetCurrentWaypoint();
+        if (current && current != completedWp)
+            return current;
+        return null;
+    }
 
     // ==========================================================================
     //  预扫描算法
