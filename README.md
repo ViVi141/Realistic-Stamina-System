@@ -95,13 +95,15 @@ RealisticStaminaSystem/
 │       │   │   ├── SCR_SwimmingState.c           # 3D 游泳物理模型
 │       │   │   └── SCR_JumpVaultDetection.c      # 跳跃／翻越检测
 │       │   ├── AI/                      # AI 体力系统（7 文件）
-│       │   │   ├── SCR_RSS_AIStaminaBridge.c          # AI 体力桥接
-│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # 群组代理（远距仅队长全量计算）
-│       │   │   ├── SCR_RSS_AIStaminaCombatEffects.c   # 体力对 AI 射击精度／射速影响
-│       │   │   ├── SCR_RSS_AIGroupRestCoordinator.c   # AI 群组休息协调
-│       │   │   ├── SCR_RSS_AIRestRecoveryRegistry.c   # AI 恢复注册表
-│       │   │   ├── SCR_RSS_AICoverSeeker.c            # AI 掩体寻找
-│       │   │   └── SCR_RSS_AIMudSlipPolicy.c          # AI 泥泞滑倒策略
+│       │   │   ├── SCR_RSS_AIStaminaState.c           # 6-state stamina FSM
+│       │   │   ├── SCR_RSS_AISpeedCap.c               # movement speed cap
+│       │   │   ├── SCR_RSS_AIIntentFilter.c           # intent filter
+│       │   │   ├── SCR_RSS_AICombatDecay.c            # combat decay
+│       │   │   ├── SCR_RSS_AIGroupSync.c              # group waypoints / rest
+│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # distant group proxy
+│       │   │   └── SCR_RSS_AIInjuryLink.c             # injury-stamina link
+│       │   ├── Integration/
+│       │   │   └── SCR_AIGroup_RSS.c                  # modded SCR_AIGroup hooks
 │       │   ├── NetworkConfig/           # 网络与配置（7 文件）
 │       │   │   ├── SCR_NetworkSync.c                 # 客户端上报／服务端权威校验／三层限流
 │       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本迁移／热重载）

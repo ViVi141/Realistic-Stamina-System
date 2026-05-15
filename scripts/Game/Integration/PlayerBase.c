@@ -439,8 +439,6 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
-        // [REMOVED v3.23.0] 旧群组代理逻辑已废弃。AI 体力计算频率由 GetSpeedUpdateIntervalMs 统一控制。
-        
         if (SCR_PlayerBaseVehicleHelper.HandleVehicleStaminaUpdate(
                 this, owner, m_pCompartmentAccess, m_pStaminaComponent,
                 m_pExerciseTracker, m_pFatigueSystem, m_pEpocState,
@@ -456,6 +454,28 @@ modded class SCR_CharacterControllerComponent
         
         // perf: AI 快速路径 — 跳过 AI 不需要的玩家专属逻辑
         bool isPlayer = IsPlayerControlled();
+
+        float rssDistToPlayerM = -1.0;
+        SCR_AIGroup rssProxyGroup = null;
+        bool rssSkipStaminaDrainRecovery = false;
+
+        if (!isPlayer && Replication.IsServer())
+        {
+            rssDistToPlayerM = GetNearestPlayerDistanceM(owner);
+            rssProxyGroup = SCR_RSS_AIGroupStaminaProxy.ResolveGroup(owner);
+            if (rssProxyGroup && SCR_RSS_AIGroupStaminaProxy.IsProxyModeActive(owner, rssDistToPlayerM, rssProxyGroup))
+            {
+                if (SCR_RSS_AIGroupStaminaProxy.IsFollower(owner, rssProxyGroup))
+                {
+                    SCR_RSS_AIGroupStaminaProxy.ApplyFollowerSync(owner, rssProxyGroup);
+                    m_bRssStaminaLoopActive = true;
+                    GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
+                    return;
+                }
+                if (!SCR_RSS_AIGroupStaminaProxy.ShouldLeaderRunFullCalc(rssProxyGroup))
+                    rssSkipStaminaDrainRecovery = true;
+            }
+        }
         
         if (isPlayer)
         {
@@ -753,7 +773,8 @@ modded class SCR_CharacterControllerComponent
         }
         
         float speedRatio = Math.Clamp(currentSpeed / RealisticStaminaSpeedSystem.GAME_MAX_SPEED, 0.0, 1.0);
-        
+        float totalDrainRate = 0.0;
+
         if (m_pFatigueSystem)
         {
             float currentTimeForFatigue = world.GetWorldTime() / 1000.0; // 转换为秒
@@ -825,6 +846,11 @@ modded class SCR_CharacterControllerComponent
         }
         else
         {
+            float prevBridgeTime = m_fLastAiBridgeTickTime;
+            if (prevBridgeTime < 0.0)
+                prevBridgeTime = currentTime;
+            float bridgeDeltaSec = currentTime - prevBridgeTime;
+
             if (!IsPlayerControlled())
                 m_fLastAiBridgeTickTime = currentTime;
 
@@ -832,17 +858,10 @@ modded class SCR_CharacterControllerComponent
             {
                 // 1. 更新体力状态机
                 bool isStationary = (currentSpeed < 0.05);
-                float timeStationarySec;
                 if (isStationary)
-                {
-                    timeStationarySec = m_fRssAiTimeStationarySec + (currentTime - m_fLastAiBridgeTickTime);
-                }
+                    m_fRssAiTimeStationarySec = m_fRssAiTimeStationarySec + bridgeDeltaSec;
                 else
-                {
-                    timeStationarySec = 0.0;
-                }
-                if (isStationary)
-                    m_fRssAiTimeStationarySec = timeStationarySec;
+                    m_fRssAiTimeStationarySec = 0.0;
 
                 float fatigueVal;
                 if (m_pFatigueSystem)
@@ -850,11 +869,12 @@ modded class SCR_CharacterControllerComponent
                 else
                     fatigueVal = 0.0;
 
+                ERSS_AIStaminaState prevAiState = m_eRssAIStaminaState;
                 ERSS_AIStaminaState aiState = SCR_RSS_AIStaminaState.Tick(
                     staminaPercent,
                     fatigueVal,
                     isStationary,
-                    timeStationarySec,
+                    m_fRssAiTimeStationarySec,
                     m_eRssAIStaminaState);
 
                 // 2. 五级移动限速
@@ -867,7 +887,7 @@ modded class SCR_CharacterControllerComponent
                 SCR_RSS_AISpeedCap.Apply(this, owner, aiState, staminaPercent, isThreatened);
 
                 // 3. 行为过滤
-                SCR_RSS_AIIntentFilter.Apply(owner, aiState, isThreatened);
+                SCR_RSS_AIIntentFilter.Apply(owner, aiState, prevAiState, isThreatened);
 
                 // 4. 战斗衰减
                 SCR_RSS_AICombatDecay.Apply(owner, aiState);
@@ -883,7 +903,11 @@ modded class SCR_CharacterControllerComponent
 
         bool isSprinting = isSprintingNow;
         int currentMovementPhase = phaseNow;
+        float baseDrainRateByVelocity = 0.0;
+        float baseDrainRateByVelocityForModule = 0.0;
 
+        if (!rssSkipStaminaDrainRecovery)
+        {
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
@@ -898,7 +922,7 @@ modded class SCR_CharacterControllerComponent
             m_pEnvironmentFactor, // v2.14.0修复：传递环境因子
             isSprinting,
             currentMovementPhase);
-        float baseDrainRateByVelocity = drainRateResult.baseDrainRate;
+        baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         
         float postureMultiplier = 1.0;
@@ -921,8 +945,7 @@ modded class SCR_CharacterControllerComponent
         
         const float sprintMultiplier = 1.0;
         
-        float baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
-        float totalDrainRate = 0.0;
+        baseDrainRateByVelocityForModule = baseDrainRateByVelocity;
         
         if (useSwimmingModel)
         {
@@ -1018,6 +1041,13 @@ modded class SCR_CharacterControllerComponent
             }
             
             staminaPercent = newTargetStamina;
+        }
+
+        if (rssProxyGroup && Replication.IsServer() && !isPlayer)
+        {
+            if (SCR_RSS_AIGroupStaminaProxy.IsProxyModeActive(owner, rssDistToPlayerM, rssProxyGroup))
+                SCR_RSS_AIGroupStaminaProxy.NotifyLeaderFullTickCompleted(rssProxyGroup);
+        }
         }
         
         if (isPlayer && m_pUISignalBridge)
@@ -1926,6 +1956,33 @@ modded class SCR_CharacterControllerComponent
         return false;
     }
 
+    protected float GetNearestPlayerDistanceM(IEntity ownerEntity)
+    {
+        if (!ownerEntity)
+            return -1.0;
+
+        PlayerManager pm = GetGame().GetPlayerManager();
+        if (!pm)
+            return -1.0;
+
+        array<int> playerIds = {};
+        pm.GetPlayers(playerIds);
+        float nearM = 99999.0;
+        for (int pi = 0; pi < playerIds.Count(); pi++)
+        {
+            IEntity pe = pm.GetPlayerControlledEntity(playerIds.Get(pi));
+            if (pe)
+            {
+                float d = vector.Distance(ownerEntity.GetOrigin(), pe.GetOrigin());
+                if (d < nearM)
+                    nearM = d;
+            }
+        }
+        if (nearM < 99999.0)
+            return nearM;
+        return -1.0;
+    }
+
     protected int GetSpeedUpdateIntervalMs()
     {
         // 玩家：高速刷新（~60Hz）
@@ -1936,31 +1993,14 @@ modded class SCR_CharacterControllerComponent
         if (!Replication.IsServer())
             return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
 
+        if (!StaminaConstants.RSS_PERF_AI_DISTANCE_LOD_ENABLED)
+            return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
+
         IEntity ownerEntity = GetOwner();
         if (!ownerEntity)
             return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
 
-        // 找最近玩家的距离
-        float distM = -1.0;
-        PlayerManager pm = GetGame().GetPlayerManager();
-        if (pm)
-        {
-            array<int> playerIds = {};
-            pm.GetPlayers(playerIds);
-            float nearM = 99999.0;
-            for (int pi = 0; pi < playerIds.Count(); pi++)
-            {
-                IEntity pe = pm.GetPlayerControlledEntity(playerIds.Get(pi));
-                if (pe)
-                {
-                    float d = vector.Distance(ownerEntity.GetOrigin(), pe.GetOrigin());
-                    if (d < nearM)
-                        nearM = d;
-                }
-            }
-            if (nearM < 99999.0)
-                distM = nearM;
-        }
+        float distM = GetNearestPlayerDistanceM(ownerEntity);
 
         if (distM < 0.0 || distM <= StaminaConstants.RSS_PERF_AI_LOD_NEAR_M)
             return StaminaConstants.RSS_PERF_AI_LOD_NEAR_INTERVAL_MS;

@@ -697,6 +697,22 @@ class StaminaUpdateCoordinator
         
         // 计算总消耗率
         float finalDrainRate = totalDrainRate + epocDrainRate;
+
+        // AI 伤害-体力联动（模块 F）
+        if (controller && !controller.IsPlayerControlled() && StaminaConfigBridge.IsAIInjuryLinkEnabled())
+        {
+            IEntity injuryOwner = controller.GetOwner();
+            if (injuryOwner)
+            {
+                float injuryDrainMul = 1.0;
+                float injuryRecoveryMul = 1.0;
+                if (SCR_RSS_AIInjuryLink.GetInjuryMultipliers(injuryOwner, injuryDrainMul, injuryRecoveryMul))
+                {
+                    finalDrainRate = finalDrainRate * injuryDrainMul;
+                    recoveryRate = recoveryRate * injuryRecoveryMul;
+                }
+            }
+        }
         
         // 代谢净值算法：netChange = (recoveryRate - totalDrainRate) * (timeDelta/0.2)
         // 恢复/消耗率按每0.2秒设计；实际更新间隔可能为50ms，需按时间比例缩放

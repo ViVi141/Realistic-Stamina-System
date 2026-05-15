@@ -593,7 +593,7 @@ class StaminaConstants
     // RSS 主循环速度/体力 tick（毫秒）：玩家≈60Hz；AI 仅在服务器上降频
     static const int RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS = 17;
     static const int RSS_AI_SPEED_UPDATE_INTERVAL_MS = 100;
-    //! 服端：非交战群组距玩家较远时仅队长全算，队员同步；与 SCR_RSS_AIGroupStaminaProxy 一致
+    //! 服端：非交战群组距玩家较远时仅队长全算，队员同步；见 SCR_RSS_AIGroupStaminaProxy.c
     //! v3.20.0: 激活距离从 1500m 缩短至 800m，提高代理覆盖率（约 +50%），
     //!          在中等交战密度场景下减少约 20% 的 AI 全量计算开销。
     static const bool RSS_PERF_AI_GROUP_PROXY_ENABLED = true;
@@ -606,7 +606,7 @@ class StaminaConstants
     static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 200; // perf: 100→200，高密度 AI 减负。体力变化是秒级，200ms 精度足够
     static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
     static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
-    //! 群组「是否存在战场危险」判定缓存秒数；避免每 AI 每 tick 遍历全组成员（与 SCR_RSS_AIGroupStaminaProxy 一致）
+    //! 群组「是否存在战场危险」判定缓存秒数；见 SCR_RSS_AIGroupStaminaProxy.c
     //! v3.20.0: 缓存时间从 0.5s 延长至 1.0s，减少高密度场景下的全组扫描频率（约 -50% 扫描次数）。
     static const float RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC = 1.0;
     // ==========================================================================

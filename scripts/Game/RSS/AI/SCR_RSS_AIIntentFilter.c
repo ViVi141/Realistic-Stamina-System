@@ -9,7 +9,7 @@ class SCR_RSS_AIIntentFilter
 {
     //------------------------------------------------------------------------------------------------
     //! 主入口
-    static void Apply(IEntity owner, ERSS_AIStaminaState state, bool isThreatened)
+    static void Apply(IEntity owner, ERSS_AIStaminaState state, ERSS_AIStaminaState prevState, bool isThreatened)
     {
         if (!StaminaConfigBridge.IsAIIntentFilterEnabled())
             return;
@@ -21,6 +21,12 @@ class SCR_RSS_AIIntentFilter
         SCR_AIUtilityComponent utility = ResolveUtility(owner);
         if (!utility)
             return;
+
+        bool wasRestrictive = IsRestrictiveState(prevState);
+        bool isRestrictive = IsRestrictiveState(state);
+
+        if (wasRestrictive && !isRestrictive)
+            RestoreCombatPriorities(utility);
 
         switch (state)
         {
@@ -37,9 +43,20 @@ class SCR_RSS_AIIntentFilter
             break;
 
         default:
-            // FATIGUED 及以上：不干预战斗决策
             break;
         }
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected static bool IsRestrictiveState(ERSS_AIStaminaState state)
+    {
+        if (state == ERSS_AIStaminaState.EXHAUSTED)
+            return true;
+        if (state == ERSS_AIStaminaState.COLLAPSED)
+            return true;
+        if (state == ERSS_AIStaminaState.RECOVERING)
+            return true;
+        return false;
     }
 
     //------------------------------------------------------------------------------------------------
@@ -47,16 +64,10 @@ class SCR_RSS_AIIntentFilter
     protected static void ApplyExhaustedFilter(SCR_AIUtilityComponent utility, bool isThreatened)
     {
         if (isThreatened)
-        {
-            // 被压制时仍可战斗，但只原地射击（降级，不拦截）
             return;
-        }
 
-        // 禁止 Attack
         BlockActionType(utility, SCR_AIAttackBehavior);
-        // 禁止追击/调查
         BlockActionType(utility, SCR_AIMoveAndInvestigateBehavior);
-        // 提权 Wait
         PromoteWait(utility);
     }
 
@@ -64,16 +75,11 @@ class SCR_RSS_AIIntentFilter
     //! COLLAPSED → 禁止所有移动行为（保留自卫射击）
     protected static void ApplyCollapsedFilter(SCR_AIUtilityComponent utility, bool isThreatened)
     {
-        // 禁止移动
         BlockActionType(utility, SCR_AIMoveIndividuallyBehavior);
         BlockActionType(utility, SCR_AIMoveAndInvestigateBehavior);
 
         if (!isThreatened)
-        {
-            // 非被压制时也禁止攻击
             BlockActionType(utility, SCR_AIAttackBehavior);
-        }
-        // 被压制时保留 Attack（最后手段）
 
         PromoteWait(utility);
     }
@@ -87,7 +93,25 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 从 AI 实体解析 SCR_AIUtilityComponent
+    protected static void RestoreCombatPriorities(SCR_AIUtilityComponent utility)
+    {
+        if (!utility)
+            return;
+
+        RestoreActionType(utility, SCR_AIAttackBehavior);
+        RestoreActionType(utility, SCR_AIMoveAndInvestigateBehavior);
+        RestoreActionType(utility, SCR_AIMoveIndividuallyBehavior);
+
+        AIActionBase waitAction = utility.FindActionOfType(SCR_AIWaitBehavior);
+        SCR_AIActionBase scrWait = SCR_AIActionBase.Cast(waitAction);
+        if (scrWait)
+        {
+            scrWait.SetPriority(SCR_AIActionBase.PRIORITY_BEHAVIOR_WAIT);
+            scrWait.SetPriorityLevel(SCR_AIActionBase.PRIORITY_LEVEL_NORMAL);
+        }
+    }
+
+    //------------------------------------------------------------------------------------------------
     protected static SCR_AIUtilityComponent ResolveUtility(IEntity owner)
     {
         if (!owner)
@@ -110,7 +134,6 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 禁止指定类型的行为：获取已有实例并将其优先级设到极低。
     protected static void BlockActionType(SCR_AIUtilityComponent utility, typename actionType)
     {
         if (!utility)
@@ -123,7 +146,20 @@ class SCR_RSS_AIIntentFilter
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 提权 Wait 行为：让它在下帧决策中被选中。
+    protected static void RestoreActionType(SCR_AIUtilityComponent utility, typename actionType)
+    {
+        if (!utility)
+            return;
+
+        AIActionBase action = utility.FindActionOfType(actionType);
+        SCR_AIActionBase scrAct = SCR_AIActionBase.Cast(action);
+        if (scrAct)
+        {
+            scrAct.SetPriorityLevel(SCR_AIActionBase.PRIORITY_LEVEL_NORMAL);
+        }
+    }
+
+    //------------------------------------------------------------------------------------------------
     protected static void PromoteWait(SCR_AIUtilityComponent utility)
     {
         if (!utility)

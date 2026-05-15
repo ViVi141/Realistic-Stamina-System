@@ -154,14 +154,16 @@ RealisticStaminaSystem/
 │       │   │   ├── SCR_SlopeSpeedTransition.c    # 坡度速度 5s 平滑过渡
 │       │   │   ├── SCR_SwimmingState.c           # 3D 游泳物理模型
 │       │   │   └── SCR_JumpVaultDetection.c      # 跳跃／翻越检测
-│       │   ├── AI/                      # AI 体力系统（7 文件）
-│       │   │   ├── SCR_RSS_AIStaminaBridge.c          # AI 体力桥接
-│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # 群组代理（远距仅队长全量计算）
-│       │   │   ├── SCR_RSS_AIStaminaCombatEffects.c   # 体力对 AI 射击精度／射速影响
-│       │   │   ├── SCR_RSS_AIGroupRestCoordinator.c   # AI 群组休息协调
-│       │   │   ├── SCR_RSS_AIRestRecoveryRegistry.c   # AI 恢复注册表
-│       │   │   ├── SCR_RSS_AICoverSeeker.c            # AI 掩体寻找
-│       │   │   └── SCR_RSS_AIMudSlipPolicy.c          # AI 泥泞滑倒策略
+│       │   ├── AI/                      # AI 体力系统（v3.23，7 文件）
+│       │   │   ├── SCR_RSS_AIStaminaState.c           # 6 态体力状态机
+│       │   │   ├── SCR_RSS_AISpeedCap.c               # 移动限速
+│       │   │   ├── SCR_RSS_AIIntentFilter.c           # 行为意图过滤
+│       │   │   ├── SCR_RSS_AICombatDecay.c            # 感知／射速／技能衰减
+│       │   │   ├── SCR_RSS_AIGroupSync.c              # 群组路点／休息／步速
+│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # 远距群组代理
+│       │   │   └── SCR_RSS_AIInjuryLink.c             # 伤害-体力联动
+│       │   ├── Integration/
+│       │   │   └── SCR_AIGroup_RSS.c                  # modded SCR_AIGroup 事件注册
 │       │   ├── NetworkConfig/           # 网络与配置（7 文件）
 │       │   │   ├── SCR_NetworkSync.c                 # 客户端上报／服务端权威校验／三层限流
 │       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本迁移／热重载，1044行）

@@ -1,5 +1,17 @@
 # 更新日志
 
+## [Unreleased]
+
+### AI（v3.23 补全）
+
+- **群组路点事件注册** — 新增 `SCR_AIGroup_RSS.c`（`modded SCR_AIGroup`），在服端 `EOnInit` 调用 `SCR_RSS_AIGroupSync.RegisterForGroup`，使休息路点插入、掩体预扫描、自适应步速生效。
+- **静止时间累加修复** — `PlayerBase` AI 桥接：先计算 `bridgeDeltaSec` 再更新 `m_fLastAiBridgeTickTime`；移动时清零 `m_fRssAiTimeStationarySec`。
+- **意图过滤优先级恢复** — `SCR_RSS_AIIntentFilter` 在离开 EXHAUSTED/COLLAPSED/RECOVERING 时还原 Attack/追击/移动行为优先级。
+- **伤害-体力联动** — `SCR_RSS_AIInjuryLink` 接入 `StaminaUpdateCoordinator.UpdateStaminaValue`。
+- **远距群组代理** — 重建 `SCR_RSS_AIGroupStaminaProxy.c`：>800m 非交战群组仅队长每 5s 全量计算，队员同步体力与速度倍率。
+- **距离 LOD 开关** — `GetSpeedUpdateIntervalMs` 尊重 `RSS_PERF_AI_DISTANCE_LOD_ENABLED`。
+- **文档** — 重写 `docs/RSS_AI_行为说明.md`，更新 `README_CN.md` AI 目录树。
+
 ## [3.22.8] - 2026-05-10
 
 ### 修复
