@@ -2,6 +2,15 @@
 // 负责处理环境因素对体力系统的影响（热应激、降雨湿重等）
 // 模块化拆分：从 PlayerBase.c 提取的独立功能模块
 
+enum ERSS_EnvSignal
+{
+    RAIN_INTENSITY,
+    WIND_SPEED,
+    TIME_OF_DAY,
+    WETNESS,
+    COUNT
+}
+
 class EnvironmentFactor
 {
     // ==================== 状态变量 ====================
@@ -9,12 +18,12 @@ class EnvironmentFactor
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
     
     // ====== 引擎 GlobalSignalsManager 信号索引（perf: 替代 C++ 桥接调用）======
-    // 改为静态：所有 EnvironmentFactor 实例共享同一组信号索引，避免每实体 AddOrFindSignal
+    // 枚举 ERSS_EnvSignal 提供编译期名称检查，避免信号名拼写错误
     protected static ref GameSignalsManager s_pGlobalSignals;
-    protected static int s_iSignalRainIntensity = -1;
-    protected static int s_iSignalWindSpeed     = -1;
-    protected static int s_iSignalTOD           = -1; // "TimeOfDay"
-    protected static int s_iSignalWetness       = -1;
+    protected static int s_iSignalRainIntensity = -1; // ERSS_EnvSignal.RAIN_INTENSITY
+    protected static int s_iSignalWindSpeed     = -1; // ERSS_EnvSignal.WIND_SPEED
+    protected static int s_iSignalTOD           = -1; // ERSS_EnvSignal.TIME_OF_DAY
+    protected static int s_iSignalWetness       = -1; // ERSS_EnvSignal.WETNESS
     
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
     protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于线性湿重衰减）
@@ -755,6 +764,7 @@ class EnvironmentFactor
     // ==================== 私有方法 ====================
     
     // ── 信号读取辅助（perf: 静态 GlobalSignalsManager 内存读取，回退到 C++ 桥接）──
+    // 使用 ERSS_EnvSignal 枚举命名索引，编译期可检查信号名一致性
     protected float ReadSignalRainIntensity()
     {
         if (s_pGlobalSignals && s_iSignalRainIntensity >= 0)

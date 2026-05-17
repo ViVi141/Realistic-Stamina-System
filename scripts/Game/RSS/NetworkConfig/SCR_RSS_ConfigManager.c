@@ -117,27 +117,6 @@ class SCR_RSS_ConfigManager
         if (loadContext.LoadFromFile(CONFIG_PATH))
         {
             loadContext.ReadValue("", m_Settings);
-            Print("[RSS_ConfigManager] Settings loaded from " + CONFIG_PATH);
-            
-            // 打印读取的预设状态（调试用）
-            string presetStatus = "Presets status: ";
-            if (m_Settings.m_EliteStandard)
-                presetStatus += "Elite=OK ";
-            else
-                presetStatus += "Elite=NULL ";
-            if (m_Settings.m_StandardMilsim)
-                presetStatus += "Standard=OK ";
-            else
-                presetStatus += "Standard=NULL ";
-            if (m_Settings.m_TacticalAction)
-                presetStatus += "Tactical=OK ";
-            else
-                presetStatus += "Tactical=NULL ";
-            if (m_Settings.m_Custom)
-                presetStatus += "Custom=OK";
-            else
-                presetStatus += "Custom=NULL";
-            Print("[RSS_ConfigManager] " + presetStatus);
             
             // 检查是否已应用服务器配置
             if (!m_bIsServerConfigApplied)
@@ -167,25 +146,17 @@ class SCR_RSS_ConfigManager
                     
                     // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
                     if (CanWriteConfig())
-                    {
                         Save();
-                        Print("[RSS_ConfigManager] Non-Custom preset detected. JSON values synchronized with latest mod defaults.");
-                    }
                 }
                 else
                 {
-                    // 如果是 Custom 模式，仅执行常规初始化（补全可能缺失的字段），不覆盖已有数值
                     m_Settings.InitPresets(false);
-                    Print("[RSS_ConfigManager] Custom preset active. Preserving user-defined JSON values.");
                 }
                 
                 // --- 核心修复逻辑结束 ---
             }
             else
             {
-                // 已应用服务器配置，不覆盖预设值
-                Print("[RSS_ConfigManager] Server config already applied. Preserving server preset values.");
-                // 只补全可能缺失的字段，不覆盖已有数值
                 m_Settings.InitPresets(false);
             }
             
@@ -230,16 +201,6 @@ class SCR_RSS_ConfigManager
             m_Settings.m_bEnableMudSlipMechanism = false;
             m_Settings.m_bEnableAIStaminaCombatEffects = false;
             
-            // 工作台模式：默认使用 EliteStandard
-            #ifdef WORKBENCH
-                m_Settings.m_sSelectedPreset = "EliteStandard";
-                m_Settings.m_bDebugLogEnabled = true;
-                m_Settings.m_bDataExportEnabled = true;
-                m_Settings.m_bEnableMudSlipMechanism = true;
-                m_Settings.m_bEnableAIStaminaCombatEffects = true;
-                Print("[RSS_ConfigManager] Workbench detected - Forcing EliteStandard model for verification.");
-            #endif
-
             if (CanWriteConfig())
             {
                 Save();
@@ -249,15 +210,6 @@ class SCR_RSS_ConfigManager
         
         m_bIsLoaded = true;
         m_fLastLoadTime = currentTime;
-        
-        // 工作台模式：强制开启调试和 Hint 显示；泥泞滑倒机制便于本地验证
-        #ifdef WORKBENCH
-            m_Settings.m_bDebugLogEnabled = true;
-            m_Settings.m_bHintDisplayEnabled = true;
-            m_Settings.m_bDataExportEnabled = true;
-            m_Settings.m_bEnableMudSlipMechanism = true;
-            m_Settings.m_bEnableAIStaminaCombatEffects = true;
-        #endif
         
         // 确保所有字段有合理的默认值（兼容旧版本配置文件或空值）
         EnsureDefaultValues();
@@ -284,19 +236,15 @@ class SCR_RSS_ConfigManager
         
         Print("[RSS] Realistic Stamina System v" + CURRENT_VERSION + " initialized (Debug: " + debugStatus + ", Hint: " + hintStatus + ", Preset: " + presetName + ")");
         
-        // Hard force: mud slip always OFF (pending camera tuning — see StaminaConstants)
-        m_Settings.m_bEnableMudSlipMechanism = false;
-        #ifdef WORKBENCH
-            m_Settings.m_bEnableMudSlipMechanism = false;
-        #endif
-        
-        // 打印当前预设的关键参数值（调试用）
-        SCR_RSS_Params activeParams = m_Settings.GetActiveParams();
-        if (activeParams)
+        if (m_Settings && m_Settings.m_bDebugLogEnabled)
         {
-            Print("[RSS_ConfigManager] Active preset params: energy_coeff=" + activeParams.energy_to_stamina_coeff.ToString() + 
-                  ", base_recovery=" + activeParams.base_recovery_rate.ToString() +
-                  ", sprint_drain=" + activeParams.sprint_stamina_drain_multiplier.ToString());
+            SCR_RSS_Params activeParams = m_Settings.GetActiveParams();
+            if (activeParams)
+            {
+                Print("[RSS_ConfigManager] Active preset params: energy_coeff=" + activeParams.energy_to_stamina_coeff.ToString() + 
+                      ", base_recovery=" + activeParams.base_recovery_rate.ToString() +
+                      ", sprint_drain=" + activeParams.sprint_stamina_drain_multiplier.ToString());
+            }
         }
     }
     
@@ -1084,7 +1032,7 @@ class SCR_RSS_ConfigManager
         s.m_bDebugLogEnabled              = debugLog;
         s.m_bHintDisplayEnabled           = hintDisplay;
         s.m_bDataExportEnabled            = dataExport;
-        s.m_bEnableMudSlipMechanism       = false;  // forced OFF — mud slip disabled pending camera tuning
+        s.m_bEnableMudSlipMechanism       = mudSlip;
         s.m_bEnableAIStaminaCombatEffects = aiCombat;
         s.m_bDisableAIAllCalc             = disableAI;
         s.m_bDisableAIStaminaCalc         = disableAIStamina;

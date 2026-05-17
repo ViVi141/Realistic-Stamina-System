@@ -183,7 +183,7 @@ modded class SCR_BaseGameMode
         m_bRssDebugLog       = settings.m_bDebugLogEnabled;
         m_bRssHintDisplay    = settings.m_bHintDisplayEnabled;
         m_bRssDataExport     = settings.m_bDataExportEnabled;
-        m_bRssMudSlip        = false;  // forced OFF — mud slip disabled pending camera tuning
+        m_bRssMudSlip        = settings.m_bEnableMudSlipMechanism;
         m_bRssAICombat       = settings.m_bEnableAIStaminaCombatEffects;
         m_bRssDisableAIAll   = settings.m_bDisableAIAllCalc;
         m_bRssDisableAIStamina = settings.m_bDisableAIStaminaCalc;
@@ -241,7 +241,7 @@ modded class SCR_BaseGameMode
         settings.m_bDebugLogEnabled              = m_bRssDebugLog;
         settings.m_bHintDisplayEnabled           = m_bRssHintDisplay;
         settings.m_bDataExportEnabled            = m_bRssDataExport;
-        settings.m_bEnableMudSlipMechanism       = false;  // forced OFF — mud slip disabled pending camera tuning (server value ignored)
+        settings.m_bEnableMudSlipMechanism       = m_bRssMudSlip;
         settings.m_bEnableAIStaminaCombatEffects = m_bRssAICombat;
         settings.m_bDisableAIAllCalc             = m_bRssDisableAIAll;
         settings.m_bDisableAIStaminaCalc         = m_bRssDisableAIStamina;

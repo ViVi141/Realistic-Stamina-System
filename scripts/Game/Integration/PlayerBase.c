@@ -488,7 +488,7 @@ modded class SCR_CharacterControllerComponent
                 {
                     SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(m_pCachedOwnerCharacter.GetDamageManager());
                     if (stimDmgMgr)
-                        RSS_CombatStim_RefreshBleedingEffectsToMatchScale(stimDmgMgr);
+                        SCR_CombatStimController.RefreshBleedingEffectsToMatchScale(stimDmgMgr);
                 }
             }
         }
@@ -500,7 +500,7 @@ modded class SCR_CharacterControllerComponent
             {
                 SCR_CharacterDamageManagerComponent stimDmgMgr = SCR_CharacterDamageManagerComponent.Cast(m_pCachedOwnerCharacter.GetDamageManager());
                 if (stimDmgMgr)
-                    RSS_CombatStim_RefreshBleedingEffectsToMatchScale(stimDmgMgr);
+                    SCR_CombatStimController.RefreshBleedingEffectsToMatchScale(stimDmgMgr);
             }
         }
 
@@ -509,7 +509,6 @@ modded class SCR_CharacterControllerComponent
             staminaPercent = m_pStaminaComponent.GetTargetStamina();
 
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
-        staminaPercent = RSS_CombatStim_AdjustStaminaRead(staminaPercent);
         
         float encumbranceSpeedPenalty = 0.0;
         if (m_pEncumbranceCache)
@@ -1361,89 +1360,6 @@ modded class SCR_CharacterControllerComponent
         return SCR_CombatStimStateMachine.IsOverdosed(m_iCombatStimPhase);
     }
 
-    // 与官方一致的流血速率公式
-    protected float RSS_CombatStim_ComputeBleedingBaseRateForEffect(SCR_BleedingDamageEffect bleed)
-    {
-        if (!bleed)
-            return 0.0;
-
-        SCR_CharacterHitZone hz = SCR_CharacterHitZone.Cast(bleed.GetAffectedHitZone());
-        if (!hz)
-            return 0.0;
-
-        float hitZoneDamageMultiplier = hz.GetHealthScaled();
-        return hz.GetMaxBleedingRate() - hz.GetMaxBleedingRate() * hitZoneDamageMultiplier;
-    }
-
-    // 刷新流血 DOT DPS 以匹配当前倍率
-    protected void RSS_CombatStim_RefreshBleedingEffectsToMatchScale(SCR_CharacterDamageManagerComponent dmgMgr)
-    {
-        if (!dmgMgr)
-            return;
-
-        float scale = dmgMgr.GetBleedingScale();
-        array<ref SCR_PersistentDamageEffect> effects = dmgMgr.GetAllPersistentEffectsOfType(SCR_BleedingDamageEffect);
-
-        foreach (SCR_PersistentDamageEffect pe : effects)
-        {
-            SCR_BleedingDamageEffect bleed = SCR_BleedingDamageEffect.Cast(pe);
-            if (!bleed)
-                continue;
-
-            float baseRate = RSS_CombatStim_ComputeBleedingBaseRateForEffect(bleed);
-            bleed.SetDPS(baseRate * scale);
-        }
-    }
-
-    // 药效/OD 期间临时提高流血倍率
-    protected void RSS_CombatStim_UpdateBleedingScale()
-    {
-        if (!Replication.IsServer())
-            return;
-
-        IEntity ownerEnt = GetOwner();
-        ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
-        if (!ch)
-            return;
-
-        SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
-        if (!dmgMgr)
-            return;
-
-        int phase = m_iCombatStimPhase;
-        bool wantBuff = false;
-        float mult = 1.0;
-
-        if (phase == ERSS_CombatStimPhase.ACTIVE)
-        {
-            wantBuff = true;
-            mult = SCR_CombatStimConstants.BLEEDING_SCALE_MULT_ACTIVE;
-        }
-        else if (phase == ERSS_CombatStimPhase.OD)
-        {
-            wantBuff = true;
-            mult = SCR_CombatStimConstants.BLEEDING_SCALE_MULT_ACTIVE * SCR_CombatStimConstants.BLEEDING_SCALE_MULT_OD_EXTRA;
-        }
-
-        if (!wantBuff)
-        {
-            if (m_fRSS_CombatStimBleedingBaseline >= 0.0)
-            {
-                dmgMgr.SetBleedingScale(m_fRSS_CombatStimBleedingBaseline, true);
-                m_fRSS_CombatStimBleedingBaseline = -1.0;
-                RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgr);
-            }
-            return;
-        }
-
-        if (m_fRSS_CombatStimBleedingBaseline < 0.0)
-            m_fRSS_CombatStimBleedingBaseline = dmgMgr.GetBleedingScale();
-
-        float targetScale = m_fRSS_CombatStimBleedingBaseline * mult;
-        dmgMgr.SetBleedingScale(targetScale, true);
-        RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgr);
-    }
-
     protected void RSS_CombatStim_OnTickTransitions()
     {
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
@@ -1451,47 +1367,37 @@ modded class SCR_CharacterControllerComponent
         float oldEndsAt = m_fCombatStimPhaseEndsAt;
         int nextPhase = m_iCombatStimPhase;
         float nextEndsAt = m_fCombatStimPhaseEndsAt;
-        bool changed = SCR_PlayerBaseCombatStimHelper.AdvancePhase(
-            m_iCombatStimPhase,
-            m_fCombatStimPhaseEndsAt,
-            wt,
-            nextPhase,
-            nextEndsAt);
-        if (!changed)
+        if (!SCR_PlayerBaseCombatStimHelper.AdvancePhase(
+                m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
+                nextPhase, nextEndsAt))
             return;
 
         m_iCombatStimPhase = nextPhase;
         m_fCombatStimPhaseEndsAt = nextEndsAt;
         if (m_iCombatStimPhase != ERSS_CombatStimPhase.DELAY)
             m_iCombatStimDelayInjectionCount = 0;
+
         if (IsRssDebugEnabled())
-        {
-            PrintFormat("[RSS][CombatStim][Server] TickTransition: phase %1 -> %2, endsAt %3 -> %4, now=%5",
-                oldPhase,
-                m_iCombatStimPhase,
+            PrintFormat("[RSS][CombatStim] TickTransition: phase %1 -> %2, endsAt %3 -> %4, now=%5",
+                oldPhase, m_iCombatStimPhase,
                 Math.Round(oldEndsAt * 10.0) / 10.0,
                 Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
                 Math.Round(wt * 10.0) / 10.0);
-        }
+
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
 
-        RSS_CombatStim_UpdateBleedingScale();
-    }
-
-    // Identity passthrough for future stim read adjustments.
-    // CSB active state applies drain multiplier
-    // in consumption path (see RSS_IsCaffeineSodiumBenzoateActive).
-    protected float RSS_CombatStim_AdjustStaminaRead(float staminaPercent)
-    {
-        return staminaPercent;
+        ChimeraCharacter ch = ChimeraCharacter.Cast(GetOwner());
+        if (ch)
+            SCR_CombatStimController.UpdateBleedingScale(
+                m_iCombatStimPhase, m_fRSS_CombatStimBleedingBaseline, ch,
+                m_fRSS_CombatStimBleedingBaseline);
     }
 
     void RSS_CombatStim_OnInjectServer()
     {
         if (!Replication.IsServer())
             return;
-
         IEntity ownerEnt = GetOwner();
         ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
         if (!ch)
@@ -1502,55 +1408,22 @@ modded class SCR_CharacterControllerComponent
         float nextEndsAt = m_fCombatStimPhaseEndsAt;
         int nextDelayInjectionCount = m_iCombatStimDelayInjectionCount;
         bool shouldDie = false;
-        bool started = SCR_PlayerBaseCombatStimHelper.TryStartFromInjection(
-            m_iCombatStimPhase,
-            m_fCombatStimPhaseEndsAt,
-            wt,
-            m_iCombatStimDelayInjectionCount,
-            nextPhase,
-            nextEndsAt,
-            nextDelayInjectionCount,
-            shouldDie);
-        if (!started)
+        if (!SCR_PlayerBaseCombatStimHelper.TryStartFromInjection(
+                m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
+                m_iCombatStimDelayInjectionCount,
+                nextPhase, nextEndsAt, nextDelayInjectionCount, shouldDie))
             return;
 
         if (IsRssDebugEnabled())
-        {
-            PrintFormat("[RSS][CombatStim][Server] Inject: oldPhase=%1 oldEndsAt=%2 delayCount=%3 => nextPhase=%4 nextEndsAt=%5 nextDelayCount=%6 shouldDie=%7 now=%8",
-                m_iCombatStimPhase,
-                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
-                m_iCombatStimDelayInjectionCount,
-                nextPhase,
-                Math.Round(nextEndsAt * 10.0) / 10.0,
-                nextDelayInjectionCount,
-                shouldDie,
-                Math.Round(wt * 10.0) / 10.0);
-        }
+            PrintFormat("[RSS][CombatStim][Server] Inject: oldPhase=%1 => nextPhase=%2 shouldDie=%3 now=%4",
+                m_iCombatStimPhase, nextPhase, shouldDie, Math.Round(wt * 10.0) / 10.0);
 
         if (shouldDie)
         {
-            // CRITICAL FIX: Reset bleeding scale to baseline BEFORE Kill(),
-            // because RSS_CombatStim_UpdateBleedingScale() will not be called
-            // after the Kill path returns.
-            if (m_fRSS_CombatStimBleedingBaseline >= 0.0)
-            {
-                SCR_CharacterDamageManagerComponent dmgMgrOd = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
-                if (dmgMgrOd)
-                {
-                    dmgMgrOd.SetBleedingScale(m_fRSS_CombatStimBleedingBaseline, true);
-                    RSS_CombatStim_RefreshBleedingEffectsToMatchScale(dmgMgrOd);
-                }
-                m_fRSS_CombatStimBleedingBaseline = -1.0;
-            }
-
-            SCR_CharacterDamageManagerComponent damageMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
-            if (damageMgr)
-            {
-                Instigator selfInstigator = Instigator.CreateInstigator(ch);
-                damageMgr.Kill(selfInstigator);
-                if (IsRssDebugEnabled())
-                    Print("[RSS][CombatStim][Server] OD threshold reached: player killed");
-            }
+            SCR_CombatStimController.ResetBleedingScaleBeforeKill(ch, m_fRSS_CombatStimBleedingBaseline, m_fRSS_CombatStimBleedingBaseline);
+            SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
+            if (dmgMgr)
+                dmgMgr.Kill(Instigator.CreateInstigator(ch));
             return;
         }
 
@@ -1563,7 +1436,9 @@ modded class SCR_CharacterControllerComponent
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
 
-        RSS_CombatStim_UpdateBleedingScale();
+        SCR_CombatStimController.UpdateBleedingScale(
+            m_iCombatStimPhase, m_fRSS_CombatStimBleedingBaseline, ch,
+            m_fRSS_CombatStimBleedingBaseline);
     }
 
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
@@ -1571,14 +1446,6 @@ modded class SCR_CharacterControllerComponent
     {
         m_iCombatStimPhase = phase;
         m_fCombatStimPhaseEndsAt = phaseEndsAt;
-        if (IsRssDebugEnabled())
-        {
-            float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            PrintFormat("[RSS][CombatStim][Client] Sync received: phase=%1 endsAt=%2 now=%3",
-                m_iCombatStimPhase,
-                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
-                Math.Round(wt * 10.0) / 10.0);
-        }
     }
 
     void RSS_TriggerMudSlipRagdoll()
@@ -1650,124 +1517,57 @@ modded class SCR_CharacterControllerComponent
         return SCR_PlayerBaseConfigHelper.IsRssDebugEnabled();
     }
 
-    //! 客户端上报：仅用于数据导出/对照（m_bDataExportEnabled），非强反作弊与玩法权威判据。配置由 GameMode RplProp 写入设置；Hint HUD 由 SCR_StaminaHUDComponent.SyncHintDisplayWithSettings 对齐。
+    //! 客户端上报：仅用于数据导出/对照（m_bDataExportEnabled），非强反作弊与玩法权威判据。
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
     void RPC_ClientReportStamina(float staminaPercent, float weight, float clientTimestamp, bool isCriticalData)
     {
-        if (Replication.IsServer())
+        if (!Replication.IsServer())
+            return;
+        if (!SCR_RSS_ConfigManager.GetSettings() || !SCR_RSS_ConfigManager.GetSettings().m_bDataExportEnabled)
+            return;
+
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        bool shouldIgnore = false;
+        float clampedStamina = SCR_PlayerBaseRpcHandler.ProcessClientReport_ValidateStamina(
+            staminaPercent, weight, currentTime, clientTimestamp,
+            m_pNetworkSyncManager, IsRssDebugEnabled(), shouldIgnore);
+        if (shouldIgnore)
+            return;
+
+        float serverWeight = SCR_PlayerBaseNetworkHelper.GetServerWeight(GetOwner(), m_pEncumbranceCache);
+        float encPenalty = SCR_PlayerBaseNetworkHelper.CalculateEncumbrancePenaltyFallback(serverWeight);
+        if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            encPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+
+        IEntity ownerEnt = GetOwner();
+        bool shouldSuppressSlopeServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt));
+
+        float slopeAngleDegrees = 0.0;
+        if (!shouldSuppressSlopeServer)
+            slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, GetVelocity());
+
+        float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this, GetVelocity());
+        if (shouldSuppressSlopeServer && Math.AbsFloat(rawSlopeServer) > 0.0)
+            encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
+
+        float validated = SCR_PlayerBaseRpcHandler.ProcessClientReport_CalculateValidation(
+            clampedStamina, serverWeight, encPenalty,
+            IsSprinting(), GetCurrentMovementPhase(),
+            RealisticStaminaSpeedSystem.IsExhausted(clampedStamina),
+            RealisticStaminaSpeedSystem.CanSprint(clampedStamina),
+            SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(GetVelocity()),
+            slopeAngleDegrees, GetSprintStartTime());
+
+        if (m_pNetworkSyncManager)
         {
-            if (!SCR_RSS_ConfigManager.GetSettings() || !SCR_RSS_ConfigManager.GetSettings().m_bDataExportEnabled)
-                return;
-
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-            float timestampDelta = 0.0;
-            bool isValidClientTimestamp = SCR_PlayerBaseNetworkHelper.IsValidClientReportTimestamp(
-                currentTime,
-                clientTimestamp,
-                timestampDelta);
-            if (!isValidClientTimestamp)
+            currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float speedDiff = 0.0;
+            if (SCR_PlayerBaseRpcHandler.ProcessClientReport_ShouldSync(
+                    m_pNetworkSyncManager, validated, currentTime, speedDiff))
             {
-                if (timestampDelta > 0.0)
-                {
-                    if (IsRssDebugEnabled())
-                        PrintFormat("[RSS] Stale stamina report ignored (timestamp delta: %1s)", timestampDelta);
-                    return;
-                }
-                else
-                {
-                    if (IsRssDebugEnabled())
-                        PrintFormat("[RSS] Stale stamina report ignored (time regression: %1s)", timestampDelta);
-                    return;
-                }
-            }
-
-            if (m_pNetworkSyncManager && !m_pNetworkSyncManager.AcceptClientReport(currentTime, isCriticalData))
-            {
-                if (IsRssDebugEnabled())
-                    PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
-                return;
-            }
-
-            float clampedStamina = Math.Clamp(staminaPercent, 0.0, 1.0);
-
-            if (m_pNetworkSyncManager)
-            {
-                float lastReported = m_pNetworkSyncManager.GetLastReportedStaminaPercent();
-                if (Math.AbsFloat(clampedStamina - lastReported) > 0.5 && IsRssDebugEnabled())
-                    PrintFormat("[RSS] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
-
-                m_pNetworkSyncManager.UpdateReportedState(clampedStamina, weight);
-            }
-
-            float serverWeight = SCR_PlayerBaseNetworkHelper.GetServerWeight(GetOwner(), m_pEncumbranceCache);
-
-            float encPenalty = 0.0;
-            if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-            {
-                encPenalty = m_pEncumbranceCache.GetSpeedPenalty();
-            }
-            else
-            {
-                encPenalty = SCR_PlayerBaseNetworkHelper.CalculateEncumbrancePenaltyFallback(serverWeight);
-            }
-
-            bool isSprinting = IsSprinting();
-            int currentMovementPhase = GetCurrentMovementPhase();
-            bool isExhausted = RealisticStaminaSpeedSystem.IsExhausted(clampedStamina);
-            bool canSprint = RealisticStaminaSpeedSystem.CanSprint(clampedStamina);
-
-            vector velocity = GetVelocity();
-            float currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
-
-            IEntity ownerEnt = GetOwner();
-            bool shouldSuppressSlopeServer = false;
-            if (m_pEnvironmentFactor && ownerEnt)
-                shouldSuppressSlopeServer = m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt);
-
-            float slopeAngleDegrees = 0.0;
-            if (!shouldSuppressSlopeServer)
-                slopeAngleDegrees = SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, velocity);
-
-            float rawSlopeServer = SpeedCalculator.GetRawSlopeAngle(this, velocity);
-            bool isIndoorStairsServer = (shouldSuppressSlopeServer && Math.AbsFloat(rawSlopeServer) > 0.0);
-            if (isIndoorStairsServer)
-                encPenalty = encPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
-
-            float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
-                clampedStamina,
-                encPenalty,
-                isSprinting,
-                currentMovementPhase,
-                isExhausted,
-                canSprint,
-                currentSpeed,
-                slopeAngleDegrees,
-                GetSprintStartTime());
-
-            validated = Math.Clamp(validated, 0.15, 1.0);
-
-            if (m_pNetworkSyncManager)
-            {
-                currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-
-                if (!m_pNetworkSyncManager.HasServerValidation())
-                {
-                    m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                    Rpc(RPC_ServerSyncSpeedMultiplier, validated, currentTime);
-                }
-                else
-                {
-                    float speedDiff = Math.AbsFloat(validated - m_pNetworkSyncManager.GetServerValidatedSpeedMultiplier());
-                    if (m_pNetworkSyncManager.ProcessDeviation(speedDiff, currentTime))
-                    {
-                        m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
-                        Rpc(RPC_ServerSyncSpeedMultiplier, validated, currentTime);
-                    }
-                    else
-                    {
-                    }
-                }
+                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(validated);
+                Rpc(RPC_ServerSyncSpeedMultiplier, validated, currentTime);
             }
         }
     }
@@ -1784,19 +1584,14 @@ modded class SCR_CharacterControllerComponent
         Rpc(RPC_AdminUpdateConfig, preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
     }
 
-    //! 管理员客户端 → 服务端：推送配置变更（预设 + 开关）
-    //! 服务端收到后写入 JSON 并复制到所有客户端
     [RplRpc(RplChannel.Reliable, RplRcver.Server)]
     void RPC_AdminUpdateConfig(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
     {
         if (!Replication.IsServer())
             return;
-
-        // 验证调用者是否为管理员
         IEntity owner = GetOwner();
         if (!owner) return;
 
-        // 专用服务器上 GetPlayerController() 不是 RPC 发起者；必须用当前实体对应的玩家 ID。
         PlayerManager pm = GetGame().GetPlayerManager();
         if (!pm) return;
 
@@ -1806,7 +1601,6 @@ modded class SCR_CharacterControllerComponent
             Print("[RSS] RPC_AdminUpdateConfig: no controlling player for entity");
             return;
         }
-
         if (!pm.HasPlayerRole(pid, EPlayerRole.ADMINISTRATOR)
             && !pm.HasPlayerRole(pid, EPlayerRole.SESSION_ADMINISTRATOR)
             && !pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER))
@@ -1816,32 +1610,23 @@ modded class SCR_CharacterControllerComponent
         }
 
         SCR_RSS_ConfigManager.AdminApplyAndSave(preset, debugLog, hintDisplay, dataExport, mudSlip, aiCombat, disableAI, disableAIStamina);
-        Print("[RSS] Admin config applied & replicated from client request");
     }
 
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
     void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, float serverTimestamp)
     {
-        if (!Replication.IsServer())
-        {
-            if (m_pNetworkSyncManager)
-            {
-                float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                float timestampDelta = 0.0;
-                bool isValidServerTimestamp = SCR_PlayerBaseNetworkHelper.IsValidServerSyncTimestamp(
-                    currentTime,
-                    serverTimestamp,
-                    timestampDelta);
-                if (!isValidServerTimestamp)
-                {
-                    if (IsRssDebugEnabled())
-                        PrintFormat("[RSS] Stale speed validation ignored (latency: %1s)", timestampDelta);
-                    return;
-                }
+        if (Replication.IsServer() || !m_pNetworkSyncManager)
+            return;
 
-                m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
-            }
+        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float timestampDelta = 0.0;
+        if (!SCR_PlayerBaseRpcHandler.IsValidServerSyncTimestamp(currentTime, serverTimestamp, timestampDelta))
+        {
+            if (IsRssDebugEnabled())
+                PrintFormat("[RSS] Stale speed validation ignored (latency: %1s)", timestampDelta);
+            return;
         }
+        m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);
     }
 
     protected bool IsSwimmingByCommand()

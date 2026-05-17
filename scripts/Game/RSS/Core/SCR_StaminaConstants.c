@@ -4,7 +4,10 @@
 //
 // ============================================================
 // HARD CONFIG: 基于科学论文/物理定律，不得修改
-// SOFT CONFIG: 游戏性参数，通过 SCR_RSS_Params + StaminaConfigBridge 读取
+// SOFT CONFIG (fallback): 游戏性参数，运行时通过 StaminaConfigBridge
+//   从 SCR_RSS_Params (来自 JSON) 读取。此处 static const 仅作为
+//   ConfigBridge 返回 -1 (未设置) 或 Debug 环境的回退默认值。
+//   修改这些值不会影响运行时行为——必须修改 JSON 预设或 Settings 源码。
 // ============================================================
 
 class StaminaConstants
@@ -23,37 +26,35 @@ class StaminaConstants
     // 参考：Military Stamina System Model (90kg Male / 22yo)
     
     // 速度阈值（m/s）- 0kg 下实测 Sprint 5.5 / Run 3.8
-    static const float SPRINT_VELOCITY_THRESHOLD = 5.5; // m/s，Sprint速度阈值
-    static const float RUN_VELOCITY_THRESHOLD = 3.8; // m/s，Run速度阈值
-    static const float WALK_VELOCITY_THRESHOLD = 3.2; // m/s，Walk速度阈值
+    static const float SPRINT_VELOCITY_THRESHOLD = 5.5; // @fallback m/s，Sprint速度阈值
+    static const float RUN_VELOCITY_THRESHOLD = 3.8; // @fallback m/s，Run速度阈值
+    static const float WALK_VELOCITY_THRESHOLD = 3.2; // @fallback m/s，Walk速度阈值
     
     // 基于负重的动态速度阈值（m/s）
-    static const float RECOVERY_THRESHOLD_NO_LOAD = 2.5; // m/s，空载时恢复体力阈值
-    static const float DRAIN_THRESHOLD_COMBAT_LOAD = 1.5; // m/s，负重30kg时开始消耗体力的阈值
-    static const float COMBAT_LOAD_WEIGHT = 30.0; // kg，战斗负重（用于计算动态阈值）
+    static const float RECOVERY_THRESHOLD_NO_LOAD = 2.5; // @fallback m/s，空载时恢复体力阈值
+    static const float DRAIN_THRESHOLD_COMBAT_LOAD = 1.5; // @fallback m/s，负重30kg时开始消耗体力的阈值
+    static const float COMBAT_LOAD_WEIGHT = 30.0; // @fallback kg，战斗负重（用于计算动态阈值）
     
     // 基础消耗率（pts/s，每秒消耗的点数）
     // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
-    static const float SPRINT_BASE_DRAIN_RATE = 0.480; // pts/s（Sprint）
-    static const float RUN_BASE_DRAIN_RATE = 0.075; // pts/s（Run，优化后约22分钟耗尽，支撑20分钟连续运行）
-    static const float WALK_BASE_DRAIN_RATE = 0.045; // pts/s（Walk，降低消耗率以突出与跑步的差距）
-    static const float REST_RECOVERY_RATE = 0.250; // pts/s（Rest，恢复）
+    static const float SPRINT_BASE_DRAIN_RATE = 0.480; // @fallback pts/s（Sprint）
+    static const float RUN_BASE_DRAIN_RATE = 0.075; // @fallback pts/s（Run）
+    static const float WALK_BASE_DRAIN_RATE = 0.045; // @fallback pts/s（Walk）
+    static const float REST_RECOVERY_RATE = 0.250; // @fallback pts/s（Rest，恢复）
     
     // 转换为0.0-1.0范围的消耗率（每0.2秒）
-    // 更新间隔为0.2秒，所以需要将pts/s转换为每0.2秒的消耗
-    // 例如：0.480 pts/s = 0.480 / 100 × 0.2 = 0.00096（每0.2秒消耗0.096%）
-    static const float SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * 0.2; // 每0.2秒
-    static const float REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * 0.2; // 每0.2秒
+    static const float SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * 0.2; // @fallback 每0.2秒
+    static const float RUN_DRAIN_PER_TICK = RUN_BASE_DRAIN_RATE / 100.0 * 0.2; // @fallback 每0.2秒
+    static const float WALK_DRAIN_PER_TICK = WALK_BASE_DRAIN_RATE / 100.0 * 0.2; // @fallback 每0.2秒
+    static const float REST_RECOVERY_PER_TICK = REST_RECOVERY_RATE / 100.0 * 0.2; // @fallback 每0.2秒
     
     // 初始体力状态（满值）
-    static const float INITIAL_STAMINA_AFTER_ACFT = 1.0; // 100.0 / 100.0 = 1.0（100%，满值）
+    static const float INITIAL_STAMINA_AFTER_ACFT = 1.0; // 100%，满值
     
     // 精疲力尽阈值
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
-    static const float EXHAUSTION_LIMP_SPEED = 1.0; // m/s（跛行速度）
-    static const float SPRINT_ENABLE_THRESHOLD = 0.18; // 0.18（18%），体力≥18%时才能Sprint；与 WALK_RECOVERY_ZONE_THRESHOLD(0.15) 之间留 3% 缓冲区，避免"步行恢复区"与"允许冲刺"在 0.15 处边界冲突
+    static const float EXHAUSTION_LIMP_SPEED = 1.0; // @fallback m/s（跛行速度）
+    static const float SPRINT_ENABLE_THRESHOLD = 0.18; // @fallback 体力≥18%时才能Sprint；与 WALK_RECOVERY_ZONE_THRESHOLD(0.15) 之间留 3% 缓冲区
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
     static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
     
@@ -689,9 +690,9 @@ class StaminaConstants
     static const float ENV_SLIP_LUBRICATION_MAX = 0.62; // 泥泞润滑使 ACOF 最多降到约 (1-max)*μ_dry
     static const float ENV_SLIP_ACOF_MIN = 0.07;
     static const float ENV_SLIP_ACOF_MAX = 0.58;
-    static const float ENV_SLIP_RCOF_BASE = 0.13; // 低速行走所需摩擦（相对 v_min 以上）
-    static const float ENV_SLIP_RCOF_VSQ = 0.0055; // 速度平方项（原 0.011 减半，缓和高速 RCOF 飙升）
-    static const float ENV_SLIP_RCOF_SPRINT = 0.0406; // 冲刺固定加项（原 0.058 的 70%，拉近走/冲滑倒差距）
+    static const float ENV_SLIP_RCOF_BASE = 0.20; // 低速行走所需摩擦（原0.13→0.20：让泥地冲刺即可产生非零 gap）
+    static const float ENV_SLIP_RCOF_VSQ = 0.0080; // 速度平方项（原0.0055→0.0080：提高高速段 RCOF 灵敏度）
+    static const float ENV_SLIP_RCOF_SPRINT = 0.058; // 冲刺固定加项（原0.0406→0.058：恢复至原始值，让冲刺有更清晰的风险信号）
     static const float ENV_SLIP_RCOF_WEIGHT = 0.065; // 满负重时额外需求（0~55kg）
     static const float ENV_SLIP_RCOF_CROUCH_MULT = 0.86; // 蹲姿步幅小，降低 RCOF
     // 坡度：先按 |α| 得 slopeAdd，再乘以下坡/上坡系数（GetSlopeAngle：正=上坡，负=下坡）
@@ -716,7 +717,7 @@ class StaminaConstants
     static const float ENV_SLIP_RCOF_JUMP_UP = 0.042;
     // 摩擦缺口 gap=RCOF−ACOF（无量纲）：镜头用较小 ε，掷骰用较大 ε，使「先晃后摔」有缓冲带
     static const float ENV_SLIP_GAP_EPSILON_CAMERA = 0.004; // 镜头应力：gap>此值才开始有预警（再经疲劳缩小 ε_eff）
-    static const float ENV_SLIP_GAP_EPSILON_DICE = 0.008;   // 掷骰：gap≤此值不进入 Poisson（仅镜头仍可预警）
+    static const float ENV_SLIP_GAP_EPSILON_DICE = 0.012;   // 掷骰：gap≤此值不进入 Poisson（仅镜头仍可预警）；原0.008→0.012 减少碎石路误触
     // λ∝gap（线性标度）；单步 P 经约 20 次/秒复合后体感见 docs/泥泞滑倒判定模型.md §6.1
     static const float ENV_MUD_SLIP_PHYS_SCALE = 2.2; // 与 ENV_MUD_SLIP_GLOBAL_SCALE 联调（原 gap² 时代为 20）
     static const float ENV_MUD_SLIP_COOLDOWN_SEC = 9.0; // 两次滑倒之间的最短间隔（秒），从「趴→蹲/站」锚定时刻起算（见 RSS_MudSlipRunner）
@@ -734,8 +735,8 @@ class StaminaConstants
     static const float ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG = 6.0;   // 应力=1 时横滚峰值（度）；Roll 对「失稳」暗示强且较不易晕
     static const float ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG = 3.4;  // 俯仰峰值（度）
     static const float ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG = 2.9;    // 偏航峰值（度）
-    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE = 9.0;  // 基础角频率 Hz 量级
-    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS = 12.0; // 应力越高频率越快
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE = 6.0;  // 基础角频率 Hz 量级（原9.0→6.0：移出人前庭共振带 8-12Hz）
+    static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS = 6.0; // 应力越高频率越快（原12.0→6.0：典型应力0.2-0.5时频率7-9Hz<12Hz）
     static const float ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE = 16.0; // 应力平滑（越大越快跟上目标）
     static const float ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG = 0.35; // 极力克制：FOV 高频抖易诱发晕动症，优先靠 Roll
     

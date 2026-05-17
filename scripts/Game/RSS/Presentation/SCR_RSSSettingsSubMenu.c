@@ -69,7 +69,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
                 {
                     s.m_bHintDisplayEnabled           = hudServer;
                     s.m_bDebugLogEnabled              = debugLog;
-                    s.m_bEnableMudSlipMechanism       = false;  // forced OFF — see StaminaConstants design note
+                    s.m_bEnableMudSlipMechanism       = mudSlip;
                     s.m_bEnableAIStaminaCombatEffects = aiCombat;
                     s.m_bDisableAIAllCalc             = disableAI;
                     s.m_bDisableAIStaminaCalc         = disableAISt;
@@ -99,7 +99,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         HideWidget("TitleToggles",     !m_bIsAdmin);
         HideWidget("ToggleDebug",      !m_bIsAdmin);
         HideWidget("ToggleServerHUD",  !m_bIsAdmin);
-        HideWidget("ToggleMudSlip",    true);  // forced hidden — mud slip disabled pending camera tuning
+        HideWidget("ToggleMudSlip",    !m_bIsAdmin);
         HideWidget("ToggleAICombat",   !m_bIsAdmin);
         HideWidget("ToggleDisableAI",         !m_bIsAdmin);
         HideWidget("ToggleDisableAIStamina",  !m_bIsAdmin);

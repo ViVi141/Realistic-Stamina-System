@@ -62,7 +62,7 @@ class SCR_RSSAdminMenuUI
         m_wChkHUD = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkHUD"));
         m_wChkDataExport = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDataExport"));
         m_wChkMudSlip = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkMudSlip"));
-        if (m_wChkMudSlip) m_wChkMudSlip.SetVisible(false);  // forced hidden — mud slip disabled pending camera tuning
+        // MudSlip checkbox visible; admin can toggle in settings
         m_wChkAICombat = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkAICombat"));
         m_wChkDisableAI = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDisableAI"));
         m_wChkDisableAIStamina = CheckBoxWidget.Cast(m_wRoot.FindAnyWidget("ChkDisableAIStamina"));
@@ -162,7 +162,7 @@ class SCR_RSSAdminMenuUI
         if (m_wChkDebug)    settings.m_bDebugLogEnabled = m_wChkDebug.IsChecked();
         if (m_wChkHUD)      settings.m_bHintDisplayEnabled = m_wChkHUD.IsChecked();
         if (m_wChkDataExport) settings.m_bDataExportEnabled = m_wChkDataExport.IsChecked();
-        if (m_wChkMudSlip)  settings.m_bEnableMudSlipMechanism = false;  // forced OFF — see StaminaConstants design note
+        if (m_wChkMudSlip)  settings.m_bEnableMudSlipMechanism = m_wChkMudSlip.IsChecked();
         if (m_wChkAICombat) settings.m_bEnableAIStaminaCombatEffects = m_wChkAICombat.IsChecked();
         if (m_wChkDisableAI) settings.m_bDisableAIAllCalc = m_wChkDisableAI.IsChecked();
         if (m_wChkDisableAIStamina) settings.m_bDisableAIStaminaCalc = m_wChkDisableAIStamina.IsChecked();
