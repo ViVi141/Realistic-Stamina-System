@@ -381,7 +381,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     bool m_bLogToFile;
     
     // ==================== HUD 显示配置 ====================
-    [Attribute("false", UIWidgets.CheckBox, "HUD: Show stamina/speed/weight in top-right. Default OFF. | 屏幕右上角显示体力/速度/负重等，默认关闭")]
+    [Attribute("false", UIWidgets.CheckBox, "HUD: Show stamina/speed/weight in top-right. Default OFF.")]
     bool m_bHintDisplayEnabled;
 
     [Attribute("false", UIWidgets.CheckBox, "Data Export: Write player stamina/env to JSON for external apps. File: RSS_PlayerData.json in profile. | 数据导出：将玩家体力/环境写入 JSON 供外部应用读取")]
@@ -390,7 +390,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("false", UIWidgets.CheckBox, "Mud slip mechanic: ragdoll + camera stress on slippery wet terrain. Server chooses via JSON; default OFF. | 泥泞滑倒机制（湿滑地形布娃娃/镜头失稳），服主在 JSON 中开关，默认关闭")]
     bool m_bEnableMudSlipMechanism;
 
-    [Attribute("true", UIWidgets.CheckBox, "AI stamina combat: scale perception, fire rate, EAISkill by stamina. Workbench default ON; dedicated server uses JSON (default OFF). | 体力影响 AI 感知/射速/战斗技能；工作台默认开启，专用服见 JSON（默认关闭）")]
+    [Attribute("true", UIWidgets.CheckBox, "[Experimental] AI stamina combat: state machine, speed cap, intent filter, combat decay, group sync. Workbench default ON; dedicated server JSON default OFF. | 【实验性】AI 体力战斗效果：状态机、限速、意图过滤、战斗衰减、群组协同等；工作台默认开启，专用服 JSON 默认关闭")]
     bool m_bEnableAIStaminaCombatEffects;
     
     [Attribute("false", UIWidgets.CheckBox, "AI: disable ALL RSS calculations for AI. Engine handles stamina completely. Also disables AI combat effects. | 完全禁用 AI 的 RSS 计算，体力交还引擎处理。同时关闭 AI 战斗效果")]
@@ -402,10 +402,10 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
     int m_iDataExportIntervalMs;
     
-    [Attribute("5000", UIWidgets.EditBox, "[Deprecated] HUD is real-time now. Kept for compatibility. | [已弃用] HUD 已实时更新，保留兼容")]
+    [Attribute("5000", UIWidgets.EditBox, "[Deprecated] HUD is real-time now. Kept for compatibility.")]
     int m_iHintUpdateInterval;
     
-    [Attribute("2.0", UIWidgets.EditBox, "[Deprecated] HUD is always visible. Kept for compatibility. | [已弃用] HUD 常驻显示，保留兼容")]
+    [Attribute("2.0", UIWidgets.EditBox, "[Deprecated] HUD is always visible. Kept for compatibility.")]
     float m_fHintDuration;
     
     // ==================== Custom 预设：体力/移动 ====================

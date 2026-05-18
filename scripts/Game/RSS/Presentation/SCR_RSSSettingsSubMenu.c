@@ -13,6 +13,8 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected SCR_SpinBoxComponent m_wDisableAIToggle;
     protected SCR_SpinBoxComponent m_wDisableAIStaminaToggle;
     protected bool m_bIsAdmin;
+    protected RichTextWidget m_wDescriptionHeader;
+    protected RichTextWidget m_wDescriptionBody;
 
     //------------------------------------------------------------------------------------------------
     override void OnTabCreate(Widget menuRoot, ResourceName buttonsLayout, int index)
@@ -29,9 +31,13 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         m_wDisableAIToggle       = FindSpinBox("ToggleDisableAI");
         m_wDisableAIStaminaToggle = FindSpinBox("ToggleDisableAIStamina");
 
+        m_wDescriptionHeader = RichTextWidget.Cast(m_wRoot.FindAnyWidget("DescriptionHeader"));
+        m_wDescriptionBody = RichTextWidget.Cast(m_wRoot.FindAnyWidget("DescriptionBody"));
+
         if (m_wPresetSelector)
             m_wPresetSelector.m_OnChanged.Insert(OnPresetChanged);
 
+        SetupDescriptionFocusHandlers();
         UpdateVisibility();
         LoadFromSettings();
     }
@@ -233,5 +239,70 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         Widget w = m_wRoot.FindAnyWidget(name);
         if (!w) return null;
         return SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent));
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void SetupDescriptionFocusHandlers()
+    {
+        RegisterDescriptionFocus("PresetSelector");
+        RegisterDescriptionFocus("ToggleHUD");
+        RegisterDescriptionFocus("ToggleServerHUD");
+        RegisterDescriptionFocus("ToggleDebug");
+        RegisterDescriptionFocus("ToggleMudSlip");
+        RegisterDescriptionFocus("ToggleAICombat");
+        RegisterDescriptionFocus("ToggleDisableAI");
+        RegisterDescriptionFocus("ToggleDisableAIStamina");
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void RegisterDescriptionFocus(string widgetName)
+    {
+        ButtonWidget button = ButtonWidget.Cast(m_wRoot.FindAnyWidget(widgetName));
+        if (!button)
+            return;
+
+        SCR_ModularButtonComponent modular = SCR_ModularButtonComponent.Cast(
+            button.FindHandler(SCR_ModularButtonComponent));
+        if (!modular)
+            return;
+
+        modular.m_OnFocus.Insert(OnSettingDescriptionFocus);
+        modular.m_OnFocusLost.Insert(OnSettingDescriptionFocusLost);
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void OnSettingDescriptionFocus(SCR_ModularButtonComponent modular)
+    {
+        if (!modular)
+            return;
+
+        Widget root = modular.GetRootWidget();
+        if (!root)
+            return;
+
+        string title;
+        string body;
+        if (!SCR_RSS_SettingsDescriptions.GetDescriptionForWidget(root.GetName(), title, body))
+            return;
+
+        if (m_wDescriptionHeader)
+            m_wDescriptionHeader.SetText(title);
+        if (m_wDescriptionBody)
+            m_wDescriptionBody.SetText(body);
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void OnSettingDescriptionFocusLost(SCR_ModularButtonComponent modular)
+    {
+        ClearSettingDescription();
+    }
+
+    //------------------------------------------------------------------------------------------------
+    protected void ClearSettingDescription()
+    {
+        if (m_wDescriptionHeader)
+            m_wDescriptionHeader.SetText(string.Empty);
+        if (m_wDescriptionBody)
+            m_wDescriptionBody.SetText(string.Empty);
     }
 }

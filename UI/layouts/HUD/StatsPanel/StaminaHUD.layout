@@ -190,10 +190,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "STA 100%"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F6001B}" {
          Name "Text-Time"
@@ -203,10 +205,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "ETA 0"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60007}" {
          Name "Text-Speed"
@@ -216,10 +220,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "SPD 100%"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60009}" {
          Name "Text-Weight"
@@ -229,10 +235,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "WT 0kg"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F6000B}" {
          Name "Text-Move"
@@ -242,10 +250,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "Idle"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F6000D}" {
          Name "Text-Slope"
@@ -255,10 +265,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "SLOPE 0deg"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F6000F}" {
          Name "Text-Heat"
@@ -268,10 +280,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "TEMP 20C"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60015}" {
          Name "Text-Wind"
@@ -281,10 +295,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "WIND Calm"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60017}" {
          Name "Text-Location"
@@ -294,10 +310,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "Outdoor"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60019}" {
          Name "Text-Ground"
@@ -307,10 +325,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "Normal"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
         TextWidgetClass "{A1B2C3D4E5F60013}" {
          Name "Text-Wet"
@@ -320,10 +340,12 @@ FrameWidgetClass {
          Color 1 1 1 1
          Opacity 0.85
          Text "WET 0kg"
-         "Exact Size" 1
-         Font "{FC928B37BAD27AC3}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
          "Font Size" 13
-         "Horizontal Align" 1
+         "Min Font Size" 13
+         "Horizontal Alignment" Center
+         FontProperties FontProperties "{A1B2C3D4E5F60021}" {
+          Font "{EABA4FE9D014CCEF}UI/Fonts/RobotoCondensed/RobotoCondensed_Bold.fnt"
+         }
         }
        }
       }

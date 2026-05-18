@@ -152,7 +152,7 @@ HorizontalLayoutWidgetClass {
        }
        components {
         SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "AI Stamina Combat"
+         m_sLabel "AI Stamina Combat (Experimental)"
          m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
          m_aElementNames {
           "Off" "On"
@@ -200,10 +200,44 @@ HorizontalLayoutWidgetClass {
     }
    }
   }
-  VerticalLayoutWidgetClass "{00000000AD5D4DAC}" {
-   Name "Description"
+  VerticalLayoutWidgetClass "{00000000A6236FA1}" {
+   Name "SettingsDescription"
    Slot LayoutSlot "{54890CCD7A457969}" {
     SizeMode Fill
+    FillWeight 1
+   }
+   {
+    VerticalLayoutWidgetClass "{6616CB94F13221A6}" {
+     Name "VerticalLayout0"
+     Slot LayoutSlot "{6616CB94F1322E76}" {
+      Padding 134 76 10 0
+     }
+     {
+      RichTextWidgetClass "{6616CB9348DEA9A3}" {
+       Name "DescriptionHeader"
+       Slot LayoutSlot "{6616D7EA81408F96}" {
+       }
+       Clipping Ancestor
+       Text ""
+       FontProperties FontProperties "{5F08E83657DD59A8}" {
+        Bold 1
+       }
+      }
+      RichTextWidgetClass "{6616CB9361552D11}" {
+       Name "DescriptionBody"
+       Slot LayoutSlot "{6616CB94B6BE9932}" {
+        Padding 0 22 0 0
+       }
+       Clipping Ancestor
+       Color 0.509 0.509 0.503 1
+       Text ""
+       "Font Size" 16
+       "Min Font Size" 12
+       Wrap 1
+       "Line Spacing" 70
+      }
+     }
+    }
    }
   }
  }
