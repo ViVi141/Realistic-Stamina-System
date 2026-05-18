@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.22.8
+# Realistic Stamina System (RSS) v3.22.10
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.22.8-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.10-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -222,6 +222,16 @@ RealisticStaminaSystem/
     ├── optimized_rss_config_*_v4.json   # 三份预设
     └── README.md                         # 工具说明
 ```
+
+## v3.22.10 版本更新 / v3.22.10 Updates
+
+**2026-05-18**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.10]**）
+
+- **版本** - `CURRENT_VERSION` **3.22.10**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **AI 体力** - 6 态状态机 + 群组同步/休息路点/意图过滤/远距代理；设置中 AI 战斗标为 experimental。
+- **泥泞** - 管理员可再次通过设置开启泥泞滑倒（此前版本曾全路径强制关闭）。
+- **设置 UI** - RSS 设置页右侧说明面板；Stamina HUD 布局与字体修复。
+- **工具** - `tools/` 收敛为 v4 数字孪生管线。
 
 ## v3.22.8 版本更新 / v3.22.8 Updates
 

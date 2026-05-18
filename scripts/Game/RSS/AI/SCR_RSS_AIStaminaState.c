@@ -99,6 +99,30 @@ class SCR_RSS_AIStaminaState
     }
 
     //------------------------------------------------------------------------------------------------
+    //! 状态严重度（越大越差），用于群组「最弱成员决定全队机动」
+    static int GetSeverity(ERSS_AIStaminaState state)
+    {
+        switch (state)
+        {
+        case ERSS_AIStaminaState.FRESH:      return 1;
+        case ERSS_AIStaminaState.WINDED:     return 2;
+        case ERSS_AIStaminaState.FATIGUED:   return 3;
+        case ERSS_AIStaminaState.EXHAUSTED:  return 4;
+        case ERSS_AIStaminaState.RECOVERING: return 5;
+        case ERSS_AIStaminaState.COLLAPSED:  return 6;
+        }
+        return 0;
+    }
+
+    //------------------------------------------------------------------------------------------------
+    static ERSS_AIStaminaState PickWorse(ERSS_AIStaminaState a, ERSS_AIStaminaState b)
+    {
+        if (SCR_RSS_AIStaminaState.GetSeverity(a) >= SCR_RSS_AIStaminaState.GetSeverity(b))
+            return a;
+        return b;
+    }
+
+    //------------------------------------------------------------------------------------------------
     //! 供调试日志使用
     static string StateToString(ERSS_AIStaminaState state)
     {

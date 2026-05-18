@@ -2,21 +2,46 @@
 
 ## [Unreleased]
 
-### AI（v3.23 补全）
+### 新增 / 重构
 
-- **群组路点事件注册** — 新增 `SCR_AIGroup_RSS.c`（`modded SCR_AIGroup`），在服端 `EOnInit` 调用 `SCR_RSS_AIGroupSync.RegisterForGroup`，使休息路点插入、掩体预扫描、自适应步速生效。
-- **静止时间累加修复** — `PlayerBase` AI 桥接：先计算 `bridgeDeltaSec` 再更新 `m_fLastAiBridgeTickTime`；移动时清零 `m_fRssAiTimeStationarySec`。
-- **意图过滤优先级恢复** — `SCR_RSS_AIIntentFilter` 在离开 EXHAUSTED/COLLAPSED/RECOVERING 时还原 Attack/追击/移动行为优先级。
+- **AI 群组机动总体策略** — 新增 `SCR_RSS_AIGroupLocomotionPolicy.c`：编队行军时「最差成员决定全队状态 + p25 统一步速」；`THREATENED` 时退回个体生理。`GroupSync` 专注路点/休息，不再零散修补步速。
+- **编队几何中心约束** — 行军时维护群组几何中心：限制成员散布与中心-队长分离；离群/超前成员与全组按需减速（`RSS_AI_GROUP_COHESION_*` 常量）。
+- **修复边缘 AI 移动顿挫** — 编队速度改为策略刷新时快照目标 + 每 tick 平滑收敛（`RSS_AI_GROUP_COHESION_SPEED_SMOOTH_TAU_SEC`），几何减速带滞回；与 500ms AI 桥接解耦。
+
+### 修复
+
+- **AI 编队散开** — 原实现每人独立 `OverrideMaxSpeed` 且仅路点完成时给队长设速；现由策略层每 0.5s 刷新群组快照并全员应用 `groupPaceMul`。
+
+## [3.22.10] - 2026-05-18
+
+### AI 体力集成
+
+- **AI 体力系统重构** — 6 态状态机（`SCR_RSS_AIStaminaState`）、群组中枢（`SCR_RSS_AIGroupSync`）、意图过滤（`SCR_RSS_AIIntentFilter`）、移动限速（`SCR_RSS_AISpeedCap`）、战斗衰减（`SCR_RSS_AICombatDecay`）、伤害联动（`SCR_RSS_AIInjuryLink`）；移除旧桥接/休息协调/掩体搜寻等 6 个废弃模块。
+- **群组路点事件注册** — 新增 `SCR_AIGroup_RSS.c`（`modded SCR_AIGroup`），服端 `EOnInit` 注册 `SCR_RSS_AIGroupSync`，休息路点插入、掩体预扫描、自适应步速生效。
+- **静止时间累加修复** — `PlayerBase` AI 桥接：先算 `bridgeDeltaSec` 再更新 `m_fLastAiBridgeTickTime`；移动时清零 `m_fRssAiTimeStationarySec`。
+- **意图过滤** — 力竭/崩溃时禁 Attack/追击（`SetStateAllActionsOfType(..., COMPLETED)`）；离开 EXHAUSTED/COLLAPSED/RECOVERING 时还原为 `EVALUATED`。
+- **休息路点插入** — `ResolveNextWaypointAfter` 取已完成路点的队列后继，避免 `GetCurrentWaypoint` 指错路点。
+- **远距群组代理** — `SCR_RSS_AIGroupStaminaProxy`：>800m 非交战群组仅队长每 5s 全量计算，队员同步体力、速度倍率与状态机标签。
+- **距离 LOD** — `GetSpeedUpdateIntervalMs` 尊重 `RSS_PERF_AI_DISTANCE_LOD_ENABLED`。
 - **伤害-体力联动** — `SCR_RSS_AIInjuryLink` 接入 `StaminaUpdateCoordinator.UpdateStaminaValue`。
-- **远距群组代理** — 重建 `SCR_RSS_AIGroupStaminaProxy.c`：>800m 非交战群组仅队长每 5s 全量计算，队员同步体力与速度倍率。
-- **距离 LOD 开关** — `GetSpeedUpdateIntervalMs` 尊重 `RSS_PERF_AI_DISTANCE_LOD_ENABLED`。
-- **文档** — 重写 `docs/RSS_AI_行为说明.md`，更新 `README_CN.md` AI 目录树。
+- **文档** — 新增 `docs/RSS_AI体力集成全盘设计方案.md`，重写 `docs/RSS_AI_行为说明.md`。
 
-### AI（审查修复）
+### 代码与配置
 
-- **意图过滤禁 Attack 生效** — `SCR_RSS_AIIntentFilter` 对 Attack/追击等使用 `SetStateAllActionsOfType(..., COMPLETED)`（`CustomEvaluate` 忽略 `SetPriority`）；恢复时设回 `EVALUATED`。
-- **休息路点插入目标** — `SCR_RSS_AIGroupSync.ResolveNextWaypointAfter` 取已完成路点的队列后继，避免 `GetCurrentWaypoint` 指向错误路点。
-- **代理队员 AI 表现同步** — `ApplyFollowerSync` 同步队长状态机标签，并施加限速/意图/战斗衰减（与队长一致）。
+- **战斗兴奋剂** — 流血倍率与 Refresh 逻辑拆至 `SCR_CombatStimController.c`；RPC 拆至 `SCR_PlayerBaseRpcHandler.c`，`PlayerBase.c` 瘦身。
+- **泥泞滑倒** — 管理员设置与 `SCR_RSS_ConfigManager` 恢复可配置（不再全路径硬编码禁用）；`EnvironmentFactor` 引入 `ERSS_EnvSignal`；体力参数 fallback（`SCR_StaminaConstants`）。
+- **配置桥接** — 新增 `SCR_StaminaConfigBridge.c`。
+- **工具链** — `tools/` 收敛为 v4 优化管线（`rss_pipeline_v4.py` 等），移除旧 GUI/绘图/常量生成脚本；新增 `rss_mudslip_analysis.py`、`rss_regression_tests.py`。
+- **文档整理** — 路径对齐 `scripts/Game/RSS/`；删除过时 API 文档、内部审计报告与冗余 tools 图片。
+
+### 设置与 UI
+
+- **RSS 设置页** — 焦点驱动说明面板（`SCR_RSS_SettingsDescriptions.c`）；AI 战斗相关选项标为 experimental。
+- **Stamina HUD** — 修正 `StaminaHUD.layout` TextWidget 属性与 RobotoCondensed Bold 字体 GUID。
+
+### 版本
+
+- **`CURRENT_VERSION`** → **3.22.10**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
 
 ## [3.22.8] - 2026-05-10
 

@@ -124,10 +124,21 @@ class SCR_RSS_AIGroupStaminaProxy
         if (!leaderCtrl || !followerCtrl)
             return;
 
-        float leaderMul = leaderCtrl.RSS_GetLastAppliedSpeedMultiplier();
+        bool isThreatened = SCR_RSS_AIGroupSync.GetThreatState(follower) == EAIThreatState.THREATENED;
+
+        float leaderMul = leaderCtrl.RSS_GetFormationSpeedSmoothed();
+        if (leaderMul < 0.0)
+            leaderMul = leaderCtrl.RSS_GetFormationSpeedTarget();
         if (leaderMul <= 0.0)
             leaderMul = 1.0;
-        followerCtrl.OverrideMaxSpeed(Math.Clamp(leaderMul, 0.01, 1.0));
+        followerCtrl.RSS_SetFormationSpeedTarget(leaderMul);
+        float proxyDeltaSec = StaminaConstants.RSS_PERF_AI_GROUP_PROXY_INTERVAL_MS / 1000.0;
+        float followerMul = leaderMul;
+        if (SCR_RSS_AIGroupLocomotionPolicy.TickSmoothedFormationSpeed(
+                follower, isThreatened, proxyDeltaSec, followerMul))
+            followerCtrl.OverrideMaxSpeed(Math.Clamp(followerMul, 0.01, 1.0));
+        else
+            followerCtrl.OverrideMaxSpeed(Math.Clamp(leaderMul, 0.01, 1.0));
 
         if (!StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
             return;
@@ -138,12 +149,15 @@ class SCR_RSS_AIGroupStaminaProxy
 
         ERSS_AIStaminaState prevFollowerState = followerCtrl.RSS_GetAIStaminaState();
         ERSS_AIStaminaState leaderState = leaderCtrl.RSS_GetAIStaminaState();
+        ERSS_AIStaminaState locomotionState = leaderState;
+        ERSS_AIStaminaState prevLocomotion = prevFollowerState;
+        SCR_RSS_AIGroupLocomotionPolicy.ResolveLocomotionForMember(
+            follower, isThreatened, leaderState, locomotionState, prevLocomotion);
         followerCtrl.RSS_SetAIStaminaState(leaderState);
 
-        bool isThreatened = SCR_RSS_AIGroupSync.GetThreatState(follower) == EAIThreatState.THREATENED;
-        SCR_RSS_AISpeedCap.Apply(followerCtrl, follower, leaderState, leaderStamina, isThreatened);
-        SCR_RSS_AIIntentFilter.Apply(follower, leaderState, prevFollowerState, isThreatened);
-        SCR_RSS_AICombatDecay.Apply(follower, leaderState);
+        SCR_RSS_AISpeedCap.Apply(followerCtrl, follower, locomotionState, leaderStamina, isThreatened);
+        SCR_RSS_AIIntentFilter.Apply(follower, locomotionState, prevLocomotion, isThreatened);
+        SCR_RSS_AICombatDecay.Apply(follower, locomotionState);
     }
 
     //------------------------------------------------------------------------------------------------

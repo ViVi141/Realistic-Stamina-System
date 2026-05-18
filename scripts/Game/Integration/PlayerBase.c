@@ -85,6 +85,10 @@ modded class SCR_CharacterControllerComponent
     protected ERSS_AIStaminaState m_eRssAIStaminaState = ERSS_AIStaminaState.FRESH;
     protected float m_fRssAiTimeStationarySec = 0.0;
     protected float m_fRssLastAiDebugPrintTime = -1.0;
+    //! 编队行军目标/平滑速度倍率（-1 = 未初始化平滑值）
+    protected float m_fRssFormationSpeedTarget = 1.0;
+    protected float m_fRssFormationSpeedSmoothed = -1.0;
+    protected bool m_bRssCohesionOuterZone = false;
 
     //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
     //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
@@ -605,8 +609,20 @@ modded class SCR_CharacterControllerComponent
             speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
         }
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
-        m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
-        OverrideMaxSpeed(finalSpeedToApply);
+        bool deferOverrideToFormationPolicy = false;
+        if (!isPlayer && Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
+        {
+            bool threatenedForDefer = false;
+            if (SCR_RSS_AIGroupSync.GetThreatState(owner) == EAIThreatState.THREATENED)
+                threatenedForDefer = true;
+            if (SCR_RSS_AIGroupLocomotionPolicy.IsFormationSpeedAuthority(owner, threatenedForDefer))
+                deferOverrideToFormationPolicy = true;
+        }
+        if (!deferOverrideToFormationPolicy)
+        {
+            m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
+            OverrideMaxSpeed(finalSpeedToApply);
+        }
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -648,7 +664,22 @@ modded class SCR_CharacterControllerComponent
         else
             timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
         timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
-        
+
+        // 编队行军：每个速度 tick 平滑写入 OverrideMaxSpeed（与 AI 桥接 500ms 解耦，避免顿挫）
+        if (!isPlayer && Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
+        {
+            bool isThreatenedForFormation = false;
+            if (SCR_RSS_AIGroupSync.GetThreatState(owner) == EAIThreatState.THREATENED)
+                isThreatenedForFormation = true;
+            float formationMul;
+            if (SCR_RSS_AIGroupLocomotionPolicy.TickSmoothedFormationSpeed(
+                    owner, isThreatenedForFormation, timeDeltaSec, formationMul))
+            {
+                m_fLastRssSpeedMultiplierApplied = formationMul;
+                OverrideMaxSpeed(formationMul);
+            }
+        }
+
         if (isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
         
@@ -876,20 +907,22 @@ modded class SCR_CharacterControllerComponent
                     m_fRssAiTimeStationarySec,
                     m_eRssAIStaminaState);
 
-                // 2. 五级移动限速
                 EAIThreatState threat = EAIThreatState.SAFE;
                 if (!IsPlayerControlled())
-                {
                     threat = SCR_RSS_AIGroupSync.GetThreatState(owner);
-                }
                 bool isThreatened = (threat == EAIThreatState.THREATENED);
-                SCR_RSS_AISpeedCap.Apply(this, owner, aiState, staminaPercent, isThreatened);
 
-                // 3. 行为过滤
-                SCR_RSS_AIIntentFilter.Apply(owner, aiState, prevAiState, isThreatened);
+                // 2. 群组机动策略：行军 = 最差成员状态 + 统一步速；接敌 = 个体
+                ERSS_AIStaminaState locomotionState = aiState;
+                ERSS_AIStaminaState prevLocomotionState = prevAiState;
+                SCR_RSS_AIGroupLocomotionPolicy.ResolveLocomotionForMember(
+                    owner, isThreatened, aiState, locomotionState, prevLocomotionState);
 
-                // 4. 战斗衰减
-                SCR_RSS_AICombatDecay.Apply(owner, aiState);
+                SCR_RSS_AISpeedCap.Apply(this, owner, locomotionState, staminaPercent, isThreatened);
+
+                // 3. 行为过滤 / 4. 战斗衰减（行军时与 locomotionState 对齐）
+                SCR_RSS_AIIntentFilter.Apply(owner, locomotionState, prevLocomotionState, isThreatened);
+                SCR_RSS_AICombatDecay.Apply(owner, locomotionState);
 
                 // 5. 检查休息路点完成条件（体力恢复达标则提前完成）
                 if (!IsPlayerControlled() && SCR_RSS_AIGroupSync.IsGroupRestWaypointActive(owner))
@@ -1505,6 +1538,42 @@ modded class SCR_CharacterControllerComponent
     void RSS_SetAIStaminaState(ERSS_AIStaminaState state)
     {
         m_eRssAIStaminaState = state;
+    }
+
+    void RSS_SetFormationSpeedTarget(float target)
+    {
+        m_fRssFormationSpeedTarget = target;
+    }
+
+    float RSS_GetFormationSpeedTarget()
+    {
+        return m_fRssFormationSpeedTarget;
+    }
+
+    void RSS_SetFormationSpeedSmoothed(float smoothed)
+    {
+        m_fRssFormationSpeedSmoothed = smoothed;
+    }
+
+    float RSS_GetFormationSpeedSmoothed()
+    {
+        return m_fRssFormationSpeedSmoothed;
+    }
+
+    void RSS_ResetFormationSpeedSmooth()
+    {
+        m_fRssFormationSpeedSmoothed = -1.0;
+        m_bRssCohesionOuterZone = false;
+    }
+
+    bool RSS_GetCohesionOuterZone()
+    {
+        return m_bRssCohesionOuterZone;
+    }
+
+    void RSS_SetCohesionOuterZone(bool inOuter)
+    {
+        m_bRssCohesionOuterZone = inOuter;
     }
 
     protected string GetPlayerLabel(IEntity entity)

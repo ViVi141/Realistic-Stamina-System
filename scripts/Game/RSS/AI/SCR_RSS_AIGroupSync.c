@@ -34,6 +34,12 @@ class SCR_RSS_AIGroupSync
     // ---- 耗时记录：上一个路点完成的时间戳（按群组ID） ----
     protected static ref map<int, float> s_mGroupLastWaypointCompletedTimeS;
 
+    //! 已注册路点事件的群组（ScriptInvoker 回调只传 AIWaypoint，需反查所属群组）
+    protected static ref map<int, SCR_AIGroup> s_mRegisteredGroupsByGid;
+
+    //! 路点 → 所属群组（在 OnWaypointAdded 时填充，OnWaypointRemoved 时清除）
+    protected static ref map<AIWaypoint, SCR_AIGroup> s_mWaypointOwnerGroup;
+
     // ---- 射线追踪缓存 ----
     protected static ref TraceParam s_pCoverTrace;
     protected static ref TraceParam s_pGroundTrace;
@@ -67,6 +73,48 @@ class SCR_RSS_AIGroupSync
             s_mGroupLastWaypointCompletedTimeS = new map<int, float>();
     }
 
+    protected static void EnsureRegisteredGroupsMap()
+    {
+        if (!s_mRegisteredGroupsByGid)
+            s_mRegisteredGroupsByGid = new map<int, SCR_AIGroup>();
+    }
+
+    protected static void EnsureWaypointOwnerMap()
+    {
+        if (!s_mWaypointOwnerGroup)
+            s_mWaypointOwnerGroup = new map<AIWaypoint, SCR_AIGroup>();
+    }
+
+    //! SCR_AIGroup 的 ScriptInvoker 仅 Invoke(AIWaypoint)，与 AIGroup.OnWaypointAdded 签名一致。
+    protected static SCR_AIGroup FindGroupOwningWaypoint(AIWaypoint wp)
+    {
+        if (!wp)
+            return null;
+
+        EnsureWaypointOwnerMap();
+        if (s_mWaypointOwnerGroup.Contains(wp))
+            return s_mWaypointOwnerGroup.Get(wp);
+
+        EnsureRegisteredGroupsMap();
+        array<AIWaypoint> waypoints = {};
+        foreach (int gid, SCR_AIGroup grp : s_mRegisteredGroupsByGid)
+        {
+            if (!grp)
+                continue;
+            waypoints.Clear();
+            grp.GetWaypoints(waypoints);
+            foreach (AIWaypoint listed : waypoints)
+            {
+                if (listed == wp)
+                {
+                    s_mWaypointOwnerGroup.Set(wp, grp);
+                    return grp;
+                }
+            }
+        }
+        return null;
+    }
+
 
     // ==========================================================================
     //  事件注册 / 注销
@@ -79,6 +127,9 @@ class SCR_RSS_AIGroupSync
             return;
         if (!Replication.IsServer())
             return;
+
+        EnsureRegisteredGroupsMap();
+        s_mRegisteredGroupsByGid.Set(group.GetGroupID(), group);
 
         group.GetOnWaypointAdded().Insert(OnWaypointAdded);
         group.GetOnWaypointCompleted().Insert(OnWaypointCompleted);
@@ -94,6 +145,11 @@ class SCR_RSS_AIGroupSync
         group.GetOnWaypointAdded().Remove(OnWaypointAdded);
         group.GetOnWaypointCompleted().Remove(OnWaypointCompleted);
         group.GetOnWaypointRemoved().Remove(OnWaypointRemoved);
+
+        EnsureRegisteredGroupsMap();
+        int gid = group.GetGroupID();
+        s_mRegisteredGroupsByGid.Remove(gid);
+        SCR_RSS_AIGroupLocomotionPolicy.InvalidateGroup(gid);
     }
 
 
@@ -102,8 +158,8 @@ class SCR_RSS_AIGroupSync
     // ==========================================================================
 
     //------------------------------------------------------------------------------------------------
-    //! 路点被添加到群组 → 预扫描附近的遮蔽位置
-    protected static void OnWaypointAdded(AIGroup group, AIWaypoint wp)
+    //! 路点被添加到群组 → 预扫描附近的遮蔽位置（签名须与 GetOnWaypointAdded().Invoke 一致）
+    protected static void OnWaypointAdded(AIWaypoint wp)
     {
         if (!wp)
             return;
@@ -111,6 +167,13 @@ class SCR_RSS_AIGroupSync
             return;
         if (!Replication.IsServer())
             return;
+
+        SCR_AIGroup scrGrp = FindGroupOwningWaypoint(wp);
+        if (scrGrp)
+        {
+            EnsureWaypointOwnerMap();
+            s_mWaypointOwnerGroup.Set(wp, scrGrp);
+        }
 
         vector origin = wp.GetOrigin();
         if (origin == vector.Zero)
@@ -125,27 +188,29 @@ class SCR_RSS_AIGroupSync
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 路点被清除 → 清理缓存
-    protected static void OnWaypointRemoved(AIGroup group, AIWaypoint wp)
+    //! 路点被清除 → 清理缓存（签名须与 GetOnWaypointRemoved().Invoke 一致）
+    protected static void OnWaypointRemoved(AIWaypoint wp)
     {
         if (!wp)
             return;
         EnsureRestSpotMap();
         s_mWaypointRestSpots.Remove(wp);
+        EnsureWaypointOwnerMap();
+        s_mWaypointOwnerGroup.Remove(wp);
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 路点完成 → 步速计算 + 休息判定 + 插入休息路点
-    protected static void OnWaypointCompleted(AIGroup group, AIWaypoint wp)
+    //! 路点完成 → 步速计算 + 休息判定 + 插入休息路点（签名须与 GetOnWaypointCompleted().Invoke 一致）
+    protected static void OnWaypointCompleted(AIWaypoint wp)
     {
-        if (!group)
+        if (!wp)
             return;
         if (!Replication.IsServer())
             return;
         if (!StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
             return;
 
-        SCR_AIGroup scrGrp = SCR_AIGroup.Cast(group);
+        SCR_AIGroup scrGrp = FindGroupOwningWaypoint(wp);
         if (!scrGrp)
             return;
 
@@ -167,8 +232,8 @@ class SCR_RSS_AIGroupSync
         float groupMedianStamina = GetGroupMedianStamina(scrGrp);
         ERSS_GroupStaminaState groupState = ClassifyGroupStamina(groupMedianStamina);
 
-        // ---------- 3. 自适应群组步速 ----------
-        if (prevTime > 0.0 && StaminaConfigBridge.IsAIAdaptivePaceEnabled())
+        // ---------- 3. 自适应群组步速（路点完成时强制刷新缓存） ----------
+        if (StaminaConfigBridge.IsAIAdaptivePaceEnabled())
         {
             float paceMul = ApplyAdaptiveGroupPace(scrGrp, wp, prevTime, nowS);
             // 调试日志
@@ -404,13 +469,8 @@ class SCR_RSS_AIGroupSync
     }
 
 
-    // ==========================================================================
-    //  自适应群组步速
-    // ==========================================================================
-
     //------------------------------------------------------------------------------------------------
-    //! 根据上段路点的耗时和每位成员的负重/体力，估算最慢成员步速，
-    //! 取第25百分位避免个别抖动，设队长 OverrideMaxSpeed。
+    //! 路点完成时刷新群组机动策略（步速/最差状态），并写入队长 OverrideMaxSpeed
     protected static float ApplyAdaptiveGroupPace(
         SCR_AIGroup scrGrp, AIWaypoint completedWp,
         float prevTimeS, float nowS)
@@ -418,83 +478,18 @@ class SCR_RSS_AIGroupSync
         if (!scrGrp)
             return 1.0;
 
+        SCR_RSS_AIGroupLocomotionPolicy.ForceRefreshGroup(scrGrp);
+        float paceMul = SCR_RSS_AIGroupLocomotionPolicy.GetGroupPaceMultiplier(scrGrp);
+
         IEntity leader = scrGrp.GetLeaderEntity();
-        if (!leader)
-            return 1.0;
-
-        SCR_CharacterControllerComponent leaderCtrl = SCR_CharacterControllerComponent.Cast(
-            leader.FindComponent(SCR_CharacterControllerComponent));
-        if (!leaderCtrl)
-            return 1.0;
-
-        // 收集每位成员的估算速
-        array<float> speeds = {};
-        array<AIAgent> agents = {};
-        int ac = scrGrp.GetAgents(agents);
-        for (int i = 0; i < ac; i++)
+        if (leader)
         {
-            AIAgent ag = agents.Get(i);
-            if (!ag)
-                continue;
-            IEntity ce = ag.GetControlledEntity();
-            if (!ce)
-                continue;
-            if (!IsAliveAndActionable(ce))
-                continue;
-
-            float weight = 0.0;
-            SCR_CharacterInventoryStorageComponent inv = SCR_CharacterInventoryStorageComponent.Cast(
-                ce.FindComponent(SCR_CharacterInventoryStorageComponent));
-            if (inv)
-                weight = inv.GetTotalWeight();
-
-            float stamina = 1.0;
-            SCR_CharacterStaminaComponent stm = SCR_CharacterStaminaComponent.Cast(
-                ce.FindComponent(SCR_CharacterStaminaComponent));
-            if (stm)
-                stamina = Math.Clamp(stm.GetTargetStamina(), 0.0, 1.0);
-
-            float effectiveRatio = (90.0 / (90.0 + weight)) * Math.Pow(stamina, 0.6);
-            float speedEst = RealisticStaminaSpeedSystem.GAME_MAX_SPEED * effectiveRatio;
-            speeds.Insert(speedEst);
+            SCR_CharacterControllerComponent leaderCtrl = SCR_CharacterControllerComponent.Cast(
+                leader.FindComponent(SCR_CharacterControllerComponent));
+            if (leaderCtrl)
+                SCR_RSS_AISpeedCap.SetLeaderPace(leaderCtrl, paceMul);
         }
-
-        int nSpeeds = speeds.Count();
-        if (nSpeeds < 1)
-            return 1.0;
-
-        // 排序取第25百分位
-        SortFloats(speeds);
-        int idx = Math.Round(nSpeeds * 0.25);
-        if (idx < 0)
-            idx = 0;
-        if (idx >= nSpeeds)
-            idx = nSpeeds - 1;
-        float groupPace = speeds.Get(idx);
-
-        // 转成 OverrideMaxSpeed 倍率
-        float paceMul = Math.Clamp(groupPace / RealisticStaminaSpeedSystem.GAME_MAX_SPEED,
-            StaminaConstants.RSS_AI_GROUP_SYNC_PACE_MIN, 1.0);
-        SCR_RSS_AISpeedCap.SetLeaderPace(leaderCtrl, paceMul);
         return paceMul;
-    }
-
-    //------------------------------------------------------------------------------------------------
-    protected static void SortFloats(array<float> arr)
-    {
-        int n = arr.Count();
-        for (int i = 0; i < n - 1; i++)
-        {
-            for (int j = 0; j < n - i - 1; j++)
-            {
-                if (arr.Get(j) > arr.Get(j + 1))
-                {
-                    float tmp = arr.Get(j);
-                    arr.Set(j, arr.Get(j + 1));
-                    arr.Set(j + 1, tmp);
-                }
-            }
-        }
     }
 
 
@@ -632,6 +627,23 @@ class SCR_RSS_AIGroupSync
     //  群组辅助方法
     // ==========================================================================
 
+    protected static void SortFloats(array<float> arr)
+    {
+        int n = arr.Count();
+        for (int i = 0; i < n - 1; i++)
+        {
+            for (int j = 0; j < n - i - 1; j++)
+            {
+                if (arr.Get(j) > arr.Get(j + 1))
+                {
+                    float tmp = arr.Get(j);
+                    arr.Set(j, arr.Get(j + 1));
+                    arr.Set(j + 1, tmp);
+                }
+            }
+        }
+    }
+
     //------------------------------------------------------------------------------------------------
     static float GetGroupMedianStamina(SCR_AIGroup scrGrp)
     {
@@ -745,7 +757,7 @@ class SCR_RSS_AIGroupSync
     {
         if (!owner)
             return false;
-        SCR_AIGroup scrGrp = ResolveGroup(owner);
+        SCR_AIGroup scrGrp = ResolveOwnerGroup(owner);
         if (!scrGrp)
             return false;
 
@@ -783,7 +795,7 @@ class SCR_RSS_AIGroupSync
         if (!Replication.IsServer())
             return;
 
-        SCR_AIGroup scrGrp = ResolveGroup(owner);
+        SCR_AIGroup scrGrp = ResolveOwnerGroup(owner);
         if (!scrGrp)
             return;
 
@@ -835,7 +847,7 @@ class SCR_RSS_AIGroupSync
     }
 
     //------------------------------------------------------------------------------------------------
-    protected static SCR_AIGroup ResolveGroup(IEntity owner)
+    static SCR_AIGroup ResolveOwnerGroup(IEntity owner)
     {
         if (!owner)
             return null;
@@ -851,6 +863,11 @@ class SCR_RSS_AIGroupSync
         return SCR_AIGroup.Cast(grpAny);
     }
 
+    static bool IsAliveAndActionablePublic(IEntity ent)
+    {
+        return IsAliveAndActionable(ent);
+    }
+
     //------------------------------------------------------------------------------------------------
     //! 世界重载时清空所有缓存
     static void ClearAllForNewWorldSession()
@@ -863,5 +880,10 @@ class SCR_RSS_AIGroupSync
             s_mGroupRssRestWaypointByGid.Clear();
         if (s_mGroupLastWaypointCompletedTimeS)
             s_mGroupLastWaypointCompletedTimeS.Clear();
+        if (s_mRegisteredGroupsByGid)
+            s_mRegisteredGroupsByGid.Clear();
+        if (s_mWaypointOwnerGroup)
+            s_mWaypointOwnerGroup.Clear();
+        SCR_RSS_AIGroupLocomotionPolicy.ClearAllForNewWorldSession();
     }
 }

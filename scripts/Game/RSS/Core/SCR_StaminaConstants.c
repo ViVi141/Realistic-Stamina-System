@@ -661,6 +661,24 @@ class StaminaConstants
     static const float RSS_AI_GROUP_SYNC_TIRING_INSERT_DIST_M = 300.0;
     static const float RSS_AI_GROUP_SYNC_COOLDOWN_SEC = 90.0;
     static const float RSS_AI_GROUP_SYNC_PACE_MIN = 0.15;
+    //! 自适应群组步速缓存刷新间隔（秒）；与 PlayerBase AI 桥接节流同量级
+    static const float RSS_AI_GROUP_SYNC_PACE_REFRESH_SEC = 0.5;
+    //! 编队几何：成员距几何中心 ≤ 软半径时不受额外减速
+    static const float RSS_AI_GROUP_COHESION_SOFT_RADIUS_M = 8.0;
+    //! 编队几何：成员距几何中心 ≥ 硬半径时降至成员最低倍率
+    static const float RSS_AI_GROUP_COHESION_HARD_RADIUS_M = 22.0;
+    static const float RSS_AI_GROUP_COHESION_MEMBER_MIN_MUL = 0.25;
+    //! 目标：全队相对几何中心的最大散布（超过则全组略减速）
+    static const float RSS_AI_GROUP_COHESION_TARGET_SPREAD_M = 16.0;
+    //! 几何中心与队长分离上限（超过则队长减速，把中心拉回可控范围）
+    static const float RSS_AI_GROUP_COHESION_MAX_CENTER_LEADER_M = 12.0;
+    static const float RSS_AI_GROUP_COHESION_GLOBAL_MIN_MUL = 0.45;
+    static const float RSS_AI_GROUP_COHESION_LEADER_MIN_MUL = 0.35;
+    //! 编队 OverrideMaxSpeed 向目标倍率收敛的时间常数（秒），抑制边缘 AI 顿挫
+    static const float RSS_AI_GROUP_COHESION_SPEED_SMOOTH_TAU_SEC = 1.25;
+    //! 几何减速滞回：进入外圈 / 退出外圈半径（米），避免在软边界来回抖
+    static const float RSS_AI_GROUP_COHESION_OUTER_ENTER_M = 10.0;
+    static const float RSS_AI_GROUP_COHESION_OUTER_EXIT_M = 6.5;
     static const ResourceName RSS_AI_GROUP_SYNC_WAIT_WAYPOINT_PREFAB = "{73A8E1C2D5F14906}Prefabs/AI/Waypoints/AIWaypoint_Wait.et";
     static const ResourceName RSS_AI_GROUP_SYNC_DEFEND_WAYPOINT_PREFAB = "{93291E72AC23930F}Prefabs/AI/Waypoints/AIWaypoint_Defend.et";
 

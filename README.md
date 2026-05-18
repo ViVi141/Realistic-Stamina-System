@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.22.8
+# Realistic Stamina System (RSS) v3.22.10
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.22.8-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.22.10-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -217,6 +217,10 @@ RealisticStaminaSystem/
 - **适用场景**：追击、逃命、短距离冲刺
 
 ## 版本更新 / Version Updates
+
+**v3.22.10** - 2026-05-18
+
+AI 体力系统重构、泥泞可配置、战斗兴奋剂代码拆分、RSS 设置说明与 HUD 布局修复、tools v4 管线。详见 CHANGELOG.md **[3.22.10]**。
 
 **v3.22.8** - 2026-05-10
 
