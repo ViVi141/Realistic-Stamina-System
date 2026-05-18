@@ -1,30 +1,20 @@
 # 更新日志
 
-## [Unreleased]
+## [3.23.0] - 2026-05-18
 
-### 新增 / 重构
+### AI 子系统管理器 — 重大重构
 
-- **AI 群组机动总体策略** — 新增 `SCR_RSS_AIGroupLocomotionPolicy.c`：编队行军时「最差成员决定全队状态 + p25 统一步速」；`THREATENED` 时退回个体生理。`GroupSync` 专注路点/休息，不再零散修补步速。
-- **编队几何中心约束** — 行军时维护群组几何中心：限制成员散布与中心-队长分离；离群/超前成员与全组按需减速（`RSS_AI_GROUP_COHESION_*` 常量）。
-- **修复边缘 AI 移动顿挫** — 编队速度改为策略刷新时快照目标 + 每 tick 平滑收敛（`RSS_AI_GROUP_COHESION_SPEED_SMOOTH_TAU_SEC`），几何减速带滞回；与 500ms AI 桥接解耦。
+- **AI 子系统管理器** — 新增 `SCR_RSS_AIManager.c`，集中管理所有 AI 模块的调用频率和状态生命周期。PlayerBase 中 AI 代码从 9 处散落收拢为 1 处 `m_pAIManager.Tick()`；`SCR_RSS_AIGroupLocomotionPolicy` / `SCR_RSS_AIGroupSync` / `SCR_RSS_AIGroupStaminaProxy` / `SCR_AIGroup_RSS` 四个群组文件因编队几何约束导致边缘 AI 异常慢速且真实测试中 AI 几乎无法耗尽体力，已整体移除。
+- **距离扫描缓存移除** — 代理模式功能随群组文件一并移除，`GetSpeedUpdateIntervalMs` 回退为原有独立 LOD 计算。
 
-### 修复
+### AI 体力集成（当前保留功能）
 
-- **AI 编队散开** — 原实现每人独立 `OverrideMaxSpeed` 且仅路点完成时给队长设速；现由策略层每 0.5s 刷新群组快照并全员应用 `groupPaceMul`。
-
-## [3.22.10] - 2026-05-18
-
-### AI 体力集成
-
-- **AI 体力系统重构** — 6 态状态机（`SCR_RSS_AIStaminaState`）、群组中枢（`SCR_RSS_AIGroupSync`）、意图过滤（`SCR_RSS_AIIntentFilter`）、移动限速（`SCR_RSS_AISpeedCap`）、战斗衰减（`SCR_RSS_AICombatDecay`）、伤害联动（`SCR_RSS_AIInjuryLink`）；移除旧桥接/休息协调/掩体搜寻等 6 个废弃模块。
-- **群组路点事件注册** — 新增 `SCR_AIGroup_RSS.c`（`modded SCR_AIGroup`），服端 `EOnInit` 注册 `SCR_RSS_AIGroupSync`，休息路点插入、掩体预扫描、自适应步速生效。
-- **静止时间累加修复** — `PlayerBase` AI 桥接：先算 `bridgeDeltaSec` 再更新 `m_fLastAiBridgeTickTime`；移动时清零 `m_fRssAiTimeStationarySec`。
-- **意图过滤** — 力竭/崩溃时禁 Attack/追击（`SetStateAllActionsOfType(..., COMPLETED)`）；离开 EXHAUSTED/COLLAPSED/RECOVERING 时还原为 `EVALUATED`。
-- **休息路点插入** — `ResolveNextWaypointAfter` 取已完成路点的队列后继，避免 `GetCurrentWaypoint` 指错路点。
-- **远距群组代理** — `SCR_RSS_AIGroupStaminaProxy`：>800m 非交战群组仅队长每 5s 全量计算，队员同步体力、速度倍率与状态机标签。
-- **距离 LOD** — `GetSpeedUpdateIntervalMs` 尊重 `RSS_PERF_AI_DISTANCE_LOD_ENABLED`。
-- **伤害-体力联动** — `SCR_RSS_AIInjuryLink` 接入 `StaminaUpdateCoordinator.UpdateStaminaValue`。
-- **文档** — 新增 `docs/RSS_AI体力集成全盘设计方案.md`，重写 `docs/RSS_AI_行为说明.md`。
+- **个体体力状态机** — 6 态机（`SCR_RSS_AIStaminaState`：FRESH/WINDED/FATIGUED/EXHAUSTED/COLLAPSED/RECOVERING），带滞回防抖，强制恢复机制。
+- **移动限速** — `SCR_RSS_AISpeedCap`：按体力状态五级限速（Sprint→Run→Jog→Walk→Idle），压制时不限速。
+- **意图过滤** — `SCR_RSS_AIIntentFilter`：力竭/崩溃时禁用 Attack/追击；恢复后还原。
+- **战斗衰减** — `SCR_RSS_AICombatDecay`：随体力下降降低感知/射速/技能，三围度矩阵。
+- **伤害-体力联动** — `SCR_RSS_AIInjuryLink`：受伤 AI 消耗加快、恢复减慢，五档血量区间。
+- **距离 LOD** — `GetSpeedUpdateIntervalMs` 按距玩家距离分档刷新（近 200ms / 中 300ms / 远 1500ms）。
 
 ### 代码与配置
 
@@ -36,12 +26,12 @@
 
 ### 设置与 UI
 
-- **RSS 设置页** — 焦点驱动说明面板（`SCR_RSS_SettingsDescriptions.c`）；AI 战斗相关选项标为 experimental。
+- **RSS 设置页** — 焦点驱动说明面板（`SCR_RSS_SettingsDescriptions.c`）；AI 战斗相关选项标为 experimental；移除已删除群组功能的描述引用，按现状重写 ToggleAICombat 说明文本。
 - **Stamina HUD** — 修正 `StaminaHUD.layout` TextWidget 属性与 RobotoCondensed Bold 字体 GUID。
 
 ### 版本
 
-- **`CURRENT_VERSION`** → **3.22.10**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **`CURRENT_VERSION`** → **3.23.0**（`SCR_RSS_ConfigManager.c`）。
 
 ## [3.22.8] - 2026-05-10
 

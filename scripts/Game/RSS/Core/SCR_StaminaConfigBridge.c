@@ -696,18 +696,6 @@ class StaminaConfigBridge
         return IsAIStaminaCombatEffectsEnabled();
     }
 
-    //! AI 自适应群组步速开关（与 combat effects 同开关）
-    static bool IsAIAdaptivePaceEnabled()
-    {
-        return IsAIStaminaCombatEffectsEnabled();
-    }
-
-    //! AI 群组休息开关（与 combat effects 同开关）
-    static bool IsAIGroupRestEnabled()
-    {
-        return IsAIStaminaCombatEffectsEnabled();
-    }
-
     //! AI 伤害联动开关（与 combat effects 同开关）
     static bool IsAIInjuryLinkEnabled()
     {

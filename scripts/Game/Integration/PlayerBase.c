@@ -77,18 +77,11 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false; // 实体删除标记：阻止 CallLater 回调在删除后继续触发
     
-    // ====== perf: AI 桥方法节流（高密度 AI 减负）======
-    protected float m_fLastAiBridgeTickTime = -1.0;
-    protected static const float AI_BRIDGE_THROTTLE_SEC = 0.5; // 500ms，引擎 AI 行为树更新间隔为 0.55s
-
-    // ====== RSS AI 体力状态机成员变量 ======
-    protected ERSS_AIStaminaState m_eRssAIStaminaState = ERSS_AIStaminaState.FRESH;
-    protected float m_fRssAiTimeStationarySec = 0.0;
-    protected float m_fRssLastAiDebugPrintTime = -1.0;
-    //! 编队行军目标/平滑速度倍率（-1 = 未初始化平滑值）
-    protected float m_fRssFormationSpeedTarget = 1.0;
-    protected float m_fRssFormationSpeedSmoothed = -1.0;
-    protected bool m_bRssCohesionOuterZone = false;
+    // ====== AI 子系统管理器（接管所有 AI 行为层/编队/代理/节流）======
+    // 原 L80-91 的 6 个 AI 成员变量、L668-681 编队速度、L870-933 模块链、
+    // L462-481 proxy 检测、L1078-1081 通知、L1540-1577 getter/setter、
+    // L1850-1874 距离 LOD 均已收拢至此。
+    protected ref SCR_RSS_AIManager m_pAIManager;
 
     //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
     //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
@@ -191,6 +184,12 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
+        // 清理 AI 子系统管理器
+        if (m_pAIManager)
+        {
+            m_pAIManager.OnEntityDeleted();
+            m_pAIManager = null;
+        }
     }
     
     override void OnInit(IEntity owner)
@@ -298,6 +297,10 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
+        // AI 子系统管理器（接管行为层/编队/代理/节流）
+        if (!m_pAIManager)
+            m_pAIManager = new SCR_RSS_AIManager();
+
         m_pFatigueSystem = new FatigueSystem();
         if (m_pFatigueSystem)
         {
@@ -459,28 +462,6 @@ modded class SCR_CharacterControllerComponent
         // perf: AI 快速路径 — 跳过 AI 不需要的玩家专属逻辑
         bool isPlayer = IsPlayerControlled();
 
-        float rssDistToPlayerM = -1.0;
-        SCR_AIGroup rssProxyGroup = null;
-        bool rssSkipStaminaDrainRecovery = false;
-
-        if (!isPlayer && Replication.IsServer())
-        {
-            rssDistToPlayerM = GetNearestPlayerDistanceM(owner);
-            rssProxyGroup = SCR_RSS_AIGroupStaminaProxy.ResolveGroup(owner);
-            if (rssProxyGroup && SCR_RSS_AIGroupStaminaProxy.IsProxyModeActive(owner, rssDistToPlayerM, rssProxyGroup))
-            {
-                if (SCR_RSS_AIGroupStaminaProxy.IsFollower(owner, rssProxyGroup))
-                {
-                    SCR_RSS_AIGroupStaminaProxy.ApplyFollowerSync(owner, rssProxyGroup);
-                    m_bRssStaminaLoopActive = true;
-                    GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, GetSpeedUpdateIntervalMs(), false);
-                    return;
-                }
-                if (!SCR_RSS_AIGroupStaminaProxy.ShouldLeaderRunFullCalc(rssProxyGroup))
-                    rssSkipStaminaDrainRecovery = true;
-            }
-        }
-        
         if (isPlayer)
         {
             RSS_CombatStim_OnTickTransitions();
@@ -609,20 +590,8 @@ modded class SCR_CharacterControllerComponent
             speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
         }
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
-        bool deferOverrideToFormationPolicy = false;
-        if (!isPlayer && Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
-        {
-            bool threatenedForDefer = false;
-            if (SCR_RSS_AIGroupSync.GetThreatState(owner) == EAIThreatState.THREATENED)
-                threatenedForDefer = true;
-            if (SCR_RSS_AIGroupLocomotionPolicy.IsFormationSpeedAuthority(owner, threatenedForDefer))
-                deferOverrideToFormationPolicy = true;
-        }
-        if (!deferOverrideToFormationPolicy)
-        {
-            m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
-            OverrideMaxSpeed(finalSpeedToApply);
-        }
+        m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
+        OverrideMaxSpeed(finalSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -665,20 +634,7 @@ modded class SCR_CharacterControllerComponent
             timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
         timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
 
-        // 编队行军：每个速度 tick 平滑写入 OverrideMaxSpeed（与 AI 桥接 500ms 解耦，避免顿挫）
-        if (!isPlayer && Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
-        {
-            bool isThreatenedForFormation = false;
-            if (SCR_RSS_AIGroupSync.GetThreatState(owner) == EAIThreatState.THREATENED)
-                isThreatenedForFormation = true;
-            float formationMul;
-            if (SCR_RSS_AIGroupLocomotionPolicy.TickSmoothedFormationSpeed(
-                    owner, isThreatenedForFormation, timeDeltaSec, formationMul))
-            {
-                m_fLastRssSpeedMultiplierApplied = formationMul;
-                OverrideMaxSpeed(formationMul);
-            }
-        }
+        // 编队行军：由 AIManager.Tick() 内部处理（每 tick 平滑收敛 + 行为层 500ms 节流）
 
         if (isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
@@ -866,71 +822,18 @@ modded class SCR_CharacterControllerComponent
         {
             RSS_SetMudSlipCameraShake01(0.0);
         }
-        // =====================================================================
-        // RSS AI 体力集成 — 新模块链 (v3.23.0)
-        // =====================================================================
-        // perf: AI 模块节流
-        if (!IsPlayerControlled() && (currentTime - m_fLastAiBridgeTickTime < AI_BRIDGE_THROTTLE_SEC))
+        // ── AI 子系统管理器（行为层节流 + 状态机 + 模块链） ──
+        if (!isPlayer && Replication.IsServer() && m_pAIManager)
         {
-            // 节流中
-        }
-        else
-        {
-            float prevBridgeTime = m_fLastAiBridgeTickTime;
-            if (prevBridgeTime < 0.0)
-                prevBridgeTime = currentTime;
-            float bridgeDeltaSec = currentTime - prevBridgeTime;
+            float fatigueVal;
+            if (m_pFatigueSystem)
+                fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
+            else
+                fatigueVal = 0.0;
 
-            if (!IsPlayerControlled())
-                m_fLastAiBridgeTickTime = currentTime;
-
-            if (Replication.IsServer() && StaminaConfigBridge.IsAIStaminaIntegrationEnabled())
-            {
-                // 1. 更新体力状态机
-                bool isStationary = (currentSpeed < 0.05);
-                if (isStationary)
-                    m_fRssAiTimeStationarySec = m_fRssAiTimeStationarySec + bridgeDeltaSec;
-                else
-                    m_fRssAiTimeStationarySec = 0.0;
-
-                float fatigueVal;
-                if (m_pFatigueSystem)
-                    fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
-                else
-                    fatigueVal = 0.0;
-
-                ERSS_AIStaminaState prevAiState = m_eRssAIStaminaState;
-                ERSS_AIStaminaState aiState = SCR_RSS_AIStaminaState.Tick(
-                    staminaPercent,
-                    fatigueVal,
-                    isStationary,
-                    m_fRssAiTimeStationarySec,
-                    m_eRssAIStaminaState);
-
-                EAIThreatState threat = EAIThreatState.SAFE;
-                if (!IsPlayerControlled())
-                    threat = SCR_RSS_AIGroupSync.GetThreatState(owner);
-                bool isThreatened = (threat == EAIThreatState.THREATENED);
-
-                // 2. 群组机动策略：行军 = 最差成员状态 + 统一步速；接敌 = 个体
-                ERSS_AIStaminaState locomotionState = aiState;
-                ERSS_AIStaminaState prevLocomotionState = prevAiState;
-                SCR_RSS_AIGroupLocomotionPolicy.ResolveLocomotionForMember(
-                    owner, isThreatened, aiState, locomotionState, prevLocomotionState);
-
-                SCR_RSS_AISpeedCap.Apply(this, owner, locomotionState, staminaPercent, isThreatened);
-
-                // 3. 行为过滤 / 4. 战斗衰减（行军时与 locomotionState 对齐）
-                SCR_RSS_AIIntentFilter.Apply(owner, locomotionState, prevLocomotionState, isThreatened);
-                SCR_RSS_AICombatDecay.Apply(owner, locomotionState);
-
-                // 5. 检查休息路点完成条件（体力恢复达标则提前完成）
-                if (!IsPlayerControlled() && SCR_RSS_AIGroupSync.IsGroupRestWaypointActive(owner))
-                {
-                    SCR_RSS_AIGroupSync.TryCompleteRestWaypointIfStaminaRecovered(owner, staminaPercent);
-                }
-
-            }
+            m_pAIManager.Tick(
+                owner, currentTime, timeDeltaSec,
+                staminaPercent, fatigueVal, currentSpeed, isPlayer);
         }
 
         bool isSprinting = isSprintingNow;
@@ -938,7 +841,6 @@ modded class SCR_CharacterControllerComponent
         float baseDrainRateByVelocity = 0.0;
         float baseDrainRateByVelocityForModule = 0.0;
 
-        if (!rssSkipStaminaDrainRecovery)
         {
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
@@ -1075,11 +977,6 @@ modded class SCR_CharacterControllerComponent
             staminaPercent = newTargetStamina;
         }
 
-        if (rssProxyGroup && Replication.IsServer() && !isPlayer)
-        {
-            if (SCR_RSS_AIGroupStaminaProxy.IsProxyModeActive(owner, rssDistToPlayerM, rssProxyGroup))
-                SCR_RSS_AIGroupStaminaProxy.NotifyLeaderFullTickCompleted(rssProxyGroup);
-        }
         }
         
         if (isPlayer && m_pUISignalBridge)
@@ -1095,11 +992,18 @@ modded class SCR_CharacterControllerComponent
         {
             // 每 AI 每 30s 输出一行，避免刷屏
             float nowMs = GetGame().GetWorld().GetWorldTime();
-            if (m_fRssLastAiDebugPrintTime < 0.0 || (nowMs - m_fRssLastAiDebugPrintTime) >= 30000.0)
+            float aiDebugLastPrint = -1.0;
+            if (m_pAIManager)
+                aiDebugLastPrint = m_pAIManager.GetDebugLastPrintTime();
+            if (aiDebugLastPrint < 0.0 || (nowMs - aiDebugLastPrint) >= 30000.0)
             {
-                m_fRssLastAiDebugPrintTime = nowMs;
+                if (m_pAIManager)
+                    m_pAIManager.SetDebugLastPrintTime(nowMs);
                 string movementStr = DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
-                string stateStr = SCR_RSS_AIStaminaState.StateToString(m_eRssAIStaminaState);
+                ERSS_AIStaminaState aiState = ERSS_AIStaminaState.FRESH;
+                if (m_pAIManager)
+                    aiState = m_pAIManager.GetStaminaState();
+                string stateStr = SCR_RSS_AIStaminaState.StateToString(aiState);
                 float fatigueVal = 0.0;
                 if (m_pFatigueSystem)
                     fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
@@ -1532,48 +1436,15 @@ modded class SCR_CharacterControllerComponent
 
     ERSS_AIStaminaState RSS_GetAIStaminaState()
     {
-        return m_eRssAIStaminaState;
+        if (m_pAIManager)
+            return m_pAIManager.GetStaminaState();
+        return ERSS_AIStaminaState.FRESH;
     }
 
     void RSS_SetAIStaminaState(ERSS_AIStaminaState state)
     {
-        m_eRssAIStaminaState = state;
-    }
-
-    void RSS_SetFormationSpeedTarget(float target)
-    {
-        m_fRssFormationSpeedTarget = target;
-    }
-
-    float RSS_GetFormationSpeedTarget()
-    {
-        return m_fRssFormationSpeedTarget;
-    }
-
-    void RSS_SetFormationSpeedSmoothed(float smoothed)
-    {
-        m_fRssFormationSpeedSmoothed = smoothed;
-    }
-
-    float RSS_GetFormationSpeedSmoothed()
-    {
-        return m_fRssFormationSpeedSmoothed;
-    }
-
-    void RSS_ResetFormationSpeedSmooth()
-    {
-        m_fRssFormationSpeedSmoothed = -1.0;
-        m_bRssCohesionOuterZone = false;
-    }
-
-    bool RSS_GetCohesionOuterZone()
-    {
-        return m_bRssCohesionOuterZone;
-    }
-
-    void RSS_SetCohesionOuterZone(bool inOuter)
-    {
-        m_bRssCohesionOuterZone = inOuter;
+        // 状态现由 AIManager 管理，此 setter 保留兼容性但不直接写入
+        // 实质状态通过 m_pAIManager.Tick() 内部的状态机维护
     }
 
     protected string GetPlayerLabel(IEntity entity)
@@ -1853,7 +1724,7 @@ modded class SCR_CharacterControllerComponent
         if (IsPlayerControlled())
             return StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS;
 
-        // AI：按距最近玩家的距离分档，减少远处 AI 的计算开销
+        // AI：使用旧的独立距离 LOD 计算
         if (!Replication.IsServer())
             return StaminaConstants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
 
@@ -2000,7 +1871,7 @@ modded class SCR_CharacterControllerComponent
             IEntity ce = ag.GetControlledEntity();
             if (!ce)
                 continue;
-            if (SCR_RSS_AIGroupSync.IsAliveAndActionable(ce))
+            if (SCR_CharacterDamageManagerComponent.Cast(ce.FindComponent(SCR_CharacterDamageManagerComponent)))
                 alive++;
         }
         return alive;

@@ -94,9 +94,7 @@ class SCR_RSS_AISpeedCap
         }
 
         AISetMovementTypeWanted(owner, maxMovement);
-        // 编队行军时 OverrideMaxSpeed 由 GroupLocomotionPolicy 每 tick 平滑写入，避免与此处交替导致顿挫
-        if (!SCR_RSS_AIGroupLocomotionPolicy.IsFormationSpeedAuthority(owner, isThreatened))
-            ctrl.OverrideMaxSpeed(speedMul);
+        ctrl.OverrideMaxSpeed(speedMul);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -143,16 +141,6 @@ class SCR_RSS_AISpeedCap
         }
 
         aiMove.SetMovementTypeWanted(resolved);
-    }
-
-    //------------------------------------------------------------------------------------------------
-    //! 路点完成时更新队长编队目标倍率（实际 Override 由 GroupLocomotionPolicy 平滑）
-    static void SetLeaderPace(SCR_CharacterControllerComponent leaderCtrl, float groupPaceMul)
-    {
-        if (!leaderCtrl)
-            return;
-        float capped = Math.Clamp(groupPaceMul, 0.1, 1.0);
-        leaderCtrl.RSS_SetFormationSpeedTarget(capped);
     }
 
     //------------------------------------------------------------------------------------------------

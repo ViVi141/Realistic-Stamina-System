@@ -1,9 +1,0 @@
-Realistic Stamina System (RSS) v3.22.8 — 更新说明
-
-🐞 修复 Workbench 重载世界崩溃
-
-【修复】Workbench 空世界放置角色后删除，再停止运行重载世界时崩溃
-之前在工作台中：放置一个角色 → 删除角色 → 停止运行 → 重载世界，会在 "destroy game" 阶段出现 Access violation at 0x0 崩溃。现已修复。
-
-─────────────────────────
-完整更新日志见 CHANGELOG.md

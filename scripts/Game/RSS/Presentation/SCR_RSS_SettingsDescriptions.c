@@ -48,7 +48,7 @@ class SCR_RSS_SettingsDescriptions
         if (widgetName == "ToggleAICombat")
         {
             title = "AI Stamina Combat (Experimental)";
-            body = "Experimental. When On: AI stamina state machine, speed caps, intent filter (e.g. reduced attack when exhausted), combat accuracy decay, group rest waypoints, and injury-stamina link. When Off: AI still uses RSS drain/recovery and speed multipliers, but not these combat behaviors. Default Off on new dedicated servers.";
+            body = "Experimental. When On: AI stamina state machine (FRESH/WINDED/FATIGUED/EXHAUSTED/COLLAPSED/RECOVERING), speed caps (lowers movement tier when tired), intent filter (blocks Attack when exhausted), combat decay (reduces perception/fire rate/aim as stamina drops), and injury-stamina link (wounded AI drains faster, recovers slower). When Off: AI still uses RSS drain/recovery and speed multipliers, but not these combat behaviors. Default Off on new dedicated servers.";
             return true;
         }
 

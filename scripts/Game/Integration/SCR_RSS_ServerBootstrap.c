@@ -99,9 +99,7 @@ modded class SCR_BaseGameMode
     {
         // Workbench / 重载世界：先清空跨世界复用的脚本静态缓存，避免悬空原生引用（信号、HUD、AI 列表）。
         EnvironmentFactor.ResetGlobalSignalsCache();
-        SCR_RSS_AIGroupSync.ClearAllForNewWorldSession();
-        SCR_RSS_AIGroupLocomotionPolicy.ClearAllForNewWorldSession();
-        SCR_RSS_AIGroupStaminaProxy.ClearAllForNewWorldSession();
+        // [v3.23.0] 群组相关静态 map 已随功能移除，无需清理
         SCR_StaminaHUDComponent.OnNewWorldSession();
         SCR_DebugBatchManager.ResetForNewWorld();   // 重置调试批次时间戳，防止重载世界后无输出
         m_iRssLoadRetries = 0;
