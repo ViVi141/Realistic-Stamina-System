@@ -869,4 +869,84 @@ class StaminaUpdateCoordinator
         float netRatePerTick = recoveryRate - finalDrainRate;
         return netRatePerTick * 5.0;
     }
+
+    // 分段积分估算恢复到满体力所需时间，替代简单线性外推。
+    // 恢复曲线高度非线性（边际效应衰减、非线性系数、阶段切换），
+    // 简单 stamina / rate 线性外推在 >80% 区域误差可达 200%+。
+    // 方法：将恢复区间分成 SEGMENTS 段，每段用中点 stamina 重算净恢复率。
+    //
+    // @param staminaPercent    当前体力
+    // @param targetStamina     目标体力（疲劳上限）
+    // @param totalDrainRate    总消耗率（每 tick，恢复外推期间假定恒定）
+    // @param epocState         EPOC 状态
+    // @param controller        角色控制器
+    // @param ...               其余参数与 GetNetStaminaRatePerSecond 一致
+    // @return 估算的恢复时间（秒），上限 7200s
+    static float EstimateRecoveryTimeToFull(
+        float staminaPercent,
+        float targetStamina,
+        float totalDrainRate,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        EpocState epocState,
+        EncumbranceCache encumbranceCache,
+        ExerciseTracker exerciseTracker,
+        SCR_CharacterControllerComponent controller,
+        EnvironmentFactor environmentFactor = null)
+    {
+        if (targetStamina <= staminaPercent + 0.001)
+            return 0.0;
+
+        const int SEGMENTS = 10;
+        float range = targetStamina - staminaPercent;
+        float step = range / SEGMENTS;
+
+        // 一次性构建上下文（恢复外推期间 restDuration/exerciseDuration / 姿态 / 负重 视为不变）
+        RecoveryContext ctx = BuildRecoveryContext(
+            false,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            0.0);
+
+        float totalTime = 0.0;
+
+        // 恢复期间 EPOC 不适用
+        float fixedFinalDrain = totalDrainRate;
+
+        for (int i = 0; i < SEGMENTS; i++)
+        {
+            float segStart = staminaPercent + i * step;
+            float segMid = segStart + step * 0.5;
+
+            // 在分段中点用当前 stamina 重算恢复率
+            float segRecovery = StaminaRecoveryCalculator.CalculateRecoveryRate(
+                segMid,
+                ctx.restDurationMinutes,
+                ctx.exerciseDurationMinutes,
+                ctx.currentWeightForRecovery,
+                ctx.staticDrainForRecovery,
+                false,
+                ctx.stanceInt,
+                ctx.envFactor,
+                ctx.speedForRecovery,
+                0,
+                controller);
+
+            segRecovery = segRecovery * ctx.heatPenalty;
+            float segNet = segRecovery - fixedFinalDrain;
+
+            if (segNet > 0.00001)
+                totalTime += step / segNet;
+            else
+                totalTime += 300.0; // 净恢复极慢时每段最多 300s（防止除零）
+        }
+
+        return Math.Min(totalTime, 7200.0);
+    }
 }

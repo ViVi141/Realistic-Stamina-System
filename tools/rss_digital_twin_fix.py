@@ -87,24 +87,24 @@ class RSSConstants:
     ANAEROBIC_EFFICIENCY_FACTOR = 1.2
 
     # 恢复系统
-    BASE_RECOVERY_RATE = 0.00015  # 与 C SCR_StaminaConstants.c 静态常量一致
-    RECOVERY_NONLINEAR_COEFF = 0.5  # 与 C 静态常量一致
+    BASE_RECOVERY_RATE = 0.00010  # Hardcore：原0.00015
+    RECOVERY_NONLINEAR_COEFF = 0.5  # Hardcore：原0.792
     FAST_RECOVERY_DURATION_MINUTES = 0.4
-    FAST_RECOVERY_MULTIPLIER = 1.6  # 与 C 静态常量一致
+    FAST_RECOVERY_MULTIPLIER = 1.6  # Hardcore：原2.395
     MEDIUM_RECOVERY_START_MINUTES = 0.4
     MEDIUM_RECOVERY_DURATION_MINUTES = 5.0
-    MEDIUM_RECOVERY_MULTIPLIER = 1.3  # 与 C 静态常量一致
+    MEDIUM_RECOVERY_MULTIPLIER = 1.0  # Hardcore：原1.137
     SLOW_RECOVERY_START_MINUTES = 10.0
-    SLOW_RECOVERY_MULTIPLIER = 0.6  # 与 C 静态常量一致
+    SLOW_RECOVERY_MULTIPLIER = 0.35  # Hardcore：原0.476
 
     # 姿态恢复倍数
-    STANDING_RECOVERY_MULTIPLIER = 1.3  # 与 C 静态常量一致
-    CROUCHING_RECOVERY_MULTIPLIER = 1.4  # 与 C 静态常量一致
-    PRONE_RECOVERY_MULTIPLIER = 1.6  # 与 C 静态常量一致
+    STANDING_RECOVERY_MULTIPLIER = 0.85  # Hardcore：原1.103
+    CROUCHING_RECOVERY_MULTIPLIER = 1.6  # Hardcore：原1.4
+    PRONE_RECOVERY_MULTIPLIER = 1.9  # Hardcore：原2.344
 
-    # 姿态消耗倍数（SCR_StaminaConstants POSTURE_CROUCH_MULTIPLIER=1.8, POSTURE_PRONE_MULTIPLIER=3.0）
-    POSTURE_CROUCH_MULTIPLIER = 1.8  # 与 C POSTURE_CROUCH_CONSUMPTION_MULTIPLIER 一致
-    POSTURE_PRONE_MULTIPLIER = 2.5  # 减少趴姿消耗倍数
+    # 姿态消耗倍数（Hardcore 提升：蹲姿+67%，趴姿+40%）
+    POSTURE_CROUCH_MULTIPLIER = 3.0  # Hardcore：原1.8
+    POSTURE_PRONE_MULTIPLIER = 3.5  # Hardcore：原2.5
 
     # 恢复/消耗相关
     REST_RECOVERY_RATE = 0.250  # pts/s
@@ -112,23 +112,24 @@ class RSSConstants:
 
     # 负重
     BODY_TOLERANCE_BASE = 90.0
-    ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20
+    ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.28  # Hardcore：原0.20
     ENCUMBRANCE_SPEED_PENALTY_EXPONENT = 1.5
     ENCUMBRANCE_SPEED_PENALTY_MAX = 0.75
-    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5  # 减少负重对消耗率的影响
-    LOAD_RECOVERY_PENALTY_COEFF = 0.0001  # 与 C 静态常量一致
+    ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.8  # Hardcore：原1.5
+    LOAD_RECOVERY_PENALTY_COEFF = 0.0002  # Hardcore：原0.0001
     LOAD_RECOVERY_PENALTY_EXPONENT = 2.0  # 与 C 静态常量一致
 
     SPRINT_VELOCITY_THRESHOLD = 5.5
-    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # [DEPRECATED] C 端已统一公式，Python twin 不应用此倍数
+    SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5  # 与 SCR_RSS_Settings Init*Defaults / 游戏一致
     TARGET_RUN_SPEED = 3.8
     TARGET_RUN_SPEED_MULTIPLIER = 3.8 / 5.5
-    SMOOTH_TRANSITION_START = 0.25
+    SMOOTH_TRANSITION_START = 0.35  # Hardcore：原0.25
     SMOOTH_TRANSITION_END = 0.05
     MIN_LIMP_SPEED_MULTIPLIER = 1.0 / 5.5
     EXHAUSTION_THRESHOLD = 0.0
-    SPRINT_ENABLE_THRESHOLD = 0.18
-    SPRINT_SPEED_BOOST = 0.30  # 从配置获取，默认 0.30
+    SPRINT_ENABLE_THRESHOLD = 0.25  # Hardcore：原0.18
+    SPRINT_SPEED_BOOST = 0.22  # Hardcore：原0.30
+    WILLPOWER_THRESHOLD = 0.35  # Hardcore：新增可配置参数（原0.25硬编码）
 
     TACTICAL_SPRINT_BURST_DURATION = 8.0
     TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0
@@ -136,20 +137,20 @@ class RSSConstants:
     TACTICAL_SPRINT_COOLDOWN = 15.0
 
     FATIGUE_START_TIME_MINUTES = 5.0
-    FATIGUE_ACCUMULATION_COEFF = 0.015
-    FATIGUE_MAX_FACTOR = 2.0
+    FATIGUE_ACCUMULATION_COEFF = 0.025  # Hardcore：原0.015
+    FATIGUE_MAX_FACTOR = 2.5  # Hardcore：原2.0
     FATIGUE_RECOVERY_PENALTY = 0.05
     FATIGUE_RECOVERY_DURATION_MINUTES = 20.0
 
     MARGINAL_DECAY_THRESHOLD = 0.8
     MARGINAL_DECAY_COEFF = 1.1
     MIN_RECOVERY_STAMINA_THRESHOLD = 0.2
-    MIN_RECOVERY_REST_TIME_SECONDS = 3.0
+    MIN_RECOVERY_REST_TIME_SECONDS = 5.0  # Hardcore：原3.0
 
     EPOC_DELAY_SECONDS = 2.0
     EPOC_DRAIN_RATE = 0.001
 
-    ENERGY_TO_STAMINA_COEFF = 9e-07  # 与 C 端 EliteStandard 预设一致
+    ENERGY_TO_STAMINA_COEFF = 9.5e-07  # Hardcore：原7.17e-07
 
     # 动作消耗物理模型
     JUMP_EFFICIENCY = 0.22
@@ -313,6 +314,32 @@ class EnvironmentFactor:
         coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 9e-7)
         extra_per_tick = extra_watts * coeff * 0.2
         return base_drain + extra_per_tick
+
+
+# 与游戏 Init*Defaults 一致、但不在 v4 Optuna SEARCH_SPACE 中的字段（创建孪生时合并）
+GAME_ALIGNED_FIXED_PARAMS = {
+    'sprint_stamina_drain_multiplier': 3.5,
+    'load_metabolic_dampening': 0.70,
+    'aerobic_efficiency_factor': 0.9,
+    'anaerobic_efficiency_factor': 1.2,
+    'fatigue_accumulation_coeff': 0.015,
+    'fatigue_max_factor': 2.0,
+    'encumbrance_speed_penalty_exponent': 1.5,
+    'encumbrance_speed_penalty_max': 0.75,
+    'load_recovery_penalty_exponent': 2.0,
+    'marginal_decay_threshold': 0.8,
+    'marginal_decay_coeff': 1.1,
+    'min_recovery_stamina_threshold': 0.2,
+    'min_recovery_rest_time_seconds': 3.0,
+    'sprint_velocity_threshold': 5.5,
+}
+
+
+def merge_game_aligned_params(optuna_params: Dict) -> Dict:
+    """Optuna 采样参数 + 游戏固定项，供 RSSDigitalTwin 与 C 预设对齐。"""
+    merged = dict(GAME_ALIGNED_FIXED_PARAMS)
+    merged.update(optuna_params)
+    return merged
 
 
 class MovementType:
@@ -846,9 +873,10 @@ class RSSDigitalTwin:
     # -------------------------------------------------------------------------
 
     def calculate_speed_multiplier_by_stamina(self, stamina_percent: float) -> float:
-        """与 C CalculateSpeedMultiplierByStamina 一致。"""
+        """与 C CalculateSpeedMultiplierByStamina 一致（平台期 = willpower_threshold）。"""
         stamina_percent = np.clip(float(stamina_percent), 0.0, 1.0)
-        start = getattr(self.constants, 'SMOOTH_TRANSITION_START', 0.25)
+        start = getattr(self.constants, 'WILLPOWER_THRESHOLD', 0.35)
+        start = float(np.clip(start, 0.15, 0.5))
         end = getattr(self.constants, 'SMOOTH_TRANSITION_END', 0.05)
         target_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
         min_limp = getattr(self.constants, 'MIN_LIMP_SPEED_MULTIPLIER', 1.0 / 5.5)

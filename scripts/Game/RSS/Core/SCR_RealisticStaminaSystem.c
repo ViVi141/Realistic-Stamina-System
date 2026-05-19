@@ -130,19 +130,21 @@ class RealisticStaminaSpeedSystem
         
         float baseSpeedMultiplier = 0.0;
         
-        if (staminaPercent >= SMOOTH_TRANSITION_START)
+        float smoothTransitionStart = StaminaConfigBridge.GetSmoothTransitionStart();
+        
+        if (staminaPercent >= smoothTransitionStart)
         {
-            // 意志力平台期（25%-100%）：保持恒定目标速度（3.8 m/s）
+            // 意志力平台期（smoothTransitionStart%-100%）：保持恒定目标速度（3.8 m/s）
             // 模拟士兵通过意志力克服早期疲劳，维持恒定性能
             baseSpeedMultiplier = TARGET_RUN_SPEED_MULTIPLIER;
         }
         else if (staminaPercent >= SMOOTH_TRANSITION_END)
         {
-            // 平滑过渡期（5%-25%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
+            // 平滑过渡期（5%-smoothTransitionStart%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
             // 让开始下降时更柔和，接近力竭时下降更快
-            // t = (stamina - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END)
+            // t = (stamina - SMOOTH_TRANSITION_END) / (smoothTransitionStart - SMOOTH_TRANSITION_END)
             // smoothT = t² × (3 - 2t)，这是一个平滑的S型曲线
-            float t = (staminaPercent - SMOOTH_TRANSITION_END) / (SMOOTH_TRANSITION_START - SMOOTH_TRANSITION_END); // 0.0-1.0
+            float t = (staminaPercent - SMOOTH_TRANSITION_END) / (smoothTransitionStart - SMOOTH_TRANSITION_END); // 0.0-1.0
             t = Math.Clamp(t, 0.0, 1.0);
             float smoothT = t * t * (3.0 - 2.0 * t); // smoothstep函数
             
@@ -470,7 +472,7 @@ class RealisticStaminaSpeedSystem
                 stanceRecoveryMultiplier = StaminaConfigBridge.GetStandingRecoveryMultiplier();
                 break;
             case 1: // 蹲姿
-                stanceRecoveryMultiplier = StaminaConstants.CROUCHING_RECOVERY_MULTIPLIER;
+                stanceRecoveryMultiplier = StaminaConfigBridge.GetCrouchingRecoveryMultiplier();
                 break;
             case 2: // 趴姿
                 stanceRecoveryMultiplier = StaminaConfigBridge.GetProneRecoveryMultiplier();
@@ -964,7 +966,7 @@ class RealisticStaminaSpeedSystem
     // @return true表示可以Sprint，false表示不能Sprint
     static bool CanSprint(float staminaPercent)
     {
-        return staminaPercent >= SPRINT_ENABLE_THRESHOLD;
+        return staminaPercent >= StaminaConfigBridge.GetSprintEnableThreshold();
     }
     
     // ==================== 地形系数系统（基于实际测试数据的插值映射）====================

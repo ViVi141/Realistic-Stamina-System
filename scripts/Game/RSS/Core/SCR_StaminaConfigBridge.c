@@ -25,7 +25,7 @@ class StaminaConfigBridge
                 return Math.Max(coeff, ENERGY_TO_STAMINA_COEFF_MIN);
             }
         }
-        return 7.173939269261512e-07; // v4 EliteStandard fallback (2026-05)
+        return 9.5e-07; // Hardcore fallback (2026-05，原7.17e-07)
     }
     
     // 获取基础恢复率（从配置管理器）
@@ -38,7 +38,7 @@ class StaminaConfigBridge
             if (params)
                 return params.base_recovery_rate;
         }
-        return 0.000153478; // v4 EliteStandard fallback (2026-05)
+        return 0.00010; // Hardcore fallback (2026-05，原0.000153)
     }
     
     // 获取站姿恢复倍数（从配置管理器）
@@ -51,9 +51,22 @@ class StaminaConfigBridge
             if (params)
                 return params.standing_recovery_multiplier;
         }
-        return 1.1033940520181997; // v4 EliteStandard fallback (2026-05)
+        return 0.85; // Hardcore fallback (2026-05，原1.103)
     }
     
+    // 获取蹲姿恢复倍数（从配置管理器）
+    static float GetCrouchingRecoveryMultiplier()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+                return params.crouching_recovery_multiplier;
+        }
+        return 1.6; // Hardcore fallback (2026-05，原1.5)
+    }
+
     // 获取趴姿恢复倍数（从配置管理器）
     static float GetProneRecoveryMultiplier()
     {
@@ -64,7 +77,7 @@ class StaminaConfigBridge
             if (params)
                 return params.prone_recovery_multiplier;
         }
-        return 2.3436692109309787; // v4 EliteStandard fallback (2026-05)
+        return 1.9; // Hardcore fallback (2026-05，原2.344)
     }
     
     // 获取负重恢复惩罚系数（从配置管理器）
@@ -77,7 +90,7 @@ class StaminaConfigBridge
             if (params)
                 return params.load_recovery_penalty_coeff;
         }
-        return 5.401551119196543e-05; // v4 EliteStandard fallback (2026-05)
+        return 0.0002; // Hardcore fallback (2026-05，原5.4e-05)
     }
     
     // 获取负重恢复惩罚指数（从配置管理器）
@@ -90,7 +103,7 @@ class StaminaConfigBridge
             if (params)
                 return params.load_recovery_penalty_exponent;
         }
-        return 2.0; // 默认值
+        return 2.0; // 负重恢复惩罚指数（平方关系，不变）
     }
     
     // 获取负重速度惩罚系数（从配置管理器）
@@ -103,7 +116,7 @@ class StaminaConfigBridge
             if (params)
                 return params.encumbrance_speed_penalty_coeff;
         }
-        return 0.12557037442961433; // v4 EliteStandard fallback (2026-05)
+        return 0.28; // Hardcore fallback (2026-05，原0.126)
     }
     
     // 获取负重体力消耗系数（从配置管理器）
@@ -116,7 +129,7 @@ class StaminaConfigBridge
             if (params)
                 return params.encumbrance_stamina_drain_coeff;
         }
-        return 1.9633666302334787; // v4 EliteStandard fallback (2026-05)
+        return 2.8; // Hardcore fallback (2026-05，原1.963)
     }
 
     // 获取负重代谢阻尼（与 Python 优化器同步，避免测试与游戏表现差异）
@@ -142,7 +155,7 @@ class StaminaConfigBridge
             if (params)
                 return Math.Max(params.max_recovery_per_tick, 0.0);
         }
-        return 0.0005831263335868464; // v4 EliteStandard fallback (2026-05)
+        return 0.0004; // Hardcore fallback (2026-05，原0.000583)
     }
 
     // 获取负重速度惩罚指数（从配置管理器）
@@ -185,7 +198,7 @@ class StaminaConfigBridge
                 return Math.Max(v, 1.0);
             }
         }
-        return 3.5; // [FIX] 默认值与 SPRINT_STAMINA_DRAIN_MULTIPLIER static const 统一为 3.5
+        return 5.0; // Hardcore fallback (2026-05，原3.5)
     }
     
     // 获取疲劳累积系数（从配置管理器）
@@ -198,7 +211,7 @@ class StaminaConfigBridge
             if (params)
                 return params.fatigue_accumulation_coeff;
         }
-        return 0.015; // 默认值
+        return 0.025; // Hardcore fallback (2026-05，原0.015)
     }
     
     // 获取最大疲劳因子（从配置管理器）
@@ -211,7 +224,7 @@ class StaminaConfigBridge
             if (params)
                 return params.fatigue_max_factor;
         }
-        return 2.0; // 默认值
+        return 2.5; // Hardcore fallback (2026-05，原2.0)
     }
     
     // 获取蹲姿消耗倍数（从配置管理器）
@@ -224,7 +237,7 @@ class StaminaConfigBridge
             if (params)
                 return params.posture_crouch_multiplier;
         }
-        return 2.437251840930866; // v4 EliteStandard fallback (2026-05)
+        return 3.0; // Hardcore fallback (2026-05，原2.437) — 蹲姿移动消耗更高
     }
 
     // 获取趴姿消耗倍数（从配置管理器）
@@ -237,7 +250,7 @@ class StaminaConfigBridge
             if (params)
                 return params.posture_prone_multiplier;
         }
-        return 2.964831628856109; // v4 EliteStandard fallback (2026-05)
+        return 3.5; // Hardcore fallback (2026-05，原2.965) — 趴姿移动消耗更高
     }
 
     // ==================== 恢复模型参数配置方法 ====================
@@ -252,7 +265,7 @@ class StaminaConfigBridge
             if (params)
                 return params.recovery_nonlinear_coeff;
         }
-        return 0.7916386681694456; // v4 EliteStandard fallback (2026-05)
+        return 0.5; // Hardcore fallback (2026-05，原0.792)
     }
 
     // 获取快速恢复倍数（从配置管理器）
@@ -265,7 +278,7 @@ class StaminaConfigBridge
             if (params)
                 return params.fast_recovery_multiplier;
         }
-        return 2.395424393975942; // v4 EliteStandard fallback (2026-05)
+        return 1.6; // Hardcore fallback (2026-05，原2.395)
     }
 
     // 获取中等恢复倍数（从配置管理器）
@@ -278,7 +291,7 @@ class StaminaConfigBridge
             if (params)
                 return params.medium_recovery_multiplier;
         }
-        return 1.1374814244785123; // v4 EliteStandard fallback (2026-05)
+        return 1.0; // Hardcore fallback (2026-05，原1.137)
     }
 
     // 获取慢速恢复倍数（从配置管理器）
@@ -291,7 +304,7 @@ class StaminaConfigBridge
             if (params)
                 return params.slow_recovery_multiplier;
         }
-        return 0.4756093184784932; // v4 EliteStandard fallback (2026-05)
+        return 0.35; // Hardcore fallback (2026-05，原0.476)
     }
 
     // 获取最低体力阈值（从配置管理器）
@@ -317,7 +330,7 @@ class StaminaConfigBridge
             if (params)
                 return Math.Max(params.min_recovery_rest_time_seconds, 0.0);
         }
-        return 3.0; // 回退到硬编码默认值 3.0s
+        return 5.0; // Hardcore fallback (2026-05，原3.0s)
     }
 
     // ==================== Sprint参数配置方法 ====================
@@ -345,7 +358,50 @@ class StaminaConfigBridge
             if (params)
                 return params.sprint_speed_boost;
         }
-        return 0.2561103503743016; // v4 EliteStandard fallback (2026-05)
+        return 0.22; // Hardcore fallback (2026-05，原0.256)
+    }
+    
+    // ==================== 速度模型阈值配置方法（Hardcore 新增暴露）====================
+    
+    // 获取意志力平台期阈值（从配置管理器）
+    // 体力高于此值时保持恒定目标速度。Hardcore 默认 0.35（原 0.25）
+    static float GetWillpowerThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.willpower_threshold > 0.0)
+                return Math.Clamp(params.willpower_threshold, 0.15, 0.5);
+        }
+        return 0.35; // Hardcore fallback（原0.25）
+    }
+    
+    // 获取平滑过渡起点（从配置管理器，等同于 willpower_threshold）
+    static float GetSmoothTransitionStart()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.willpower_threshold > 0.0)
+                return Math.Clamp(params.willpower_threshold, 0.15, 0.5);
+        }
+        return 0.35; // Hardcore fallback（原0.25）
+    }
+    
+    // 获取冲刺最小体力阈值（从配置管理器）
+    // 体力低于此值时禁止冲刺。Hardcore 默认 0.25（原 0.18）
+    static float GetSprintEnableThreshold()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.sprint_enable_threshold > 0.0)
+                return Math.Clamp(params.sprint_enable_threshold, 0.10, 0.40);
+        }
+        return 0.25; // Hardcore fallback（原0.18）
     }
 
     // ==================== 边际效应参数配置方法 ====================

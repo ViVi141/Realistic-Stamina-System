@@ -7,7 +7,7 @@ modded class SCR_BaseGameMode
     // --------------------------------------------------------------------------------------------
     // RSS config replication (lightweight)
     //   • 客户端本地 InitPresets() 生成预设参数，服务器只复制"选哪个预设 + 管理员改了哪些开关"
-    //   • Custom 预设时额外复制 m_aRssCustomParams（47 floats），非 Custom 不复制
+    //   • Custom 预设时额外复制 m_aRssCustomParams（50 floats），非 Custom 不复制
     // --------------------------------------------------------------------------------------------
     [RplProp(onRplName: "OnRssConfigReplicated")]
     protected string m_sRssConfigVersion;
@@ -19,7 +19,7 @@ modded class SCR_BaseGameMode
     protected bool m_bRssCustomActive;  // true = Custom 预设选中，m_aRssCustomParams 有效
 
     [RplProp(onRplName: "OnRssConfigReplicated")]
-    protected ref array<float> m_aRssCustomParams;  // 47 floats，仅 Custom 模式有效
+    protected ref array<float> m_aRssCustomParams;  // 50 floats，仅 Custom 模式有效
 
     // 顶层开关（5 个，管理员通过 Settings → RSS Tab 修改）
     [RplProp(onRplName: "OnRssConfigReplicated")]

@@ -1074,9 +1074,18 @@ modded class SCR_CharacterControllerComponent
                     float targetStamina = 1.0;
                     if (m_pFatigueSystem) targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
                     if (netRate < -0.0001) {
+                        // 消耗 ETA 保留线性外推：Pandolf 消耗随速度近线性变化，
+                        // 恢复分量在消耗场景中占比小，线性近似足够
                         timeToDepleteSec = Math.Min(staminaPercent / Math.AbsFloat(netRate), 7200.0);
                     } else if (netRate > 0.0001 && staminaPercent < targetStamina) {
-                        timeToFullSec = Math.Min((targetStamina - staminaPercent) / netRate, 7200.0);
+                        // 恢复 ETA 改用分段积分：恢复曲线高度非线性
+                        // （非线性系数、边际效应衰减、快速/中等/慢速三期），
+                        // 简单线性外推在 >80% 区域误差可达 200%+
+                        timeToFullSec = StaminaUpdateCoordinator.EstimateRecoveryTimeToFull(
+                            staminaPercent, targetStamina, totalDrainRate,
+                            baseDrainRateByVelocity, baseDrainRateByVelocityForModule,
+                            heatStressMultiplier, m_pEpocState, m_pEncumbranceCache,
+                            m_pExerciseTracker, this, m_pEnvironmentFactor);
                     }
                 }
                 DebugInfoParams debugParams = new DebugInfoParams();

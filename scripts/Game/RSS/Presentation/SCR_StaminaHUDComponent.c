@@ -348,12 +348,12 @@ class SCR_StaminaHUDComponent
         int wetKg = Math.Round(s_fCachedWetWeight * 10.0);  // 保留一位小数
         
         // 构建耗尽/回满时间显示字符串（净消耗显示耗尽时间，净恢复显示回满时间，平衡/已耗尽/已回满显示 0）
-        // 耗尽 ETA 按显示体力/缓存体力比例缩放，使倒计时与 HUD 体力条一致；回满 ETA 不缩放（目标可能为疲劳上限）
+        // ETA 基于实际体力计算，不与显示平滑值挂钩。
+        // 显示平滑仅影响体力条数字的视觉过渡，不应缩放 ETA（净速率随实际体力变化）。
+        // 回满 ETA 改用分段积分（EstimateRecoveryTimeToFull），同样不缩放。
         string timeStr = "0";
         bool showBlackZero = false;
         float displayTimeToDepleteSec = s_fCachedTimeToDepleteSec;
-        if (s_fCachedTimeToDepleteSec >= 0.0 && s_fCachedStaminaPercent > 0.001)
-            displayTimeToDepleteSec = s_fCachedTimeToDepleteSec * (s_fDisplayStaminaPercent / s_fCachedStaminaPercent);
 
         if (s_fCachedTimeToDepleteSec >= 0.0)
         {

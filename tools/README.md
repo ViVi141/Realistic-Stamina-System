@@ -8,7 +8,8 @@
 |------|------|
 | `rss_pipeline_v4.py` | v4 主入口：Optuna NSGA-II、8 场景、`extract_presets` 写出三份 JSON |
 | `rss_digital_twin_fix.py` | 与 C 端对齐的数字孪生（供管线 import，勿单独当 CLI 依赖） |
-| `optimized_rss_config_*_v4.json` | 三份预设（EliteStandard / StandardMilsim / TacticalAction） |
+| `optimized_rss_config_*_v4.json` | 三份预设：EliteStandard（combat+recovery 联合最小）/ StandardMilsim / TacticalAction |
+| `rss_digital_twin_fix.py` | 闭环 Mission 仿真；`merge_game_aligned_params()` 合并游戏固定参数 |
 | `embed_json_to_c.py` | 将 JSON 参数嵌入 `SCR_RSS_Settings.c`（可选工作流） |
 | `test_v4_smoke.py` | 无 Optuna：跑通 8 任务仿真 + `compute_metrics` |
 | `quick_verify.py` | 少量 trial + 临时目录写出预设，检查管线可运行 |

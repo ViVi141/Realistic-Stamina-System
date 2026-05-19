@@ -26,21 +26,25 @@ class StaminaConstants
     // 参考：Military Stamina System Model (90kg Male / 22yo)
     
     // 速度阈值（m/s）- 0kg 下实测 Sprint 5.5 / Run 3.8
+    // 注意：这些值定义引擎移动阶段的切换点，并非实际步行速度。
+    // Walk 阈值 3.2 m/s ≠ 步行速度（~1.2-1.5 m/s），而是引擎阶段编号的边界。
     static const float SPRINT_VELOCITY_THRESHOLD = 5.5; // @fallback m/s，Sprint速度阈值
     static const float RUN_VELOCITY_THRESHOLD = 3.8; // @fallback m/s，Run速度阈值
-    static const float WALK_VELOCITY_THRESHOLD = 3.2; // @fallback m/s，Walk速度阈值
+    static const float WALK_VELOCITY_THRESHOLD = 3.2; // @fallback m/s，Walk移动阶段阈值（非步行速度）
     
     // 基于负重的动态速度阈值（m/s）
     static const float RECOVERY_THRESHOLD_NO_LOAD = 2.5; // @fallback m/s，空载时恢复体力阈值
     static const float DRAIN_THRESHOLD_COMBAT_LOAD = 1.5; // @fallback m/s，负重30kg时开始消耗体力的阈值
     static const float COMBAT_LOAD_WEIGHT = 30.0; // @fallback kg，战斗负重（用于计算动态阈值）
     
-    // 基础消耗率（pts/s，每秒消耗的点数）
-    // 注意：这些值基于100点体力池系统，需要转换为0.0-1.0范围
-    static const float SPRINT_BASE_DRAIN_RATE = 0.480; // @fallback pts/s（Sprint）
-    static const float RUN_BASE_DRAIN_RATE = 0.075; // @fallback pts/s（Run）
-    static const float WALK_BASE_DRAIN_RATE = 0.045; // @fallback pts/s（Walk）
-    static const float REST_RECOVERY_RATE = 0.250; // @fallback pts/s（Rest，恢复）
+    // [LEGACY] 旧版分段消耗率（pts/s——100点池系统，已被 Pandolf 统一公式取代）。
+    // v3.23.0+: 所有 Walk/Run/Sprint 消耗统一走 Pandolf 能量公式。以下值仅作为
+    //  旧代码回退（Idle/REST_RECOVERY_PER_TICK 在 UpdateCoordinator 的 phase==0 分支
+    //  用于「静止恢复」场景），不应再用于实际消耗计算。
+    static const float SPRINT_BASE_DRAIN_RATE = 0.480; // @fallback pts/s（Sprint，Pandolf 已统一）
+    static const float RUN_BASE_DRAIN_RATE = 0.075; // @fallback pts/s（Run，Pandolf 已统一）
+    static const float WALK_BASE_DRAIN_RATE = 0.045; // @fallback pts/s（Walk，Pandolf 已统一）
+    static const float REST_RECOVERY_RATE = 0.250; // @fallback pts/s（Rest，恢复，仍用于 phase==0 回退）
     
     // 转换为0.0-1.0范围的消耗率（每0.2秒）
     static const float SPRINT_DRAIN_PER_TICK = SPRINT_BASE_DRAIN_RATE / 100.0 * 0.2; // @fallback 每0.2秒
@@ -54,7 +58,7 @@ class StaminaConstants
     // 精疲力尽阈值
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // @fallback m/s（跛行速度）
-    static const float SPRINT_ENABLE_THRESHOLD = 0.18; // @fallback 体力≥18%时才能Sprint；与 WALK_RECOVERY_ZONE_THRESHOLD(0.15) 之间留 3% 缓冲区
+    static const float SPRINT_ENABLE_THRESHOLD = 0.25; // @fallback 体力≥25%时才能Sprint；疲劳时肌肉无法爆发冲刺（原0.18）
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
     static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
     
@@ -74,12 +78,12 @@ class StaminaConstants
     
     // 意志力平台期阈值（体力百分比）
     // 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
-    static const float WILLPOWER_THRESHOLD = 0.25; // 25%
+    static const float WILLPOWER_THRESHOLD = 0.35; // 35% — Hardcore：疲劳感更早体现（原25%）
     
     // 平滑过渡起点（体力百分比）
-    // 在25%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
-    // 将25%设为"疲劳临界区"的起点，而不是终点
-    static const float SMOOTH_TRANSITION_START = 0.25; // 25%（疲劳临界区起点）
+    // 在35%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
+    // 将35%设为"疲劳临界区"的起点（原25%，Hardcore提至35%）
+    static const float SMOOTH_TRANSITION_START = 0.35; // 35%（疲劳临界区起点，原25%）— Hardcore：疲劳过渡区从35%体力开始
     static const float SMOOTH_TRANSITION_END = 0.05; // 5%，平滑过渡结束点（真正的力竭点）
     
     // 跛行速度倍数（最低速度）
@@ -101,12 +105,12 @@ class StaminaConstants
     // 基于 US Army 实验数据（Knapik et al., 1996; Quesada et al., 2000; Vine et al., 2022）
     // 当前约 30 kg 时速度惩罚约 5%（Sprint 约 7%）。若需更强「负重感」，可提高到 0.3–0.4 并做测试。
     // 注意：运行时通过 GetEncumbranceSpeedPenaltyCoeff() / GetEncumbranceStaminaDrainCoeff() 获取
-    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20; // [SOFT fallback]
+    static const float ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.28; // [SOFT fallback] Hardcore：负重速度惩罚更强（原0.20）
     static const float ENCUMBRANCE_SPEED_EXPONENT = 1.5; // [SOFT fallback]
     
     // [SOFT] 负重对体力消耗的影响系数（γ）- 由配置管理器动态获取
     // 基于医学研究（Pandolf et al., 1977; Looney et al., 2018; Vine et al., 2022）
-    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.0; // [SOFT fallback]
+    static const float ENCUMBRANCE_STAMINA_DRAIN_COEFF = 2.8; // [SOFT fallback] Hardcore：负重对消耗影响更大（原2.0）
     
     // 最小速度倍数（防止体力完全耗尽时完全无法移动）
     static const float MIN_SPEED_MULTIPLIER = 0.15; // 15%最低速度（约0.78 m/s，勉强行走）
@@ -174,30 +178,30 @@ class StaminaConstants
     // 计算逻辑：1.0(体力) / 1333秒(22.2分钟) / 5(每秒tick数) = 0.00015
     // 注意：此值现在从配置管理器获取（GetBaseRecoveryRate()）
     // v4 optimizer: aligned with EliteStandard preset (2026-05)
-    static const float BASE_RECOVERY_RATE = 0.000153478; // 每0.2秒恢复0.0153%（与v4 EliteStandard一致）
+    static const float BASE_RECOVERY_RATE = 0.00010; // 每0.2秒恢复0.01% — Hardcore：基础恢复降低35%（原0.000153）
     
     // 恢复率非线性系数（基于当前体力百分比）
-    static const float RECOVERY_NONLINEAR_COEFF = 0.7916386681694456; // v4 EliteStandard (2026-05)
+    static const float RECOVERY_NONLINEAR_COEFF = 0.5; // Hardcore：降低非线性恢复加成（原0.792）
     
     // 快速恢复期参数（刚停止运动后的快速恢复阶段）
     // 拟真平衡点：模拟"喘匀第一口氧气"
     // 生理学上，氧债的50%是在停止运动后的前30-60秒内偿还的
     // 模拟停止运动后前90秒的高效恢复
     static const float FAST_RECOVERY_DURATION_MINUTES = 0.4;  // 快速恢复期（分钟）：缩短至24秒，减少“刚停即猛回”体感
-    static const float FAST_RECOVERY_MULTIPLIER = 2.395424393975942; // v4 EliteStandard (2026-05)
+    static const float FAST_RECOVERY_MULTIPLIER = 1.6; // Hardcore：快速恢复期仅1.6×（原2.395）
     
     // 中等恢复期参数
     // 拟真平衡点：平衡快速恢复期和慢速恢复期
     static const float MEDIUM_RECOVERY_START_MINUTES = 0.4;  // 与快速恢复期衔接
     // [修复] 与Python数字孪生保持一致，从8.5改为5.0
     static const float MEDIUM_RECOVERY_DURATION_MINUTES = 5.0; // 中等恢复期持续时间（分钟）
-    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.1374814244785123; // v4 EliteStandard (2026-05)
+    static const float MEDIUM_RECOVERY_MULTIPLIER = 1.0; // Hardcore：中等恢复期无加成（原1.137）
     
     // 慢速恢复期参数（长时间休息后的慢速恢复阶段）
     // 生理学依据：休息超过10分钟后，恢复速度逐渐减慢（接近上限时恢复变慢）
     // 优化：提升到0.8倍（从0.7倍）
     static const float SLOW_RECOVERY_START_MINUTES = 10.0; // 慢速恢复期开始时间（分钟）
-    static const float SLOW_RECOVERY_MULTIPLIER = 0.4756093184784932; // v4 EliteStandard (2026-05)
+    static const float SLOW_RECOVERY_MULTIPLIER = 0.35; // Hardcore：慢速恢复期仅0.35×（原0.476）
     
     // 年龄对恢复速度的影响系数
     static const float AGE_RECOVERY_COEFF = 0.2; // 年龄恢复系数
@@ -215,10 +219,10 @@ class StaminaConstants
     // 蹲姿：减少下肢肌肉紧张，+40%恢复速度
     // 趴姿：全身放松，最大化血液循环，+60%恢复速度
     // 逻辑：趴下是唯一的快速回血手段（重力分布均匀），强迫重装兵必须趴下
-    // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
-    static const float STANDING_RECOVERY_MULTIPLIER = 1.1033940520181997; // v4 EliteStandard (2026-05)
-    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.4; // [修复] 与Python一致，从1.5降低到1.4（降低7%）
-    static const float PRONE_RECOVERY_MULTIPLIER = 2.3436692109309787; // v4 EliteStandard (2026-05)
+    // 注意：这些值现在从配置管理器获取（GetStandingRecoveryMultiplier(), GetCrouchingRecoveryMultiplier(), GetProneRecoveryMultiplier()）
+    static const float STANDING_RECOVERY_MULTIPLIER = 0.85; // Hardcore：站姿无恢复加成，反而有轻微惩罚（原1.103）
+    static const float CROUCHING_RECOVERY_MULTIPLIER = 1.6; // Hardcore：蹲姿恢复1.6×（原1.5 fallback）
+    static const float PRONE_RECOVERY_MULTIPLIER = 1.9; // Hardcore：趴姿恢复降至1.9×（原2.344）
     
     // ==================== 负重对恢复的静态剥夺机制（深度生理压制版本）====================
     // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
@@ -228,7 +232,7 @@ class StaminaConstants
     // 结果：穿着40kg装备站立恢复时，原本100%的基础恢复会被扣除70%
     // 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除），否则回血极慢
     // 注意：这些值现在从配置管理器获取（GetLoadRecoveryPenaltyCoeff(), GetLoadRecoveryPenaltyExponent()）
-    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0001; // [修复] 负重恢复惩罚系数，从 0.0004 降低到 0.0001
+    static const float LOAD_RECOVERY_PENALTY_COEFF = 0.0002; // Hardcore：负重恢复惩罚翻倍（原0.0001→0.0002）
     static const float LOAD_RECOVERY_PENALTY_EXPONENT = 2.0; // 负重恢复惩罚指数（2.0 = 平方）
     static const float BODY_TOLERANCE_BASE = 90.0; // [修复] 身体耐受基准（kg），从 30.0 增加到 90.0（参考体重）
     
@@ -247,14 +251,14 @@ class StaminaConstants
     // [修复 v3.6.1] 将极度疲劳惩罚时间从 10秒 缩短为 3秒
     // 模拟深呼吸 3 秒后即可开始恢复，而不是发呆 10 秒
     static const float MIN_RECOVERY_STAMINA_THRESHOLD = 0.2; // 最低体力阈值（20%）
-    static const float MIN_RECOVERY_REST_TIME_SECONDS = 3.0; // 最低体力时需要的休息时间（秒）
+    static const float MIN_RECOVERY_REST_TIME_SECONDS = 5.0; // Hardcore：低体力需静止5秒才能开始恢复（原3.0）
     
     // ==================== 运动持续时间影响（累积疲劳）参数 ====================
     // 基于个性化运动建模（Palumbo et al., 2018）
     // 注意：这些值现在从配置管理器获取（GetFatigueAccumulationCoeff(), GetFatigueMaxFactor()）
-    static const float FATIGUE_ACCUMULATION_COEFF = 0.015; // 每分钟增加1.5%消耗（基于文献：30分钟增加约45%）
+    static const float FATIGUE_ACCUMULATION_COEFF = 0.025; // Hardcore：每分钟增加2.5%消耗（原1.5%）
     static const float FATIGUE_START_TIME_MINUTES = 5.0; // 疲劳开始累积的时间（分钟），前5分钟无疲劳累积
-    static const float FATIGUE_MAX_FACTOR = 2.0; // 最大疲劳因子（2.0倍，即消耗最多增加100%）
+    static const float FATIGUE_MAX_FACTOR = 2.5; // Hardcore：最大疲劳因子2.5×（原2.0）
     
     // ==================== 代谢适应参数（Metabolic Adaptation）====================
     // 基于个性化运动建模（Palumbo et al., 2018）
@@ -358,7 +362,7 @@ class StaminaConstants
     // 运行时通过 GetSprintSpeedBoost() / GetSprintStaminaDrainMultiplier() 从配置管理器读取
     static const float SPRINT_SPEED_BOOST              = 0.2561103503743016; // [SOFT fallback] v4 EliteStandard (2026-05)
     static const float SPRINT_MAX_SPEED_MULTIPLIER     = 1.0;  // [HARD] 100%游戏最大速度上限
-    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.5;  // [SOFT fallback] Sprint消耗是Run的3.5×
+    static const float SPRINT_STAMINA_DRAIN_MULTIPLIER = 5.0;  // [SOFT fallback] Hardcore：Sprint消耗是Run的5.0×（原3.5）
     // 战术冲刺爆发时长：Sprint 前 N 秒内减轻负重对速度的惩罚，实现短时全速爆发体感
     static const float TACTICAL_SPRINT_BURST_DURATION = 8.0;   // 秒
     static const float TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0; // 爆发结束后 5 秒缓冲区，负重惩罚从爆发系数线性过渡到 1.0，再进入平稳期
@@ -429,7 +433,7 @@ class StaminaConstants
     
     // [SOFT fallback] 能量到体力的转换系数
     // 此值由配置管理器动态获取（GetEnergyToStaminaCoeff()），此处仅为代码回退默认值
-    static const float ENERGY_TO_STAMINA_COEFF = 7.173939269261512e-07; // [SOFT fallback] v4 EliteStandard (2026-05)
+    static const float ENERGY_TO_STAMINA_COEFF = 9.5e-07; // [SOFT fallback] Hardcore：能量→体力转换率+32%（原7.17e-07）
     
     // [HARD] 参考体重（Pandolf 模型归一化基准，与 CHARACTER_WEIGHT 保持一致）
     static const float REFERENCE_WEIGHT = 90.0; // [HARD] kg

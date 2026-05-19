@@ -34,6 +34,13 @@ class SCR_RSS_Params
     [Attribute(defvalue: "2.0", desc: "Standing posture recovery multiplier.\nStamina recovery bonus when standing (relative to base recovery rate).\nOptimized range: 1.0 - 2.5.\nHigher value = faster recovery while standing.\n站姿恢复倍数。\n站立时的体力恢复加成（相对于基础恢复率）。\nOptuna 优化范围：1.0 - 2.5。\n值越大，站立时体力恢复越快。")]
     float standing_recovery_multiplier;
 
+    // 蹲姿恢复倍数
+    // 蹲下时的体力恢复加成（介于站姿和趴姿之间）
+    // Optuna 优化范围：1.2 - 3.0
+    // 说明：值越大，蹲下时体力恢复越快
+    [Attribute(defvalue: "1.5", desc: "Crouching posture recovery multiplier.\nStamina recovery bonus when crouching (relative to base recovery rate).\nOptimized range: 1.2 - 3.0.\nHigher value = faster recovery while crouching.\n蹲姿恢复倍数。\n蹲下时的体力恢复加成（相对于基础恢复率）。\nOptuna 优化范围：1.2 - 3.0。\n值越大，蹲下时体力恢复越快。")]
+    float crouching_recovery_multiplier;
+
     // 趴姿恢复倍数
     // 趴下时的体力恢复加成（相对于基础恢复率）
     // Optuna 优化范围：2.0 - 3.5
@@ -214,6 +221,20 @@ class SCR_RSS_Params
     // 说明：值越大，需要更快速度才能触发 Sprint
     [Attribute(defvalue: "5.5", desc: "Sprint velocity threshold.\nMinimum speed (m/s) to trigger sprint mode.\nOptimized range: 4.8 - 5.6.\nHigher value = faster speed required to trigger sprint.\nSprint速度阈值。\n触发 Sprint 的最低速度（m/s）。\nOptuna 优化范围：4.8 - 5.6。\n值越大，需要更快速度才能触发 Sprint。")]
     float sprint_velocity_threshold;
+
+    // 意志力平台期阈值（Hardcore 新增）
+    // 体力高于此值时保持恒定目标速度（模拟意志力克服早期疲劳）
+    // Hardcore 默认 0.35，原 0.25
+    // 说明：值越大，疲劳感越早出现，拟真度越高
+    [Attribute(defvalue: "0.35", desc: "Willpower threshold.\nStamina threshold above which target speed remains constant.\nHigher = fatigue kicks in earlier, more realistic.\n范围: 0.15-0.50，Hardcore默认0.35（原0.25）。\n意志力平台期阈值。\n体力高于此值时保持恒定速度。\n值越大越早出现疲劳感、拟真度越高。")]
+    float willpower_threshold;
+
+    // 冲刺最小体力阈值（Hardcore 新增）
+    // 体力低于此值时禁止冲刺
+    // Hardcore 默认 0.25，原 0.18
+    // 说明：值越大，冲刺越早被限制
+    [Attribute(defvalue: "0.25", desc: "Sprint enable threshold.\nMinimum stamina required to sprint.\nHigher = sprint restricted earlier.\n范围: 0.10-0.40，Hardcore默认0.25（原0.18）。\n冲刺最小体力阈值。\n体力低于此值时禁止冲刺。\n值越大，冲刺越早被限制。")]
+    float sprint_enable_threshold;
 
     // 蹲姿消耗倍数
     // 蹲下时的体力消耗倍数（相对于站姿）

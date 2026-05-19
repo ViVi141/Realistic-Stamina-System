@@ -5,10 +5,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from rss_pipeline_v4 import (
     MissionLibrary, simulate_mission, compute_metrics,
-    RSSDigitalTwin, RSSConstants
+    RSSDigitalTwin, RSSConstants, merge_game_aligned_params,
 )
 
-twin = RSSDigitalTwin(RSSConstants())
+twin = RSSDigitalTwin(RSSConstants(**merge_game_aligned_params({})))
 missions = MissionLibrary.all_missions()
 
 print("=== V4 Mission Smoke Test (8 missions) ===\n")
@@ -27,24 +27,26 @@ for m in missions:
     print(f"{status} [{stamina_bar}] {m.name}{env_note}: min={r.min_stamina:.3f}  active_mean={r.mean_stamina_active:.3f}  "
           f"rec={r.recovery_gain:.4f}  exh={r.exhaustion_duration_s:.0f}s")
 
-params = {
-    'energy_to_stamina_coeff': 9e-7,
-    'base_recovery_rate': 1.5e-4,
-    'standing_recovery_multiplier': 1.3,
-    'crouching_recovery_multiplier': 1.4,
-    'prone_recovery_multiplier': 1.6,
+params = merge_game_aligned_params({
+    'energy_to_stamina_coeff': 9.5e-7,
+    'base_recovery_rate': 1.0e-4,
+    'standing_recovery_multiplier': 0.85,
+    'crouching_recovery_multiplier': 1.6,
+    'prone_recovery_multiplier': 1.9,
     'fast_recovery_multiplier': 1.6,
-    'medium_recovery_multiplier': 1.3,
-    'slow_recovery_multiplier': 0.6,
-    'encumbrance_speed_penalty_coeff': 0.20,
-    'encumbrance_stamina_drain_coeff': 1.5,
-    'load_recovery_penalty_coeff': 1e-4,
-    'posture_crouch_multiplier': 1.8,
-    'posture_prone_multiplier': 2.5,
-    'sprint_speed_boost': 0.30,
+    'medium_recovery_multiplier': 1.0,
+    'slow_recovery_multiplier': 0.35,
+    'encumbrance_speed_penalty_coeff': 0.28,
+    'encumbrance_stamina_drain_coeff': 2.8,
+    'load_recovery_penalty_coeff': 2e-4,
+    'posture_crouch_multiplier': 3.0,
+    'posture_prone_multiplier': 3.5,
+    'sprint_speed_boost': 0.22,
     'recovery_nonlinear_coeff': 0.5,
     'max_recovery_per_tick': 4e-4,
-}
+    'willpower_threshold': 0.35,
+    'sprint_enable_threshold': 0.25,
+})
 m = compute_metrics(results, params)
 print(f"\n=== Metrics ===")
 print(f"combat_endurance:   {m.combat_endurance:.4f}")
