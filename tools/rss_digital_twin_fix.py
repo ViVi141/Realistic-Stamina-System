@@ -5,9 +5,9 @@ RSS Digital Twin - 从 C 源文件完全重写
 严格对照 SCR_RealisticStaminaSystem.c、SCR_StaminaConstants.c、SCR_StaminaConsumption.c、
 SCR_StaminaRecovery.c、SCR_StaminaUpdateCoordinator.c、SCR_EncumbranceCache.c 实现。
 
-时间步长：dt=0.2s，与游戏 UpdateSpeedBasedOnStamina 每 0.2s 调用一致。
-simulate_scenario 的 fast_mode（dt=0.4）在 step 内按 time_delta 与 STAMINA_TICK_SEC 的比例
-缩放体力增量，使同一墙钟时长与 dt=0.2 逐步积分一致。
+时间步长：消耗/恢复率按 STAMINA_TICK_SEC=0.2s 定义；玩家 tick 默认 17ms（与 RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS 一致）。
+simulate_mission 使用 PlayerBase 同序逻辑：先 GetVelocity 测速再算消耗，冲刺/跑步消耗用引擎原速
+(GetDynamicOriginalEngineMaxSpeed: Sprint=5.5, Run=3.8)，与 RSS SetSpeedLimit 理论限速解耦。
 """
 
 import numpy as np
@@ -22,6 +22,9 @@ TOBLER_W_AT_FLAT_KMH = 5.039
 
 # 体力净变化率按该秒长定义（与 _calculate_drain_rate_c_aligned 注释「每 0.2s」一致）
 STAMINA_TICK_SEC = 0.2
+# 玩家体力 tick 间隔（SCR_StaminaConstants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS = 17）
+RSS_PLAYER_TICK_SEC = 0.017
+VELOCITY_HORIZ_CAP_MS = 7.0
 
 
 def tobler_speed_multiplier(angle_deg: float,
@@ -167,6 +170,8 @@ class RSSConstants:
     ENV_TEMPERATURE_HEAT_PENALTY_COEFF = 0.02
     ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF = 0.05
     ENV_TEMPERATURE_COLD_STATIC_PENALTY = 0.03
+    ENV_HEAT_STRESS_MAX_MULTIPLIER = 1.5
+    ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5
     ENV_SURFACE_WETNESS_PENALTY_MAX = 0.15
     ENV_WIND_RESISTANCE_COEFF = 0.05
     ENV_WIND_TAILWIND_BONUS = 0.02
@@ -315,6 +320,25 @@ class EnvironmentFactor:
         extra_per_tick = extra_watts * coeff * 0.2
         return base_drain + extra_per_tick
 
+    def get_heat_stress_multiplier(self, indoor: bool = False) -> float:
+        """与 SCR_EnvironmentFactor.GetHeatStressMultiplier 一致（26°C 起算，每 +1°C +2%）。"""
+        threshold = 26.0
+        temp = self.temperature
+        if temp < threshold:
+            mult = 1.0
+        else:
+            mult = 1.0 + (temp - threshold) * 0.02
+        if indoor:
+            indoor_reduction = getattr(self.constants, 'ENV_HEAT_STRESS_INDOOR_REDUCTION', 0.5)
+            mult = mult * (1.0 - indoor_reduction)
+        max_mult = getattr(self.constants, 'ENV_HEAT_STRESS_MAX_MULTIPLIER', 1.5)
+        return float(np.clip(mult, 1.0, max_mult))
+
+    def get_heat_stress_penalty(self) -> float:
+        """与 GetHeatStressPenalty 一致：恢复率惩罚 = multiplier - 1（上限 0.5）。"""
+        mult = self.get_heat_stress_multiplier(indoor=False)
+        return float(min(max(mult - 1.0, 0.0), 0.5))
+
 
 # 与游戏 Init*Defaults 一致、但不在 v4 Optuna SEARCH_SPACE 中的字段（创建孪生时合并）
 GAME_ALIGNED_FIXED_PARAMS = {
@@ -383,6 +407,8 @@ class RSSDigitalTwin:
         self._scenario_wind_drag = 0.0
         self._sprint_start_time = -1.0
         self._sprint_cooldown_until = -1.0
+        self._measured_velocity_ms = 0.0
+        self._applied_speed_limit_mult = 1.0
         self.environment_factor.heat_stress = 0.0
         self.environment_factor.cold_stress = 0.0
         self.environment_factor.cold_static_penalty = 0.0
@@ -705,9 +731,12 @@ class RSSDigitalTwin:
 
         # 热应激：恢复率惩罚 (C: recoveryRate *= (1.0 - heatStressPenalty))
         if environment_factor is not None:
-            heat = getattr(environment_factor, 'heat_stress', 0.0)
-            if heat > 0.0:
-                recovery_rate *= (1.0 - heat)
+            if hasattr(environment_factor, 'get_heat_stress_penalty'):
+                heat_penalty = environment_factor.get_heat_stress_penalty()
+            else:
+                heat_penalty = getattr(environment_factor, 'heat_stress', 0.0)
+            if heat_penalty > 0.0:
+                recovery_rate *= (1.0 - heat_penalty)
 
         # 冷应激：恢复率惩罚 (C: ENV_TEMPERATURE_COLD_THRESHOLD 0°C 以下)
         if environment_factor is not None:
@@ -756,17 +785,20 @@ class RSSDigitalTwin:
     # -------------------------------------------------------------------------
     def step(self, speed: float, current_weight: float, grade_percent: float, terrain_factor: float,
              stance: int, movement_type: int, current_time: float, enable_randomness: bool = True,
-             wind_drag: float = 0.0):
+             wind_drag: float = 0.0, time_delta_override: float = None):
         speed = max(0.0, float(speed))
         current_weight = max(0.0, float(current_weight))
         grade_percent = np.clip(float(grade_percent), -85.0, 85.0)
         terrain_factor = np.clip(float(terrain_factor), 0.5, 3.0)
         current_time = max(0.0, float(current_time))
 
-        time_delta = current_time - self.current_time
-        if time_delta <= 0.0:
-            time_delta = STAMINA_TICK_SEC
-        time_delta = max(time_delta, 0.01)
+        if time_delta_override is not None:
+            time_delta = max(float(time_delta_override), 0.01)
+        else:
+            time_delta = current_time - self.current_time
+            if time_delta <= 0.0:
+                time_delta = STAMINA_TICK_SEC
+            time_delta = max(time_delta, 0.01)
         self.current_time = current_time
 
         if enable_randomness:
@@ -824,6 +856,11 @@ class RSSDigitalTwin:
             total_drain = float(total_drain)
             if total_drain >= 0.0:
                 total_drain = min(total_drain, 0.1)
+
+            heat_mult = 1.0
+            if self.environment_factor is not None:
+                heat_mult = self.environment_factor.get_heat_stress_multiplier(indoor=False)
+            total_drain = total_drain * heat_mult
 
             if self.is_in_epoc_delay:
                 epoc_rate = self.constants.EPOC_DRAIN_RATE * (
@@ -962,6 +999,160 @@ class RSSDigitalTwin:
 
         return float(game_max * mult)
 
+    @staticmethod
+    def estimate_engine_original_max_speed(movement_phase: int, constants) -> float:
+        """与 PlayerBase.GetDynamicOriginalEngineMaxSpeed 无 AnimComponent 回退一致。"""
+        game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
+        run_mult = getattr(constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
+        if movement_phase == MovementType.SPRINT:
+            return float(game_max)
+        return float(game_max * run_mult)
+
+    def get_drain_velocity_ms(
+        self,
+        movement_phase: int,
+        is_sprinting: bool,
+        can_sprint: bool,
+        engine_original_ms: float,
+        theoretical_limited_ms: float,
+    ) -> float:
+        """
+        PlayerBase 消耗用 GetVelocity 水平速度 (上限 7.0 m/s)。
+        冲刺/跑步：动画组件在 limit=1.0 时的原速 (Sprint 5.5 / Run 3.8)，
+        与 RSS SetSpeedLimit 理论目标解耦——这也是实测 sprint 消耗高于旧孪生的主因。
+        步行/静止：用 RSS 理论限速或实测速度。
+        """
+        if movement_phase == MovementType.IDLE:
+            return 0.0
+        if (is_sprinting or movement_phase == MovementType.SPRINT) and can_sprint:
+            return min(VELOCITY_HORIZ_CAP_MS, max(0.0, engine_original_ms))
+        if movement_phase == MovementType.RUN:
+            return min(VELOCITY_HORIZ_CAP_MS, max(0.0, engine_original_ms))
+        measured = max(0.0, self._measured_velocity_ms)
+        if measured > 0.05:
+            return min(VELOCITY_HORIZ_CAP_MS, measured)
+        return min(VELOCITY_HORIZ_CAP_MS, max(0.0, theoretical_limited_ms))
+
+    def compute_speed_limit_multiplier(
+        self, theoretical_target_ms: float, engine_original_ms: float
+    ) -> float:
+        """与 StaminaUpdateCoordinator.UpdateSpeed：limit = theoretical / engineOriginal。"""
+        c = self.constants
+        game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
+        if engine_original_ms > 0.1:
+            mult = theoretical_target_ms / engine_original_ms
+        else:
+            mult = theoretical_target_ms / game_max
+        return float(np.clip(mult, 0.01, 3.0))
+
+    def resolve_movement_state(
+        self,
+        intent_phase: int,
+        stamina_percent: float,
+    ):
+        """解析冲刺意图、有效阶段与 can_sprint（与 UpdateSpeed / PlayerBase 一致）。"""
+        c = self.constants
+        exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
+        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.25)
+        is_sprinting = intent_phase == MovementType.SPRINT
+        effective_phase = intent_phase
+        if exhausted or not can_sprint:
+            if is_sprinting or effective_phase == MovementType.SPRINT:
+                effective_phase = MovementType.RUN
+                is_sprinting = False
+        return is_sprinting, effective_phase, can_sprint, exhausted
+
+    def game_player_tick(
+        self,
+        intent_phase: int,
+        current_weight: float,
+        grade_percent: float,
+        terrain_factor: float,
+        stance: int,
+        current_time: float,
+        time_delta: float,
+        wind_drag: float = 0.0,
+        enable_randomness: bool = False,
+    ) -> float:
+        """
+        单帧 PlayerBase 同序仿真：
+        1) GetVelocity -> drain_speed
+        2) UpdateSpeed -> 理论限速
+        3) 消耗/恢复（step 内核）
+        4) 更新 _measured_velocity_ms 供下一帧
+        返回本帧用于消耗的测速 (m/s)。
+        """
+        is_sprinting, effective_phase, can_sprint, _ = self.resolve_movement_state(
+            intent_phase, self.stamina
+        )
+
+        if intent_phase == MovementType.SPRINT and self._sprint_start_time < 0.0:
+            if self._sprint_cooldown_until < 0.0 or current_time >= self._sprint_cooldown_until:
+                self._sprint_start_time = current_time
+
+        theoretical_ms = self.calculate_actual_speed(
+            self.stamina,
+            current_weight,
+            effective_phase,
+            self._measured_velocity_ms,
+            grade_percent=grade_percent,
+            current_time=current_time,
+        )
+        if effective_phase == MovementType.SPRINT:
+            engine_phase = MovementType.SPRINT
+        elif effective_phase == MovementType.RUN:
+            engine_phase = MovementType.RUN
+        else:
+            engine_phase = effective_phase
+        engine_original_ms = self.estimate_engine_original_max_speed(
+            engine_phase, self.constants
+        )
+        speed_limit_mult = self.compute_speed_limit_multiplier(
+            theoretical_ms, engine_original_ms
+        )
+
+        if intent_phase == MovementType.IDLE or theoretical_ms < 0.05:
+            drain_speed = 0.0
+            engine_phase = MovementType.IDLE
+        else:
+            drain_speed = self.get_drain_velocity_ms(
+                effective_phase,
+                is_sprinting,
+                can_sprint,
+                engine_original_ms,
+                theoretical_ms,
+            )
+
+        engine_movement_phase = self._compute_engine_movement_phase(
+            effective_phase,
+            drain_speed,
+            self._measured_velocity_ms,
+            current_weight,
+            enable_randomness,
+        )
+
+        self.step(
+            drain_speed,
+            current_weight,
+            grade_percent,
+            terrain_factor,
+            stance,
+            engine_movement_phase,
+            current_time,
+            enable_randomness=enable_randomness,
+            wind_drag=wind_drag,
+            time_delta_override=time_delta,
+        )
+
+        if drain_speed > 0.05:
+            self._measured_velocity_ms = min(
+                VELOCITY_HORIZ_CAP_MS, engine_original_ms * speed_limit_mult
+            )
+        else:
+            self._measured_velocity_ms = 0.0
+        self._applied_speed_limit_mult = speed_limit_mult
+        return drain_speed
+
     def _compute_engine_movement_phase(
         self,
         intent_phase: int,
@@ -1002,49 +1193,57 @@ class RSSDigitalTwin:
         grade_percent: float = 0.0,
         terrain_factor: float = 1.0,
         enable_randomness: bool = False,
+        player_tick: bool = True,
     ) -> Dict:
-        """闭环仿真：每 tick 根据当前体力计算实际速度，再计算消耗。"""
+        """闭环仿真：默认使用 PlayerBase 同序 game_player_tick。"""
         self.reset()
         current_weight = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0) + load_kg
         stance = Stance.STAND
-        dt = 0.2
+        dt = RSS_PLAYER_TICK_SEC if player_tick else STAMINA_TICK_SEC
         current_time = 0.0
-        last_speed = 0.0
 
         steps = int(duration_s / dt)
         for _ in range(steps):
-            intent_phase = int(movement_intent)
-            actual_speed = self.calculate_actual_speed(
-                self.stamina, current_weight, intent_phase, last_speed,
-                grade_percent=grade_percent,
-                current_time=current_time,
-            )
-            exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
-            can_sprint = self.stamina >= getattr(self.constants, 'SPRINT_ENABLE_THRESHOLD', 0.15)
-            effective_intent = intent_phase
-            if (exhausted or not can_sprint) and intent_phase == MovementType.SPRINT:
-                effective_phase = MovementType.RUN
+            if player_tick:
+                self.game_player_tick(
+                    int(movement_intent),
+                    current_weight,
+                    grade_percent,
+                    terrain_factor,
+                    stance,
+                    current_time,
+                    dt,
+                    enable_randomness=enable_randomness,
+                )
             else:
-                effective_phase = effective_intent
-
-            engine_phase = self._compute_engine_movement_phase(
-                effective_phase,
-                actual_speed,
-                last_speed,
-                current_weight,
-                enable_randomness,
-            )
-            self.step(
-                actual_speed,
-                current_weight,
-                grade_percent,
-                terrain_factor,
-                stance,
-                engine_phase,
-                current_time,
-                enable_randomness,
-            )
-            last_speed = actual_speed
+                intent_phase = int(movement_intent)
+                actual_speed = self.calculate_actual_speed(
+                    self.stamina, current_weight, intent_phase, self.last_speed,
+                    grade_percent=grade_percent,
+                    current_time=current_time,
+                )
+                _, effective_phase, can_sprint, exhausted = self.resolve_movement_state(
+                    intent_phase, self.stamina
+                )
+                if (exhausted or not can_sprint) and intent_phase == MovementType.SPRINT:
+                    effective_phase = MovementType.RUN
+                engine_phase = self._compute_engine_movement_phase(
+                    effective_phase,
+                    actual_speed,
+                    self.last_speed,
+                    current_weight,
+                    enable_randomness,
+                )
+                self.step(
+                    actual_speed,
+                    current_weight,
+                    grade_percent,
+                    terrain_factor,
+                    stance,
+                    engine_phase,
+                    current_time,
+                    enable_randomness,
+                )
             current_time += dt
 
         return {

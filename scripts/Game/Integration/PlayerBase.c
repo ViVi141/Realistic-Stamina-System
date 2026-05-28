@@ -507,7 +507,7 @@ modded class SCR_CharacterControllerComponent
         {
             float limpSpeedMultiplier = RealisticStaminaSpeedSystem.GetDynamicLimpMultiplier(encumbranceSpeedPenalty);
             float compensatedLimpMultiplier = Math.Clamp(limpSpeedMultiplier * m_fAnimSpeedCompensation, 0.01, 1.0);
-            OverrideMaxSpeed(compensatedLimpMultiplier);
+            SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(owner, compensatedLimpMultiplier);
 
             if (!m_bLastExhaustedState && IsRssDebugEnabled())
             {
@@ -591,7 +591,7 @@ modded class SCR_CharacterControllerComponent
         }
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
         m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
-        OverrideMaxSpeed(finalSpeedToApply);
+        SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(owner, finalSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -1202,12 +1202,13 @@ modded class SCR_CharacterControllerComponent
         }
         
         float currentMultiplier = m_fLastSpeedMultiplier;
-        
-        OverrideMaxSpeed(1.0);
-        
+        IEntity ownerEnt = GetOwner();
+
+        SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, 1.0);
+
         float realOriginalSpeed = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, movementPhase);
-        
-        OverrideMaxSpeed(currentMultiplier);
+
+        SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, currentMultiplier);
         
         return realOriginalSpeed;
     }

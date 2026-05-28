@@ -437,9 +437,6 @@ class StaminaUpdateCoordinator
                 sprintStartTime);
         }
         
-        // 应用速度倍数
-        controller.OverrideMaxSpeed(finalSpeedMultiplier);
-        
         return finalSpeedMultiplier;
     }
     

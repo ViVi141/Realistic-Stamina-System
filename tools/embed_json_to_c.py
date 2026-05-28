@@ -108,12 +108,12 @@ class JsonToCEmbedder:
         if philosophy:
             header_lines.append(f"\t// {philosophy}")
         if isinstance(metrics, dict):
-            ce = metrics.get('combat_endurance')
-            re_ = metrics.get('recovery_efficiency')
+            cr = metrics.get('combat_ease', metrics.get('combat_reserve', metrics.get('combat_endurance')))
+            rp = metrics.get('recovery_ease', metrics.get('recovery_pace', metrics.get('recovery_efficiency')))
             pr = metrics.get('parameter_realism')
-            if all(isinstance(x, (int, float)) for x in (ce, re_, pr)):
+            if all(isinstance(x, (int, float)) for x in (cr, rp, pr)):
                 header_lines.append(
-                    f"\t// metrics: combat={ce:.4f} recovery={re_:.4f} realism={pr:.4f}"
+                    f"\t// metrics: ease={cr:.4f} recovery={rp:.6f} realism={pr:.4f}"
                 )
 
         assignments = []

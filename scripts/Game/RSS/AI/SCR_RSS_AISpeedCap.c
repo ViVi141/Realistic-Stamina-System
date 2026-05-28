@@ -1,10 +1,10 @@
 //! RSS AI Speed Cap — 五级移动限速
 //!
-//! 根据体力状态决定 AI 的最高移动类型和 OverrideMaxSpeed 上限。
+//! 根据体力状态决定 AI 的最高移动类型和速度上限（经 SetSpeedLimit 与灌木减速合并）。
 //! 同时包含连续速度衰减曲线（与玩家同源 STAMINA_EXPONENT = 0.6）。
 //!
 //! 调用方：PlayerBase.c 每帧 Tick
-//! 不侵入原生行为树节点——通过 SetMovementTypeWanted + OverrideMaxSpeed 间接控制。
+//! 不侵入原生行为树节点——通过 SetMovementTypeWanted + SetSpeedLimit（经 SCR_RSS_CharacterSpeedBridge）间接控制。
 
 class SCR_RSS_AISpeedCap
 {
@@ -94,7 +94,7 @@ class SCR_RSS_AISpeedCap
         }
 
         AISetMovementTypeWanted(owner, maxMovement);
-        ctrl.OverrideMaxSpeed(speedMul);
+        SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
     }
 
     //------------------------------------------------------------------------------------------------

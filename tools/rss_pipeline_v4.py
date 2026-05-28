@@ -36,6 +36,7 @@ from rss_digital_twin_fix import (
     Stance,
     RSSConstants,
     merge_game_aligned_params,
+    STAMINA_TICK_SEC,
 )
 
 # =============================================================================
@@ -283,95 +284,81 @@ class MissionResult:
     min_stamina: float             # 全局最低体力
     mean_stamina_active: float     # 运动阶段平均体力
     recovery_gain: float           # 静止阶段恢复的体力总量
+    idle_duration_s: float         # 静止/恢复窗口总时长（秒）
     exhaustion_duration_s: float   # 体力<15%的时间
     completion_possible: bool      # 是否全程体力>0
 
 def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
-    """运行一个完整 Mission 的数字孪生仿真"""
+    """运行一个完整 Mission 的数字孪生仿真（PlayerBase 同序 game_player_tick）。"""
     twin.reset()
 
-    # ── 设置环境因子 ──────────────────────────────────────────
-    if mission.temperature != 20.0 or mission.wind_speed > 0:
-        twin.environment_factor.temperature = mission.temperature
-        twin.environment_factor.wind_speed = mission.wind_speed
-        # 热应激: >30°C 时启用
-        if mission.temperature > 30.0:
-            c = twin.constants
-            coeff = getattr(c, 'ENV_TEMPERATURE_HEAT_PENALTY_COEFF', 0.02)
-            twin.environment_factor.heat_stress = min(
-                (mission.temperature - 30.0) * coeff, 0.3)
-        # 冷应激: <5°C 时启用
-        if mission.temperature < 5.0:
-            c = twin.constants
-            cold_coeff = getattr(c, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY', 0.05)
-            twin.environment_factor.cold_stress = (5.0 - mission.temperature) * cold_coeff
-            twin.environment_factor.cold_static_penalty = (5.0 - mission.temperature) * 0.03
-        # 风阻: >1 m/s 时启用
-        if mission.wind_speed >= 1.0:
-            wind_coeff = getattr(twin.constants, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
-            twin._scenario_wind_drag = min(1.0, mission.wind_speed * wind_coeff)
+    twin._scenario_wind_drag = 0.0
+    twin.environment_factor.temperature = mission.temperature
+    twin.environment_factor.wind_speed = mission.wind_speed
+    if mission.temperature < 5.0:
+        c = twin.constants
+        cold_coeff = getattr(c, 'ENV_TEMPERATURE_COLD_RECOVERY_PENALTY_COEFF', 0.05)
+        twin.environment_factor.cold_stress = (5.0 - mission.temperature) * cold_coeff
+        cold_static = getattr(c, 'ENV_TEMPERATURE_COLD_STATIC_PENALTY', 0.03)
+        twin.environment_factor.cold_static_penalty = (5.0 - mission.temperature) * cold_static
+    else:
+        twin.environment_factor.cold_stress = 0.0
+        twin.environment_factor.cold_static_penalty = 0.0
+    if mission.wind_speed >= 1.0:
+        wind_coeff = getattr(twin.constants, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
+        twin._scenario_wind_drag = min(1.0, mission.wind_speed * wind_coeff)
 
-    dt = 0.2
+    dt = getattr(twin, '_dt', STAMINA_TICK_SEC)
     current_time = 0.0
     stamina_trace = []
     speed_trace = []
     total_recovery_gain = 0.0
+    idle_duration_s = 0.0
     exhaustion_duration = 0.0
-    last_stamina = 1.0
     current_weight = mission.current_weight
-
     wind_drag = getattr(twin, '_scenario_wind_drag', 0.0)
-    last_speed = 0.0
 
     for phase in mission.phases:
         steps = int(phase.duration_s / dt)
         intent_phase = int(phase.movement)
+        if intent_phase == MovementType.IDLE or phase.speed_ms < 0.1:
+            idle_duration_s += phase.duration_s
         for _ in range(steps):
             prev_stamina = twin.stamina
 
             if intent_phase == MovementType.IDLE or phase.speed_ms < 0.1:
-                actual_speed = 0.0
-                engine_phase = MovementType.IDLE
-            else:
-                actual_speed = twin.calculate_actual_speed(
-                    twin.stamina,
+                drain_speed = twin.game_player_tick(
+                    MovementType.IDLE,
                     current_weight,
-                    intent_phase,
-                    last_speed,
-                    grade_percent=phase.grade_pct,
-                    current_time=current_time,
+                    phase.grade_pct,
+                    phase.terrain,
+                    phase.stance,
+                    current_time,
+                    dt,
+                    wind_drag=wind_drag,
+                    enable_randomness=False,
                 )
-                if phase.speed_ms > 0.1:
-                    actual_speed = min(actual_speed, float(phase.speed_ms))
-                engine_phase = twin._compute_engine_movement_phase(
+            else:
+                drain_speed = twin.game_player_tick(
                     intent_phase,
-                    actual_speed,
-                    last_speed,
                     current_weight,
+                    phase.grade_pct,
+                    phase.terrain,
+                    phase.stance,
+                    current_time,
+                    dt,
+                    wind_drag=wind_drag,
                     enable_randomness=False,
                 )
 
-            twin.step(
-                actual_speed,
-                current_weight,
-                phase.grade_pct,
-                phase.terrain,
-                phase.stance,
-                engine_phase,
-                current_time,
-                enable_randomness=False,
-                wind_drag=wind_drag,
-            )
-            last_speed = actual_speed
             current_time += dt
             stamina_trace.append(twin.stamina)
-            speed_trace.append(actual_speed)
+            speed_trace.append(drain_speed)
 
             if twin.stamina > prev_stamina:
                 total_recovery_gain += twin.stamina - prev_stamina
             if twin.stamina < 0.15:
                 exhaustion_duration += dt
-            last_stamina = twin.stamina
 
     # 计算运动阶段平均体力（排除 IDLE 阶段）
     active_stamina = []
@@ -395,31 +382,65 @@ def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
         min_stamina=min_stamina,
         mean_stamina_active=float(mean_active),
         recovery_gain=total_recovery_gain,
+        idle_duration_s=idle_duration_s,
         exhaustion_duration_s=exhaustion_duration,
         completion_possible=min_stamina > 0.0,
     )
 
 # =============================================================================
-# 指标计算 — 三目标体系
+# 指标计算 — 三目标体系（v4.1 重设计）
 # =============================================================================
+# 三目标均为 minimize；选解阶段按档位取 Pareto 不同区域：
+#   EliteStandard  → 低 combat_reserve + 低 recovery_pace + 低 realism
+#   StandardMilsim → 三目标归一化后接近理想折中点
+#   TacticalAction → 高 combat_reserve + 高 recovery_pace（最宽容）
+# =============================================================================
+
+# Hardcore 生理参考锚点（与 StaminaConstants / ConfigBridge fallback 一致）
+HARDCORE_PARAM_REFS = {
+    'energy_to_stamina_coeff': 9.5e-7,
+    'base_recovery_rate': 1.0e-4,
+    'standing_recovery_multiplier': 0.85,
+    'crouching_recovery_multiplier': 1.6,
+    'prone_recovery_multiplier': 1.9,
+    'fast_recovery_multiplier': 1.6,
+    'medium_recovery_multiplier': 1.0,
+    'slow_recovery_multiplier': 0.35,
+    'encumbrance_speed_penalty_coeff': 0.28,
+    'encumbrance_stamina_drain_coeff': 2.8,
+    'load_recovery_penalty_coeff': 2.0e-4,
+    'posture_crouch_multiplier': 3.0,
+    'posture_prone_multiplier': 3.5,
+    'sprint_speed_boost': 0.22,
+    'recovery_nonlinear_coeff': 0.5,
+    'max_recovery_per_tick': 4.0e-4,
+    'willpower_threshold': 0.35,
+    'sprint_enable_threshold': 0.25,
+}
+
+# Standard 档理想折中点（归一化空间：中等 combat_ease / recovery_ease / 低 realism）
+STANDARD_IDEAL_NORM = np.array([0.48, 0.45, 0.35])
+
+
 @dataclass
 class Metrics:
-    """三目标指标"""
-    combat_endurance: float    # 目标1 (minimize): 1 - 各任务运动阶段平均体力
-    recovery_efficiency: float # 目标2 (minimize): 恢复窗口效率惩罚
-    parameter_realism: float   # 目标3 (minimize): 参数偏离生理参考值的程度
+    """三目标指标（均为 minimize；值越低对 Elite 越硬核）"""
+    combat_ease: float         # 运动阶段体力余量 [0,1]；越低 = 战斗越吃紧
+    recovery_ease: float       # 静止窗口回血速率；越低 = 恢复越慢
+    parameter_realism: float   # 偏离 Hardcore 生理参考 + 可玩性下限惩罚
 
     def as_tuple(self) -> Tuple[float, float, float]:
-        return (self.combat_endurance, self.recovery_efficiency, self.parameter_realism)
+        return (self.combat_ease, self.recovery_ease, self.parameter_realism)
+
 
 def compute_metrics(results: List[MissionResult], params: Dict) -> Metrics:
     """从多个 Mission 结果计算三目标指标"""
 
-    # ── 目标 1: 战斗耐力 ──────────────────────────────────────
-    # 策略：取各任务运动阶段平均体力的加权平均，越低越差
-    # 权重：地狱(0.22) > 巡逻(0.18) > 沙漠(0.16) > 重载(0.14) > 山地(0.10) > 两栖(0.08) ≈ 城镇(0.07) > 突击(0.05)
-    weights = {"地狱沙漠突围": 0.22, "巡逻接敌": 0.18, "沙漠巡逻": 0.16, "重载撤离": 0.14,
-               "山地接近": 0.10, "两栖登陆": 0.08, "城镇清扫": 0.07, "载具下车突击": 0.05}
+    # ── 目标 1: 战斗体力余量（combat_reserve，minimize = 更硬核）──────────
+    weights = {
+        "地狱沙漠突围": 0.22, "巡逻接敌": 0.18, "沙漠巡逻": 0.16, "重载撤离": 0.14,
+        "山地接近": 0.10, "两栖登陆": 0.08, "城镇清扫": 0.07, "载具下车突击": 0.05,
+    }
     weighted_mean = 0.0
     total_weight = 0.0
     for r in results:
@@ -428,88 +449,84 @@ def compute_metrics(results: List[MissionResult], params: Dict) -> Metrics:
         total_weight += w
     weighted_mean = weighted_mean / total_weight if total_weight > 0 else 0.5
 
-    # 惩罚：任何任务全局最低体力 < 10%
-    exhaustion_penalty = 0.0
+    collapse_penalty = 0.0
+    exhaustion_ease_penalty = 0.0
     for r in results:
         if r.min_stamina < 0.10:
-            exhaustion_penalty += (0.10 - r.min_stamina) * 5.0
+            collapse_penalty += (0.10 - r.min_stamina) * 2.0
+        if r.total_duration_s > 0.0:
+            exh_ratio = r.exhaustion_duration_s / r.total_duration_s
+            exhaustion_ease_penalty += min(exh_ratio, 0.35) * 0.12
 
-    combat_endurance = (1.0 - weighted_mean) + exhaustion_penalty
+    combat_ease = weighted_mean - collapse_penalty - exhaustion_ease_penalty
+    combat_ease = max(0.0, min(1.0, combat_ease))
 
-    # ── 目标 2: 恢复效率 ──────────────────────────────────────
-    # 策略：总量恢复 vs 可用恢复窗口的比例
-    # 如果任务设计了休息窗口但恢复太少 → 恢复效率低（penalty 大）
+    # ── 目标 2: 恢复宽松度（recovery_ease，minimize = 恢复越慢）────────────
     total_recovery = sum(r.recovery_gain for r in results)
-    total_exhaustion = sum(r.exhaustion_duration_s for r in results)
+    total_idle = sum(r.idle_duration_s for r in results)
+    recovery_ease = total_recovery / max(total_idle, 60.0)
 
-    # 恢复总量过少 = 回血系统不工作（正常应在 0.02~0.15 之间）
-    recovery_deficit = max(0.0, 0.05 - total_recovery) * 20.0
-    # 力竭时间过长
-    exhaustion_penalty_2 = total_exhaustion / 60.0  # 分钟
-
-    recovery_efficiency = recovery_deficit + exhaustion_penalty_2
-
-    # ── 目标 3: 参数拟真度（Hardcore 重校准：参考值偏向激进端）───
-    # 检查参数与 Hardcore 重校准静态常量的偏差
+    # ── 目标 3: 参数拟真度（parameter_realism，minimize）────────────────
     realism_score = 0.0
+    refs = HARDCORE_PARAM_REFS
 
-    # 3a. energy_to_stamina_coeff 期望偏高：参考 9.5e-7 (Hardcore calibration)
-    ec = params.get('energy_to_stamina_coeff', 9.5e-7)
-    ec_ref = 9.5e-7  # Hardcore 重校准参考值
-    if ec < 5e-7 or ec > 3e-6:
-        realism_score += min(abs(ec - 5e-7), abs(ec - 3e-6)) / 1e-6 * 2.0
+    # 可玩性：恢复过慢则抬高 realism（避免 Elite 选出“永动机/僵尸”两端）
+    min_playable_recovery = 0.00006
+    if recovery_ease < min_playable_recovery:
+        realism_score += (min_playable_recovery - recovery_ease) / min_playable_recovery * 4.0
 
-    # 3b. base_recovery_rate 期望偏低：参考 1.0e-4 (Hardcore calibration)
-    br = params.get('base_recovery_rate', 1.0e-4)
-    br_ref = 1.0e-4  # Hardcore 基准
-    realism_score += abs(br - br_ref) / br_ref * 3.0
+    # 可玩性：战斗体力余量过低则抬高 realism（避免三档全部“归零”）
+    min_playable_combat = 0.10
+    if combat_ease < min_playable_combat:
+        realism_score += (min_playable_combat - combat_ease) / min_playable_combat * 5.0
 
-    # 3c. 姿态恢复倍数排序: prone > crouch > standing (且 standing < 1.0 为优)
-    pm = params.get('prone_recovery_multiplier', 1.9)
-    cm = params.get('crouching_recovery_multiplier', 1.6)
-    sm = params.get('standing_recovery_multiplier', 0.85)
+    ec = params.get('energy_to_stamina_coeff', refs['energy_to_stamina_coeff'])
+    ec_ref = refs['energy_to_stamina_coeff']
+    realism_score += abs(math.log10(ec / ec_ref)) * 1.5
+
+    br = params.get('base_recovery_rate', refs['base_recovery_rate'])
+    br_ref = refs['base_recovery_rate']
+    realism_score += abs(br - br_ref) / br_ref * 4.0
+
+    pm = params.get('prone_recovery_multiplier', refs['prone_recovery_multiplier'])
+    cm = params.get('crouching_recovery_multiplier', refs['crouching_recovery_multiplier'])
+    sm = params.get('standing_recovery_multiplier', refs['standing_recovery_multiplier'])
     if pm <= cm:
         realism_score += (cm - pm + 0.1) * 10.0
     if cm <= sm:
         realism_score += (sm - cm + 0.1) * 10.0
-    # Hardcore 加分：站姿恢复 < 1.0（站姿应为净消耗/无加成）
     if sm >= 1.0:
-        realism_score += (sm - 0.85) * 5.0
+        realism_score += (sm - 0.85) * 8.0
 
-    # 3d. 快速恢复 > 中速恢复 > 慢速恢复
-    fm = params.get('fast_recovery_multiplier', 1.6)
-    mm = params.get('medium_recovery_multiplier', 1.0)
-    lm = params.get('slow_recovery_multiplier', 0.35)
+    fm = params.get('fast_recovery_multiplier', refs['fast_recovery_multiplier'])
+    mm = params.get('medium_recovery_multiplier', refs['medium_recovery_multiplier'])
+    lm = params.get('slow_recovery_multiplier', refs['slow_recovery_multiplier'])
     if fm <= mm:
         realism_score += (mm - fm + 0.1) * 8.0
     if mm <= lm:
         realism_score += (lm - mm + 0.1) * 8.0
 
-    # 3e. 蹲姿消耗 >= 站姿消耗 (Hardcore: 期望 >= 2.0)
-    pcm = params.get('posture_crouch_multiplier', 3.0)
+    pcm = params.get('posture_crouch_multiplier', refs['posture_crouch_multiplier'])
     if pcm < 1.5:
         realism_score += (1.5 - pcm) * 5.0
 
-    # 3f. encumbrance 参数合理性 (Hardcore: 允许更高范围)
-    espc = params.get('encumbrance_speed_penalty_coeff', 0.28)
+    espc = params.get('encumbrance_speed_penalty_coeff', refs['encumbrance_speed_penalty_coeff'])
     if espc < 0.15 or espc > 0.50:
         realism_score += min(abs(espc - 0.15), abs(espc - 0.50)) * 20.0
 
-    # 3g. willpower_threshold 偏高为优 (Hardcore 期望 0.30-0.45)
-    wt = params.get('willpower_threshold', 0.35)
-    wt_ref = 0.35
+    wt = params.get('willpower_threshold', refs['willpower_threshold'])
+    wt_ref = refs['willpower_threshold']
     realism_score += abs(wt - wt_ref) / wt_ref * 2.0
 
-    # 3h. sprint_enable_threshold 偏高为优 (Hardcore 期望 0.20-0.30)
-    se = params.get('sprint_enable_threshold', 0.25)
-    se_ref = 0.25
+    se = params.get('sprint_enable_threshold', refs['sprint_enable_threshold'])
+    se_ref = refs['sprint_enable_threshold']
     realism_score += abs(se - se_ref) / se_ref * 2.0
 
     parameter_realism = realism_score
 
     return Metrics(
-        combat_endurance=float(combat_endurance),
-        recovery_efficiency=float(recovery_efficiency),
+        combat_ease=float(combat_ease),
+        recovery_ease=float(recovery_ease),
         parameter_realism=float(parameter_realism),
     )
 
@@ -526,26 +543,26 @@ class RSSOptimizerV4:
         self.study = None
         self.missions = MissionLibrary.all_missions()
 
-    # ── 搜索空间（与 C 端对齐）─────────────────────────────────
+    # ── 搜索空间（与 C 端 Hardcore 锚点对齐，站姿恢复上限 ≤1.0）──────────
     SEARCH_SPACE = {
-        'energy_to_stamina_coeff':       (5e-7,   3e-6,   True),   # log-uniform
-        'base_recovery_rate':            (5e-5,   3e-4,   True),
-        'standing_recovery_multiplier':  (0.7,    1.5,    False),   # Hardcore：下限放宽至0.7
-        'crouching_recovery_multiplier': (1.0,    2.2,    False),
-        'prone_recovery_multiplier':     (1.2,    2.5,    False),   # Hardcore：上限降至2.5
-        'fast_recovery_multiplier':      (1.0,    2.0,    False),   # Hardcore：上限降至2.0
-        'medium_recovery_multiplier':    (0.8,    1.5,    False),
-        'slow_recovery_multiplier':      (0.2,    0.6,    False),   # Hardcore：下限降至0.2
-        'encumbrance_speed_penalty_coeff': (0.15, 0.45,   False),   # Hardcore：上下限上移
-        'encumbrance_stamina_drain_coeff': (1.5,  3.5,    False),   # Hardcore：上下限上移
-        'load_recovery_penalty_coeff':   (1e-4,   5e-4,   True),    # Hardcore：上下限上移
-        'posture_crouch_multiplier':     (1.5,    3.5,    False),   # Hardcore：上下限上移
-        'posture_prone_multiplier':      (2.0,    4.5,    False),   # Hardcore：上下限上移
-        'sprint_speed_boost':            (0.15,   0.30,   False),   # Hardcore：上限降至0.30
-        'recovery_nonlinear_coeff':      (0.2,    0.7,    False),
-        'max_recovery_per_tick':         (1.5e-4, 5e-4,  False),   # Hardcore：上下限下移
-        'willpower_threshold':           (0.25,   0.45,   False),   # Hardcore 新增：意志力阈值
-        'sprint_enable_threshold':       (0.15,   0.35,   False),   # Hardcore 新增：冲刺最低体力
+        'energy_to_stamina_coeff':       (6e-7,   1.4e-6, True),   # log-uniform，偏高=更耗体
+        'base_recovery_rate':            (6e-5,   1.5e-4, True),   # Hardcore 上限约 1.5e-4
+        'standing_recovery_multiplier':  (0.65,   0.98,   False),  # 站姿应 <1.0
+        'crouching_recovery_multiplier': (1.2,    2.0,    False),
+        'prone_recovery_multiplier':     (1.5,    2.3,    False),
+        'fast_recovery_multiplier':      (1.2,    1.9,    False),
+        'medium_recovery_multiplier':    (0.75,   1.2,    False),
+        'slow_recovery_multiplier':      (0.25,   0.50,   False),
+        'encumbrance_speed_penalty_coeff': (0.18, 0.42,   False),
+        'encumbrance_stamina_drain_coeff': (2.0,  3.2,    False),
+        'load_recovery_penalty_coeff':   (8e-5,   3.5e-4, True),
+        'posture_crouch_multiplier':     (2.0,    3.5,    False),
+        'posture_prone_multiplier':      (2.5,    4.5,    False),
+        'sprint_speed_boost':            (0.18,   0.28,   False),
+        'recovery_nonlinear_coeff':      (0.25,   0.60,   False),
+        'max_recovery_per_tick':         (2.0e-4, 4.5e-4, False),
+        'willpower_threshold':           (0.30,   0.42,   False),
+        'sprint_enable_threshold':       (0.20,   0.32,   False),
     }
 
     def suggest_params(self, trial: optuna.Trial) -> Dict:
@@ -603,7 +620,7 @@ class RSSOptimizerV4:
             )
 
         print(f"[V4] 开始优化: {self.n_trials} trials × {len(self.missions)} missions")
-        print(f"[V4] 目标: minimize(combat_endurance, recovery_efficiency, parameter_realism)")
+        print(f"[V4] 目标: minimize(combat_ease, recovery_ease, parameter_realism)")
         t0 = time.time()
 
         study.optimize(
@@ -622,8 +639,8 @@ class RSSOptimizerV4:
         # 打印最佳解
         for i, t in enumerate(study.best_trials[:3]):
             print(f"\n  #{i+1}:")
-            print(f"    combat_endurance={t.values[0]:.4f}")
-            print(f"    recovery_efficiency={t.values[1]:.4f}")
+            print(f"    combat_ease={t.values[0]:.4f}")
+            print(f"    recovery_ease={t.values[1]:.6f}")
             print(f"    parameter_realism={t.values[2]:.4f}")
             print(f"    energy_coeff={t.params['energy_to_stamina_coeff']:.2e}")
             print(f"    base_recovery={t.params['base_recovery_rate']:.2e}")
@@ -633,13 +650,31 @@ class RSSOptimizerV4:
 # =============================================================================
 # 预设提取
 # =============================================================================
+def _normalize_objectives(values: np.ndarray) -> np.ndarray:
+    """将三目标矩阵归一化到 [0, 1]。"""
+    v_min = values.min(axis=0)
+    v_max = values.max(axis=0)
+    v_range = v_max - v_min
+    v_range[v_range == 0] = 1.0
+    return (values - v_min) / v_range
+
+
+def _pick_unique_index(candidates: np.ndarray, used: set, n: int) -> int:
+    """从候选索引中选取第一个未使用的。"""
+    for c in candidates:
+        idx = int(c)
+        if idx not in used:
+            return idx
+    return int(candidates[0]) if len(candidates) > 0 else 0
+
+
 def extract_presets(study, output_dir: str = ".") -> Dict:
     """从 Pareto 前沿提取三份游戏预设 JSON
 
-    选择策略（利用三目标 trade-off）：
-      - EliteStandard → combat_endurance + recovery_efficiency 联合最小（最拟真/最硬核）
-      - StandardMilsim → 三目标归一化后距离原点最近（最均衡）
-      - TacticalAction → combat_endurance 最小（最宽容，适合快节奏玩法）
+    选解策略（v4.1）：
+      - EliteStandard  → 低 combat_ease + 低 recovery_ease + 低 realism（最硬核）
+      - StandardMilsim → 归一化空间接近 STANDARD_IDEAL_NORM（折中）
+      - TacticalAction → 高 combat_ease + 高 recovery_ease（最宽容）
     """
     if not study or not study.best_trials:
         print("[V4] 无 Pareto 解，跳过预设提取")
@@ -647,80 +682,90 @@ def extract_presets(study, output_dir: str = ".") -> Dict:
 
     trials = study.best_trials
     n = len(trials)
-
-    # 提取三目标值矩阵
     values = np.array([[t.values[0], t.values[1], t.values[2]] for t in trials])
 
-    # ── 归一化到 [0, 1] ──────────────────────────────────────
-    v_min = values.min(axis=0)
-    v_max = values.max(axis=0)
-    v_range = v_max - v_min
-    v_range[v_range == 0] = 1.0  # 防止除零
-    v_norm = (values - v_min) / v_range
+    # ── EliteStandard: 战斗最吃紧的 20% 池中，再选恢复最慢 ─────────────
+    elite_pool_size = max(3, n // 5)
+    elite_pool = np.argsort(values[:, 0])[:elite_pool_size]
+    elite_sub = values[elite_pool, 1]
+    idx_elite = int(elite_pool[int(np.argmin(elite_sub))])
 
-    # ── EliteStandard: combat + recovery 联合最小（仅此一档，不另写 Hardcore JSON）──
-    combined_elite = v_norm[:, 0] + v_norm[:, 1]
-    elite_candidates = np.argsort(combined_elite)
-    idx_elite = int(elite_candidates[0])
-
-    # ── TacticalAction: combat_endurance (idx=0) 最小 ──────────
-    all_endurance_indices = np.argsort(values[:, 0])
-    idx_endurance = int(all_endurance_indices[0])
-    # 去重：如与已选重复，取下一个
     used = {idx_elite}
-    if idx_endurance in used and n > len(used):
-        for c in all_endurance_indices:
-            if int(c) not in used:
-                idx_endurance = int(c)
-                break
-    used.add(idx_endurance)
 
-    # ── StandardMilsim: 归一化后到原点欧氏距离最小，不与上面三个重复
-    dist_to_origin = np.sqrt((v_norm ** 2).sum(axis=1))
-    balanced_candidates = np.argsort(dist_to_origin)
-    idx_balanced = int(balanced_candidates[0])
-    if idx_balanced in used and n > len(used):
-        for c in balanced_candidates:
-            if int(c) not in used:
-                idx_balanced = int(c)
+    # ── TacticalAction: 战斗最宽松的 20% 池中，再选恢复最快 ───────────
+    tac_pool_size = max(3, n // 5)
+    tac_sorted = np.argsort(-values[:, 0])
+    tac_pool = []
+    for c in tac_sorted:
+        ci = int(c)
+        if ci not in used:
+            tac_pool.append(ci)
+        if len(tac_pool) >= tac_pool_size:
+            break
+    if not tac_pool:
+        tac_pool = [int(tac_sorted[0])]
+    tac_sub = values[tac_pool, 1]
+    idx_tactical = int(tac_pool[int(np.argmax(tac_sub))])
+    used.add(idx_tactical)
+
+    # ── StandardMilsim: 中间战斗区间，接近 Elite/Tactical 的中点 ───────
+    mid_start = max(1, n // 5)
+    mid_end = max(mid_start + 1, n - n // 5)
+    combat_sorted = np.argsort(values[:, 0])
+    balanced_pool = []
+    for c in combat_sorted[mid_start:mid_end]:
+        ci = int(c)
+        if ci not in used:
+            balanced_pool.append(ci)
+    if not balanced_pool:
+        for c in combat_sorted:
+            ci = int(c)
+            if ci not in used:
+                balanced_pool.append(ci)
                 break
+    target_combat = (values[idx_elite, 0] + values[idx_tactical, 0]) * 0.5
+    target_recovery = (values[idx_elite, 1] + values[idx_tactical, 1]) * 0.5
+    balanced_scores = []
+    for i in balanced_pool:
+        score = abs(values[i, 0] - target_combat)
+        score += abs(values[i, 1] - target_recovery) * 80.0
+        score += values[i, 2] * 0.15
+        balanced_scores.append(score)
+    idx_balanced = int(balanced_pool[int(np.argmin(balanced_scores))])
 
     t_elite = trials[idx_elite]
     t_balanced = trials[idx_balanced]
-    t_endurance = trials[idx_endurance]
+    t_tactical = trials[idx_tactical]
 
-    # ── 多样性诊断 ────────────────────────────────────────────
-    unique_indices = len({idx_elite, idx_balanced, idx_endurance})
+    unique_indices = len({idx_elite, idx_balanced, idx_tactical})
     if unique_indices < 3:
         print(f"[V4] 警告: 预设多样性不足 ({unique_indices}/3 个唯一点)")
-        print(f"       combat_endurance 范围: [{values[:,0].min():.4f}, {values[:,0].max():.4f}]")
-        print(f"       recovery_efficiency 范围: [{values[:,1].min():.4f}, {values[:,1].max():.4f}]")
+        print(f"       combat_ease 范围: [{values[:,0].min():.4f}, {values[:,0].max():.4f}]")
+        print(f"       recovery_ease 范围: [{values[:,1].min():.6f}, {values[:,1].max():.6f}]")
         print(f"       parameter_realism 范围: [{values[:,2].min():.4f}, {values[:,2].max():.4f}]")
-        print(f"       → 建议: 增加 trial 数或添加更极限的场景")
+        print(f"       → 建议: 增加 trial 数")
 
-    # ── 构建预设（仅三档，写入游戏）────────────────────────────
     selection = [
         (
             "EliteStandard",
             t_elite,
-            "combat+recovery 联合最小 → 最拟真/最硬核（EliteStandard 预设）",
+            "低 combat_ease + 低 recovery_ease + 低 realism → 最拟真/最硬核",
         ),
-        ("StandardMilsim", t_balanced, "三目标均衡 → 拟真与可玩性折中"),
-        ("TacticalAction", t_endurance, "combat_endurance 最小 → 战斗最宽容"),
+        ("StandardMilsim", t_balanced, "三目标折中 → 拟真与可玩性平衡"),
+        ("TacticalAction", t_tactical, "高 combat_ease + 高 recovery_ease → 战斗最宽容"),
     ]
 
-    # 历史误把 EliteStandard 的解多写了一份 hardcore_v4.json，此处清理
     legacy_hardcore = os.path.join(output_dir, "optimized_rss_config_hardcore_v4.json")
     if os.path.isfile(legacy_hardcore):
         os.remove(legacy_hardcore)
-        print(f"[V4] 已删除遗留 hardcore JSON（参数仅保留在 elitestandard_v4.json）")
+        print(f"[V4] 已删除遗留 hardcore JSON")
 
     presets = {}
     for label, t, philosophy in selection:
         config = {k: float(v) for k, v in t.params.items()}
         config['_metrics'] = {
-            'combat_endurance': float(t.values[0]),
-            'recovery_efficiency': float(t.values[1]),
+            'combat_ease': float(t.values[0]),
+            'recovery_ease': float(t.values[1]),
             'parameter_realism': float(t.values[2]),
         }
         config['_philosophy'] = philosophy
@@ -731,10 +776,29 @@ def extract_presets(study, output_dir: str = ".") -> Dict:
             json.dump(config, f, indent=2, ensure_ascii=False)
 
         print(f"[V4] {label}: {philosophy}")
-        print(f"       combat={t.values[0]:.4f}  recovery={t.values[1]:.4f}  realism={t.values[2]:.4f}")
+        print(f"       ease={t.values[0]:.4f}  recovery={t.values[1]:.6f}  realism={t.values[2]:.4f}")
         print(f"       saved → {path}")
 
+    _print_tier_order_check(presets)
     return presets
+
+
+def _print_tier_order_check(presets: Dict) -> None:
+    """诊断三档排序是否符合 Elite < Standard < Tactical。"""
+    if not all(k in presets for k in ("EliteStandard", "StandardMilsim", "TacticalAction")):
+        return
+    elite_e = presets["EliteStandard"]["_metrics"]["combat_ease"]
+    std_e = presets["StandardMilsim"]["_metrics"]["combat_ease"]
+    tac_e = presets["TacticalAction"]["_metrics"]["combat_ease"]
+    elite_r = presets["EliteStandard"]["_metrics"]["recovery_ease"]
+    std_r = presets["StandardMilsim"]["_metrics"]["recovery_ease"]
+    tac_r = presets["TacticalAction"]["_metrics"]["recovery_ease"]
+    ok_ease = elite_e <= std_e <= tac_e
+    ok_recovery = elite_r <= std_r <= tac_r
+    status = "OK" if (ok_ease and ok_recovery) else "WARN"
+    print(f"[V4] 档位排序检查 [{status}]: "
+          f"combat_ease {elite_e:.3f} ≤ {std_e:.3f} ≤ {tac_e:.3f} ? {ok_ease}; "
+          f"recovery_ease {elite_r:.6f} ≤ {std_r:.6f} ≤ {tac_r:.6f} ? {ok_recovery}")
 
 # =============================================================================
 # main

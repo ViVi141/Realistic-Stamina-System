@@ -44,7 +44,7 @@
 | `GetStance()` | 获取当前姿态，返回 `ECharacterStance` | PlayerBase.c, SCR_StaminaConsumption.c |
 | `GetStaminaComponent()` | 获取体力组件（`CharacterStaminaComponent`） | PlayerBase.c |
 | `GetVelocity()` | 获取角色当前速度向量（`vector`） | PlayerBase.c |
-| `OverrideMaxSpeed(multiplier)` | 覆盖角色最大速度倍率 | PlayerBase.c |
+| `OverrideMaxSpeed(multiplier)` | 覆盖角色最大速度倍率（RSS 经 `SCR_RSS_CharacterSpeedBridge` → `SetSpeedLimit` 合并灌木减速） | PlayerBase.c, SCR_RSS_CharacterSpeedBridge.c |
 | `OnInit(IEntity owner)` | 生命周期：组件初始化回调 | PlayerBase.c |
 | `OnControlledByPlayer(IEntity, bool)` | 生命周期：玩家取得/放弃控制回调 | PlayerBase.c |
 | `OnPrepareControls(IEntity, ActionManager, float, bool)` | 生命周期：每帧控制准备回调 | PlayerBase.c |
