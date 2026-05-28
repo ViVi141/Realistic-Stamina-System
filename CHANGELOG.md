@@ -1,5 +1,33 @@
 # 更新日志
 
+## [3.23.1] - 2026-05-28
+
+### 稳定版 — 适配 Arma Reforger 1.7 灌木丛减速
+
+- **灌木/植被减速兼容（1.7 新特性）** — 游戏 1.7 起角色穿过灌木时由原生 `SCR_ChimeraCharacter` + `SetSpeedLimit` 限速。RSS 原先直接 `OverrideMaxSpeed` 会**覆盖** Foliage 减速。新增 `SCR_RSS_CharacterSpeedBridge.c`：RSS 体力倍率作为独立限速来源写入 `m_mSpeedReferences`，与灌木、铁丝网等取 **全局最小值** 后再 `OverrideMaxSpeed`。
+- **调用点更新** — `PlayerBase.c`（正常限速、力竭跛行、`GetDynamicOriginalEngineMaxSpeed` 采样）、`SCR_RSS_AISpeedCap.c` 均改经速度桥接；无 `SCR_ChimeraCharacter` 时回退为直接 `OverrideMaxSpeed`。
+- **文档** — 新增 [`docs/灌木丛移动减速机制.md`](docs/灌木丛移动减速机制.md)；更新 [`docs/engine_api_usage.md`](docs/engine_api_usage.md) 中限速 API 说明。
+
+### 恢复与 HUD
+
+- **回满 ETA** — `SCR_StaminaUpdateCoordinator.EstimateRecoveryTimeToFull()` 分段积分估算静止回满时间；HUD 显示与实际体力挂钩，不再被显示平滑值错误缩放（`SCR_StaminaHUDComponent.c`）。
+- **配置桥接** — `SCR_RSS_Params` 新增 `willpower_threshold`、`sprint_enable_threshold`、`crouching_recovery_multiplier`；`SCR_StaminaConfigBridge` 支持按预设读取（未写入预设时回退 `StaminaConstants`）。
+- **Hardcore fallback** — `SCR_StaminaConstants.c` 中 sprint 门槛、意志力平台、负重惩罚、多段恢复等 **@fallback** 常量对齐更硬核默认值（与三档预设 JSON 解耦，Custom / 缺省字段时使用）。
+
+### 稳定版预设
+
+- **三档参数** — `SCR_RSS_Settings.c` 中 EliteStandard / StandardMilsim / TacticalAction 的 `Init*Defaults` 恢复为 commit `b2e1cd9`（v3.23.0 发布基线）的 v4 优化器数值；撤销后续实验性重优化嵌入，保证稳定版手感与 v3.23.0 一致。
+- **工具** — 新增 `tools/restore_settings_from_commit.py`，可从指定 git commit 恢复三档 Init 块。
+
+### 工具链（开发用）
+
+- 数字孪生 `rss_digital_twin_fix.py`、v4 优化管线与基准脚本（`bench_35kg_presets.py`、`calc_35kg_ideal_movement.py` 等）持续迭代；**不影响** 游戏内默认预设（已锁定 b2e1cd9 数值）。
+
+### 版本
+
+- **`CURRENT_VERSION`** → **3.23.1**（`SCR_RSS_ConfigManager.c`）。
+- **建议游戏版本** — Arma Reforger **1.7+**（灌木减速合并依赖原生 `SetSpeedLimit` API）。
+
 ## [3.23.0] - 2026-05-18
 
 ### AI 子系统管理器 — 重大重构
