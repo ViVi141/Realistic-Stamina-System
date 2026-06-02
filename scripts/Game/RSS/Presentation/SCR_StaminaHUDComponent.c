@@ -60,6 +60,14 @@ class SCR_StaminaHUDComponent
     // 避免对旧 session 已释放的 C++ widget 调用 RemoveFromHierarchy 导致崩溃。
     protected static int s_iWorldGeneration = 0;
     protected int m_iCreatedInGeneration = -1;
+
+    // ==================== v5 无氧/代谢 HUD 状态 ====================
+    protected Widget m_wCooldownRing;
+    protected Widget m_wOverloadWarning;
+    protected TextWidget m_wCooldownText;
+    protected TextWidget m_wOverloadText;
+    protected bool m_bIsV5Initialized;
+    protected float m_fLastV5UpdateTime = -1.0;
     
     // ==================== 公共静态方法 ====================
     
@@ -155,6 +163,7 @@ class SCR_StaminaHUDComponent
         if (!inst.CreateHUD())
             return;
         s_Instance = inst;
+        inst.InitV5();
     }
 
     // 与 SCR_RSS_Settings.m_bHintDisplayEnabled 对齐：开则 Init、关则 Destroy（含热重载后关闭 HUD）。
@@ -191,6 +200,7 @@ class SCR_StaminaHUDComponent
     {
         if (s_Instance)
         {
+            s_Instance.CleanupV5();
             s_Instance.DestroyHUD();
             s_Instance = null;
             s_fDisplayStaminaPercent = 1.0;  // 重置平滑值，便于下次初始化
@@ -239,7 +249,7 @@ class SCR_StaminaHUDComponent
         if (!workspace)
         {
             if (StaminaConfigBridge.IsDebugEnabled())
-                Print("[RSS_StaminaHUD] Workspace not found");
+                SCR_RSS_Logger.Debug("[RSS_StaminaHUD] Workspace not found");
             return false;
         }
         
@@ -250,7 +260,7 @@ class SCR_StaminaHUDComponent
         {
             // 如果布局加载失败，打印日志
             if (StaminaConfigBridge.IsDebugEnabled())
-                Print("[RSS_StaminaHUD] Layout not found or failed to load");
+                SCR_RSS_Logger.Debug("[RSS_StaminaHUD] Layout not found or failed to load");
             return false;
         }
         
@@ -295,7 +305,7 @@ class SCR_StaminaHUDComponent
         m_iCreatedInGeneration = s_iWorldGeneration;
 
         if (StaminaConfigBridge.IsDebugEnabled())
-            Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets (gen=" + s_iWorldGeneration.ToString() + ")");
+            SCR_RSS_Logger.Debug("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets (gen=" + s_iWorldGeneration.ToString() + ")");
         return true;
     }
     
@@ -739,5 +749,138 @@ class SCR_StaminaHUDComponent
             return Color.FromRGBA(100, 180, 255, 255);  // 凉爽 - 浅蓝色
         else
             return Color.FromRGBA(0, 150, 255, 255);    // 寒冷 - 蓝色
+    }
+
+    // ==================== v5 无氧/代谢 HUD ====================
+
+    protected void InitV5()
+    {
+        if (m_bIsV5Initialized)
+            return;
+
+        UISignalBridge bridge = UISignalBridge.GetInstance();
+        if (bridge)
+        {
+            bridge.GetOnSprintCooldownStarted().Insert(OnSprintCooldownStart);
+            bridge.GetOnMetabolicOverload().Insert(OnMetabolicOverload);
+        }
+
+        m_bIsV5Initialized = true;
+        m_fLastV5UpdateTime = -1.0;
+    }
+
+    protected void CleanupV5()
+    {
+        UISignalBridge bridge = UISignalBridge.GetInstance();
+        if (bridge)
+        {
+            bridge.GetOnSprintCooldownStarted().Remove(OnSprintCooldownStart);
+            bridge.GetOnMetabolicOverload().Remove(OnMetabolicOverload);
+        }
+
+        if (m_wRoot)
+        {
+            m_wCooldownRing = null;
+            m_wOverloadWarning = null;
+            m_wCooldownText = null;
+            m_wOverloadText = null;
+        }
+
+        m_bIsV5Initialized = false;
+    }
+
+    void UpdateHUD(float currentTime, SCR_AnaerobicBurstState anaerobicState, SCR_MetabolicSpeedLimiter metabolicLimiter)
+    {
+        if (!m_bIsV5Initialized)
+            return;
+
+        if (!anaerobicState || !metabolicLimiter)
+            return;
+
+        float cooldownRemaining = anaerobicState.GetCooldownRemaining();
+        if (cooldownRemaining > 0.0)
+            UpdateCooldownDisplay(cooldownRemaining);
+
+        float speedRatio = metabolicLimiter.GetCurrentSpeedRatio();
+        bool isOverriding = metabolicLimiter.IsPlayerOverriding();
+        if (speedRatio < 0.90)
+            UpdateOverloadDisplay(speedRatio, isOverriding);
+
+        m_fLastV5UpdateTime = currentTime;
+    }
+
+    protected void OnSprintCooldownStart()
+    {
+        if (!m_bIsV5Initialized)
+            return;
+
+        UISignalBridge bridge = UISignalBridge.GetInstance();
+        if (!bridge)
+            return;
+
+        float cooldownDuration = bridge.GetLastCooldownDuration();
+        bool isFullDepletion = bridge.GetLastIsFullDepletion();
+
+        if (IsRssDebugEnabled())
+        {
+            string typeStr;
+            if (isFullDepletion)
+                typeStr = "完全耗尽";
+            else
+                typeStr = "战术释放";
+
+            SCR_RSS_Logger.Debug(string.Format("[RSS v5] 冲刺冷却开始: 时长=%.1fs 类型=%s", cooldownDuration, typeStr));
+        }
+    }
+
+    protected void OnMetabolicOverload()
+    {
+        if (!m_bIsV5Initialized)
+            return;
+
+        UISignalBridge bridge = UISignalBridge.GetInstance();
+        if (!bridge)
+            return;
+
+        int severityLevel = bridge.GetLastSeverityLevel();
+
+        if (IsRssDebugEnabled())
+        {
+            string severityStr;
+            if (severityLevel == 0)
+                severityStr = "轻度";
+            else
+                severityStr = "严重";
+
+            SCR_RSS_Logger.Debug(string.Format("[RSS v5] 代谢过载警告: 等级=%s", severityStr));
+        }
+    }
+
+    protected void UpdateCooldownDisplay(float remainingTime)
+    {
+        if (IsRssDebugEnabled())
+            SCR_RSS_Logger.Debug(string.Format("[RSS v5 HUD] 冷却剩余: %.1fs", remainingTime));
+    }
+
+    protected void UpdateOverloadDisplay(float speedRatio, bool isOverriding)
+    {
+        if (IsRssDebugEnabled())
+        {
+            string overrideStr;
+            if (isOverriding)
+                overrideStr = "硬撑中";
+            else
+                overrideStr = "正常";
+
+            SCR_RSS_Logger.Debug(string.Format("[RSS v5 HUD] 速度限制: %.0f%% 状态=%s", speedRatio * 100.0, overrideStr));
+        }
+    }
+
+    protected bool IsRssDebugEnabled()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+            return settings.m_bDebugLogEnabled;
+        return false;
     }
 }

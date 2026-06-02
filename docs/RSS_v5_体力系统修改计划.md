@@ -1,8 +1,9 @@
 # RSS v5 体力系统修改计划
 
-> 版本：草案 **v0.2**（2026-05-28，设计评审修订）  
+> 版本：草案 **v0.3**（2026-05-28，二次审查补充）  
 > 背景：v4 数字孪生对齐 PlayerBase 后，35 kg 理想环境下的数据暴露 **速度—代谢—恢复** 三层语义冲突；本计划旨在 **同时** 支持「负重行军 4–5 小时」与「无氧冲刺秒级—分钟级限制」，并消除「Pandolf 外皮 + 单条体力池」的结构性矛盾。  
-> 原则：**用游戏化分层机制制造可信负重体验**，而非抛弃游戏性追求死板生理仿真。
+> 原则：**用游戏化分层机制制造可信负重体验**，而非抛弃游戏性追求死板生理仿真。  
+> 稳定线：**3.23.x**（含 3.23.1 灌木桥接）与 **dev/v5** 实验分支分离，见第十二章。
 
 ---
 
@@ -356,6 +357,9 @@ drain_velocity_consistency → max error 5%
 | 老玩家突然走不动 | `LegacyV4Style` 预设 + 首次弹窗 + 社区说明 |
 | 优化器无解 | 先 Phase 1 手工标定 coeff，再开优化 |
 | **参数只靠孪生、脱离实机** | Phase 0/3 强制 Workbench 体感门禁 |
+| **双锚点 + 8 场景优化无解** | 冲突优先级：生理硬约束 > 灌木 bench > 8 场景 soft > 三档序；Phase 3 前禁止跑 v5 优化器 |
+| **灌木 + 高代谢双重惩罚** | 高代谢只调 `RSS_StaminaSpeedLimitToken`；`final = min(rss, foliage, wire)`；验收含灌木内行军 |
+| **一次改太多难回滚** | 分步发布：3.23.x 小步 / v5 beta / v5.0（见 12.4） |
 
 ---
 
@@ -420,7 +424,184 @@ Phase 4 AI + 文档 + 发布说明
 | 孪生 | `tools/rss_digital_twin_fix.py` |
 | 优化器 | `tools/rss_pipeline_v4.py` → v5 |
 | 现有 bench | `tools/calc_35kg_ideal_movement.py` |
+| 灌木桥接（3.23.1+） | `scripts/Game/RSS/Core/SCR_RSS_CharacterSpeedBridge.c` |
+| 灌木机制文档 | `docs/灌木丛移动减速机制.md` |
 
 ---
 
-*本计划为架构草案 v0.2；Phase 0 孪生 + 实机完成后，第五节参数表将用实测数值替换「草案」列。*
+## 十二、二次审查 — 缺陷与风险补充（v0.3）
+
+### 12.1 计划逻辑缺口
+
+**双锚点可能互相打架**
+
+| 目标 | 倾向 |
+|------|------|
+| 锚点 A：1.4 m/s 走 4 h | 极低净消耗、高 `sustainable_watts` 容忍 |
+| 锚点 B：5–15 s 冲刺 + 120–180 s 冷却 | 高无氧消耗、短 burst |
+| 锚点 C：8 场景战斗剖面 | 仍可能要求「能跑能打一阵」 |
+
+Phase 3 Optuna 同时硬约束时 **可行域可能为空**。**冲突优先级（写死）**：
+
+```
+生理硬约束 > 灌木叠加 bench > 8 场景 soft > 三档 ordering
+```
+
+**LegacyV4Style 定义须明确**
+
+不能仅是「第四套 JSON」。Legacy = **v5 引擎 + 三开关**：
+
+| 开关 | 作用 |
+|------|------|
+| 数值包 | 接近 v3.23 / v4 Tactical 的 coeff |
+| 无氧池 | 关 → 退回单池 sprint_enable 语义 |
+| 强制降速 | 关 → 不做 sustainable_watts 压速 |
+
+避免「Legacy 预设名」造成第四套主循环长期维护。
+
+**「有氧池 = 现有 stamina」未拆引擎层**
+
+当前权威值：`SCR_CharacterStaminaComponent.m_fTargetStamina`（单 float）；HUD / 相机 / 载具读 `GetTargetStamina()`。
+
+Phase 2 前须定稿：
+
+| 项 | 决策项 |
+|----|--------|
+| 无氧池存储 | 新组件 / `ExerciseTracker` / RplProp |
+| 引擎 `GetStamina()` | 仅反映有氧，或文档声明映射关系 |
+| FOV / walk recovery / sprint 门槛 | 绑有氧还是无氧（表格化） |
+
+否则易出现「逻辑双池、存储单池」。
+
+**强制降速 vs 灌木限速（3.23.1 已合并）**
+
+`SCR_RSS_CharacterSpeedBridge`：`final = min(RSS token, 灌木, 铁丝网)`。
+
+v5 高代谢 **只下调 RSS_StaminaSpeedLimitToken**，不直接改全局 theoretical 以免与灌木 **双重惩罚**。验收增加：**灌木内 + 35 kg 持续移动**。
+
+---
+
+### 12.2 技术实现风险（计划原表未覆盖或偏轻）
+
+**网络同步 — 决议了「必须同步」，缺实现方案**
+
+| 缺口 | 后果 |
+|------|------|
+| RplProp / RPC / 复用体力同步？ | 实现期扯皮 |
+| 客户端预测 Sprint 被服务器驳回 | 输入黏滞 |
+| AI 无氧 Phase 4 才做 | Phase 2 上线后「人 AI 不一致」窗口 |
+
+Phase 2 验收须二选一写死：**仅服务器许可 Sprint**，或 **客户端预测 + 服务器校正**。
+
+**GetVelocity 与速度崩塌顺序**
+
+`min(GetVelocity, theoretical)` 修消耗后，动画仍可能短时间高于 theoretical。
+
+**崩塌顺序（写进 Phase 1/2）**：
+
+```
+1) 降 SetSpeedLimit（RSS token）
+2) 再读 GetVelocity 算 v_drain
+3) 再扣有氧 / 无氧池
+```
+
+**游泳 / 载具 / 战斗兴奋剂**
+
+v5 锚点均为陆地 35 kg 站姿。v5.0 须一句话定案：
+
+| 系统 | 建议默认 |
+|------|----------|
+| 游泳 | 共用有氧池；无氧 Sprint 禁用；保留现有游泳模型 |
+| 载具 | 体力冻结或简化（与现 `VehicleHelper` 一致） |
+| 战斗兴奋剂 | 只改有氧消耗倍率，不改无氧 CD |
+
+**PARAMS_ARRAY_SIZE 与 schema**
+
+每增 v5 参数须动 `WriteParamsToArray` / `MigrateConfig` / 联机 Custom。建议 Phase 0 引入 **`m_sStaminaSchemaVersion`**（与 `m_sConfigVersion` 分离），避免 49/50 槽静默错位重演。
+
+**数字孪生门禁**
+
+- 孪生 17 ms tick vs 游戏 0.2 s 刻度：对照时注明 scale。
+- Phase 1 完成前 **禁止** 跑 v5 优化器。
+- 增加 **C ↔ Python v_drain 同输入 dump** 作为 CI 门禁。
+
+**`sustainable_watts = 400` 恒定**
+
+未随负重 / 热 / 坡 / 泥泞 / 灌木调整时，与环境系统 **两套叙事**。Phase 1 可仅 **平路理想环境**；`sustainable_watts(load, heat)` 延后 Phase 4+。
+
+---
+
+### 12.3 体验与产品风险（收紧）
+
+| 风险 | 仍缺 |
+|------|------|
+| 1.4 m/s 枯燥 | Everon 尺度定量（km/h 任务时间）；无「自动节奏」仍靠任务设计 |
+| 180 s 冷却 | 接敌瞬间不能冲的挫败；8 s FOV burst 并入无氧后 FOV 可能空放 |
+| 硬撑 | 与 walk recovery zone 叠加规则未写；新手易当 bug |
+| 三档 | 玩家只选 Tactical → Elite 成摆设；Workshop 须写服务器推荐档 |
+| v4→v5 弹窗 | 服务器 JSON 旧 coeff 与 v5 默认混用，仅弹窗不够 → 须 schema 迁移 |
+
+---
+
+### 12.4 阶段顺序与发布策略
+
+**负面叠加风险**
+
+```
+Phase 1 降 Walk 1.4 m/s  →  社区「太慢」
+Phase 2 无氧 180 s         →  在已变慢基础上再「不能冲」
+Phase 3 优化器             →  固化未调妥手感
+```
+
+**建议分步发布（与 3.23.x 稳定线分离）**
+
+| 版本线 | 内容 | 分支 |
+|--------|------|------|
+| **3.23.x** | 灌木桥接、HUD、稳定预设 | `main` |
+| **3.23.2 / 3.24**（可选） | 仅 v_drain 闭环 + 灌木 bench；**不改** 1.4 m/s、无双池 | `dev/v5-phase1` |
+| **v5.0-beta** | 降速 + coeff 物理化 + 单池 | |
+| **v5.0** | 双池 + UI + 联机同步 | |
+
+避免一次上线改动面过大、难以回滚。
+
+---
+
+### 12.5 与 3.23.1 稳定版关系
+
+| 3.23.1 已有 | v5 须遵守 |
+|-------------|-----------|
+| `SCR_RSS_CharacterSpeedBridge` | 所有 v5 限速经桥接，禁止回退裸 `OverrideMaxSpeed` |
+| 预设 b2e1cd9 | v5 全换参；Legacy ≠ b2e1cd9 除非 Legacy 关闭 v5 特性 |
+| HUD ETA / ConfigBridge | 双池后 ETA 绑 **有氧**；无氧 CD 单独 UI |
+
+**不要在 3.23.1 稳定 `main` 上直接合入 Phase 1 降速 + 双池**；v5 在 `dev/v5` 迭代，稳定线只收灌木/HUD/热修类改动。
+
+---
+
+### 12.6 v0.3 验收补充清单
+
+Phase 0 / 1 除原计划外，增加：
+
+- [ ] 灌木内 35 kg 行军 10 min（speed + drain 合理）
+- [ ] 下坡 / 强行军 + 强制降速 UI 反馈可读
+- [ ] 联机双人：Sprint CD / 无氧状态一致（Phase 2）
+- [ ] C ↔ Python 同帧 v_drain 误差 < 5%
+- [ ] 游泳 / 载具 / 兴奋剂 smoke（不回归崩溃）
+- [ ] `m_sStaminaSchemaVersion` 迁移路径文档化
+
+---
+
+### 12.7 总评（二次审查）
+
+| 维度 | 评价 |
+|------|------|
+| **方向** | 正确；双池 + v_drain + 分行军/爆发是正路 |
+| **完整度** | v0.2 约 70% → v0.3 补存储/灌木/发布/Legacy/游泳网络细节 |
+| **最大未解风险** | 一次改太多 + 孪生/实机/联机不一致 + 与 3.23.1 稳定线冲突 |
+| **最大技术坑** | 单 `m_fTargetStamina` 硬叠双池；无氧同步方案空白 |
+
+**推荐下一步**：在 `dev/v5` 做 Phase 0 + Phase 1 **仅 v_drain + 灌木 bench**；`main` 维持 3.23.x。
+
+---
+
+*本计划为架构草案 v0.3；Phase 0 孪生 + 实机完成后，第五节参数表将用实测数值替换「草案」列。*

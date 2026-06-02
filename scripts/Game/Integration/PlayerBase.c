@@ -82,6 +82,11 @@ modded class SCR_CharacterControllerComponent
     // L462-481 proxy 检测、L1078-1081 通知、L1540-1577 getter/setter、
     // L1850-1874 距离 LOD 均已收拢至此。
     protected ref SCR_RSS_AIManager m_pAIManager;
+    
+    // ====== RSS v5 系统组件 ======
+    protected ref SCR_AnaerobicBurstState m_pAnaerobicState;
+    protected ref SCR_MetabolicSpeedLimiter m_pMetabolicLimiter;
+    protected SCR_AnaerobicStateComponent_V5 m_pAnaerobicNetworkComponent;
 
     //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
     //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
@@ -116,6 +121,9 @@ modded class SCR_CharacterControllerComponent
             m_pUISignalBridge = null;
             m_pEpocState = null;
             m_pNetworkSyncManager = null;
+            m_pAnaerobicState = null;
+            m_pMetabolicLimiter = null;
+            m_pAnaerobicNetworkComponent = null;
             return;
         }
 
@@ -184,6 +192,9 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
+        m_pAnaerobicState = null;
+        m_pMetabolicLimiter = null;
+        m_pAnaerobicNetworkComponent = null;
         // 清理 AI 子系统管理器
         if (m_pAIManager)
         {
@@ -335,6 +346,14 @@ modded class SCR_CharacterControllerComponent
         if (m_pNetworkSyncManager)
             m_pNetworkSyncManager.Initialize();
         
+        // v5系统初始化
+        m_pAnaerobicState = new SCR_AnaerobicBurstState();
+        m_pMetabolicLimiter = new SCR_MetabolicSpeedLimiter();
+        
+        // 查找网络同步组件（如果实体上已添加）
+        if (owner)
+            m_pAnaerobicNetworkComponent = SCR_AnaerobicStateComponent_V5.Cast(owner.FindComponent(SCR_AnaerobicStateComponent_V5));
+        
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
         {
@@ -390,7 +409,7 @@ modded class SCR_CharacterControllerComponent
             if (m_fLastConfigTimeoutWarningTime < 0.0 || (nowSec - m_fLastConfigTimeoutWarningTime) >= CONFIG_FETCH_TIMEOUT_SEC)
             {
                 m_fLastConfigTimeoutWarningTime = nowSec;
-                Print("[RSS] 等待 GameMode 同步配置超时。请确认服务器端 RSS 已加载且复制正常。");
+                SCR_RSS_Logger.Warn("[RSS] 等待 GameMode 同步配置超时。请确认服务器端 RSS 已加载且复制正常。");
             }
         }
         
@@ -511,7 +530,7 @@ modded class SCR_CharacterControllerComponent
 
             if (!m_bLastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RSS] Exhausted: limp speed");
+                SCR_RSS_Logger.Debug("[RSS] Exhausted: limp speed");
                 m_bLastExhaustedState = true;
             }
 
@@ -520,7 +539,7 @@ modded class SCR_CharacterControllerComponent
         {
             if (m_bLastExhaustedState && IsRssDebugEnabled())
             {
-                Print("[RSS] Recovered from Exhaustion");
+                SCR_RSS_Logger.Debug("[RSS] Recovered from Exhaustion");
                 m_bLastExhaustedState = false;
             }
         }
@@ -584,10 +603,15 @@ modded class SCR_CharacterControllerComponent
         }
 
         float speedToApply = finalSpeedMultiplier;
+        
         if (!Replication.IsServer() && IsPlayerControlled() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled() && m_pNetworkSyncManager.HasServerValidation())
         {
             m_pNetworkSyncManager.GetTargetSpeedMultiplier(finalSpeedMultiplier);
             speedToApply = m_pNetworkSyncManager.GetSmoothedSpeedMultiplier(currentTime);
+        }
+        else
+        {
+            speedToApply = finalSpeedMultiplier;
         }
         float finalSpeedToApply = Math.Clamp(speedToApply, 0.01, 1.0);
         m_fLastRssSpeedMultiplierApplied = finalSpeedToApply;
@@ -633,6 +657,37 @@ modded class SCR_CharacterControllerComponent
         else
             timeDeltaSec = GetSpeedUpdateIntervalMs() / 1000.0;
         timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
+        
+        // v5: 无氧冲刺状态更新（在 timeDeltaSec 和 currentWeight 定义之后）
+        if (isPlayer && m_pAnaerobicState)
+        {
+            float aerobicStamina = staminaPercent;
+            float drainVelocity = currentSpeed;
+            float loadWeight = currentWeight;
+            
+            m_pAnaerobicState.TickUpdate(timeDeltaSec, aerobicStamina, drainVelocity, loadWeight);
+            
+            // 检测冲刺开始/结束
+            bool wasSprintingLastFrame = m_bLastWasSprinting;
+            if (isSprintActive && !wasSprintingLastFrame)
+            {
+                m_pAnaerobicState.OnSprintStart(currentSpeed, currentWeight);
+            }
+            else
+            {
+                if (!isSprintActive && wasSprintingLastFrame)
+                {
+                    bool forcedByDepletion = (m_pAnaerobicState.GetAnaerobicEnergy() < 0.01);
+                    m_pAnaerobicState.OnSprintEnd(forcedByDepletion);
+                }
+            }
+            
+            // 服务端同步状态到网络组件
+            if (Replication.IsServer() && m_pAnaerobicNetworkComponent)
+            {
+                m_pAnaerobicNetworkComponent.SyncFromLogicState(m_pAnaerobicState);
+            }
+        }
 
         // 编队行军：由 AIManager.Tick() 内部处理（每 tick 平滑收敛 + 行为层 500ms 节流）
 
@@ -795,6 +850,28 @@ modded class SCR_CharacterControllerComponent
             velocityForDrain);
         float gradePercent = gradeResult.gradePercent;
         slopeAngleDegrees = gradeResult.slopeAngleDegrees;
+        
+        // v5: 代谢速度限制器更新（在 gradePercent 定义之后）
+        // Phase 2.3: 使用完整的 PandolfCalculator_V5 替换简化版公式
+        if (isPlayer && m_pMetabolicLimiter)
+        {
+            // 使用完整的 Pandolf 代谢功率计算器
+            float bodyWeight = RealisticStaminaSpeedSystem.CHARACTER_WEIGHT;  // 90kg
+            float loadWeight = currentWeight;  // 装备重量
+            
+            float pandolfWatts = SCR_PandolfCalculator_V5.CalculateMetabolicPower(
+                currentSpeed,
+                bodyWeight,
+                loadWeight,
+                gradePercent,
+                terrainFactor,
+                currentTime);  // 启用缓存
+            
+            m_pMetabolicLimiter.TickUpdate(timeDeltaSec, pandolfWatts);
+            
+            float limiterSpeedRatio = m_pMetabolicLimiter.GetCurrentSpeedRatio();
+            finalSpeedMultiplier = finalSpeedMultiplier * limiterSpeedRatio;
+        }
 
         if (StaminaConfigBridge.IsMudSlipMechanismEnabled())
         {
@@ -842,6 +919,52 @@ modded class SCR_CharacterControllerComponent
         float baseDrainRateByVelocityForModule = 0.0;
 
         {
+        // v5修正：传递无氧能量参数以支持v_drain机制
+        float anaerobicEnergy = 1.0;
+        if (isPlayer && m_pAnaerobicState)
+        {
+            anaerobicEnergy = m_pAnaerobicState.GetAnaerobicEnergy();
+        }
+        
+        // Phase 2.2：计算动态理论速度（基于负重、坡度、地形）
+        float theoreticalWalkSpeed = 1.4;
+        float theoreticalRunSpeed = 3.0;
+        float theoreticalSprintSpeed = 4.2;
+        if (isPlayer)
+        {
+            string preset = "Standard";
+            SCR_RSS_Settings activeSettings = SCR_RSS_ConfigManager.GetSettings();
+            if (activeSettings)
+            {
+                string selectedPreset = activeSettings.m_sSelectedPreset;
+                if (selectedPreset == "EliteStandard")
+                {
+                    preset = "Elite";
+                }
+                else if (selectedPreset == "TacticalAction")
+                {
+                    preset = "Tactical";
+                }
+                else
+                {
+                    preset = "Standard";
+                }
+            }
+            
+            // 使用 SpeedRecalibration_V5 计算动态理论速度
+            theoreticalWalkSpeed = SCR_SpeedRecalibration_V5.CalculateFinalWalkSpeed(
+                preset, currentWeight, gradePercent, terrainFactor);
+            theoreticalRunSpeed = SCR_SpeedRecalibration_V5.CalculateFinalRunSpeed(
+                preset, currentWeight, gradePercent, terrainFactor);
+            theoreticalSprintSpeed = SCR_SpeedRecalibration_V5.CalculateFinalSprintSpeed(
+                preset, currentWeight, gradePercent, terrainFactor);
+        }
+        
+        TheoreticalSpeedParams theoreticalSpeeds = new TheoreticalSpeedParams();
+        theoreticalSpeeds.walkSpeed = theoreticalWalkSpeed;
+        theoreticalSpeeds.runSpeed = theoreticalRunSpeed;
+        theoreticalSpeeds.sprintSpeed = theoreticalSprintSpeed;
+        
         BaseDrainRateResult drainRateResult = StaminaUpdateCoordinator.CalculateBaseDrainRate(
             useSwimmingModel,
             currentSpeed,
@@ -855,7 +978,10 @@ modded class SCR_CharacterControllerComponent
             owner,
             m_pEnvironmentFactor, // v2.14.0修复：传递环境因子
             isSprinting,
-            currentMovementPhase);
+            currentMovementPhase,
+            anaerobicEnergy,  // v5新增：无氧能量
+            0.2,  // v5新增：无氧阈值
+            theoreticalSpeeds);  // Phase 2.2：动态速度结构体
         baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         m_bSwimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
         
@@ -982,6 +1108,16 @@ modded class SCR_CharacterControllerComponent
         if (isPlayer && m_pUISignalBridge)
         {
             m_pUISignalBridge.UpdateUISignal(staminaPercent, isExhausted, currentSpeed, totalDrainRate, false);
+        }
+        
+        // v5: 更新HUD显示
+        if (isPlayer && m_pAnaerobicState && m_pMetabolicLimiter)
+        {
+            SCR_StaminaHUDComponent hud = SCR_StaminaHUDComponent.GetInstance();
+            if (hud)
+            {
+                hud.UpdateHUD(currentTime, m_pAnaerobicState, m_pMetabolicLimiter);
+            }
         }
         
         m_fLastStaminaPercent = staminaPercent;
@@ -1548,7 +1684,7 @@ modded class SCR_CharacterControllerComponent
         int pid = pm.GetPlayerIdFromControlledEntity(owner);
         if (pid <= 0)
         {
-            Print("[RSS] RPC_AdminUpdateConfig: no controlling player for entity");
+            SCR_RSS_Logger.Warn("[RSS] RPC_AdminUpdateConfig: no controlling player for entity");
             return;
         }
         if (!pm.HasPlayerRole(pid, EPlayerRole.ADMINISTRATOR)
@@ -1612,7 +1748,7 @@ modded class SCR_CharacterControllerComponent
                 inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
                 
                 if (IsRssDebugEnabled())
-                    Print("[RSS] 跳跃动作监听器已添加 / Jump Action Listener Added");
+                    SCR_RSS_Logger.Debug("[RSS] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
             
             GetGame().GetCallqueue().CallLater(InitStaminaHUD, 1000, false);
@@ -1652,7 +1788,7 @@ modded class SCR_CharacterControllerComponent
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
             if (IsRssDebugEnabled())
-                Print("[RSS] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
+                SCR_RSS_Logger.Debug("[RSS] 动作监听器检测到跳跃输入！/ Action Listener Detected Jump Input!");
         }
     }
 
@@ -1669,7 +1805,7 @@ modded class SCR_CharacterControllerComponent
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
             if (IsRssDebugEnabled())
-                Print("[RSS] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
+                SCR_RSS_Logger.Debug("[RSS] OnPrepareControls 检测到跳跃输入！/ OnPrepareControls Detected Jump Input!");
         }
     }
 
@@ -1927,6 +2063,9 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
+        m_pAnaerobicState = null;
+        m_pMetabolicLimiter = null;
+        m_pAnaerobicNetworkComponent = null;
     }
 
     protected void RSS_UpdateTacticalSprintState()

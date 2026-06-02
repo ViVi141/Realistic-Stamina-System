@@ -1,9 +1,18 @@
 // UI信号桥接模块
-// 负责对接官方UI特效和音效系统，让自定义体力系统状态能够触发视觉模糊和呼吸声
+// v4: 对接官方UI特效和音效系统，让自定义体力系统状态能够触发视觉模糊和呼吸声
+// v5: 通过 ScriptInvoker 事件委托连接无氧/代谢逻辑到 HUD 系统
 // 模块化拆分：从 PlayerBase.c 提取的独立功能模块
 
 class UISignalBridge
 {
+    // ==================== 静态单例（供 v5 事件触发方使用）====================
+    protected static UISignalBridge s_Instance;
+
+    static UISignalBridge GetInstance()
+    {
+        return s_Instance;
+    }
+
     // ==================== 状态变量 ====================
     protected IEntity m_pOwner;
     protected SignalsManagerComponent m_pSignalsManager; // 信号管理器组件引用
@@ -12,7 +21,16 @@ class UISignalBridge
     // 体力显示平滑：与 HUD 一致，避免 Exhaustion 信号驱动效果抽动
     protected static float s_fSmoothedStaminaForSignal = 1.0;
     protected static const float STAMINA_SIGNAL_SMOOTH_ALPHA = 0.4;
-    
+
+    // ==================== v5 事件数据 ====================
+    protected float m_fLastCooldownDuration;
+    protected bool m_bLastIsFullDepletion;
+    protected int m_iLastSeverityLevel;
+
+    protected ref ScriptInvokerVoid m_OnSprintCooldownStarted;
+    protected ref ScriptInvokerVoid m_OnMetabolicOverload;
+    protected ref ScriptInvokerVoid m_OnMetabolicNormal;
+
     // ==================== 公共方法 ====================
     
     // 初始化UI信号桥接系统
@@ -21,6 +39,7 @@ class UISignalBridge
     bool Init(IEntity owner)
     {
         m_pOwner = owner;
+        s_Instance = this;
         return TryResolveSignals();
     }
     
@@ -87,9 +106,67 @@ class UISignalBridge
     //! 实体删除时清理所有引用，防止悬空指针访问。
     void Cleanup()
     {
+        if (s_Instance == this)
+            s_Instance = null;
         m_pOwner = null;
         m_pSignalsManager = null;
         m_iExhaustionSignal = -1;
+        m_OnSprintCooldownStarted = null;
+        m_OnMetabolicOverload = null;
+        m_OnMetabolicNormal = null;
+    }
+
+    // ==================== v5 ScriptInvoker 访问器 ====================
+
+    ScriptInvokerVoid GetOnSprintCooldownStarted()
+    {
+        if (!m_OnSprintCooldownStarted)
+            m_OnSprintCooldownStarted = new ScriptInvokerVoid();
+        return m_OnSprintCooldownStarted;
+    }
+
+    ScriptInvokerVoid GetOnMetabolicOverload()
+    {
+        if (!m_OnMetabolicOverload)
+            m_OnMetabolicOverload = new ScriptInvokerVoid();
+        return m_OnMetabolicOverload;
+    }
+
+    ScriptInvokerVoid GetOnMetabolicNormal()
+    {
+        if (!m_OnMetabolicNormal)
+            m_OnMetabolicNormal = new ScriptInvokerVoid();
+        return m_OnMetabolicNormal;
+    }
+
+    float GetLastCooldownDuration() { return m_fLastCooldownDuration; }
+    bool GetLastIsFullDepletion() { return m_bLastIsFullDepletion; }
+    int GetLastSeverityLevel() { return m_iLastSeverityLevel; }
+
+    // ==================== v5 事件触发接口 ====================
+
+    void OnSprintCooldownStarted(float duration, bool isFullDepletion)
+    {
+        m_fLastCooldownDuration = duration;
+        m_bLastIsFullDepletion = isFullDepletion;
+        if (m_OnSprintCooldownStarted)
+            m_OnSprintCooldownStarted.Invoke();
+    }
+
+    void OnMetabolicOverload(bool severe)
+    {
+        if (severe)
+            m_iLastSeverityLevel = 1;
+        else
+            m_iLastSeverityLevel = 0;
+        if (m_OnMetabolicOverload)
+            m_OnMetabolicOverload.Invoke();
+    }
+
+    void OnMetabolicNormal()
+    {
+        if (m_OnMetabolicNormal)
+            m_OnMetabolicNormal.Invoke();
     }
 
     protected bool TryResolveSignals()

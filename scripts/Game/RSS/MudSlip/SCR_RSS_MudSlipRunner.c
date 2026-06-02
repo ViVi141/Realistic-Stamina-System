@@ -158,7 +158,7 @@ class RSS_MudSlipRunner
                             stamina.SetTargetStamina(stmAfter);
                             ctrl.RSS_TriggerMudSlipRagdoll();
                             if (rssDebug)
-                                Print("[RSS] 泥泞滑倒 / Mud slip: ragdoll + stamina drain");
+                                SCR_RSS_Logger.Debug("[RSS] 泥泞滑倒 / Mud slip: ragdoll + stamina drain");
                         }
                     }
                 }

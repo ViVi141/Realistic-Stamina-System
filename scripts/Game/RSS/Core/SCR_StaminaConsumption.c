@@ -117,37 +117,29 @@ class StaminaConsumptionCalculator
         }
 
         // ==================== 手持重物额外消耗 ====================
-        const float itemBonus = 1.0; // 默认无额外消耗
+        float itemBonus = 1.0; // 默认无额外消耗
         
         if (owner)
         {
-            // 通过 InventoryStorageManagerComponent 检测玩家右手或双手插槽
-            // TODO: 实现手持物品检测逻辑
-            // 预留：根据物品重量或 Tag 判断的逻辑结构
-            // 示例逻辑：
-            /*
-            InventoryStorageManagerComponent inventoryManager = InventoryStorageManagerComponent.Cast(owner.FindComponent(InventoryStorageManagerComponent));
+            // 激进重构：直接以当前装备总重作为手持负担代理，按阈值分段施加额外消耗。
+            SCR_InventoryStorageManagerComponent inventoryManager = SCR_InventoryStorageManagerComponent.Cast(
+                owner.FindComponent(SCR_InventoryStorageManagerComponent));
             if (inventoryManager)
             {
-                // 获取右手或双手插槽的物品
-                IEntity rightHandItem = inventoryManager.GetItemInSlot("RightHand");
-                IEntity twoHandedItem = inventoryManager.GetItemInSlot("TwoHanded");
-                
-                if (rightHandItem || twoHandedItem)
+                float carriedWeight = inventoryManager.GetTotalWeightOfAllStorages();
+                if (carriedWeight >= 25.0)
                 {
-                    // 检测到手持实体，增加消耗乘数
-                    itemBonus = 1.2; // 暂时固定为1.2倍，后续可根据物品重量或Tag调整
-                    
-                    // TODO: 根据物品重量或Tag调整消耗乘数
-                    // 例如：
-                    // float itemWeight = rightHandItem ? rightHandItem.GetWeight() : (twoHandedItem ? twoHandedItem.GetWeight() : 0.0);
-                    // if (itemWeight > 5.0) // 大于5kg的物品
-                    //     itemBonus = 1.5;
-                    // else if (itemWeight > 2.0) // 大于2kg的物品
-                    //     itemBonus = 1.2;
+                    itemBonus = 1.20;
+                }
+                else if (carriedWeight >= 15.0)
+                {
+                    itemBonus = 1.10;
+                }
+                else
+                {
+                    itemBonus = 1.0;
                 }
             }
-            */
         }
         
         // 应用泥泞地形系数（修正地形因子）

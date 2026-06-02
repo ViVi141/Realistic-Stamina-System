@@ -409,7 +409,7 @@ class EnvironmentFactor
                 if (SCR_DebugBatchManager.ShouldLog(tmpLogU1))
                 {
                     m_fNextLocationEstimateLogTime = tmpLogU1;
-                    Print("[RSS] weather mgr returned 0/0 coordinates, delaying");
+                    SCR_RSS_Logger.Debug("[RSS] weather mgr returned 0/0 coordinates, delaying");
                 }
             }
             else

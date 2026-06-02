@@ -457,7 +457,7 @@ class DebugDisplay
             Math.Round(lastSpeedMultiplier * 100.0) / 100.0,
             movementTypeStr);
         
-        Print(statusMessage);
+        SCR_RSS_Logger.Debug(statusMessage);
         
         // 更新下次日志时间（状态信息每秒输出一次）
         m_fNextStatusLogTime = currentTime + 1.0;

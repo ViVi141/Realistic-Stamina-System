@@ -1122,12 +1122,4 @@ class RealisticStaminaSpeedSystem
     // CalculateSanteeDownhillCorrection removed - replaced inline by the
 
     
-    // ==================== Givoni-Goldman 模型（已弃用） ====================
-    // Still called from SCR_StaminaUpdateCoordinator.c legacy branch;
-    // returns 0.0 since v3.12.0 when all phases moved to Pandolf.
-    static float CalculateGivoniGoldmanRunning(float velocity, float currentWeight, bool isRunning = true)
-    {
-        return 0.0;
-    }
-
 }

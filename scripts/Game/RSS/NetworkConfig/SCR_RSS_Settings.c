@@ -87,7 +87,7 @@ class SCR_RSS_Settings
             InitEliteStandardDefaults(true);
             InitStandardMilsimDefaults(true);
             InitTacticalActionDefaults(true);
-            Print("[RSS_Settings] System presets refreshed to latest mod defaults.");
+            SCR_RSS_Logger.Info("[RSS_Settings] System presets refreshed to latest mod defaults.");
         }
         else
         {

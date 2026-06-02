@@ -100,7 +100,7 @@ class JumpVaultDetector
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
                 m_bJumpInputTriggered = false;
                 if (StaminaConfigBridge.IsVerboseLoggingEnabled())
-                    Print("[RSS] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
+                    SCR_RSS_Logger.Debug("[RSS] 跳跃冷却中，拦截动作输入！/ Jump Cooldown Active, Blocking Input!");
                 m_eLastStance = currentStance;
                 return 0.0;
             }
@@ -220,7 +220,7 @@ class JumpVaultDetector
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行攀爬
                 if (StaminaConfigBridge.IsVerboseLoggingEnabled())
-                    Print("[RSS] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
+                    SCR_RSS_Logger.Debug("[RSS] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
                 return 0.0;
             }
             

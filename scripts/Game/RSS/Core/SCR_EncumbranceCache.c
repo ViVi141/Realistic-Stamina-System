@@ -105,7 +105,7 @@ class EncumbranceCache
             // 如果无法获取 inventoryManager，设置缓存无效
             m_bEncumbranceCacheValid = false;
             if (StaminaConfigBridge.IsDebugEnabled())
-                Print("[RSS] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
+                SCR_RSS_Logger.Debug("[RSS] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
             return;
         }
         

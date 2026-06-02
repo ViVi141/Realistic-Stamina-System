@@ -80,7 +80,7 @@ class SCR_DebugBatchManager
         if (world)
             s_fLastBatchFlushTime = world.GetWorldTime() / 1000.0;
         for (int i = 0; i < s_aDebugBatchLines.Count(); i++)
-            Print(s_aDebugBatchLines.Get(i));
+            SCR_RSS_Logger.Debug(s_aDebugBatchLines.Get(i));
         s_aDebugBatchLines.Clear();
     }
 

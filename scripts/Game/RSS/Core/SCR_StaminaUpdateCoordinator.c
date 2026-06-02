@@ -31,12 +31,69 @@ class RecoveryContext
     float exerciseDurationMinutes;
 }
 
+// v5理论速度参数结构体（减少方法参数数量）
+class TheoreticalSpeedParams
+{
+    float walkSpeed = 1.4;
+    float runSpeed = 3.0;
+    float sprintSpeed = 4.2;
+}
+
 class StaminaUpdateCoordinator
 {
     // ── 结果对象（每次调用新分配，消除静态共享竞态）──
     // 高密度 AI 并行调用时静态共享对象会导致数据覆盖。
     // 修复：移除 s_pResultSpeedCalc / s_pResultBaseDrainRate，
     // BuildRecoveryContext 每次 new RecoveryContext()，调用方读取后即可释放。
+
+    // ==================== v5新增：带v_drain修正的消耗率计算 ====================
+    // 包装方法：集成v5的v_drain机制，解决速度-消耗解耦问题
+    // 建议：新代码优先使用此方法，旧代码可继续使用 CalculateLandBaseDrainRate
+    // Phase 2.2更新：添加理论速度参数以支持动态速度重校准
+    static float CalculateLandBaseDrainRate_V5(
+        float currentSpeed,
+        float encumbranceSpeedPenalty,
+        float currentWeightWithWet,
+        float gradePercent,
+        float terrainFactor,
+        float windDrag,
+        float coldStaticPenalty,
+        bool isSprinting = false,
+        int currentMovementPhase = -1,
+        float anaerobicEnergy = 1.0,
+        float anaerobicThreshold = 0.2,
+        float theoreticalWalkSpeed = 1.4,
+        float theoreticalRunSpeed = 3.0,
+        float theoreticalSprintSpeed = 4.2)
+    {
+        // v5关键修正：计算用于消耗的速度（v_drain）
+        float vDrain = currentSpeed;
+        if (currentMovementPhase >= 0)
+        {
+            vDrain = SCR_DrainVelocityCalculator_V5.GetDrainVelocity(
+                currentSpeed,
+                currentMovementPhase,
+                anaerobicEnergy,
+                anaerobicThreshold,
+                theoreticalWalkSpeed,
+                theoreticalRunSpeed,
+                theoreticalSprintSpeed
+            );
+        }
+        
+        // 调用原方法，但使用v_drain代替currentSpeed
+        return CalculateLandBaseDrainRate(
+            vDrain,  // 关键：使用修正后的速度
+            encumbranceSpeedPenalty,
+            currentWeightWithWet,
+            gradePercent,
+            terrainFactor,
+            windDrag,
+            coldStaticPenalty,
+            isSprinting,
+            currentMovementPhase
+        );
+    }
 
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_StaminaConsumption.c 中重复实现
@@ -510,6 +567,9 @@ class StaminaUpdateCoordinator
     // @param swimmingVelocityDebugPrinted 是否已输出游泳速度调试信息（输入）
     // @param owner 角色实体（用于调试）
     // @param environmentFactor 环境因子模块引用（v2.14.0修复：添加此参数以支持环境因子）
+    // @param anaerobicEnergy v5新增：无氧能量（0-1），用于v_drain计算
+    // @param anaerobicThreshold v5新增：无氧阈值（默认0.2）
+    // @param theoreticalSpeeds v5新增：理论速度参数（Walk/Run/Sprint）
     // @return 基础消耗率结果（包含消耗率和调试标志）
     static BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
@@ -524,9 +584,22 @@ class StaminaUpdateCoordinator
         IEntity owner,
         EnvironmentFactor environmentFactor = null,
         bool isSprinting = false,
-        int currentMovementPhase = -1)
+        int currentMovementPhase = -1,
+        float anaerobicEnergy = 1.0,
+        float anaerobicThreshold = 0.2,
+        TheoreticalSpeedParams theoreticalSpeeds = null)
     {
         float baseDrainRate = 0.0;
+        
+        float theoreticalWalkSpeed = 1.4;
+        float theoreticalRunSpeed = 3.0;
+        float theoreticalSprintSpeed = 4.2;
+        if (theoreticalSpeeds)
+        {
+            theoreticalWalkSpeed = theoreticalSpeeds.walkSpeed;
+            theoreticalRunSpeed = theoreticalSpeeds.runSpeed;
+            theoreticalSprintSpeed = theoreticalSpeeds.sprintSpeed;
+        }
         
         if (isSwimming)
         {
@@ -537,7 +610,7 @@ class StaminaUpdateCoordinator
                 float swimVelLen = computedVelocity.Length();
                 if (swimVelLen < 0.01)
                 {
-                    Print("[RSS] 游泳 位置差分测速仍为0：可能未发生位移（静止/卡住/命令未推动位置）");
+                    SCR_RSS_Logger.Debug("[RSS] 游泳 位置差分测速仍为0：可能未发生位移（静止/卡住/命令未推动位置）");
                     swimmingVelocityDebugPrinted = true;
                 }
             }
@@ -579,8 +652,8 @@ class StaminaUpdateCoordinator
             // 此处不再重复累加，避免湿重被计入两次
 
 
-                // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_StaminaConsumption.c 重复
-            baseDrainRate = CalculateLandBaseDrainRate(
+                // v5修正：调用v5版本的方法，集成v_drain机制和动态速度重校准
+            baseDrainRate = CalculateLandBaseDrainRate_V5(
                 currentSpeed,
                 encumbranceSpeedPenalty,
                 currentWeightWithWet,
@@ -589,7 +662,12 @@ class StaminaUpdateCoordinator
                 windDrag,
                 coldStaticPenalty,
                 isSprinting,
-                currentMovementPhase);
+                currentMovementPhase,
+                anaerobicEnergy,
+                anaerobicThreshold,
+                theoreticalWalkSpeed,
+                theoreticalRunSpeed,
+                theoreticalSprintSpeed);
 
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
             // 因此不再需要对固定 Sprint 基线做特殊处理。

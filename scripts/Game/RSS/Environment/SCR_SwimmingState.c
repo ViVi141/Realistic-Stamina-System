@@ -73,7 +73,7 @@ class SwimmingStateManager
                 newState = "陆地";
             
             string stateChange = string.Format("[游泳检测] 状态变化: %1 -> %2", oldState, newState);
-            Print(stateChange);
+            SCR_RSS_Logger.Debug(stateChange);
         }
         
         // 更新湿重

@@ -87,7 +87,7 @@ modded class SCR_BaseGameMode
             && !pm.HasPlayerRole(playerId, EPlayerRole.SESSION_ADMINISTRATOR)
             && !pm.HasPlayerRole(playerId, EPlayerRole.GAME_MASTER))
         {
-            Print("[RSS] RSS_OpenAdminMenu: access denied");
+            SCR_RSS_Logger.Warn("[RSS] RSS_OpenAdminMenu: access denied");
             return;
         }
 
