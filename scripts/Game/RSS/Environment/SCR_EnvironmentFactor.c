@@ -161,7 +161,7 @@ class EnvironmentFactor
             if (SCR_DebugBatchManager.ShouldLog(tmpLogInit))
             {
                 m_fNextLocationEstimateLogTime = tmpLogInit;
-                PrintFormat("[RSS] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ);
+                SCR_RSS_Logger.Debug(string.Format("[RSS] init weather mgr lat=%1 lon=%2 tz=%3", dbgLat, dbgLon, dbgTZ));
             }
         }
         m_fSurfaceWetnessPenalty = 0.0;
@@ -247,7 +247,7 @@ class EnvironmentFactor
             // 合并少数字段为单个 Extras 字符串，使用 PrintFormat 并限制到 9 个占位符
             string extras = useEngineTempStr + " | " + useEngineTzStr + " | Lon=" + (Math.Round(m_fLongitude * 10.0) / 10.0) + " | TZOff=" + (Math.Round(m_fTimeZoneOffsetHours * 10.0) / 10.0);
 
-            PrintFormat("[RSS][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=%8 | Extras=%9",
+            SCR_RSS_Logger.Debug(string.Format("[RSS][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=%8 | Extras=%9",
                 overrideTemp,
                 Math.Round(tempMin * 10.0) / 10.0,
                 Math.Round(tempMax * 10.0) / 10.0,
@@ -256,7 +256,7 @@ class EnvironmentFactor
                 Math.Round(wind * 10.0) / 10.0,
                 Math.Round(tod * 10.0) / 10.0,
                 isServer,
-                extras);
+                extras));
 
             // 尝试基于日出/日落估算经纬度，以补齐气温模型所需参数（若未显式配置）
             // 如果引擎已经提供了有效的经纬度，则无需估算
@@ -273,7 +273,7 @@ class EnvironmentFactor
                     if (SCR_DebugBatchManager.ShouldLog(tmpLocLog1))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog1;
-                        PrintFormat("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
+                        SCR_RSS_Logger.Debug(string.Format("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon));
                     }
                 }
             }
@@ -289,10 +289,10 @@ class EnvironmentFactor
                     if (SCR_DebugBatchManager.ShouldLog(tmpLocLog2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLocLog2;
-                        PrintFormat("[RSS][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
+                        SCR_RSS_Logger.Debug(string.Format("[RSS][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
                             Math.Round(estLat * 10.0) / 10.0,
                             Math.Round(estLon * 10.0) / 10.0,
-                            Math.Round(estConf * 100.0) / 100.0);
+                            Math.Round(estConf * 100.0) / 100.0));
                     }
 
                     // 若初始置信较低，按需使用天文网格搜索（更慢但更鲁棒）进一步细化
@@ -307,10 +307,10 @@ class EnvironmentFactor
                             if (SCR_DebugBatchManager.ShouldLog(tmpLocLog3))
                             {
                                 m_fNextLocationEstimateLogTime = tmpLocLog3;
-                                PrintFormat("[RSS][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
+                                SCR_RSS_Logger.Debug(string.Format("[RSS][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
                                     Math.Round(refinedLat * 10.0) / 10.0,
                                     Math.Round(refinedLon * 10.0) / 10.0,
-                                    Math.Round(refinedConf * 100.0) / 100.0);
+                                    Math.Round(refinedConf * 100.0) / 100.0));
                             }
                         }
                     }
@@ -371,7 +371,7 @@ class EnvironmentFactor
         if (SCR_DebugBatchManager.ShouldLog(tmpLogTime))
         {
             m_fNextForceUpdateLogTime = tmpLogTime;
-            PrintFormat("[RSS] ForceUpdate: Pending recompute flagged");
+                SCR_RSS_Logger.Debug(string.Format("[RSS] ForceUpdate: Pending recompute flagged"));
         }
     }
 
@@ -422,7 +422,7 @@ class EnvironmentFactor
                     if (SCR_DebugBatchManager.ShouldLog(tmpLogU2))
                     {
                         m_fNextLocationEstimateLogTime = tmpLogU2;
-                        PrintFormat("[RSS] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon);
+                        SCR_RSS_Logger.Debug(string.Format("[RSS] weather mgr now has coords lat=%1 lon=%2", dbgLat, dbgLon));
                     }
                     once = true;
                 }
@@ -591,7 +591,7 @@ class EnvironmentFactor
             if (SCR_DebugBatchManager.ShouldLog(tmpLogTime2))
             {
                 m_fNextForceUpdateLogTime = tmpLogTime2;
-                PrintFormat("[RSS] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
+                SCR_RSS_Logger.Debug(string.Format("[RSS] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0));
             }
         }
 
@@ -599,12 +599,12 @@ class EnvironmentFactor
         static float nextEnvLogTime = 0.0;
         if (SCR_DebugBatchManager.ShouldLog(nextEnvLogTime))
         {
-            PrintFormat("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
+            SCR_RSS_Logger.Debug(string.Format("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
                 Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
                 Math.Round(m_fCurrentTotalWetWeight * 10.0) / 10.0,
-                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
+                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0));
         }
         
         return true;
@@ -858,10 +858,10 @@ class EnvironmentFactor
             if (SCR_DebugBatchManager.ShouldLog(tmpLog))
             {
                 m_fNextLocationEstimateLogTime = tmpLog;
-                PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3",
+                SCR_RSS_Logger.Debug(string.Format("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3",
                     Math.Round(outLatDeg * 10.0) / 10.0,
                     Math.Round(outLonDeg * 10.0) / 10.0,
-                    Math.Round(conf * 100.0) / 100.0);
+                    Math.Round(conf * 100.0) / 100.0));
             }
         }
         return conf;
@@ -883,10 +883,10 @@ class EnvironmentFactor
             if (SCR_DebugBatchManager.ShouldLog(tmpLog))
             {
                 m_fNextLocationEstimateLogTime = tmpLog;
-                PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3",
+                SCR_RSS_Logger.Debug(string.Format("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3",
                     Math.Round(outLatDeg * 10.0) / 10.0,
                     Math.Round(outLonDeg * 10.0) / 10.0,
-                    Math.Round(conf * 100.0) / 100.0);
+                    Math.Round(conf * 100.0) / 100.0));
             }
         }
         return conf;
@@ -1232,16 +1232,16 @@ class EnvironmentFactor
         static float nextAdvancedEnvLogTime = 0.0;
         if (SCR_DebugBatchManager.ShouldVerboseLog(nextAdvancedEnvLogTime))
         {
-            PrintFormat("[RSS] 高级环境因子 / Advanced Environment Factors:");
-            PrintFormat("  降雨强度 / Rain Intensity: %1 (%2%%)", 
+            SCR_RSS_Logger.Debug(string.Format("[RSS] 高级环境因子 / Advanced Environment Factors:"));
+            SCR_RSS_Logger.Debug(string.Format("  降雨强度 / Rain Intensity: %1 (%2%%)", 
                 Math.Round(m_fCachedRainIntensity * 100.0) / 100.0,
-                Math.Round(m_fCachedRainIntensity * 100.0).ToString());
-            PrintFormat("  风速 / Wind Speed: %1 m/s", Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
-            PrintFormat("  风向 / Wind Direction: %1°", Math.Round(m_fCachedWindDirection));
-            PrintFormat("  风阻系数 / Wind Drag: %1", Math.Round(m_fCachedWindDrag * 100.0) / 100.0);
-            PrintFormat("  泥泞度 / Mud Factor: %1 (%2%%)", 
+                Math.Round(m_fCachedRainIntensity * 100.0).ToString()));
+            SCR_RSS_Logger.Debug(string.Format("  风速 / Wind Speed: %1 m/s", Math.Round(m_fCachedWindSpeed * 10.0) / 10.0));
+            SCR_RSS_Logger.Debug(string.Format("  风向 / Wind Direction: %1°", Math.Round(m_fCachedWindDirection)));
+            SCR_RSS_Logger.Debug(string.Format("  风阻系数 / Wind Drag: %1", Math.Round(m_fCachedWindDrag * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  泥泞度 / Mud Factor: %1 (%2%%)", 
                 Math.Round(m_fCachedMudFactor * 100.0) / 100.0,
-                Math.Round(m_fCachedMudFactor * 100.0).ToString());
+                Math.Round(m_fCachedMudFactor * 100.0).ToString()));
             // 温度信息：显示当前值、来源（engine/simulated）以及 min/max
             string tempSource = "simulated";
             if (m_bUseEngineWeather && m_pCachedWeatherManager)
@@ -1255,24 +1255,24 @@ class EnvironmentFactor
                 tempMaxDbg = m_pCachedWeatherManager.GetTemperatureAirMaxOverride();
             }
 
-            PrintFormat("  Temperature: Current=%1°C (source=%2) | Min=%3 | Max=%4", 
+            SCR_RSS_Logger.Debug(string.Format("  Temperature: Current=%1°C (source=%2) | Min=%3 | Max=%4", 
                 Math.Round(m_fCachedTemperature * 10.0) / 10.0,
                 tempSource,
                 Math.Round(tempMinDbg * 10.0) / 10.0,
-                Math.Round(tempMaxDbg * 10.0) / 10.0);
+                Math.Round(tempMaxDbg * 10.0) / 10.0));
 
-            PrintFormat("  地表湿度 / Surface Wetness: %1 (%2%%)", 
+            SCR_RSS_Logger.Debug(string.Format("  地表湿度 / Surface Wetness: %1 (%2%%)", 
                 Math.Round(m_fCachedSurfaceWetness * 100.0) / 100.0,
-                Math.Round(m_fCachedSurfaceWetness * 100.0).ToString());
-            PrintFormat("  降雨湿重 / Rain Weight: %1 kg", Math.Round(m_fCachedRainWeight * 10.0) / 10.0);
-            PrintFormat("  暴雨呼吸阻力 / Rain Breathing Penalty: %1", Math.Round(m_fRainBreathingPenalty * 10000.0) / 10000.0);
-            PrintFormat("  泥泞地形系数 / Mud Terrain Factor: %1", Math.Round(m_fMudTerrainFactor * 100.0) / 100.0);
-            PrintFormat("  泥泞Sprint惩罚 / Mud Sprint Penalty: %1", Math.Round(m_fMudSprintPenalty * 100.0) / 100.0);
-            PrintFormat("  滑倒风险 / Slip Risk: %1", Math.Round(m_fSlipRisk * 10000.0) / 10000.0);
-            PrintFormat("  热应激惩罚 / Heat Stress Penalty: %1", Math.Round(m_fHeatStressPenalty * 100.0) / 100.0);
-            PrintFormat("  冷应激惩罚 / Cold Stress Penalty: %1", Math.Round(m_fColdStressPenalty * 100.0) / 100.0);
-            PrintFormat("  冷应激静态惩罚 / Cold Static Penalty: %1", Math.Round(m_fColdStaticPenalty * 100.0) / 100.0);
-            PrintFormat("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(m_fSurfaceWetnessPenalty * 100.0) / 100.0);
+                Math.Round(m_fCachedSurfaceWetness * 100.0).ToString()));
+            SCR_RSS_Logger.Debug(string.Format("  降雨湿重 / Rain Weight: %1 kg", Math.Round(m_fCachedRainWeight * 10.0) / 10.0));
+            SCR_RSS_Logger.Debug(string.Format("  暴雨呼吸阻力 / Rain Breathing Penalty: %1", Math.Round(m_fRainBreathingPenalty * 10000.0) / 10000.0));
+            SCR_RSS_Logger.Debug(string.Format("  泥泞地形系数 / Mud Terrain Factor: %1", Math.Round(m_fMudTerrainFactor * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  泥泞Sprint惩罚 / Mud Sprint Penalty: %1", Math.Round(m_fMudSprintPenalty * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  滑倒风险 / Slip Risk: %1", Math.Round(m_fSlipRisk * 10000.0) / 10000.0));
+            SCR_RSS_Logger.Debug(string.Format("  热应激惩罚 / Heat Stress Penalty: %1", Math.Round(m_fHeatStressPenalty * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  冷应激惩罚 / Cold Stress Penalty: %1", Math.Round(m_fColdStressPenalty * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  冷应激静态惩罚 / Cold Static Penalty: %1", Math.Round(m_fColdStaticPenalty * 100.0) / 100.0));
+            SCR_RSS_Logger.Debug(string.Format("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(m_fSurfaceWetnessPenalty * 100.0) / 100.0));
         }
         
         // 更新时间戳（在所有计算完成后）

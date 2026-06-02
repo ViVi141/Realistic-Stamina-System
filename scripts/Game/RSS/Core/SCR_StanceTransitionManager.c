@@ -236,13 +236,13 @@ class StanceTransitionManager
         if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             string transitionName = GetTransitionName(oldStance, newStance);
-            PrintFormat("[RSS] 姿态转换！%1 | 消耗: %2%% (基础: %3%%, 负重: %4kg, 倍数: %5, 疲劳堆积: %6)",
+            SCR_RSS_Logger.Debug(string.Format("[RSS] 姿态转换！%1 | 消耗: %2%% (基础: %3%%, 负重: %4kg, 倍数: %5, 疲劳堆积: %6)",
                 transitionName,
                 Math.Round(finalCost * 100.0).ToString(),
                 Math.Round(baseCost * 100.0).ToString(),
                 Math.Round(currentTotalWeight - StaminaConstants.CHARACTER_WEIGHT).ToString(),
                 Math.Round(weightMultiplier * 100.0) / 100.0,
-                Math.Round(m_fStanceFatigue * 100.0) / 100.0);
+                Math.Round(m_fStanceFatigue * 100.0) / 100.0));
         }
         
         return finalCost;

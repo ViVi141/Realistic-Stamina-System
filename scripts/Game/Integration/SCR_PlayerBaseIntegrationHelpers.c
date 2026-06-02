@@ -33,6 +33,85 @@ class SCR_PlayerBaseRssApiHelper
 
 class SCR_PlayerBaseDebugHelper
 {
+    static void LogInitialEnergyCoeff(float coeff)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] 初始 energie->stamina coeff = %1", coeff));
+    }
+
+    static void LogCriticalStaminaEvent(float staminaPercent)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] Critical stamina event reported (stamina=%1)", staminaPercent));
+    }
+
+    static void LogJumpCost(float jumpCost)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] Jump Cost: -%1%%",
+            Math.Round(jumpCost * 100.0 * 10.0) / 10.0));
+    }
+
+    static void LogVaultCost(float vaultCost)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] Vault Cost: -%1%%",
+            Math.Round(vaultCost * 100.0 * 10.0) / 10.0));
+    }
+
+    static void LogAiStatus(
+        IEntity owner,
+        string stateStr,
+        float staminaPercent,
+        float fatigueVal,
+        float currentWeight,
+        float finalSpeedMultiplier,
+        float currentSpeed,
+        string movementStr,
+        string speedSource)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] AI: %1 | 状态=%2 体力=%3%% 疲劳=%4% 负重=%5kg 速度倍=%6 速度=%7m/s %8 | %9",
+            owner.GetName(),
+            stateStr,
+            Math.Round(staminaPercent * 100.0).ToString(),
+            Math.Round(fatigueVal * 100.0).ToString(),
+            Math.Round(currentWeight * 10.0) / 10.0,
+            Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+            Math.Round(currentSpeed * 10.0) / 10.0,
+            movementStr,
+            speedSource));
+    }
+
+    static void LogAiGroupSpread(SCR_AIGroup group, float spread, int aliveCount)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] Group: id=%1 分散=%2m 成员=%3",
+            group.GetGroupID().ToString(),
+            Math.Round(spread * 10.0) / 10.0,
+            aliveCount.ToString()));
+    }
+
+    static void LogCombatStimTickTransition(int oldPhase, int newPhase, float oldEndsAt, float newEndsAt, float nowSec)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS][CombatStim] TickTransition: phase %1 -> %2, endsAt %3 -> %4, now=%5",
+            oldPhase,
+            newPhase,
+            Math.Round(oldEndsAt * 10.0) / 10.0,
+            Math.Round(newEndsAt * 10.0) / 10.0,
+            Math.Round(nowSec * 10.0) / 10.0));
+    }
+
+    static void LogCombatStimInject(int oldPhase, int nextPhase, bool shouldDie, float nowSec)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS][CombatStim][Server] Inject: oldPhase=%1 => nextPhase=%2 shouldDie=%3 now=%4",
+            oldPhase, nextPhase, shouldDie, Math.Round(nowSec * 10.0) / 10.0));
+    }
+
+    static void LogAdminUpdateConfigDenied(int playerId)
+    {
+        SCR_RSS_Logger.Warn(string.Format("[RSS] RPC_AdminUpdateConfig: access denied for playerId=%1", playerId));
+    }
+
+    static void LogStaleSpeedValidation(float timestampDelta)
+    {
+        SCR_RSS_Logger.Debug(string.Format("[RSS] Stale speed validation ignored (latency: %1s)", timestampDelta));
+    }
+
     static void OutputStatusInfo(
         IEntity owner,
         float lastSecondSpeed,
@@ -66,6 +145,19 @@ class SCR_PlayerBaseInventoryHelper
 
 class SCR_PlayerBaseConfigHelper
 {
+    static string MapSelectedPresetToV5PresetName(SCR_RSS_Settings settings)
+    {
+        if (!settings)
+            return "Standard";
+
+        string selectedPreset = settings.m_sSelectedPreset;
+        if (selectedPreset == "EliteStandard")
+            return "Elite";
+        if (selectedPreset == "TacticalAction")
+            return "Tactical";
+        return "Standard";
+    }
+
     static string GetPlayerLabel(IEntity entity)
     {
         if (!entity)
@@ -95,6 +187,67 @@ class SCR_PlayerBaseConfigHelper
 
 class SCR_PlayerBaseCombatStimHelper
 {
+    static ChimeraCharacter GetOwnerCharacter(IEntity ownerEntity)
+    {
+        return ChimeraCharacter.Cast(ownerEntity);
+    }
+
+    static void ApplyBleedingScaleForOwner(int phase, float bleedingBaseline, ChimeraCharacter character)
+    {
+        if (!character)
+            return;
+
+        SCR_CombatStimController.UpdateBleedingScale(
+            phase,
+            bleedingBaseline,
+            character,
+            bleedingBaseline);
+    }
+
+    static bool TryKillCharacterFromOverdose(ChimeraCharacter character, float bleedingBaseline)
+    {
+        if (!character)
+            return false;
+
+        SCR_CombatStimController.ResetBleedingScaleBeforeKill(
+            character,
+            bleedingBaseline,
+            bleedingBaseline);
+
+        SCR_CharacterDamageManagerComponent damageManager = SCR_CharacterDamageManagerComponent.Cast(character.GetDamageManager());
+        if (!damageManager)
+            return false;
+
+        damageManager.Kill(Instigator.CreateInstigator(character));
+        return true;
+    }
+
+    static bool TryBuildTickTransition(
+        int currentPhase,
+        float currentEndsAt,
+        float worldTimeSec,
+        out int oldPhase,
+        out float oldEndsAt,
+        out int nextPhase,
+        out float nextEndsAt,
+        out int nextDelayInjectionCount,
+        int currentDelayInjectionCount)
+    {
+        oldPhase = currentPhase;
+        oldEndsAt = currentEndsAt;
+        nextPhase = currentPhase;
+        nextEndsAt = currentEndsAt;
+        nextDelayInjectionCount = currentDelayInjectionCount;
+
+        if (!AdvancePhase(currentPhase, currentEndsAt, worldTimeSec, nextPhase, nextEndsAt))
+            return false;
+
+        if (nextPhase != ERSS_CombatStimPhase.DELAY)
+            nextDelayInjectionCount = 0;
+
+        return true;
+    }
+
     static bool AdvancePhase(
         int currentPhase,
         float currentEndsAt,
@@ -103,6 +256,38 @@ class SCR_PlayerBaseCombatStimHelper
         out float nextEndsAt)
     {
         return SCR_CombatStimStateMachine.AdvancePhase(currentPhase, currentEndsAt, worldTimeSec, nextPhase, nextEndsAt);
+    }
+
+    static bool TryBuildInjectionTransition(
+        int currentPhase,
+        float currentEndsAt,
+        float worldTimeSec,
+        int currentDelayInjectionCount,
+        out int nextPhase,
+        out float nextEndsAt,
+        out int nextDelayInjectionCount,
+        out bool shouldDie)
+    {
+        nextPhase = currentPhase;
+        nextEndsAt = currentEndsAt;
+        nextDelayInjectionCount = currentDelayInjectionCount;
+        shouldDie = false;
+
+        if (!TryStartFromInjection(
+                currentPhase,
+                currentEndsAt,
+                worldTimeSec,
+                currentDelayInjectionCount,
+                nextPhase,
+                nextEndsAt,
+                nextDelayInjectionCount,
+                shouldDie))
+            return false;
+
+        if (nextPhase != ERSS_CombatStimPhase.DELAY)
+            nextDelayInjectionCount = 0;
+
+        return true;
     }
 
     static bool TryStartFromInjection(

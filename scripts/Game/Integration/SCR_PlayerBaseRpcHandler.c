@@ -22,9 +22,9 @@ class SCR_PlayerBaseRpcHandler
             if (isDebugEnabled)
             {
                 if (timestampDelta > 0.0)
-                    PrintFormat("[RSS] Stale stamina report ignored (timestamp delta: %1s)", timestampDelta);
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] Stale stamina report ignored (timestamp delta: %1s)", timestampDelta));
                 else
-                    PrintFormat("[RSS] Stale stamina report ignored (time regression: %1s)", timestampDelta);
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] Stale stamina report ignored (time regression: %1s)", timestampDelta));
             }
             shouldIgnore = true;
             return 0.0;
@@ -33,7 +33,7 @@ class SCR_PlayerBaseRpcHandler
         if (networkSync && !networkSync.AcceptClientReport(currentTime, weight != 0.0))
         {
             if (isDebugEnabled)
-                PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
+                SCR_RSS_Logger.Debug(string.Format("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime));
             shouldIgnore = true;
             return 0.0;
         }
@@ -44,7 +44,7 @@ class SCR_PlayerBaseRpcHandler
         {
             float lastReported = networkSync.GetLastReportedStaminaPercent();
             if (Math.AbsFloat(clampedStamina - lastReported) > 0.5 && isDebugEnabled)
-                PrintFormat("[RSS] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina);
+                SCR_RSS_Logger.Debug(string.Format("[RSS] Suspicious stamina jump reported: last=%1 -> reported=%2", lastReported, clampedStamina));
             networkSync.UpdateReportedState(clampedStamina, weight);
         }
 

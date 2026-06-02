@@ -246,7 +246,7 @@ modded class SCR_CharacterControllerComponent
             if (IsRssDebugEnabled())
             {
                 float coeff = StaminaConfigBridge.GetEnergyToStaminaCoeff();
-                PrintFormat("[RSS] 初始 energie->stamina coeff = %1", coeff);
+                SCR_PlayerBaseDebugHelper.LogInitialEnergyCoeff(coeff);
             }
         }
         
@@ -645,7 +645,7 @@ modded class SCR_CharacterControllerComponent
                     return;
                 Rpc(RPC_ClientReportStamina, staminaPercent, currentWeight, currentTime, isCriticalData);
                 if (isCriticalData && IsRssDebugEnabled())
-                    PrintFormat("[RSS] Critical stamina event reported (stamina=%1)", staminaPercent);
+                    SCR_PlayerBaseDebugHelper.LogCriticalStaminaEvent(staminaPercent);
             }
         }
 
@@ -756,10 +756,7 @@ modded class SCR_CharacterControllerComponent
                 exhaustionSignalID
             );
             if (jumpCost > 0.0 && IsRssDebugEnabled())
-            {
-                PrintFormat("[RSS] Jump Cost: -%1%%", 
-                    Math.Round(jumpCost * 100.0 * 10.0) / 10.0);
-            }
+                SCR_PlayerBaseDebugHelper.LogJumpCost(jumpCost);
             staminaPercent = staminaPercent - jumpCost;
             
             bool vaultEncumbranceCacheValid = false;
@@ -776,10 +773,7 @@ modded class SCR_CharacterControllerComponent
                 vaultEncumbranceCurrentWeight
             );
             if (vaultCost > 0.0 && IsRssDebugEnabled())
-            {
-                PrintFormat("[RSS] Vault Cost: -%1%%", 
-                    Math.Round(vaultCost * 100.0 * 10.0) / 10.0);
-            }
+                SCR_PlayerBaseDebugHelper.LogVaultCost(vaultCost);
             staminaPercent = staminaPercent - vaultCost;
             
             m_pJumpVaultDetector.UpdateCooldowns();
@@ -932,24 +926,8 @@ modded class SCR_CharacterControllerComponent
         float theoreticalSprintSpeed = 4.2;
         if (isPlayer)
         {
-            string preset = "Standard";
             SCR_RSS_Settings activeSettings = SCR_RSS_ConfigManager.GetSettings();
-            if (activeSettings)
-            {
-                string selectedPreset = activeSettings.m_sSelectedPreset;
-                if (selectedPreset == "EliteStandard")
-                {
-                    preset = "Elite";
-                }
-                else if (selectedPreset == "TacticalAction")
-                {
-                    preset = "Tactical";
-                }
-                else
-                {
-                    preset = "Standard";
-                }
-            }
+            string preset = SCR_PlayerBaseConfigHelper.MapSelectedPresetToV5PresetName(activeSettings);
             
             // 使用 SpeedRecalibration_V5 计算动态理论速度
             theoreticalWalkSpeed = SCR_SpeedRecalibration_V5.CalculateFinalWalkSpeed(
@@ -1144,14 +1122,14 @@ modded class SCR_CharacterControllerComponent
                 if (m_pFatigueSystem)
                     fatigueVal = m_pFatigueSystem.GetFatigueAccumulation();
 
-                PrintFormat("[RSS] AI: %1 | 状态=%2 体力=%3%% 疲劳=%4% 负重=%5kg 速度倍=%6 速度=%7m/s %8 | %9",
-                    owner.GetName(),
+                SCR_PlayerBaseDebugHelper.LogAiStatus(
+                    owner,
                     stateStr,
-                    Math.Round(staminaPercent * 100.0).ToString(),
-                    Math.Round(fatigueVal * 100.0).ToString(),
-                    Math.Round(currentWeight * 10.0) / 10.0,
-                    Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
-                    Math.Round(currentSpeed * 10.0) / 10.0,
+                    staminaPercent,
+                    fatigueVal,
+                    currentWeight,
+                    finalSpeedMultiplier,
+                    currentSpeed,
                     movementStr,
                     m_sLastSpeedSource);
 
@@ -1173,10 +1151,10 @@ modded class SCR_CharacterControllerComponent
                                     float spread = CalcAiGroupSpreadM(scrGrp);
                                     if (spread > 0.0)
                                     {
-                                        PrintFormat("[RSS] Group: id=%1 分散=%2m 成员=%3",
-                                            scrGrp.GetGroupID().ToString(),
-                                            Math.Round(spread * 10.0) / 10.0,
-                                            GetAliveMemberCount(scrGrp).ToString());
+                                        SCR_PlayerBaseDebugHelper.LogAiGroupSpread(
+                                            scrGrp,
+                                            spread,
+                                            GetAliveMemberCount(scrGrp));
                                     }
                                 }
                             }
@@ -1446,35 +1424,43 @@ modded class SCR_CharacterControllerComponent
     protected void RSS_CombatStim_OnTickTransitions()
     {
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        int oldPhase = m_iCombatStimPhase;
-        float oldEndsAt = m_fCombatStimPhaseEndsAt;
-        int nextPhase = m_iCombatStimPhase;
-        float nextEndsAt = m_fCombatStimPhaseEndsAt;
-        if (!SCR_PlayerBaseCombatStimHelper.AdvancePhase(
-                m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
-                nextPhase, nextEndsAt))
+        int oldPhase;
+        float oldEndsAt;
+        int nextPhase;
+        float nextEndsAt;
+        int nextDelayInjectionCount;
+        if (!SCR_PlayerBaseCombatStimHelper.TryBuildTickTransition(
+                m_iCombatStimPhase,
+                m_fCombatStimPhaseEndsAt,
+                wt,
+                oldPhase,
+                oldEndsAt,
+                nextPhase,
+                nextEndsAt,
+                nextDelayInjectionCount,
+                m_iCombatStimDelayInjectionCount))
             return;
 
         m_iCombatStimPhase = nextPhase;
         m_fCombatStimPhaseEndsAt = nextEndsAt;
-        if (m_iCombatStimPhase != ERSS_CombatStimPhase.DELAY)
-            m_iCombatStimDelayInjectionCount = 0;
+        m_iCombatStimDelayInjectionCount = nextDelayInjectionCount;
 
         if (IsRssDebugEnabled())
-            PrintFormat("[RSS][CombatStim] TickTransition: phase %1 -> %2, endsAt %3 -> %4, now=%5",
-                oldPhase, m_iCombatStimPhase,
-                Math.Round(oldEndsAt * 10.0) / 10.0,
-                Math.Round(m_fCombatStimPhaseEndsAt * 10.0) / 10.0,
-                Math.Round(wt * 10.0) / 10.0);
+            SCR_PlayerBaseDebugHelper.LogCombatStimTickTransition(
+                oldPhase,
+                m_iCombatStimPhase,
+                oldEndsAt,
+                m_fCombatStimPhaseEndsAt,
+                wt);
 
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
 
-        ChimeraCharacter ch = ChimeraCharacter.Cast(GetOwner());
-        if (ch)
-            SCR_CombatStimController.UpdateBleedingScale(
-                m_iCombatStimPhase, m_fRSS_CombatStimBleedingBaseline, ch,
-                m_fRSS_CombatStimBleedingBaseline);
+        ChimeraCharacter ch = SCR_PlayerBaseCombatStimHelper.GetOwnerCharacter(GetOwner());
+        SCR_PlayerBaseCombatStimHelper.ApplyBleedingScaleForOwner(
+            m_iCombatStimPhase,
+            m_fRSS_CombatStimBleedingBaseline,
+            ch);
     }
 
     void RSS_CombatStim_OnInjectServer()
@@ -1482,46 +1468,52 @@ modded class SCR_CharacterControllerComponent
         if (!Replication.IsServer())
             return;
         IEntity ownerEnt = GetOwner();
-        ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
+        ChimeraCharacter ch = SCR_PlayerBaseCombatStimHelper.GetOwnerCharacter(ownerEnt);
         if (!ch)
             return;
 
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        int nextPhase = m_iCombatStimPhase;
-        float nextEndsAt = m_fCombatStimPhaseEndsAt;
-        int nextDelayInjectionCount = m_iCombatStimDelayInjectionCount;
-        bool shouldDie = false;
-        if (!SCR_PlayerBaseCombatStimHelper.TryStartFromInjection(
-                m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
+        int nextPhase;
+        float nextEndsAt;
+        int nextDelayInjectionCount;
+        bool shouldDie;
+        if (!SCR_PlayerBaseCombatStimHelper.TryBuildInjectionTransition(
+                m_iCombatStimPhase,
+                m_fCombatStimPhaseEndsAt,
+                wt,
                 m_iCombatStimDelayInjectionCount,
-                nextPhase, nextEndsAt, nextDelayInjectionCount, shouldDie))
+                nextPhase,
+                nextEndsAt,
+                nextDelayInjectionCount,
+                shouldDie))
             return;
 
         if (IsRssDebugEnabled())
-            PrintFormat("[RSS][CombatStim][Server] Inject: oldPhase=%1 => nextPhase=%2 shouldDie=%3 now=%4",
-                m_iCombatStimPhase, nextPhase, shouldDie, Math.Round(wt * 10.0) / 10.0);
+            SCR_PlayerBaseDebugHelper.LogCombatStimInject(
+                m_iCombatStimPhase,
+                nextPhase,
+                shouldDie,
+                wt);
 
         if (shouldDie)
         {
-            SCR_CombatStimController.ResetBleedingScaleBeforeKill(ch, m_fRSS_CombatStimBleedingBaseline, m_fRSS_CombatStimBleedingBaseline);
-            SCR_CharacterDamageManagerComponent dmgMgr = SCR_CharacterDamageManagerComponent.Cast(ch.GetDamageManager());
-            if (dmgMgr)
-                dmgMgr.Kill(Instigator.CreateInstigator(ch));
+            SCR_PlayerBaseCombatStimHelper.TryKillCharacterFromOverdose(
+                ch,
+                m_fRSS_CombatStimBleedingBaseline);
             return;
         }
 
         m_iCombatStimPhase = nextPhase;
         m_fCombatStimPhaseEndsAt = nextEndsAt;
         m_iCombatStimDelayInjectionCount = nextDelayInjectionCount;
-        if (m_iCombatStimPhase != ERSS_CombatStimPhase.DELAY)
-            m_iCombatStimDelayInjectionCount = 0;
 
         if (Replication.IsServer() && IsPlayerControlled())
             Rpc(RPC_CombatStimSyncToOwner, m_iCombatStimPhase, m_fCombatStimPhaseEndsAt);
 
-        SCR_CombatStimController.UpdateBleedingScale(
-            m_iCombatStimPhase, m_fRSS_CombatStimBleedingBaseline, ch,
-            m_fRSS_CombatStimBleedingBaseline);
+        SCR_PlayerBaseCombatStimHelper.ApplyBleedingScaleForOwner(
+            m_iCombatStimPhase,
+            m_fRSS_CombatStimBleedingBaseline,
+            ch);
     }
 
     [RplRpc(RplChannel.Reliable, RplRcver.Owner)]
@@ -1691,7 +1683,7 @@ modded class SCR_CharacterControllerComponent
             && !pm.HasPlayerRole(pid, EPlayerRole.SESSION_ADMINISTRATOR)
             && !pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER))
         {
-            PrintFormat("[RSS] RPC_AdminUpdateConfig: access denied for playerId=%1", pid);
+            SCR_PlayerBaseDebugHelper.LogAdminUpdateConfigDenied(pid);
             return;
         }
 
@@ -1709,7 +1701,7 @@ modded class SCR_CharacterControllerComponent
         if (!SCR_PlayerBaseRpcHandler.IsValidServerSyncTimestamp(currentTime, serverTimestamp, timestampDelta))
         {
             if (IsRssDebugEnabled())
-                PrintFormat("[RSS] Stale speed validation ignored (latency: %1s)", timestampDelta);
+                SCR_PlayerBaseDebugHelper.LogStaleSpeedValidation(timestampDelta);
             return;
         }
         m_pNetworkSyncManager.SetServerValidatedSpeedMultiplier(speedMultiplier);

@@ -200,7 +200,6 @@ class RealisticStaminaSpeedSystem
         if (!character)
         {
             // 调试：角色实体不存在
-            // Print("[RealisticSystem] 负重计算: 角色实体不存在");
             return 0.0;
         }
         
@@ -213,7 +212,6 @@ class RealisticStaminaSpeedSystem
         if (!characterInventory)
         {
             // 调试：找不到角色库存组件
-            // Print("[RealisticSystem] 负重计算: 找不到角色库存组件");
             return 0.0;
         }
         

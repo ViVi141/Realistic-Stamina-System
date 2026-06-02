@@ -65,10 +65,10 @@ class ExerciseTracker
             static float nextIdleLogTime = 0.0;
             if (SCR_DebugBatchManager.ShouldVerboseLog(nextIdleLogTime))
             {
-                PrintFormat("[RSS] ExerciseTracker 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
+                SCR_RSS_Logger.Debug(string.Format("[RSS] ExerciseTracker 静止检测 / Idle Detection: idleDuration=%1s, isIdle=%2, restDuration=%3min | idleDuration=%1s, isIdle=%2, restDuration=%3min",
                     Math.Round(idleDuration * 10.0) / 10.0,
                     isIdle,
-                    Math.Round(m_fRestDurationMinutes * 10.0) / 10.0);
+                    Math.Round(m_fRestDurationMinutes * 10.0) / 10.0));
             }
 
             if (isIdle)
@@ -80,9 +80,9 @@ class ExerciseTracker
                 static float nextRestLogTime = 0.0;
                 if (SCR_DebugBatchManager.ShouldVerboseLog(nextRestLogTime))
                 {
-                    PrintFormat("[RSS] ExerciseTracker 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] ExerciseTracker 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
                         Math.Round(restTimeDelta * 10.0) / 10.0,
-                        m_bWasMoving);
+                        m_bWasMoving));
                 }
 
                 if (restTimeDelta > 0.0)

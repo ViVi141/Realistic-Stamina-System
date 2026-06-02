@@ -1023,7 +1023,7 @@ class SCR_RSS_ConfigManager
         // 预设变更：仅在非空且与当前不同时触发 InitPresets
         if (preset && preset != "" && preset != s.m_sSelectedPreset)
         {
-            PrintFormat("[RSS_ConfigManager] Admin changed preset: %1 -> %2", s.m_sSelectedPreset, preset);
+            SCR_RSS_Logger.Info(string.Format("[RSS_ConfigManager] Admin changed preset: %1 -> %2", s.m_sSelectedPreset, preset));
             s.m_sSelectedPreset = preset;
             s.InitPresets(preset != "Custom");
         }

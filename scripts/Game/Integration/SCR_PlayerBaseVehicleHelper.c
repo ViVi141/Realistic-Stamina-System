@@ -36,8 +36,8 @@ class SCR_PlayerBaseVehicleHelper
             if (staminaComponent && isDebugEnabled)
             {
                 float currentStamina = staminaComponent.GetTargetStamina();
-                PrintFormat("[RSS] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%",
-                    Math.Round(currentStamina * 100.0).ToString());
+                SCR_RSS_Logger.Debug(string.Format("[RSS] 载具中 / In Vehicle: 体力=%1%% | Stamina=%1%%",
+                    Math.Round(currentStamina * 100.0).ToString()));
             }
         }
 
@@ -82,10 +82,10 @@ class SCR_PlayerBaseVehicleHelper
 
             if (vehicleDebugCounter == 0 && isDebugEnabled)
             {
-                PrintFormat("[RSS] 载具中恢复 / Vehicle Recovery: %1%% -> %2%% (净率: %3/s)",
+                SCR_RSS_Logger.Debug(string.Format("[RSS] 载具中恢复 / Vehicle Recovery: %1%% -> %2%% (净率: %3/s)",
                     Math.Round(oldStamina * 100.0).ToString(),
                     Math.Round(newStamina * 100.0).ToString(),
-                    vehicleNetRatePerSec.ToString());
+                    vehicleNetRatePerSec.ToString()));
             }
         }
 

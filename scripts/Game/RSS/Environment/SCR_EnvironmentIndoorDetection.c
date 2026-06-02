@@ -145,8 +145,8 @@ class SCR_EnvironmentIndoorDetection
                 reqEnclStr = "true";
             else
                 reqEnclStr = "false";
-            PrintFormat("[RSS][IndoorDetect] EvaluateRoofedBuildingInterior: ownerPos=(%1,%2,%3) buildingCount=%4 requireEnclosed=%5",
-                ownerPos[0], ownerPos[1], ownerPos[2], buildingCount, reqEnclStr);
+            SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] EvaluateRoofedBuildingInterior: ownerPos=(%1,%2,%3) buildingCount=%4 requireEnclosed=%5",
+                ownerPos[0], ownerPos[1], ownerPos[2], buildingCount, reqEnclStr));
         }
         if (buildingCount == 0)
             return false;
@@ -174,13 +174,13 @@ class SCR_EnvironmentIndoorDetection
             bool isInside = xInside && yInside && zInside;
 
             if (m_bIndoorDebug)
-                PrintFormat("[RSS][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Building #%1 localPos=(%2,%3,%4) mins=(%5,%6,%7) maxs=(%8,%9,%10)",
                     checkedBuildings,
                     Math.Round(localPos[0] * 100.0) / 100.0,
                     Math.Round(localPos[1] * 100.0) / 100.0,
                     Math.Round(localPos[2] * 100.0) / 100.0,
                     buildingMins[0], buildingMins[1], buildingMins[2],
-                    buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]);
+                    buildingMaxs[0], buildingMaxs[1], buildingMaxs[2]));
 
             if (!isInside)
                 continue;
@@ -193,7 +193,7 @@ class SCR_EnvironmentIndoorDetection
                     hasRoofStr = "true";
                 else
                     hasRoofStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr);
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Building #%1 isInside=true hasRoof=%2", checkedBuildings, hasRoofStr));
             }
 
             if (!hasRoof)
@@ -210,14 +210,14 @@ class SCR_EnvironmentIndoorDetection
                     enclosedStr = "true";
                 else
                     enclosedStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr);
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Building #%1 roof=true enclosed=%2", checkedBuildings, enclosedStr));
             }
             if (enclosed)
                 return true;
         }
 
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] No matching building after checking %1 buildings", checkedBuildings);
+            SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] No matching building after checking %1 buildings", checkedBuildings));
         return false;
     }
 
@@ -237,8 +237,8 @@ class SCR_EnvironmentIndoorDetection
         array<vector> samples = { vector.Zero, vector.Forward * SAMPLE_OFFSET, -vector.Forward * SAMPLE_OFFSET, vector.Right * SAMPLE_OFFSET, -vector.Right * SAMPLE_OFFSET };
 
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
-                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, roofCheckHeightM, samples.Count());
+            SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] RaycastHasRoof: ownerPos=(%1,%2,%3) HEAD_HEIGHT=%4 CHECK_HEIGHT=%5 samples=%6",
+                basePos[0], basePos[1], basePos[2], HEAD_HEIGHT, roofCheckHeightM, samples.Count()));
 
         if (!m_pTraceParamRoof)
             m_pTraceParamRoof = new TraceParam();
@@ -268,21 +268,21 @@ class SCR_EnvironmentIndoorDetection
                     surface = m_pTraceParamRoof.SurfaceProps.ToString();
                 else
                     surface = "null";
-                PrintFormat("[RSS][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
-                    idx, start[0], start[1], start[2], end[0], end[1], end[2], m_pTraceParamRoof.TraceEnt, m_pTraceParamRoof.ColliderName);
-                PrintFormat("[RSS][IndoorDetect]   Surface=%1", surface);
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Sample %1 start=(%2,%3,%4) end=(%5,%6,%7) -> TraceEnt=%8 Collider=%9",
+                    idx, start[0], start[1], start[2], end[0], end[1], end[2], m_pTraceParamRoof.TraceEnt, m_pTraceParamRoof.ColliderName));
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect]   Surface=%1", surface));
             }
 
             if (!hit)
             {
                 if (m_bIndoorDebug)
-                    PrintFormat("[RSS][IndoorDetect] Sample %1 missed -> not indoor", idx);
+                    SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Sample %1 missed -> not indoor", idx));
                 return false;
             }
         }
 
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] All samples hit -> indoor");
+            SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] All samples hit -> indoor"));
 
         return true;
     }
@@ -348,13 +348,13 @@ class SCR_EnvironmentIndoorDetection
                     hitStr = "true";
                 else
                     hitStr = "false";
-                PrintFormat("[RSS][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr);
+                SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Horizontal sample %1 angle=%2 hit=%3", i + 1, Math.Round(angle), hitStr));
             }
         }
 
         float ratio = (hits / (float)SAMPLES);
         if (m_bIndoorDebug)
-            PrintFormat("[RSS][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0);
+            SCR_RSS_Logger.Debug(string.Format("[RSS][IndoorDetect] Horizontal enclosure hits=%1/%2 ratio=%3", hits, SAMPLES, Math.Round(ratio * 100.0) / 100.0));
 
         return (ratio >= HIT_RATIO);
     }

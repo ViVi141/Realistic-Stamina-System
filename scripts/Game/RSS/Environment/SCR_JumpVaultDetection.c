@@ -87,7 +87,7 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RSS] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName));
                 }
                 
                 return 0.0;
@@ -176,10 +176,10 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
                         Math.Round(finalJumpCost * 100.0).ToString(),
                         m_iRecentJumpCount.ToString(),
-                        Math.Round(consecutiveMultiplier * 100.0) / 100.0);
+                        Math.Round(consecutiveMultiplier * 100.0) / 100.0));
                 }
                 
                 m_bJumpInputTriggered = false;
@@ -259,8 +259,8 @@ class JumpVaultDetector
                 // 调试输出（仅在客户端）
                 if (StaminaConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
-                        Math.Round(vaultCost * 100.0).ToString());
+                    SCR_RSS_Logger.Debug(string.Format("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
+                        Math.Round(vaultCost * 100.0).ToString()));
                 }
             }
             else
