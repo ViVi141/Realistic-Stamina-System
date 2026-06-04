@@ -772,6 +772,9 @@ class SCR_RSS_Constants
     static const float V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0;
     static const float V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0;
 
+    //! v6 ACSM 功率→STA 标定：联合 energy_to_stamina_coeff，使 38kg@3.2m/s 约 8–10s/1%
+    static const float V6_STAMINA_DRAIN_CALIBRATION = 0.72;
+
     // v6 动态 CP 修正（LF/TF，系数经 bench 标定，下坡不对 CP 加成）
     static const float V6_CP_LOAD_REF_KG = 10.0;
     static const float V6_CP_LOAD_DECAY_PER_KG = 0.002;

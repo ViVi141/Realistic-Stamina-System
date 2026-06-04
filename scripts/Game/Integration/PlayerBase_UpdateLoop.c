@@ -173,7 +173,8 @@ modded class SCR_CharacterControllerComponent
             currentSpeed,
             m_pEnvironmentFactor,
             m_pSlopeSpeedTransition,
-            velocity);
+            velocity,
+            terrainFactor);
 
         if (m_pSprintBlockSpeedTransition)
         {
@@ -404,7 +405,7 @@ modded class SCR_CharacterControllerComponent
                     }
                 }
 
-                m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, timeDeltaSec);
+                m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, timeDeltaSec, currentSpeed);
                 if (m_pEpocState)
                     m_pEpocState.UpdateExercisePowerSample(powerW, currentSpeed);
                 if (m_pStaminaState)
@@ -421,7 +422,7 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (m_pFatigueSystem && !useSwimmingModel)
+        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed > 0.05)
         {
             float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
                 currentSpeed, m_fAppliedSpeedLimitMs);
@@ -755,25 +756,28 @@ modded class SCR_CharacterControllerComponent
         float timeToFullSec = -1.0;
         if (needHintOutput)
         {
-            float netRate = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
-                tick.staminaPercent, tick.useSwimmingModel, tick.currentSpeed, tick.totalDrainRate,
-                tick.baseDrainRateByVelocity, tick.baseDrainRateByVelocityForModule,
-                tick.heatStressMultiplier, m_pEpocState, m_pEncumbranceCache,
-                m_pExerciseTracker, this, m_pEnvironmentFactor);
             float targetStamina = 1.0;
             if (m_pFatigueSystem)
                 targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
-            if (netRate < -0.0001)
+
+            StaminaEtaResult eta = SCR_RSS_UpdateCoordinator.ComputeStaminaEta(
+                tick.staminaPercent,
+                targetStamina,
+                tick.useSwimmingModel,
+                tick.currentSpeed,
+                tick.totalDrainRate,
+                tick.baseDrainRateByVelocity,
+                tick.baseDrainRateByVelocityForModule,
+                tick.heatStressMultiplier,
+                m_pEpocState,
+                m_pEncumbranceCache,
+                m_pExerciseTracker,
+                this,
+                m_pEnvironmentFactor);
+            if (eta)
             {
-                timeToDepleteSec = Math.Min(tick.staminaPercent / Math.AbsFloat(netRate), 7200.0);
-            }
-            else if (netRate > 0.0001 && tick.staminaPercent < targetStamina)
-            {
-                timeToFullSec = SCR_RSS_UpdateCoordinator.EstimateRecoveryTimeToFull(
-                    tick.staminaPercent, targetStamina, tick.totalDrainRate,
-                    tick.baseDrainRateByVelocity, tick.baseDrainRateByVelocityForModule,
-                    tick.heatStressMultiplier, m_pEpocState, m_pEncumbranceCache,
-                    m_pExerciseTracker, this, m_pEnvironmentFactor);
+                timeToDepleteSec = eta.timeToDepleteSec;
+                timeToFullSec = eta.timeToFullSec;
             }
         }
 

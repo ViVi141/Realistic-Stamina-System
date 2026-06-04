@@ -72,6 +72,13 @@ class StaminaDrainTickParams
     float appliedSpeedLimitMs;
 }
 
+//! HUD 耗尽/回满 ETA 结果
+class StaminaEtaResult
+{
+    float timeToDepleteSec;
+    float timeToFullSec;
+}
+
 class SCR_RSS_UpdateCoordinator
 {
     // ── 结果对象（每次调用新分配，消除静态共享竞态）──
@@ -97,43 +104,39 @@ class SCR_RSS_UpdateCoordinator
         float terrainFactor,
         float windDrag,
         float coldStaticPenalty,
-        int currentMovementPhase = -1)
+        int currentMovementPhase = -1,
+        float encumbranceSpeedPenalty = 0.0)
     {
         if (currentMovementPhase >= 1 && currentSpeed > 0.05)
         {
-            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, appliedSpeedLimitMs);
+            float capMs = appliedSpeedLimitMs;
+            if (capMs <= 0.05)
+            {
+                capMs = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
+                    currentMovementPhase, encumbranceSpeedPenalty);
+            }
+            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, capMs);
         }
 
         int phase = currentMovementPhase;
         if (phase < 0)
             phase = 2;
 
-        if (currentMovementPhase == 0 && currentSpeed < 0.1)
-        {
-            return -SCR_RSS_Constants.REST_RECOVERY_PER_TICK;
-        }
-
-        float pandolfPerS = 0.0;
         if (currentSpeed < 0.1)
         {
-            float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
-            float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0);
-            pandolfPerS = SCR_RSS_MetabolismMath.CalculateStaticStandingCost(bodyWeight, loadWeight);
-            pandolfPerS = pandolfPerS * (1.0 + coldStaticPenalty);
-        }
-        else
-        {
-            float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                currentSpeed,
-                currentWeightWithWet,
-                gradePercent,
-                terrainFactor,
-                true,
-                phase);
-            pandolfPerS = SCR_RSS_MetabolismModel.StaminaDrainRatePerSecondFromPowerWatts(powerW);
+            return 0.0;
         }
 
-        pandolfPerS = pandolfPerS * (1.0 + windDrag);
+        float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+            currentSpeed,
+            currentWeightWithWet,
+            gradePercent,
+            terrainFactor,
+            true,
+            phase);
+        float pandolfPerS = SCR_RSS_MetabolismModel.StaminaDrainRatePerSecondFromPowerWatts(powerW);
+
+        // 风阻/热应激由 StaminaConsumptionCalculator.GetQuickEnvironmentMultiplier 单层施加，此处不再叠 windDrag
         return pandolfPerS * 0.2;
     }
 
@@ -206,7 +209,8 @@ class SCR_RSS_UpdateCoordinator
         float currentSpeed = 0.0,
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         SCR_RSS_SlopeSpeedTransition slopeSpeedTransition = null,
-        vector velocity = vector.Zero)
+        vector velocity = vector.Zero,
+        float terrainFactor = 1.0)
     {
         if (!controller)
             return 1.0;
@@ -317,12 +321,16 @@ class SCR_RSS_UpdateCoordinator
                             controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                         gradePct = gradeRes.gradePercent;
                     }
-                    float terrainFactor = 1.0;
+                    float sprintTerrainFactor = terrainFactor;
+                    if (sprintTerrainFactor < 0.5)
+                        sprintTerrainFactor = 0.5;
+                    if (sprintTerrainFactor > 3.0)
+                        sprintTerrainFactor = 3.0;
                     theoreticalTargetSpeed = SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs(
                         encumbrancePenalty,
                         totalWeightKg,
                         gradePct,
-                        terrainFactor,
+                        sprintTerrainFactor,
                         anaBurst.GetCpModel(),
                         currentWorldTime,
                         0.017);
@@ -541,7 +549,8 @@ class SCR_RSS_UpdateCoordinator
                 terrainFactor,
                 windDrag,
                 coldStaticPenalty,
-                currentMovementPhase);
+                currentMovementPhase,
+                encumbranceSpeedPenalty);
 
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
             // 因此不再需要对固定 Sprint 基线做特殊处理。
@@ -638,11 +647,17 @@ class SCR_RSS_UpdateCoordinator
         if (tick.exerciseTracker)
         {
             tick.exerciseTracker.Update(tick.currentTimeForExerciseMs, isCurrentlyMoving);
-            fatigueFactor = tick.exerciseTracker.CalculateFatigueFactor();
+            if (tick.useSwimmingModel)
+                fatigueFactor = tick.exerciseTracker.CalculateFatigueFactor();
         }
 
-        float metabolicEfficiencyFactor = SCR_RSS_StaminaConsumptionCalculator.CalculateMetabolicEfficiencyFactor(tick.speedRatio);
-        float fitnessEfficiencyFactor = SCR_RSS_StaminaConsumptionCalculator.CalculateFitnessEfficiencyFactor();
+        float metabolicEfficiencyFactor = 1.0;
+        float fitnessEfficiencyFactor = 1.0;
+        if (tick.useSwimmingModel)
+        {
+            metabolicEfficiencyFactor = SCR_RSS_StaminaConsumptionCalculator.CalculateMetabolicEfficiencyFactor(tick.speedRatio);
+            fitnessEfficiencyFactor = SCR_RSS_StaminaConsumptionCalculator.CalculateFitnessEfficiencyFactor();
+        }
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
 
         BaseDrainRateResult drainRateResult = CalculateBaseDrainRate(
@@ -673,10 +688,11 @@ class SCR_RSS_UpdateCoordinator
         }
 
         float encumbranceStaminaDrainMultiplier = 1.0;
-        if (tick.encumbranceCache)
-            encumbranceStaminaDrainMultiplier = tick.encumbranceCache.GetStaminaDrainMultiplier();
         if (tick.useSwimmingModel)
-            encumbranceStaminaDrainMultiplier = 1.0;
+        {
+            if (tick.encumbranceCache)
+                encumbranceStaminaDrainMultiplier = tick.encumbranceCache.GetStaminaDrainMultiplier();
+        }
 
         result.baseDrainRateByVelocityForModule = result.baseDrainRateByVelocity;
 
@@ -702,7 +718,7 @@ class SCR_RSS_UpdateCoordinator
                 tick.owner,
                 tick.isSprinting,
                 tick.currentMovementPhase);
-            result.totalDrainRate = result.totalDrainRate * tick.heatStressMultiplier;
+            // 陆地：热/风/泥已在 CalculateStaminaConsumption 快路径施加；勿再乘 heatStressMultiplier（避免双重叠层）
         }
 
         if (tick.combatStimActive)
@@ -767,65 +783,25 @@ class SCR_RSS_UpdateCoordinator
         
         float newTargetStamina = staminaPercent;
         
-        // ==================== 代谢净值算法：netChange = recoveryRate - totalDrainRate ====================
-        
-        // 计算恢复率
-        float recoveryRate = 0.0;
-        
-        // 检查是否处于EPOC延迟期间
-        bool isInEpocDelay = false;
-        float speedBeforeStop = 0.0;
-        if (epocState)
-        {
-            isInEpocDelay = epocState.IsInEpocDelay();
-            speedBeforeStop = epocState.GetSpeedBeforeStop();
-        }
-        
-        if (!isInEpocDelay)
-        {
-            RecoveryContext ctx = BuildRecoveryContext(
-                false,
-                encumbranceCache,
-                exerciseTracker,
-                controller,
-                environmentFactor,
-                baseDrainRateByVelocity,
-                baseDrainRateByVelocityForModule,
-                heatStressMultiplier,
-                currentSpeed);
+        float recoveryRate = ComputeRecoveryRatePerTick(
+            staminaPercent,
+            currentSpeed,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            epocState,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            false);
 
-            recoveryRate = SCR_RSS_RecoveryCalculator.CalculateRecoveryRate(
-                staminaPercent,
-                ctx.restDurationMinutes,
-                ctx.exerciseDurationMinutes,
-                ctx.currentWeightForRecovery,
-                ctx.staticDrainForRecovery,
-                false,
-                ctx.stanceInt,
-                ctx.envFactor,
-                ctx.speedForRecovery,
-                0,
-                controller);
-
-            recoveryRate = recoveryRate * ctx.heatPenalty;
-        }
-        
-        // 计算EPOC延迟期间的消耗
-        float epocDrainRate = 0.0;
-        if (isInEpocDelay)
-        {
-            float peakP = -1.0;
-            if (epocState)
-            {
-                peakP = epocState.GetPeakPowerWatts();
-                if (peakP <= 1.0)
-                    peakP = epocState.GetLastPowerWatts();
-            }
-            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
-        }
-        
-        // 计算总消耗率
-        float finalDrainRate = totalDrainRate + epocDrainRate;
+        float finalDrainRate = ComputeFinalDrainRatePerTick(
+            useSwimmingModel,
+            currentSpeed,
+            totalDrainRate,
+            epocState,
+            false);
 
         // AI 伤害-体力联动（模块 F）
         if (controller && !controller.IsPlayerControlled() && SCR_RSS_ConfigBridge.IsAIInjuryLinkEnabled())
@@ -944,6 +920,154 @@ class SCR_RSS_UpdateCoordinator
         return s_pRecoveryCtx;
     }
 
+    //! 静止时静态代谢已在 RecoveryCalculator 净值中处理，避免 finalDrain 重复扣减
+    static float ResolveMovementDrainForNet(
+        bool useSwimmingModel,
+        float currentSpeed,
+        float totalDrainRate)
+    {
+        if (useSwimmingModel)
+            return totalDrainRate;
+        if (currentSpeed < 0.1)
+            return 0.0;
+        return totalDrainRate;
+    }
+
+    //! 每 0.2s 设计的恢复率（不含 EPOC；EPOC 期间返回 0）
+    static float ComputeRecoveryRatePerTick(
+        float staminaPercent,
+        float currentSpeed,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        SCR_RSS_EpocState epocState,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        SCR_RSS_ExerciseTracker exerciseTracker,
+        SCR_CharacterControllerComponent controller,
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        bool inVehicle)
+    {
+        bool isInEpocDelay = false;
+        if (epocState)
+            isInEpocDelay = epocState.IsInEpocDelay();
+
+        if (isInEpocDelay && !inVehicle)
+            return 0.0;
+
+        RecoveryContext ctx = BuildRecoveryContext(
+            inVehicle,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            currentSpeed);
+
+        float recoveryRate = SCR_RSS_RecoveryCalculator.CalculateRecoveryRate(
+            staminaPercent,
+            ctx.restDurationMinutes,
+            ctx.exerciseDurationMinutes,
+            ctx.currentWeightForRecovery,
+            ctx.staticDrainForRecovery,
+            false,
+            ctx.stanceInt,
+            ctx.envFactor,
+            ctx.speedForRecovery,
+            0,
+            controller);
+
+        return recoveryRate * ctx.heatPenalty;
+    }
+
+    //! 每 0.2s 设计的总消耗率（移动 + EPOC）
+    static float ComputeFinalDrainRatePerTick(
+        bool useSwimmingModel,
+        float currentSpeed,
+        float totalDrainRate,
+        SCR_RSS_EpocState epocState,
+        bool inVehicle)
+    {
+        float epocDrainRate = 0.0;
+        bool isInEpocDelay = false;
+        if (epocState)
+            isInEpocDelay = epocState.IsInEpocDelay();
+
+        if (isInEpocDelay && !inVehicle)
+        {
+            float peakP = -1.0;
+            float speedBeforeStop = epocState.GetSpeedBeforeStop();
+            peakP = epocState.GetPeakPowerWatts();
+            if (peakP <= 1.0)
+                peakP = epocState.GetLastPowerWatts();
+            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
+        }
+
+        float movementDrainRate = ResolveMovementDrainForNet(useSwimmingModel, currentSpeed, totalDrainRate);
+        return movementDrainRate + epocDrainRate;
+    }
+
+    //! HUD：按总消耗 vs 总恢复估算 ETA（避免净率接近 0 时误显示 0）
+    static StaminaEtaResult ComputeStaminaEta(
+        float staminaPercent,
+        float targetStaminaCap,
+        bool useSwimmingModel,
+        float currentSpeed,
+        float totalDrainRate,
+        float baseDrainRateByVelocity,
+        float baseDrainRateByVelocityForModule,
+        float heatStressMultiplier,
+        SCR_RSS_EpocState epocState,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        SCR_RSS_ExerciseTracker exerciseTracker,
+        SCR_CharacterControllerComponent controller,
+        SCR_RSS_EnvironmentFactor environmentFactor)
+    {
+        StaminaEtaResult result = new StaminaEtaResult();
+        result.timeToDepleteSec = -1.0;
+        result.timeToFullSec = -1.0;
+
+        float recoveryPerSec = ComputeRecoveryRatePerTick(
+            staminaPercent,
+            currentSpeed,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            epocState,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            false) * 5.0;
+
+        float drainPerSec = ComputeFinalDrainRatePerTick(
+            useSwimmingModel,
+            currentSpeed,
+            totalDrainRate,
+            epocState,
+            false) * 5.0;
+
+        // HUD ETA：与 UpdateStaminaValue / GetNetStaminaRatePerSecond 同形（净恢复 - 总消耗）
+        if (drainPerSec > recoveryPerSec)
+        {
+            float netLossPerSec = drainPerSec - recoveryPerSec;
+            if (netLossPerSec > 0.0)
+                result.timeToDepleteSec = Math.Min(staminaPercent / netLossPerSec, 7200.0);
+        }
+        else if (recoveryPerSec > drainPerSec && staminaPercent < targetStaminaCap - 0.001)
+        {
+            float netGainPerSec = recoveryPerSec - drainPerSec;
+            if (netGainPerSec > 0.000001)
+            {
+                float remaining = targetStaminaCap - staminaPercent;
+                result.timeToFullSec = Math.Min(remaining / netGainPerSec, 7200.0);
+            }
+        }
+
+        return result;
+    }
+
     static float GetNetStaminaRatePerSecond(
         float staminaPercent,
         bool useSwimmingModel,
@@ -959,51 +1083,26 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         bool inVehicle = false)
     {
-        float recoveryRate = 0.0;
-        bool isInEpocDelay = false;
-        float speedBeforeStop = 0.0;
-        if (epocState)
-        {
-            isInEpocDelay = epocState.IsInEpocDelay();
-            speedBeforeStop = epocState.GetSpeedBeforeStop();
-        }
+        float recoveryRate = ComputeRecoveryRatePerTick(
+            staminaPercent,
+            currentSpeed,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            epocState,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            inVehicle);
 
-        // 载具内始终计算恢复（载具不应用 EPOC 消耗）；行人仅在非 EPOC 时计算恢复
-        if (!isInEpocDelay || inVehicle)
-        {
-            RecoveryContext ctx = BuildRecoveryContext(
-                inVehicle,
-                encumbranceCache,
-                exerciseTracker,
-                controller,
-                environmentFactor,
-                baseDrainRateByVelocity,
-                baseDrainRateByVelocityForModule,
-                heatStressMultiplier,
-                currentSpeed);
+        float finalDrainRate = ComputeFinalDrainRatePerTick(
+            useSwimmingModel,
+            currentSpeed,
+            totalDrainRate,
+            epocState,
+            inVehicle);
 
-            recoveryRate = SCR_RSS_RecoveryCalculator.CalculateRecoveryRate(
-                staminaPercent, ctx.restDurationMinutes, ctx.exerciseDurationMinutes,
-                ctx.currentWeightForRecovery, ctx.staticDrainForRecovery, false, ctx.stanceInt,
-                ctx.envFactor, ctx.speedForRecovery, 0, controller);
-
-            recoveryRate = recoveryRate * ctx.heatPenalty;
-        }
-
-        float epocDrainRate = 0.0;
-        if (isInEpocDelay && !inVehicle)
-        {
-            float peakP = -1.0;
-            if (epocState)
-            {
-                peakP = epocState.GetPeakPowerWatts();
-                if (peakP <= 1.0)
-                    peakP = epocState.GetLastPowerWatts();
-            }
-            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
-        }
-
-        float finalDrainRate = totalDrainRate + epocDrainRate;
         float netRatePerTick = recoveryRate - finalDrainRate;
         return netRatePerTick * 5.0;
     }
@@ -1031,7 +1130,8 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_RSS_ExerciseTracker exerciseTracker,
         SCR_CharacterControllerComponent controller,
-        SCR_RSS_EnvironmentFactor environmentFactor = null)
+        SCR_RSS_EnvironmentFactor environmentFactor = null,
+        bool useSwimmingModel = false)
     {
         if (targetStamina <= staminaPercent + 0.001)
             return 0.0;
@@ -1040,7 +1140,6 @@ class SCR_RSS_UpdateCoordinator
         float range = targetStamina - staminaPercent;
         float step = range / SEGMENTS;
 
-        // 一次性构建上下文（恢复外推期间 restDuration/exerciseDuration / 姿态 / 负重 视为不变）
         RecoveryContext ctx = BuildRecoveryContext(
             false,
             encumbranceCache,
@@ -1054,8 +1153,7 @@ class SCR_RSS_UpdateCoordinator
 
         float totalTime = 0.0;
 
-        // 恢复期间 EPOC 不适用
-        float fixedFinalDrain = totalDrainRate;
+        float fixedFinalDrain = ResolveMovementDrainForNet(useSwimmingModel, 0.0, totalDrainRate);
 
         for (int i = 0; i < SEGMENTS; i++)
         {

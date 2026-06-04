@@ -570,10 +570,33 @@ class RSSDigitalTwin:
         eff = max(0.0, self.exercise_duration_minutes - start)
         return float(np.clip(1.0 + coeff * eff, 1.0, mx))
 
+    def _movement_phase_from_type(self, movement_type: int) -> int:
+        if movement_type == MovementType.SPRINT:
+            return 3
+        if movement_type == MovementType.WALK:
+            return 1
+        return 2
+
+    def _v6_land_drain_per_second(
+        self,
+        speed: float,
+        current_weight: float,
+        grade_percent: float,
+        terrain_factor: float,
+        movement_type: int,
+        wind_drag: float = 0.0,
+    ) -> float:
+        """v6 陆地代谢消耗 %/s（MetabolismModel，无 enc_mult）。"""
+        phase = self._movement_phase_from_type(movement_type)
+        coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 7.17e-7)
+        power_w = metabolism_power_watts(
+            speed, current_weight, grade_percent, terrain_factor, phase)
+        per_sec = max(power_w * coeff * V6_STAMINA_DRAIN_CALIBRATION, 0.0)
+        return per_sec * (1.0 + wind_drag)
+
     # -------------------------------------------------------------------------
     # StaminaUpdateCoordinator.CalculateLandBaseDrainRate + StaminaConsumptionCalculator
-    # 完全复现 C 端消耗流程：Idle 用 REST_RECOVERY，静态用 CalculateStaticStandingCost，
-    # 运动用 Pandolf；再乘以 posture、efficiency、fatigue、enc_mult（已统一公式，无 Sprint 倍数）
+    # v6 陆地：MetabolismModel + posture/efficiency/fatigue；legacy Pandolf+enc_mult 已移除
     # -------------------------------------------------------------------------
     def _calculate_drain_rate_c_aligned(self, speed: float, current_weight: float,
                                         grade_percent: float, terrain_factor: float,
@@ -608,36 +631,10 @@ class RSSDigitalTwin:
             static_per_s = self._static_standing_cost(bw, load_weight)
             raw = static_per_s * 0.2
         else:
-            pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
-
-            # T1 负重代谢阻尼：只承受负重额外代谢的 dampening 比例
-            if current_weight > bw and load_dampening < 1.0:
-                unloaded_per_s = self._pandolf_expenditure(speed, bw, grade_percent, terrain_factor)
-                load_extra = pandolf_per_s - unloaded_per_s
-                pandolf_per_s = unloaded_per_s + load_extra * load_dampening
-
-            # 负重限速努力补偿（与 C 端 SCR_StaminaUpdateCoordinator 一致）
-            if movement_type == MovementType.RUN or movement_type == MovementType.SPRINT:
-                base_pen = self._encumbrance_speed_penalty_base(current_weight)
-                if base_pen > 0.0:
-                    speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
-                    enc_pen = base_pen * (1.0 + speed_ratio)
-                    if movement_type == MovementType.SPRINT:
-                        enc_pen = enc_pen * 1.5
-                    enc_pen = float(np.clip(enc_pen, 0.0, getattr(self.constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)))
-
-                    denom = max(1.0 - enc_pen, 0.15)
-                    unenc_speed = min(speed / denom, 6.0)  # 限制无负重速度最大值，避免消耗率过高
-                    effort_per_s = self._pandolf_expenditure(unenc_speed, current_weight, grade_percent, terrain_factor)
-                    if current_weight > bw and load_dampening < 1.0:
-                        unloaded_effort = self._pandolf_expenditure(unenc_speed, bw, grade_percent, terrain_factor)
-                        effort_extra = effort_per_s - unloaded_effort
-                        effort_per_s = unloaded_effort + effort_extra * load_dampening
-                    if effort_per_s > pandolf_per_s:
-                        blend = float(np.clip(enc_pen / 0.7, 0.0, 0.8))  # 降低混合因子，减少额外消耗
-                        pandolf_per_s = pandolf_per_s + (effort_per_s - pandolf_per_s) * blend
-
-            raw = pandolf_per_s * wind_mult * 0.2
+            # v6 陆地：MetabolismModel（与 CalculateLandBaseDrainRate 同形）
+            pandolf_per_s = self._v6_land_drain_per_second(
+                speed, current_weight, grade_percent, terrain_factor, movement_type, wind_drag)
+            raw = pandolf_per_s * 0.2
 
         base_for_recovery = max(0.0, raw) if raw > 0 else 0.0
 
@@ -650,21 +647,37 @@ class RSSDigitalTwin:
             raw = environment_factor.adjust_energy_for_temperature(raw)
         base_for_recovery = max(0.0, raw)
 
-        # 3. 应用 posture、efficiency、fatigue (SCR_StaminaConsumption)
+        # 3. v6 陆地：仅姿态（与 C 快路径一致；efficiency/fatigue 陆地为 1.0）
+        posture = self._posture_consumption_multiplier(speed, stance)
+        total_drain = raw * posture
+
+        return (base_for_recovery, float(max(0.0, total_drain)))
+
+    def _calculate_drain_rate_c_aligned_legacy_pandolf(self, speed: float, current_weight: float,
+                                        grade_percent: float, terrain_factor: float,
+                                        stance: int, movement_type: int,
+                                        wind_drag: float = 0.0,
+                                        environment_factor=None) -> Tuple[float, float]:
+        """Legacy Pandolf+enc_mult 路径（仅测试对照，主循环已不用）。"""
+        bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
+        wind_mult = 1.0 + wind_drag
+        load_dampening = getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70)
+        if speed < 0.1:
+            return (0.0, 0.0)
+        pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
+        if current_weight > bw and load_dampening < 1.0:
+            unloaded_per_s = self._pandolf_expenditure(speed, bw, grade_percent, terrain_factor)
+            load_extra = pandolf_per_s - unloaded_per_s
+            pandolf_per_s = unloaded_per_s + load_extra * load_dampening
+        raw = pandolf_per_s * wind_mult * 0.2
         posture = self._posture_consumption_multiplier(speed, stance)
         speed_ratio = np.clip(speed / game_max, 0.0, 1.0)
         total_eff = self._fitness_efficiency_factor() * self._metabolic_efficiency_factor(speed_ratio)
         fatigue = self._fatigue_factor()
-        base = raw * posture * total_eff * fatigue
-
-        # 4. 与 C 一致：已统一为 Pandolf 公式，不再对 Sprint 额外乘倍数
-        # （Pandolf 中速度项自然体现 Sprint 更高消耗）
-
-        # 5. 应用负重消耗倍数 (C: totalDrainRate *= encumbranceStaminaDrainMultiplier)
         enc_mult = self._encumbrance_stamina_drain_multiplier(current_weight)
-        total_drain = base * enc_mult
-
-        return (base_for_recovery, float(max(0.0, total_drain)))
+        total_drain = raw * posture * total_eff * fatigue * enc_mult
+        return (raw, float(max(0.0, total_drain)))
 
     # -------------------------------------------------------------------------
     # CalculateMultiDimensionalRecoveryRate + StaminaRecoveryCalculator 逻辑
@@ -689,15 +702,16 @@ class RSSDigitalTwin:
         recovery_rate = c.BASE_RECOVERY_RATE * stamina_mult
         recovery_rate *= c.FIXED_FITNESS_RECOVERY_MULTIPLIER * c.FIXED_AGE_RECOVERY_MULTIPLIER
 
-        # 休息时间倍数
-        if rest_duration_minutes <= c.FAST_RECOVERY_DURATION_MINUTES:
-            recovery_rate *= c.FAST_RECOVERY_MULTIPLIER
-        elif rest_duration_minutes <= c.FAST_RECOVERY_DURATION_MINUTES + c.MEDIUM_RECOVERY_DURATION_MINUTES:
-            recovery_rate *= c.MEDIUM_RECOVERY_MULTIPLIER
-        elif rest_duration_minutes >= c.SLOW_RECOVERY_START_MINUTES:
-            trans_progress = min((rest_duration_minutes - c.SLOW_RECOVERY_START_MINUTES) / 10.0, 1.0)
-            slow_mult = 1.0 - trans_progress * (1.0 - c.SLOW_RECOVERY_MULTIPLIER)
-            recovery_rate *= slow_mult
+        # 休息时间倍数（仅 rest>0 时应用阶段加成，避免运动中 rest=0 误触发快速恢复）
+        if rest_duration_minutes > 0.0:
+            if rest_duration_minutes <= c.FAST_RECOVERY_DURATION_MINUTES:
+                recovery_rate *= c.FAST_RECOVERY_MULTIPLIER
+            elif rest_duration_minutes <= c.FAST_RECOVERY_DURATION_MINUTES + c.MEDIUM_RECOVERY_DURATION_MINUTES:
+                recovery_rate *= c.MEDIUM_RECOVERY_MULTIPLIER
+            elif rest_duration_minutes >= c.SLOW_RECOVERY_START_MINUTES:
+                trans_progress = min((rest_duration_minutes - c.SLOW_RECOVERY_START_MINUTES) / 10.0, 1.0)
+                slow_mult = 1.0 - trans_progress * (1.0 - c.SLOW_RECOVERY_MULTIPLIER)
+                recovery_rate *= slow_mult
 
         # 疲劳恢复
         fatigue_penalty = c.FATIGUE_RECOVERY_PENALTY * min(
@@ -751,12 +765,9 @@ class RSSDigitalTwin:
 
         recovery_rate = max(recovery_rate, 0.0)
 
-        # 移除基于速度的恢复率惩罚，保持正常恢复率
-        # 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
-        # 通过消耗率大于恢复率来实现净消耗
-        pass
-
-
+        # v6：陆地移动时不计入恢复（与 SCR_RSS_RecoveryCalculator 对齐）
+        if current_speed >= 0.1:
+            recovery_rate = 0.0
 
         if stamina_percent < 0.02:
             recovery_rate = max(recovery_rate, 0.0001)
@@ -1423,6 +1434,7 @@ V6_CRITICAL_POWER_WATTS_DEFAULT = 400.0
 V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0
 V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0
 V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0
+V6_STAMINA_DRAIN_CALIBRATION = 0.72
 V6_CP_LOAD_REF_KG = 10.0
 V6_CP_LOAD_DECAY_PER_KG = 0.002
 V6_CP_SLOPE_K_UP = 0.015
@@ -1433,6 +1445,61 @@ V6_W_PRIME_K_SLOW = 0.008
 V6_W_PRIME_LIM_RATIO = 0.5
 
 
+def calculate_pandolf_power_watts(
+    velocity_ms: float,
+    total_weight_kg: float,
+    grade_percent: float = 0.0,
+    terrain_factor: float = 1.0,
+) -> float:
+    """与 SCR_RSS_MetabolismModel.CalculatePandolfPowerWatts 同形。"""
+    v = max(0.0, velocity_ms)
+    w = max(total_weight_kg, 0.0)
+    terrain_factor = float(np.clip(terrain_factor, 0.5, 3.0))
+    ref_w = 90.0
+
+    if v < 0.1:
+        body_w = ref_w
+        load_w = max(w - body_w, 0.0)
+        if load_w < 5.0:
+            return 100.0 * (w / ref_w)
+        base_static = 1.2 * body_w
+        load_ratio = load_w / body_w if body_w > 0.0 else 0.0
+        load_static = 1.6 * (body_w + load_w) * (load_ratio * load_ratio)
+        return max(base_static + load_static, 0.0)
+
+    vt = v - 0.7
+    base_term = (2.7 * 0.80) + (3.2 * vt * vt)
+    g = grade_percent * 0.01
+    grade_term = g * (0.23 + 1.34 * v * v)
+    grade_term = min(grade_term, base_term * 3.0)
+    if grade_percent < 0.0 and grade_percent > -12.0:
+        grade_term = grade_term * 1.25
+    steep_penalty = 0.0
+    if grade_percent < -15.0:
+        abs_g = abs(grade_percent)
+        ramp = min((abs_g - 15.0) / 15.0, 1.0)
+        steep_penalty = base_term * ramp * 0.5
+    w_mult = max(w / ref_w, 0.1)
+    return max(w_mult * (base_term + grade_term + steep_penalty) * terrain_factor * ref_w, 0.0)
+
+
+def calculate_acsm_power_watts(velocity_ms: float, total_weight_kg: float) -> float:
+    """与 SCR_RSS_MetabolismModel.CalculateAcsmPowerWatts 同形。"""
+    v = max(0.0, velocity_ms)
+    w = max(total_weight_kg, 45.0)
+    mass_scale = w / 90.0
+    pref = V6_ACSM_REST_W + V6_ACSM_LINEAR_W_PER_MS * v + V6_ACSM_QUAD_W_PER_MS2 * v * v
+    return max(pref * mass_scale, 0.0)
+
+
+def get_acsm_blend_weight(velocity_ms: float) -> float:
+    if velocity_ms <= V6_ACSM_BLEND_START_MS:
+        return 0.0
+    if velocity_ms >= V6_ACSM_BLEND_END_MS:
+        return 1.0
+    return (velocity_ms - V6_ACSM_BLEND_START_MS) / (V6_ACSM_BLEND_END_MS - V6_ACSM_BLEND_START_MS)
+
+
 def metabolism_power_watts(
     velocity_ms: float,
     total_weight_kg: float,
@@ -1440,28 +1507,17 @@ def metabolism_power_watts(
     terrain_factor: float = 1.0,
     movement_phase: int = 2,
 ) -> float:
-    """Pandolf + ACSM 混合（校准：125kg@1.4m/s≈380W，125kg@4m/s sprint≈1100W）。"""
-    v = max(0.0, velocity_ms)
-    w = max(total_weight_kg, 45.0)
-    mass_scale = w / 90.0
-    if v < 0.1:
-        return 100.0 * mass_scale
-
-    g = grade_percent * 0.01
-    grade_mult = 1.0 + max(0.0, g) * 8.0
-
-    if movement_phase >= 3:
-        ref_v, ref_p = 4.0, 1100.0
-    elif movement_phase == 1:
-        ref_v, ref_p = 1.4, 280.0
-    else:
-        ref_v, ref_p = 2.8, 450.0
-
-    speed_ratio = v / ref_v
-    if speed_ratio < 0.05:
-        speed_ratio = 0.05
-    p = ref_p * mass_scale * (0.35 + 0.65 * speed_ratio * speed_ratio) * terrain_factor * grade_mult
-    return max(50.0, p)
+    """Pandolf + ACSM 混合（与 SCR_RSS_MetabolismModel.MetabolismPowerWatts 同形）。"""
+    pandolf_w = calculate_pandolf_power_watts(
+        velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+    prefer_acsm = movement_phase in (2, 3) or velocity_ms >= V6_ACSM_BLEND_END_MS
+    if not prefer_acsm and velocity_ms < V6_ACSM_BLEND_START_MS:
+        return pandolf_w
+    acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
+    blend = get_acsm_blend_weight(velocity_ms)
+    if movement_phase == 3:
+        blend = max(blend, 0.85)
+    return pandolf_w * (1.0 - blend) + acsm_w * blend
 
 
 def invert_speed_for_power_watts(
@@ -1520,25 +1576,34 @@ class V6CriticalPowerState:
     def cp_watts(self) -> float:
         return compute_cp_watts(self.cp0, self.load_kg, self.grade_percent, 1.0, self.fatigue_norm)
 
-    def tick(self, power_w: float, sprint: bool, world_time: float, dt: float) -> None:
+    def tick(self, power_w: float, sprint: bool, world_time: float, dt: float, current_speed_ms: float = 0.0) -> None:
         cp = self.cp_watts()
-        if sprint:
-            if power_w > cp:
+        if power_w > cp:
+            allow = True
+            if current_speed_ms < 0.05 and not sprint:
+                allow = False
+            if allow:
                 self.w_prime_joules = max(0.0, self.w_prime_joules - (power_w - cp) * dt)
-        else:
-            if world_time >= self.cooldown_until_sec and power_w <= cp + 5.0:
-                if self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W:
-                    w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
-                    k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
-                    k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
-                    fast = k_fast * max(0.0, w_lim - self.w_prime_joules)
-                    slow = k_slow * (self.w_prime_max_joules - w_lim)
-                    self.w_prime_joules = min(self.w_prime_max_joules, self.w_prime_joules + (fast + slow) * dt)
-                else:
-                    self.w_prime_joules = min(
-                        self.w_prime_max_joules,
-                        self.w_prime_joules + V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT * dt,
-                    )
+        if not sprint and world_time >= self.cooldown_until_sec and power_w <= cp + 5.0:
+            if self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W:
+                w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
+                k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
+                k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
+                fast = 0.0
+                if self.w_prime_joules < w_lim:
+                    fast = k_fast * (w_lim - self.w_prime_joules)
+                slow = 0.0
+                if self.w_prime_joules >= w_lim:
+                    slow = k_slow * (self.w_prime_max_joules - self.w_prime_joules)
+                self.w_prime_joules = min(
+                    self.w_prime_max_joules,
+                    self.w_prime_joules + (fast + slow) * dt,
+                )
+            else:
+                self.w_prime_joules = min(
+                    self.w_prime_max_joules,
+                    self.w_prime_joules + V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT * dt,
+                )
 
 
 def simulate_v6_sprint_seconds(

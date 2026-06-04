@@ -26,6 +26,7 @@ SCENARIOS = [
     ("invert_speed_monotonic", lambda: invert_speed_for_power_watts(500.0, 125.0, movement_phase=2) > 0.8),
     ("cp_load_penalty", lambda: compute_cp_watts(400.0, 35.0, 0.0) < 400.0),
     ("wprime_discharge", lambda: _wprime_discharge_ok()),
+    ("wprime_discharge_run", lambda: _wprime_discharge_run_ok()),
     ("elite_sprint_duration", lambda: simulate_v6_sprint_seconds(35.0, 400.0) <= 15.0),
 ]
 
@@ -40,6 +41,16 @@ def _wprime_discharge_ok() -> bool:
         p = min(cap, cp + burst)
         st.tick(p, True, 0.0, dt)
     return st.pool01 < 0.25
+
+
+def _wprime_discharge_run_ok() -> bool:
+    st = V6CriticalPowerState(cp0=400.0, load_kg=35.0)
+    dt = 0.017
+    cp = st.cp_watts()
+    power_run = cp + 120.0
+    j0 = st.w_prime_joules
+    st.tick(power_run, False, 0.0, dt, 1.2)
+    return st.w_prime_joules < j0
 
 
 def main() -> int:

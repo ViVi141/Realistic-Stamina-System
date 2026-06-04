@@ -294,26 +294,28 @@ class SCR_RSS_MetabolismMath
         float mediumRecoveryMultiplier = SCR_RSS_ConfigBridge.GetMediumRecoveryMultiplier();
         float slowRecoveryMultiplier = SCR_RSS_ConfigBridge.GetSlowRecoveryMultiplier();
         
-        if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
+        // 仅在实际累积休息后应用阶段倍数；rest=0 表示运动中/尚未进入 idle，不得触发「快速恢复」
+        if (restDurationMinutes > 0.0)
         {
-            // 快速恢复期（0-3分钟）：恢复速度增加200%（3倍）
-            restTimeMultiplier = fastRecoveryMultiplier;
+            if (restDurationMinutes <= FAST_RECOVERY_DURATION_MINUTES)
+            {
+                // 快速恢复期（0-24秒）：刚停下的 EPOC 后快速回血窗口
+                restTimeMultiplier = fastRecoveryMultiplier;
+            }
+            else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
+            {
+                // 中等恢复期
+                restTimeMultiplier = mediumRecoveryMultiplier;
+            }
+            else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
+            {
+                // 慢速恢复期（≥10分钟）：线性过渡
+                const float transitionDuration = 10.0; // 过渡时间（分钟）
+                float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
+                restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
+            }
         }
-        else if (restDurationMinutes <= MEDIUM_RECOVERY_START_MINUTES + MEDIUM_RECOVERY_DURATION_MINUTES)
-        {
-            // 中等恢复期（1.5-6.5分钟）：恢复速度增加40%（1.4倍）
-            // [修复注释] 从"3-10分钟"改为"1.5-6.5分钟"（与Python数字孪生一致）
-            restTimeMultiplier = mediumRecoveryMultiplier;
-        }
-        else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
-        {
-            // 慢速恢复期（≥10分钟）：恢复速度减少20%（0.8倍）
-            // 线性过渡：从10分钟到20分钟，从1.0倍逐渐降至0.8倍
-            const float transitionDuration = 10.0; // 过渡时间（分钟）
-            float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
-            restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
-        }
-        // 否则：标准恢复期（10分钟内），restTimeMultiplier = 1.0
+        // 否则：运动中或 rest 尚未累积，restTimeMultiplier = 1.0
         
         // ==================== 4. 年龄影响 ====================
         // 固定值（22岁标准男性）：预计算结果直接使用，防止不平等游玩

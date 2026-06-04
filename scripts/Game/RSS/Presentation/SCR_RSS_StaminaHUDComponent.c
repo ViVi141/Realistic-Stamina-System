@@ -413,52 +413,40 @@ class SCR_RSS_StaminaHUDComponent
 
         if (s_fCachedTimeToDepleteSec >= 0.0)
         {
-            if (displayTimeToDepleteSec < 0.5)
+            int sec = Math.Round(displayTimeToDepleteSec);
+            if (sec < 1)
+                sec = 1;
+            if (sec >= 60)
             {
-                timeStr = "0";
-                showBlackZero = true;
+                int m = sec / 60;
+                int s = sec % 60;
+                if (s > 0)
+                    timeStr = m.ToString() + "m" + s.ToString() + "s";
+                else
+                    timeStr = m.ToString() + "m";
             }
             else
             {
-                int sec = Math.Round(displayTimeToDepleteSec);
-                if (sec >= 60)
-                {
-                    int m = sec / 60;
-                    int s = sec % 60;
-                    if (s > 0)
-                        timeStr = m.ToString() + "m" + s.ToString() + "s";
-                    else
-                        timeStr = m.ToString() + "m";
-                }
-                else
-                {
-                    timeStr = sec.ToString() + "s";
-                }
+                timeStr = sec.ToString() + "s";
             }
         }
         else if (s_fCachedTimeToFullSec >= 0.0)
         {
-            if (s_fCachedTimeToFullSec < 0.5)
+            int sec = Math.Round(s_fCachedTimeToFullSec);
+            if (sec < 1)
+                sec = 1;
+            if (sec >= 60)
             {
-                timeStr = "0";
-                showBlackZero = true;
+                int m = sec / 60;
+                int s = sec % 60;
+                if (s > 0)
+                    timeStr = "+" + m.ToString() + "m" + s.ToString() + "s";
+                else
+                    timeStr = "+" + m.ToString() + "m";
             }
             else
             {
-                int sec = Math.Round(s_fCachedTimeToFullSec);
-                if (sec >= 60)
-                {
-                    int m = sec / 60;
-                    int s = sec % 60;
-                    if (s > 0)
-                        timeStr = "+" + m.ToString() + "m" + s.ToString() + "s";
-                    else
-                        timeStr = "+" + m.ToString() + "m";
-                }
-                else
-                {
-                    timeStr = "+" + sec.ToString() + "s";
-                }
+                timeStr = "+" + sec.ToString() + "s";
             }
         }
         else

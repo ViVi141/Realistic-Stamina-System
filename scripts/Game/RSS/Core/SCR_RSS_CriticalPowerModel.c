@@ -73,7 +73,7 @@ class SCR_RSS_CriticalPowerModel
         return m_fCooldownUntilSec;
     }
 
-    //! 动态 CP：load / slope / env / fatigue（见 v6 plan 核心方程 §2）
+    //! 动态 CP：load / slope / env（疲劳经 GetEffectiveCriticalPowerWatts × m_fFatigueCpMultiplier）
     float ComputeCpBaseWatts()
     {
         float cp0 = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
@@ -97,11 +97,6 @@ class SCR_RSS_CriticalPowerModel
         }
 
         cpLoad = cpLoad * m_fContextEnvCpMult;
-
-        float fatMult = 1.0 - SCR_RSS_Constants.V6_CP_FATIGUE_K * m_fContextFatigueNorm;
-        if (fatMult < 0.75)
-            fatMult = 0.75;
-        cpLoad = cpLoad * fatMult;
 
         return cpLoad;
     }
@@ -136,7 +131,9 @@ class SCR_RSS_CriticalPowerModel
             float fastTerm = 0.0;
             if (m_fWPrimeJoules < wLim)
                 fastTerm = kFast * (wLim - m_fWPrimeJoules);
-            float slowTerm = kSlow * (m_fWPrimeMaxJoules - wLim);
+            float slowTerm = 0.0;
+            if (m_fWPrimeJoules >= wLim)
+                slowTerm = kSlow * (m_fWPrimeMaxJoules - m_fWPrimeJoules);
             m_fWPrimeJoules = m_fWPrimeJoules + (fastTerm + slowTerm) * timeDeltaSec;
         }
         else
@@ -212,22 +209,29 @@ class SCR_RSS_CriticalPowerModel
         return true;
     }
 
-    void Tick(float powerWatts, bool sprintIntent, float worldTimeSec, float timeDeltaSec)
+    void Tick(float powerWatts, bool sprintIntent, float worldTimeSec, float timeDeltaSec, float currentSpeedMs = 0.0)
     {
         float cp = GetEffectiveCriticalPowerWatts();
 
-        if (sprintIntent)
+        // Morin–Petit：P > CP 消耗 W′；静止且非 Sprint 意图时不扣无氧池
+        if (powerWatts > cp)
         {
-            if (!m_bWasSprinting)
-                m_fSprintStartSec = worldTimeSec;
-
-            if (powerWatts > cp)
+            bool allowDischarge = true;
+            if (currentSpeedMs < 0.05 && !sprintIntent)
+                allowDischarge = false;
+            if (allowDischarge)
             {
                 float drainJ = (powerWatts - cp) * timeDeltaSec;
                 m_fWPrimeJoules = m_fWPrimeJoules - drainJ;
                 if (m_fWPrimeJoules < 0.0)
                     m_fWPrimeJoules = 0.0;
             }
+        }
+
+        if (sprintIntent)
+        {
+            if (!m_bWasSprinting)
+                m_fSprintStartSec = worldTimeSec;
 
             float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
             if (GetPool01() <= threshold)

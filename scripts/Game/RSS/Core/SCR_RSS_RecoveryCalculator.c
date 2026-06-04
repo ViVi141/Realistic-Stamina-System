@@ -20,8 +20,8 @@ class SCR_RSS_RecoveryCalculator
             return false;
         
         float lastSpeedForEpoc = epocState.GetLastSpeedForEpoc();
-        bool wasMoving = (lastSpeedForEpoc > 0.05);
-        bool isNowStopped = (currentSpeed <= 0.05);
+        bool wasMoving = (lastSpeedForEpoc >= 0.1);
+        bool isNowStopped = (currentSpeed < 0.1);
         bool isInEpocDelay = epocState.IsInEpocDelay();
         
         // 如果从运动状态变为静止状态，启动EPOC延迟
@@ -45,8 +45,8 @@ class SCR_RSS_RecoveryCalculator
             }
         }
         
-        // 如果重新开始运动，取消EPOC延迟
-        if (currentSpeed > 0.05)
+        // 明显重新移动才取消 EPOC（与 ResolveMovementDrainForNet 静止阈值 0.1 对齐，避免微动闪烁）
+        if (currentSpeed >= 0.15)
         {
             epocState.SetIsInEpocDelay(false);
             epocState.SetEpocDelayStartTime(-1.0);
@@ -143,17 +143,14 @@ class SCR_RSS_RecoveryCalculator
             recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
         }
         
-        // ==================== 运动状态恢复率调整（方案B：速度 + 移动意图联合判断）====================
-        //
-        // - 静止：正常恢复
-        // - Walk（意图或速度）：0.8 倍，允许净恢复
-        // - Run（速度>=3.2 或意图为RUN且速度>=0.1）：极低恢复(0.15)，防止坡度减速后无限跑
-        // 移除基于速度的恢复率惩罚，保持正常恢复率
-        // 这样更符合现实：即使在运动时，身体也会持续恢复，只是消耗大于恢复
-        // 通过消耗率大于恢复率来实现净消耗
-        const float speedBasedRecoveryMultiplier = 1.0;
-        
-        // 应用速度基于的恢复率调整（保持1.0，无惩罚）
+        // ==================== 运动状态恢复率调整 ====================
+        // v6：陆地移动时不计入有氧恢复（net = -movementDrain）；仅静止/EPOC 后恢复。
+        // 与 ResolveMovementDrainForNet(0.1) 阈值对齐；绝境呼吸(<2%) 仍于下方兜底。
+        const float movementRecoverySpeedThreshold = 0.1;
+        float speedBasedRecoveryMultiplier = 1.0;
+        if (currentSpeed >= movementRecoverySpeedThreshold)
+            speedBasedRecoveryMultiplier = 0.0;
+
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;
         
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
@@ -199,8 +196,7 @@ class SCR_RSS_RecoveryCalculator
         // 避免了消耗被双重扣除的问题
         if (baseDrainRateByVelocity < 0.0)
         {
-            // 负数表示恢复，加到恢复率中
-            recoveryRate += Math.AbsFloat(baseDrainRateByVelocity);
+            // v6：负基线不再叠加到 recovery（静止恢复仅由多维恢复模型 + ResolveMovementDrainForNet 处理）
         }
         else if (baseDrainRateByVelocity > 0.0 && currentSpeed < 0.1)
         {

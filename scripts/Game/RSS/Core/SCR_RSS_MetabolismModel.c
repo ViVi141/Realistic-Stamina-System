@@ -169,6 +169,7 @@ class SCR_RSS_MetabolismModel
     {
         float energyToStaminaCoeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
         energyToStaminaCoeff = Math.Clamp(energyToStaminaCoeff, 0.0, 0.1);
+        energyToStaminaCoeff = energyToStaminaCoeff * SCR_RSS_Constants.V6_STAMINA_DRAIN_CALIBRATION;
         return Math.Max(powerWatts * energyToStaminaCoeff, 0.0);
     }
 

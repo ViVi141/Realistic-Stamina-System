@@ -66,11 +66,11 @@ class SCR_RSS_AnaerobicBurst
     }
 
     //! @param powerWatts 实测代谢功率（W）；v6 不再使用固定 drain/sec
-    void TickPower(float powerWatts, bool isSprinting, float worldTimeSec, float timeDeltaSec)
+    void TickPower(float powerWatts, bool isSprinting, float worldTimeSec, float timeDeltaSec, float currentSpeedMs = 0.0)
     {
         if (!m_pCpModel)
             return;
-        m_pCpModel.Tick(powerWatts, isSprinting, worldTimeSec, timeDeltaSec);
+        m_pCpModel.Tick(powerWatts, isSprinting, worldTimeSec, timeDeltaSec, currentSpeedMs);
     }
 
     //! 兼容旧调用：由功率代换
@@ -82,7 +82,7 @@ class SCR_RSS_AnaerobicBurst
         float powerW = cp;
         if (isSprinting)
             powerW = cp + drainPerSec * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
-        m_pCpModel.Tick(powerW, isSprinting, worldTimeSec, timeDeltaSec);
+        m_pCpModel.Tick(powerW, isSprinting, worldTimeSec, timeDeltaSec, 0.0);
     }
 
     void SetFatigueCpMultiplier(float mult)
