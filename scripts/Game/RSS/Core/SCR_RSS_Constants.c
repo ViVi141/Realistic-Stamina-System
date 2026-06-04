@@ -797,4 +797,9 @@ class SCR_RSS_Constants
 
     //! @deprecated v6 玩家速度不再使用 Minetti 指数；AI 迁移后删除
     static const float STAMINA_EXPONENT_LEGACY = 0.6;
+
+    //! 陆地静止/运动分界（m/s）：ExerciseTracker、ResolveMovementDrain、EPOC 取消、恢复对齐
+    static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
+    //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
+    static const float RSS_STAMINA_TICK_SEC = 0.2;
 }

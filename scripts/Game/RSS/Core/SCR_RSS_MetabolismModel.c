@@ -164,13 +164,22 @@ class SCR_RSS_MetabolismModel
         return Math.Max(baseStaticTerm + loadStaticTerm, 0.0);
     }
 
-    //! 功率 → 有氧消耗率（%/s）
-    static float StaminaDrainRatePerSecondFromPowerWatts(float powerWatts)
+    //! 有氧功率封顶：STA 仅扣 min(P, CP)；超出部分由 W′ 模型独占
+    static float AerobicPowerWattsForStaminaDrain(float powerWatts, float criticalPowerCapWatts = -1.0)
     {
+        if (criticalPowerCapWatts > 1.0 && powerWatts > criticalPowerCapWatts)
+            return criticalPowerCapWatts;
+        return powerWatts;
+    }
+
+    //! 功率 → 有氧消耗率（%/s）
+    static float StaminaDrainRatePerSecondFromPowerWatts(float powerWatts, float criticalPowerCapWatts = -1.0)
+    {
+        float aerobicW = AerobicPowerWattsForStaminaDrain(powerWatts, criticalPowerCapWatts);
         float energyToStaminaCoeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
         energyToStaminaCoeff = Math.Clamp(energyToStaminaCoeff, 0.0, 0.1);
         energyToStaminaCoeff = energyToStaminaCoeff * SCR_RSS_Constants.V6_STAMINA_DRAIN_CALIBRATION;
-        return Math.Max(powerWatts * energyToStaminaCoeff, 0.0);
+        return Math.Max(aerobicW * energyToStaminaCoeff, 0.0);
     }
 
     //! 兼容接口：返回 %/s（与旧 CalculatePandolfEnergyExpenditure 一致）

@@ -248,6 +248,10 @@ class SCR_RSS_StaminaConsumptionCalculator
                 Math.Round(totalDrainRate * 1000.0) / 1000.0);
             SCR_RSS_DebugBatchManager.AddDebugBatchLine(line2);
         }
+
+        // Sprint 完整路径：与快路径一致，单层施加轻量环境乘数
+        if (environmentFactor && totalDrainRate > 0.0)
+            totalDrainRate = totalDrainRate * environmentFactor.GetQuickEnvironmentMultiplier();
         
         return totalDrainRate;
     }

@@ -15,6 +15,45 @@ class SCR_RSS_SpeedCalculator
 
     // ==================== 公共方法 ====================
     
+    //! 引擎 phase=Idle 但仍有水平惯性速度时，沿用上一非 Idle 相位（限速/代谢/调试）
+    static int ResolveCoastingMovementPhase(int enginePhase, float currentSpeedMs, int lastNonIdlePhase)
+    {
+        if (enginePhase != 0)
+            return enginePhase;
+        if (currentSpeedMs < SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            return 0;
+        if (lastNonIdlePhase >= 1 && lastNonIdlePhase <= 3)
+            return lastNonIdlePhase;
+        return 2;
+    }
+
+    static bool IsCoastingMovement(int enginePhase, float currentSpeedMs)
+    {
+        if (enginePhase != 0)
+            return false;
+        if (currentSpeedMs < SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            return false;
+        return true;
+    }
+
+    //! 状态/HUD：引擎 Idle + 惯性时标注为「Run惯性」等
+    static string FormatMovementTypeForDisplay(
+        bool isSprinting,
+        int enginePhase,
+        int effectivePhase,
+        float currentSpeedMs)
+    {
+        if (enginePhase == 0 && effectivePhase >= 1 && effectivePhase <= 3)
+        {
+            if (currentSpeedMs >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            {
+                string coastLabel = FormatMovementType(false, effectivePhase);
+                return coastLabel + "惯性";
+            }
+        }
+        return FormatMovementType(isSprinting, enginePhase);
+    }
+
     //! v6：相位目标速度倍率（无意志力平台期；低 STA 仅跛行）
     static float CalculateV6PhaseSpeedMultiplier(
         float staminaPercent,

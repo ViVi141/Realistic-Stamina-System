@@ -20,8 +20,9 @@ class SCR_RSS_RecoveryCalculator
             return false;
         
         float lastSpeedForEpoc = epocState.GetLastSpeedForEpoc();
-        bool wasMoving = (lastSpeedForEpoc >= 0.1);
-        bool isNowStopped = (currentSpeed < 0.1);
+        float idleThreshold = SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS;
+        bool wasMoving = (lastSpeedForEpoc >= idleThreshold);
+        bool isNowStopped = (currentSpeed < idleThreshold);
         bool isInEpocDelay = epocState.IsInEpocDelay();
         
         // 如果从运动状态变为静止状态，启动EPOC延迟
@@ -45,8 +46,8 @@ class SCR_RSS_RecoveryCalculator
             }
         }
         
-        // 明显重新移动才取消 EPOC（与 ResolveMovementDrainForNet 静止阈值 0.1 对齐，避免微动闪烁）
-        if (currentSpeed >= 0.15)
+        // 重新移动才取消 EPOC（与 RSS_IDLE_SPEED_THRESHOLD_MPS 对齐，避免微动闪烁）
+        if (currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
             epocState.SetIsInEpocDelay(false);
             epocState.SetEpocDelayStartTime(-1.0);
@@ -145,10 +146,9 @@ class SCR_RSS_RecoveryCalculator
         
         // ==================== 运动状态恢复率调整 ====================
         // v6：陆地移动时不计入有氧恢复（net = -movementDrain）；仅静止/EPOC 后恢复。
-        // 与 ResolveMovementDrainForNet(0.1) 阈值对齐；绝境呼吸(<2%) 仍于下方兜底。
-        const float movementRecoverySpeedThreshold = 0.1;
+        // 与 ResolveMovementDrainForNet 阈值对齐；绝境呼吸(<2%) 仍于下方兜底。
         float speedBasedRecoveryMultiplier = 1.0;
-        if (currentSpeed >= movementRecoverySpeedThreshold)
+        if (currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
             speedBasedRecoveryMultiplier = 0.0;
 
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;

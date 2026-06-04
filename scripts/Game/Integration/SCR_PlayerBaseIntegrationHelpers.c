@@ -35,22 +35,24 @@ class SCR_PlayerBaseDebugHelper
 {
     static void OutputStatusInfo(
         IEntity owner,
-        float lastSecondSpeed,
-        float lastStaminaPercent,
-        float lastSpeedMultiplier,
+        float snapshotSpeed,
+        float snapshotStaminaPercent,
+        float snapshotSpeedMultiplier,
         bool isSwimming,
         bool isSprinting,
-        int currentMovementPhase,
+        int engineMovementPhase,
+        int effectiveMovementPhase,
         SCR_CharacterControllerComponent controller)
     {
         SCR_RSS_DebugDisplay.OutputStatusInfo(
             owner,
-            lastSecondSpeed,
-            lastStaminaPercent,
-            lastSpeedMultiplier,
+            snapshotSpeed,
+            snapshotStaminaPercent,
+            snapshotSpeedMultiplier,
             isSwimming,
             isSprinting,
-            currentMovementPhase,
+            engineMovementPhase,
+            effectiveMovementPhase,
             controller);
     }
 }

@@ -339,6 +339,17 @@ class EnvironmentFactor:
         mult = self.get_heat_stress_multiplier(indoor=False)
         return float(min(max(mult - 1.0, 0.0), 0.5))
 
+    def get_quick_environment_multiplier(self, mud_factor: float = 0.0, wind_drag: float = 0.0) -> float:
+        """与 C GetQuickEnvironmentMultiplier 近似（孪生默认无泥地缓存）。"""
+        mud_penalty_max = getattr(self.constants, 'ENV_MUD_PENALTY_MAX', 0.35)
+        mult = 1.0 + mud_factor * mud_penalty_max
+        if wind_drag > 0.0:
+            mult = mult * (1.0 + wind_drag)
+        heat_penalty = self.get_heat_stress_penalty()
+        if heat_penalty > 0.05:
+            mult = mult * (1.0 + heat_penalty * 0.5)
+        return float(mult)
+
 
 # 与游戏 Init*Defaults 一致、但不在 v4 Optuna SEARCH_SPACE 中的字段（创建孪生时合并）
 GAME_ALIGNED_FIXED_PARAMS = {
@@ -585,13 +596,18 @@ class RSSDigitalTwin:
         terrain_factor: float,
         movement_type: int,
         wind_drag: float = 0.0,
+        effective_cp_watts: float = -1.0,
     ) -> float:
-        """v6 陆地代谢消耗 %/s（MetabolismModel，无 enc_mult）。"""
+        """v6 陆地代谢消耗 %/s（MetabolismModel，无 enc_mult；STA 仅扣 min(P, CP)）。"""
         phase = self._movement_phase_from_type(movement_type)
         coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 7.17e-7)
+        cal = getattr(self.constants, 'V6_STAMINA_DRAIN_CALIBRATION', V6_STAMINA_DRAIN_CALIBRATION)
         power_w = metabolism_power_watts(
             speed, current_weight, grade_percent, terrain_factor, phase)
-        per_sec = max(power_w * coeff * V6_STAMINA_DRAIN_CALIBRATION, 0.0)
+        aerobic_w = power_w
+        if effective_cp_watts > 1.0 and power_w > effective_cp_watts:
+            aerobic_w = effective_cp_watts
+        per_sec = max(aerobic_w * coeff * cal, 0.0)
         return per_sec * (1.0 + wind_drag)
 
     # -------------------------------------------------------------------------
@@ -610,6 +626,11 @@ class RSSDigitalTwin:
         bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
         rest_per_tick = getattr(self.constants, 'REST_RECOVERY_PER_TICK', 0.0005)
+        idle_threshold = 0.1
+
+        cp0 = getattr(self.constants, 'V6_CRITICAL_POWER_WATTS_DEFAULT', V6_CRITICAL_POWER_WATTS_DEFAULT)
+        load_kg = max(0.0, current_weight - bw)
+        effective_cp = compute_cp_watts(cp0, load_kg, grade_percent, 1.0, 0.0)
 
         wind_mult = 1.0 + wind_drag
 
@@ -617,7 +638,7 @@ class RSSDigitalTwin:
         load_dampening = getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70)
 
         if movement_type == MovementType.IDLE:
-            if speed < 0.1:
+            if speed < idle_threshold:
                 raw = -rest_per_tick
             else:
                 pandolf_per_s = self._pandolf_expenditure(speed, current_weight, grade_percent, terrain_factor)
@@ -625,16 +646,17 @@ class RSSDigitalTwin:
                     unloaded_per_s = self._pandolf_expenditure(speed, bw, grade_percent, terrain_factor)
                     load_extra = pandolf_per_s - unloaded_per_s
                     pandolf_per_s = unloaded_per_s + load_extra * load_dampening
-                raw = pandolf_per_s * wind_mult * 0.2
-        elif speed < 0.1:
+                raw = pandolf_per_s * wind_mult * STAMINA_TICK_SEC
+        elif speed < idle_threshold:
             load_weight = max(0.0, current_weight - bw)
             static_per_s = self._static_standing_cost(bw, load_weight)
-            raw = static_per_s * 0.2
+            raw = static_per_s * STAMINA_TICK_SEC
         else:
             # v6 陆地：MetabolismModel（与 CalculateLandBaseDrainRate 同形）
             pandolf_per_s = self._v6_land_drain_per_second(
-                speed, current_weight, grade_percent, terrain_factor, movement_type, wind_drag)
-            raw = pandolf_per_s * 0.2
+                speed, current_weight, grade_percent, terrain_factor, movement_type, wind_drag,
+                effective_cp_watts=effective_cp)
+            raw = pandolf_per_s * STAMINA_TICK_SEC
 
         base_for_recovery = max(0.0, raw) if raw > 0 else 0.0
 
@@ -650,6 +672,11 @@ class RSSDigitalTwin:
         # 3. v6 陆地：仅姿态（与 C 快路径一致；efficiency/fatigue 陆地为 1.0）
         posture = self._posture_consumption_multiplier(speed, stance)
         total_drain = raw * posture
+
+        # 4. 轻量环境乘数（与 C GetQuickEnvironmentMultiplier 单层对齐；勿在 step 再叠 heat_mult）
+        if environment_factor is not None and total_drain > 0.0:
+            total_drain = total_drain * environment_factor.get_quick_environment_multiplier(
+                wind_drag=wind_drag)
 
         return (base_for_recovery, float(max(0.0, total_drain)))
 
@@ -850,7 +877,7 @@ class RSSDigitalTwin:
         if len(self.speed_history) < self.max_history_length:
             self.speed_history.append(speed)
 
-        if speed > 0.05:
+        if speed >= 0.1:
             self.exercise_duration_minutes += time_delta / 60.0
             self.rest_duration_minutes = 0.0
         else:
@@ -867,11 +894,6 @@ class RSSDigitalTwin:
             total_drain = float(total_drain)
             if total_drain >= 0.0:
                 total_drain = min(total_drain, 0.1)
-
-            heat_mult = 1.0
-            if self.environment_factor is not None:
-                heat_mult = self.environment_factor.get_heat_stress_multiplier(indoor=False)
-            total_drain = total_drain * heat_mult
 
             if self.is_in_epoc_delay:
                 epoc_rate = self.constants.EPOC_DRAIN_RATE * (
@@ -1122,7 +1144,7 @@ class RSSDigitalTwin:
             theoretical_ms, engine_original_ms
         )
 
-        if intent_phase == MovementType.IDLE or theoretical_ms < 0.05:
+        if intent_phase == MovementType.IDLE or theoretical_ms < 0.1:
             drain_speed = 0.0
             engine_phase = MovementType.IDLE
         else:
@@ -1155,7 +1177,7 @@ class RSSDigitalTwin:
             time_delta_override=time_delta,
         )
 
-        if drain_speed > 0.05:
+        if drain_speed >= 0.1:
             self._measured_velocity_ms = min(
                 VELOCITY_HORIZ_CAP_MS, engine_original_ms * speed_limit_mult
             )

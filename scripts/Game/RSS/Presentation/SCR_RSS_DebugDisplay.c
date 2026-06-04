@@ -412,21 +412,20 @@ class SCR_RSS_DebugDisplay
     
     // 输出状态信息（每秒一次）
     // @param owner 角色实体
-    // @param lastSecondSpeed 上一秒的速度（m/s）
-    // @param lastStaminaPercent 上一秒的体力百分比
-    // @param lastSpeedMultiplier 上一秒的速度倍数
-    // @param isSwimming 是否在游泳
-    // @param isSprinting 是否正在Sprint
-    // @param currentMovementPhase 当前移动阶段
-    // @param controller 角色控制器组件
+    // @param snapshotSpeed 与体力 tick 同步的水平速度（m/s）
+    // @param snapshotStaminaPercent 与体力 tick 同步的体力
+    // @param snapshotSpeedMultiplier 与体力 tick 同步的最终速度倍率
+    // @param engineMovementPhase 引擎相位（输入意图）
+    // @param effectiveMovementPhase 有效相位（含惯性 coasting）
     static void OutputStatusInfo(
         IEntity owner,
-        float lastSecondSpeed,
-        float lastStaminaPercent,
-        float lastSpeedMultiplier,
+        float snapshotSpeed,
+        float snapshotStaminaPercent,
+        float snapshotSpeedMultiplier,
         bool isSwimming,
         bool isSprinting,
-        int currentMovementPhase,
+        int engineMovementPhase,
+        int effectiveMovementPhase,
         SCR_CharacterControllerComponent controller)
     {
         // ==================== 配置门禁检查 ====================
@@ -446,16 +445,18 @@ class SCR_RSS_DebugDisplay
         if (currentTime < m_fNextStatusLogTime)
             return;
         
-        // 格式化移动类型
-        string movementTypeStr = FormatMovementType(isSprinting, currentMovementPhase);
+        string movementTypeStr;
         if (isSwimming)
             movementTypeStr = "Swim";
+        else
+            movementTypeStr = SCR_RSS_SpeedCalculator.FormatMovementTypeForDisplay(
+                isSprinting, engineMovementPhase, effectiveMovementPhase, snapshotSpeed);
         
         string statusMessage = string.Format(
             "[RSS] 状态: 速度%1m/s 体力%2%% 倍率%3x 类型%4",
-            Math.Round(lastSecondSpeed * 100.0) / 100.0,
-            Math.Round(lastStaminaPercent * 100.0),
-            Math.Round(lastSpeedMultiplier * 100.0) / 100.0,
+            Math.Round(snapshotSpeed * 100.0) / 100.0,
+            Math.Round(snapshotStaminaPercent * 100.0),
+            Math.Round(snapshotSpeedMultiplier * 100.0) / 100.0,
             movementTypeStr);
         
         Print(statusMessage);

@@ -16,6 +16,7 @@ class RSS_StaminaDebugOutputParams
     bool isSwimming;
     bool isSprinting;
     int currentMovementPhase;
+    int effectiveMovementPhase;
     float rainWeight;
 }
 
@@ -150,6 +151,13 @@ modded class SCR_CharacterControllerComponent
         
         bool isSprintingNow = IsSprinting();
         int phaseNow = GetCurrentMovementPhase();
+        if (phaseNow >= 1 && phaseNow <= 3)
+            m_iLastNonIdleMovementPhase = phaseNow;
+        else if (isSprintingNow)
+            m_iLastNonIdleMovementPhase = 3;
+
+        int effectivePhase = SCR_RSS_SpeedCalculator.ResolveCoastingMovementPhase(
+            phaseNow, currentSpeed, m_iLastNonIdleMovementPhase);
         bool isSprintActive = isSprintingNow || (phaseNow == 3);
 
         bool sprintIntent = isSprintActive || GetIsSprintingToggle();
@@ -174,7 +182,8 @@ modded class SCR_CharacterControllerComponent
             m_pEnvironmentFactor,
             m_pSlopeSpeedTransition,
             velocity,
-            terrainFactor);
+            terrainFactor,
+            effectivePhase);
 
         if (m_pSprintBlockSpeedTransition)
         {
@@ -194,7 +203,7 @@ modded class SCR_CharacterControllerComponent
         }
         
         float baseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(
-            staminaPercent, phaseNow, encumbranceSpeedPenalty);
+            staminaPercent, effectivePhase, encumbranceSpeedPenalty);
         
         float currentWeight = 0.0;
         if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
@@ -382,7 +391,7 @@ modded class SCR_CharacterControllerComponent
                     gradePercent,
                     terrainFactor,
                     true,
-                    phaseNow);
+                    effectivePhase);
 
                 SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
                 if (cpModel)
@@ -422,7 +431,7 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed > 0.05)
+        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
             float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
                 currentSpeed, m_fAppliedSpeedLimitMs);
@@ -483,6 +492,7 @@ modded class SCR_CharacterControllerComponent
 
         bool isSprinting = isSprintingNow;
         int currentMovementPhase = phaseNow;
+        int effectiveMovementPhase = effectivePhase;
         float totalDrainRate = 0.0;
         float baseDrainRateByVelocity = 0.0;
         float baseDrainRateByVelocityForModule = 0.0;
@@ -506,7 +516,7 @@ modded class SCR_CharacterControllerComponent
         drainParams.controller = this;
         drainParams.environmentFactor = m_pEnvironmentFactor;
         drainParams.isSprinting = isSprinting;
-        drainParams.currentMovementPhase = currentMovementPhase;
+        drainParams.currentMovementPhase = effectiveMovementPhase;
         drainParams.speedRatio = speedRatio;
         drainParams.heatStressMultiplier = heatStressMultiplier;
         drainParams.isSprintActive = isSprintActive;
@@ -519,6 +529,19 @@ modded class SCR_CharacterControllerComponent
         drainParams.currentTimeSec = currentTime;
         drainParams.currentTimeForExerciseMs = currentTimeForExerciseMs;
         drainParams.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
+        drainParams.effectiveCriticalPowerWatts = -1.0;
+        if (m_pAnaerobicBurst)
+        {
+            SCR_RSS_CriticalPowerModel cpForDrain = m_pAnaerobicBurst.GetCpModel();
+            if (cpForDrain)
+                drainParams.effectiveCriticalPowerWatts = cpForDrain.GetEffectiveCriticalPowerWatts();
+        }
+        else
+        {
+            float cpFallback = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+            if (cpFallback > 1.0)
+                drainParams.effectiveCriticalPowerWatts = cpFallback;
+        }
 
         StaminaDrainTickResult drainTick = SCR_RSS_UpdateCoordinator.CalculateTotalDrainRate(drainParams);
         totalDrainRate = drainTick.totalDrainRate;
@@ -586,6 +609,14 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
 
+        RSS_UpdateStatusLogSnapshot(
+            currentSpeed,
+            staminaPercent,
+            finalSpeedMultiplier,
+            isSprinting,
+            phaseNow,
+            effectivePhase);
+
         RSS_DebugLogAiStaminaTick(
             owner, staminaPercent, currentWeight, finalSpeedMultiplier,
             currentSpeed, isSprinting, currentMovementPhase);
@@ -606,6 +637,7 @@ modded class SCR_CharacterControllerComponent
         debugTick.isSwimming = isSwimming;
         debugTick.isSprinting = isSprinting;
         debugTick.currentMovementPhase = currentMovementPhase;
+        debugTick.effectiveMovementPhase = effectiveMovementPhase;
         debugTick.rainWeight = rainWeight;
         RSS_DebugOutputPlayerStaminaAndHints(owner, debugTick);
         
@@ -783,7 +815,11 @@ modded class SCR_CharacterControllerComponent
 
         DebugInfoParams debugParams = new DebugInfoParams();
         debugParams.owner = ownerEnt;
-        debugParams.movementTypeStr = SCR_RSS_DebugDisplay.FormatMovementType(tick.isSprinting, tick.currentMovementPhase);
+        debugParams.movementTypeStr = SCR_RSS_SpeedCalculator.FormatMovementTypeForDisplay(
+            tick.isSprinting,
+            tick.currentMovementPhase,
+            tick.effectiveMovementPhase,
+            tick.currentSpeed);
         debugParams.staminaPercent = tick.staminaPercent;
         debugParams.baseSpeedMultiplier = tick.baseSpeedMultiplier;
         debugParams.encumbranceSpeedPenalty = tick.encumbranceSpeedPenalty;

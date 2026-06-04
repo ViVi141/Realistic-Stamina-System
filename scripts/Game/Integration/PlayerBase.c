@@ -4,6 +4,16 @@ modded class SCR_CharacterControllerComponent
     protected float m_fCurrentSecondSpeed = 0.0;
     protected bool m_bHasPreviousSpeed = false;
     protected const int SPEED_SAMPLE_INTERVAL_MS = 1000;
+
+    //! 与体力 tick 同步的快照，供 1 秒状态行使用（避免旧速度 + 新 phase 错位）
+    protected float m_fStatusLogSpeed = 0.0;
+    protected float m_fStatusLogStamina = 1.0;
+    protected float m_fStatusLogMultiplier = 1.0;
+    protected bool m_bStatusLogSprinting = false;
+    protected int m_iStatusLogEnginePhase = 0;
+    protected int m_iStatusLogEffectivePhase = 0;
+    //! 松键惯性：上一非 Idle 引擎相位（1=Walk, 2=Run, 3=Sprint）
+    protected int m_iLastNonIdleMovementPhase = 2;
     
     protected float m_fLastStaminaPercent = 1.0;
     protected float m_fLastSpeedMultiplier = 1.0;
@@ -295,6 +305,22 @@ modded class SCR_CharacterControllerComponent
         return realOriginalSpeed;
     }
 
+    void RSS_UpdateStatusLogSnapshot(
+        float currentSpeed,
+        float staminaPercent,
+        float finalSpeedMultiplier,
+        bool isSprinting,
+        int engineMovementPhase,
+        int effectiveMovementPhase)
+    {
+        m_fStatusLogSpeed = currentSpeed;
+        m_fStatusLogStamina = staminaPercent;
+        m_fStatusLogMultiplier = finalSpeedMultiplier;
+        m_bStatusLogSprinting = isSprinting;
+        m_iStatusLogEnginePhase = engineMovementPhase;
+        m_iStatusLogEffectivePhase = effectiveMovementPhase;
+    }
+
     void CollectSpeedSample()
     {
         if (m_bIsDeleted)
@@ -350,17 +376,16 @@ modded class SCR_CharacterControllerComponent
             return;
         
         bool isSwimming = IsSwimmingByCommand();
-        bool isSprinting = IsSprinting();
-        int currentMovementPhase = GetCurrentMovementPhase();
         
         SCR_PlayerBaseDebugHelper.OutputStatusInfo(
             owner,
-            m_fLastSecondSpeed,
-            m_fLastStaminaPercent,
-            m_fLastSpeedMultiplier,
+            m_fStatusLogSpeed,
+            m_fStatusLogStamina,
+            m_fStatusLogMultiplier,
             isSwimming,
-            isSprinting,
-            currentMovementPhase,
+            m_bStatusLogSprinting,
+            m_iStatusLogEnginePhase,
+            m_iStatusLogEffectivePhase,
             this);
     }
 
