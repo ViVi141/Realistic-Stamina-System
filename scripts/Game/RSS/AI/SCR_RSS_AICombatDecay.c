@@ -98,7 +98,7 @@ class SCR_RSS_AICombatDecay
             break;
 
         case ERSS_AIStaminaState.RECOVERING:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_RECOVERING;
+            perceptionMul = StaminaMudSlipConstants.RSS_AI_COMBAT_PERCEPTION_RECOVERING;
             fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_RECOVERING;
             skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_RECOVERING;
             break;

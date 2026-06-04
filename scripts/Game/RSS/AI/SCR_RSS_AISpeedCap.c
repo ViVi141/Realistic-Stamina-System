@@ -68,13 +68,13 @@ class SCR_RSS_AISpeedCap
         case ERSS_AIStaminaState.FATIGUED:
             // RUN + 限速到 65%
             maxMovement = EMovementType.RUN;
-            speedMul = StaminaConstants.RSS_AI_SPEED_FATIGUED_LIMIT;
+            speedMul = StaminaMudSlipConstants.RSS_AI_SPEED_FATIGUED_LIMIT;
             break;
 
         case ERSS_AIStaminaState.EXHAUSTED:
             // WALK + 限速到 40%
             maxMovement = EMovementType.WALK;
-            speedMul = StaminaConstants.RSS_AI_SPEED_EXHAUSTED_LIMIT;
+            speedMul = StaminaMudSlipConstants.RSS_AI_SPEED_EXHAUSTED_LIMIT;
             break;
 
         case ERSS_AIStaminaState.COLLAPSED:
@@ -103,7 +103,7 @@ class SCR_RSS_AISpeedCap
     static float GetContinuousSpeedMultiplier(float staminaPercent01)
     {
         float clamped = Math.Clamp(staminaPercent01, 0.0, 1.0);
-        float minMul = StaminaConstants.RSS_AI_SPEED_CONTINUOUS_MIN;
+        float minMul = StaminaMudSlipConstants.RSS_AI_SPEED_CONTINUOUS_MIN;
         float range = 1.0 - minMul;
         return minMul + range * Math.Pow(clamped, RealisticStaminaSpeedSystem.STAMINA_EXPONENT);
     }
@@ -114,7 +114,7 @@ class SCR_RSS_AISpeedCap
     {
         float contMul = GetContinuousSpeedMultiplier(staminaPercent);
         // 恢复期间至少保证能 WALK
-        return Math.Max(contMul, StaminaConstants.RSS_AI_SPEED_RECOVERING_MIN);
+        return Math.Max(contMul, StaminaMudSlipConstants.RSS_AI_SPEED_RECOVERING_MIN);
     }
 
     //------------------------------------------------------------------------------------------------

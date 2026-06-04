@@ -306,3 +306,23 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
             m_wDescriptionBody.SetText(string.Empty);
     }
 }
+
+// ============================================================
+// RSS Settings Tab 注入（从 SCR_RSSSettingsTab.c 合并）
+// ============================================================
+modded class SCR_SettingsSuperMenu
+{
+    protected static const string RSS_TAB_IDENTIFIER = "RSSSettings";
+
+    override void OnMenuOpen()
+    {
+        super.OnMenuOpen();
+
+        m_SuperMenuComponent.GetTabView().RemoveTabByIdentifier(RSS_TAB_IDENTIFIER);
+        m_SuperMenuComponent.GetTabView().AddTab(
+            "{5932EB24D1397F01}UI/layouts/Menus/RSSSettings/RSSSettings.layout",
+            "RSS",
+            identifier: RSS_TAB_IDENTIFIER
+        );
+    }
+};

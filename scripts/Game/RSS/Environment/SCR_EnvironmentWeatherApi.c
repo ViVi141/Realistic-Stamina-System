@@ -7,7 +7,7 @@ class SCR_EnvironmentWeatherApi
             return 0.0;
 
         float rainIntensity = weatherManager.GetRainIntensity();
-        if (rainIntensity > StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
+        if (rainIntensity > StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_THRESHOLD)
             return rainIntensity;
 
         return CalculateRainIntensityFromStateName(weatherManager);
@@ -75,7 +75,7 @@ class SCR_EnvironmentWeatherApi
 
     static float CalculateWindDrag(float cachedWindSpeed, float cachedWindDirection, vector playerVelocity)
     {
-        if (cachedWindSpeed < StaminaConstants.ENV_WIND_SPEED_THRESHOLD)
+        if (cachedWindSpeed < StaminaEnvironmentAdvConstants.ENV_WIND_SPEED_THRESHOLD)
             return 0.0;
 
         vector playerVel = playerVelocity;
@@ -90,11 +90,11 @@ class SCR_EnvironmentWeatherApi
 
         if (windProjection > 0)
         {
-            float tailwindBenefit = windProjection * cachedWindSpeed * StaminaConstants.ENV_WIND_TAILWIND_BONUS;
+            float tailwindBenefit = windProjection * cachedWindSpeed * StaminaEnvironmentAdvConstants.ENV_WIND_TAILWIND_BONUS;
             return -Math.Clamp(tailwindBenefit, 0.0, 0.15);
         }
 
-        float windResistance = Math.AbsFloat(windProjection) * cachedWindSpeed * StaminaConstants.ENV_WIND_RESISTANCE_COEFF;
+        float windResistance = Math.AbsFloat(windProjection) * cachedWindSpeed * StaminaEnvironmentAdvConstants.ENV_WIND_RESISTANCE_COEFF;
         return Math.Clamp(windResistance, 0.0, 1.0);
     }
 }

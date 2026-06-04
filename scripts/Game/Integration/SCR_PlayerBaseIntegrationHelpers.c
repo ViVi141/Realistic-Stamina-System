@@ -379,13 +379,13 @@ class SCR_PlayerBaseMovementHelper
         else
         {
             if (lastWasSprinting)
-                nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+                nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.TACTICAL_SPRINT_COOLDOWN();
         }
 
         if (isSprintActive && nextSprintStartTime >= 0.0)
         {
-            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
-            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float burstDuration = StaminaConstants.TACTICAL_SPRINT_BURST_DURATION;
+            float bufferDuration = StaminaConstants.TACTICAL_SPRINT_BURST_BUFFER_DURATION;
             float elapsed = currentTimeSprint - nextSprintStartTime;
             if (burstDuration > 0.0)
             {
@@ -393,7 +393,7 @@ class SCR_PlayerBaseMovementHelper
                 {
                     if (elapsed >= burstDuration + bufferDuration)
                     {
-                        nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+                        nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.TACTICAL_SPRINT_COOLDOWN();
                         nextSprintStartTime = -1.0;
                     }
                 }
@@ -514,5 +514,31 @@ class SCR_PlayerBaseNetworkHelper
         vehicleParams.timeToDepleteSec = vehicleTimeToDepleteSec;
         vehicleParams.timeToFullSec = vehicleTimeToFullSec;
         return vehicleParams;
+    }
+}
+
+// ============================================================
+// 库存管理器组件扩展（从 SCR_InventoryStorageManagerComponent_Override.c 合并）
+// ============================================================
+modded class SCR_InventoryStorageManagerComponent : ScriptedInventoryStorageManagerComponent
+{
+    override protected void OnItemRemoved(BaseInventoryStorageComponent storageOwner, IEntity item)
+    {
+        super.OnItemRemoved(storageOwner, item);
+        IEntity owner = GetOwner();
+        if (!owner) return;
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            owner.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl) ctrl.OnItemRemovedFromInventory();
+    }
+
+    override protected void OnItemAdded(BaseInventoryStorageComponent storageOwner, IEntity item)
+    {
+        super.OnItemAdded(storageOwner, item);
+        IEntity owner = GetOwner();
+        if (!owner) return;
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            owner.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl) ctrl.OnItemAddedToInventory();
     }
 }

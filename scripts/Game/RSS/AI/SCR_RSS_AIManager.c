@@ -123,3 +123,59 @@ class SCR_RSS_AIManager
         m_fLastBehaviorTickTime = -1.0;
     }
 }
+
+// ============================================================
+// RSS AI Injury Link（从 SCR_RSS_AIInjuryLink.c 合并）
+// 受伤 AI 体力消耗更快、恢复更慢
+// ============================================================
+class SCR_RSS_AIInjuryLink
+{
+    static bool GetInjuryMultipliers(
+        IEntity owner, out float outDrainMul, out float outRecoveryMul)
+    {
+        outDrainMul = 1.0;
+        outRecoveryMul = 1.0;
+
+        if (!StaminaConfigBridge.IsAIInjuryLinkEnabled()) return false;
+        if (!owner) return false;
+        if (!Replication.IsServer()) return false;
+
+        SCR_CharacterDamageManagerComponent dmgMgr =
+            SCR_CharacterDamageManagerComponent.Cast(
+                owner.FindComponent(SCR_CharacterDamageManagerComponent));
+        if (!dmgMgr) return false;
+
+        SCR_CharacterBloodHitZone blood = dmgMgr.GetBloodHitZone();
+        if (!blood) return false;
+
+        float health = blood.GetHealth();
+        float maxHealth = blood.GetMaxHealth();
+        if (maxHealth <= 0.0) return false;
+
+        float ratio = Math.Clamp(health / maxHealth, 0.0, 1.0);
+
+        if (ratio > 0.9) { /* no penalty */ }
+        else if (ratio > 0.7)
+        {
+            outDrainMul = StaminaMudSlipConstants.RSS_AI_INJURY_DRAIN_MILD;
+            outRecoveryMul = StaminaMudSlipConstants.RSS_AI_INJURY_RECOVERY_MILD;
+        }
+        else if (ratio > 0.5)
+        {
+            outDrainMul = StaminaMudSlipConstants.RSS_AI_INJURY_DRAIN_MODERATE;
+            outRecoveryMul = StaminaMudSlipConstants.RSS_AI_INJURY_RECOVERY_MODERATE;
+        }
+        else if (ratio > 0.3)
+        {
+            outDrainMul = StaminaMudSlipConstants.RSS_AI_INJURY_DRAIN_SEVERE;
+            outRecoveryMul = StaminaMudSlipConstants.RSS_AI_INJURY_RECOVERY_SEVERE;
+        }
+        else
+        {
+            outDrainMul = StaminaMudSlipConstants.RSS_AI_INJURY_DRAIN_CRITICAL;
+            outRecoveryMul = StaminaMudSlipConstants.RSS_AI_INJURY_RECOVERY_CRITICAL;
+        }
+
+        return true;
+    }
+}

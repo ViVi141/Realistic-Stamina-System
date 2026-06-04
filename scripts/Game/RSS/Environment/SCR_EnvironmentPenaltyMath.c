@@ -3,11 +3,11 @@ class SCR_EnvironmentPenaltyMath
 {
     static float CalculateRainBreathingPenalty(float rainIntensity)
     {
-        if (rainIntensity < StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
+        if (rainIntensity < StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
             return 0.0;
 
-        return StaminaConstants.ENV_RAIN_INTENSITY_BREATHING_PENALTY
-            * (rainIntensity - StaminaConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
+        return StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_BREATHING_PENALTY
+            * (rainIntensity - StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
     }
 
     static float CalculateMudTerrainFactor(float terrainFactor, float mudFactor)
@@ -15,25 +15,25 @@ class SCR_EnvironmentPenaltyMath
         if (terrainFactor <= 1.0)
             return 0.0;
 
-        return mudFactor * StaminaConstants.ENV_MUD_PENALTY_MAX;
+        return mudFactor * StaminaEnvironmentAdvConstants.ENV_MUD_PENALTY_MAX;
     }
 
     static float CalculateMudSprintPenalty(float mudFactor)
     {
-        if (mudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
+        if (mudFactor < StaminaEnvironmentAdvConstants.ENV_MUD_SLIPPERY_THRESHOLD)
             return 0.0;
 
-        return StaminaConstants.ENV_MUD_SPRINT_PENALTY * mudFactor;
+        return StaminaEnvironmentAdvConstants.ENV_MUD_SPRINT_PENALTY * mudFactor;
     }
 
     static float CalculateSlipRisk(float mudFactor)
     {
         if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
             return 0.0;
-        if (mudFactor < StaminaConstants.ENV_MUD_SLIPPERY_THRESHOLD)
+        if (mudFactor < StaminaEnvironmentAdvConstants.ENV_MUD_SLIPPERY_THRESHOLD)
             return 0.0;
 
-        return StaminaConstants.ENV_MUD_SLIP_RISK_BASE * mudFactor;
+        return StaminaEnvironmentAdvConstants.ENV_MUD_SLIP_RISK_BASE * mudFactor;
     }
 
     static float CalculateHeatStressPenalty(float temperature)
@@ -63,7 +63,7 @@ class SCR_EnvironmentPenaltyMath
     {
         if (stance != 2)
             return 0.0;
-        if (surfaceWetness < StaminaConstants.ENV_SURFACE_WETNESS_THRESHOLD)
+        if (surfaceWetness < StaminaEnvironmentAdvConstants.ENV_SURFACE_WETNESS_THRESHOLD)
             return 0.0;
 
         float surfaceWetnessPenaltyMax = StaminaConfigBridge.GetEnvSurfaceWetnessPenaltyMax();

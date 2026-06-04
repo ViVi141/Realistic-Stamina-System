@@ -302,3 +302,30 @@ class StaminaConsumptionCalculator
         return StaminaConstants.FIXED_FITNESS_EFFICIENCY_FACTOR;
     }
 }
+
+// ============================================================
+// EPOC延迟状态管理（从 SCR_EpocState.c 合并）
+// ============================================================
+class EpocState
+{
+    float m_fEpocDelayStartTime = -1.0;
+    bool m_bIsInEpocDelay = false;
+    float m_fLastSpeedForEpoc = 0.0;
+    float m_fSpeedBeforeStop = 0.0;
+
+    float GetEpocDelayStartTime() { return m_fEpocDelayStartTime; }
+    void SetEpocDelayStartTime(float time) { m_fEpocDelayStartTime = time; }
+    bool IsInEpocDelay() { return m_bIsInEpocDelay; }
+    void SetIsInEpocDelay(bool value) { m_bIsInEpocDelay = value; }
+    float GetLastSpeedForEpoc() { return m_fLastSpeedForEpoc; }
+    void SetLastSpeedForEpoc(float speed) { m_fLastSpeedForEpoc = speed; }
+    float GetSpeedBeforeStop() { return m_fSpeedBeforeStop; }
+    void SetSpeedBeforeStop(float speed) { m_fSpeedBeforeStop = speed; }
+
+    void Reset()
+    {
+        m_fEpocDelayStartTime = -1.0;
+        m_bIsInEpocDelay = false;
+        m_fSpeedBeforeStop = 0.0;
+    }
+}

@@ -95,7 +95,7 @@ class StaminaRecoveryCalculator
         int movementPhase = 0,
         SCR_CharacterControllerComponent rssCtrlForCaffeine = null)
     {
-        float recoveryRate = RealisticStaminaSpeedSystem.CalculateMultiDimensionalRecoveryRate(
+        float recoveryRate = RecoveryModel.CalculateRecoveryRate(
             staminaPercent, 
             restDurationMinutes, 
             exerciseDurationMinutes,

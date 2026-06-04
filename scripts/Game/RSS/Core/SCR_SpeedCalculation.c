@@ -103,17 +103,17 @@ class SpeedCalculator
         // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
         if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
         {
-            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
-            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float burstDuration = StaminaConstants.TACTICAL_SPRINT_BURST_DURATION;
+            float bufferDuration = StaminaConstants.TACTICAL_SPRINT_BURST_BUFFER_DURATION;
             float elapsed = currentWorldTime - sprintStartTime;
             if (burstDuration > 0.0 && elapsed <= burstDuration)
             {
-                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR();
                 encumbrancePenalty = encumbrancePenalty * burstFactor;
             }
             else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
             {
-                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR();
                 float t = (elapsed - burstDuration) / bufferDuration;
                 t = Math.Clamp(t, 0.0, 1.0);
                 float blendFactor = burstFactor + (1.0 - burstFactor) * t;
@@ -203,17 +203,17 @@ class SpeedCalculator
         // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
         if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
         {
-            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
-            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float burstDuration = StaminaConstants.TACTICAL_SPRINT_BURST_DURATION;
+            float bufferDuration = StaminaConstants.TACTICAL_SPRINT_BURST_BUFFER_DURATION;
             float elapsed = currentWorldTime - sprintStartTime;
             if (burstDuration > 0.0 && elapsed <= burstDuration)
             {
-                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR();
                 encumbrancePenalty = encumbrancePenalty * burstFactor;
             }
             else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
             {
-                float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR();
                 float t = (elapsed - burstDuration) / bufferDuration;
                 t = Math.Clamp(t, 0.0, 1.0);
                 float blendFactor = burstFactor + (1.0 - burstFactor) * t;
@@ -426,5 +426,48 @@ class SpeedCalculator
         }
         
         return s_pResultGrade;
+    }
+}
+
+// ============================================================
+// RSS 角色速度桥接（从 SCR_RSS_CharacterSpeedBridge.c 合并）
+// ============================================================
+class RSS_StaminaSpeedLimitToken : Managed
+{
+}
+
+class SCR_RSS_CharacterSpeedBridge
+{
+    protected static ref RSS_StaminaSpeedLimitToken s_StaminaSpeedSource;
+
+    protected static RSS_StaminaSpeedLimitToken GetStaminaSpeedSource()
+    {
+        if (!s_StaminaSpeedSource)
+            s_StaminaSpeedSource = new RSS_StaminaSpeedLimitToken();
+        return s_StaminaSpeedSource;
+    }
+
+    static void ApplyStaminaSpeedLimit(IEntity owner, float limit)
+    {
+        if (!owner) return;
+        limit = Math.Clamp(limit, 0.01, 3.0);
+
+        SCR_ChimeraCharacter character = SCR_ChimeraCharacter.Cast(owner);
+        if (character)
+        {
+            character.SetSpeedLimit(GetStaminaSpeedSource(), limit);
+            return;
+        }
+
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            owner.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl)
+            ctrl.OverrideMaxSpeed(Math.Clamp(limit, 0.01, 1.0));
+    }
+
+    static void ApplyStaminaSpeedLimit(SCR_CharacterControllerComponent ctrl, float limit)
+    {
+        if (!ctrl) return;
+        ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit);
     }
 }

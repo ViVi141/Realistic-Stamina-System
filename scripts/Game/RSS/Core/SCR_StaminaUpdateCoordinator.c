@@ -343,7 +343,7 @@ class StaminaUpdateCoordinator
         float rawSlopeAngle = SpeedCalculator.GetRawSlopeAngle(controller, velocity);
         bool isIndoorStairs = (shouldSuppressSlope && Math.AbsFloat(rawSlopeAngle) > 0.0);
         if (isIndoorStairs)
-            encumbranceSpeedPenalty = encumbranceSpeedPenalty * StaminaConstants.GetIndoorStairsEncumbranceSpeedFactor();
+            encumbranceSpeedPenalty = encumbranceSpeedPenalty * StaminaConstants.INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR();
         
         // 检查是否可以Sprint
         bool canSprint = RealisticStaminaSpeedSystem.CanSprint(staminaPercent);
@@ -423,17 +423,17 @@ class StaminaUpdateCoordinator
             // 战术冲刺爆发期处理
             if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
             {
-                float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
-                float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+                float burstDuration = StaminaConstants.TACTICAL_SPRINT_BURST_DURATION;
+                float bufferDuration = StaminaConstants.TACTICAL_SPRINT_BURST_BUFFER_DURATION;
                 float elapsed = currentWorldTime - sprintStartTime;
                 if (burstDuration > 0.0 && elapsed <= burstDuration)
                 {
-                    float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                    float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR;
                     encumbrancePenalty = encumbrancePenalty * burstFactor;
                 }
                 else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
                 {
-                    float burstFactor = StaminaConstants.GetTacticalSprintBurstEncumbranceFactor();
+                    float burstFactor = StaminaConstants.TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR;
                     float t = (elapsed - burstDuration) / bufferDuration;
                     t = Math.Clamp(t, 0.0, 1.0);
                     float blendFactor = burstFactor + (1.0 - burstFactor) * t;

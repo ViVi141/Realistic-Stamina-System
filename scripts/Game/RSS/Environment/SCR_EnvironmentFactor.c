@@ -575,12 +575,12 @@ class EnvironmentFactor
                 float lat = m_fLatitude; // perf: 缓存纬度
                 int year, month, day;
                 m_pCachedWeatherManager.GetDate(year, month, day);
-                int n = DayOfYear(year, month, day);
+                int n = SCR_EnvironmentAstronomyMath.DayOfYear(year, month, day);
                 float tod = ReadSignalTOD();
                 float cloud = GetCloudFactorCached();
                 float rain = ReadSignalRainIntensity();
                 float altM = GetCurrentAltitudeMeters(owner);
-                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                float T = SCR_EnvironmentAstronomyMath.CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
                 m_fCachedTemperature = m_fCachedSurfaceTemperature;
             }
@@ -750,7 +750,7 @@ class EnvironmentFactor
     // 快路径系数与 ENV_MUD_PENALTY_MAX / ENV_WIND_RESISTANCE_COEFF 对齐
     float GetQuickEnvironmentMultiplier()
     {
-        float mult = 1.0 + m_fCachedMudFactor * StaminaConstants.ENV_MUD_PENALTY_MAX;
+        float mult = 1.0 + m_fCachedMudFactor * StaminaEnvironmentAdvConstants.ENV_MUD_PENALTY_MAX;
 
         if (m_fCachedWindDrag > 0.0)
             mult = mult * (1.0 + m_fCachedWindDrag);
@@ -816,32 +816,6 @@ class EnvironmentFactor
         return m_fAltitudeMeters;
     }
 
-    // 正弦波叠加气温模型 — 委托给 SCR_EnvironmentAstronomyMath
-    protected float CalculateUniversalTemperature(float latitude, int dayOfYear, float hourOfDay, float altitudeMeters, float overcast, float rainIntensity, float fogDensity)
-    {
-        return SCR_EnvironmentAstronomyMath.CalculateUniversalTemperature(latitude, dayOfYear, hourOfDay, altitudeMeters, overcast, rainIntensity, fogDensity);
-    }
-
-    // ------------------- 太阳与辐照工具函数（P1） -------------------
-    
-    // 计算某个日期的年积日（1..365/366）
-    protected int DayOfYear(int year, int month, int day)
-    {
-        return SCR_EnvironmentAstronomyMath.DayOfYear(year, month, day);
-    }
-
-    // 太阳偏角（弧度）
-    protected float SolarDeclination(int n)
-    {
-        return SCR_EnvironmentAstronomyMath.SolarDeclination(n);
-    }
-
-    // 计算太阳天顶角余弦（cos θ），输入纬度（deg）、年日、时刻（小时）
-    protected float SolarCosZenith(float latDeg, int n, float localHour)
-    {
-        return SCR_EnvironmentAstronomyMath.SolarCosZenith(latDeg, n, localHour);
-    }
-
     // 估算经纬度 — 委托给 SCR_EnvironmentAstronomyMath（副作用：写回 m_fLatitude/m_fLongitude + 日志）
     protected float EstimateLatLongFromSunriseSunset(out float outLatDeg, out float outLonDeg)
     {
@@ -892,23 +866,8 @@ class EnvironmentFactor
         return conf;
     }
 
-    // 空气质量近似（Kasten & Young，返回 m）
-    protected float AirMass(float cosTheta)
-    {
-        return SCR_EnvironmentAstronomyMath.AirMass(cosTheta);
-    }
 
-    // 根据空气质量计算简单的清空透过率（经验）
-    protected float ClearSkyTransmittance(float m)
-    {
-        return SCR_EnvironmentAstronomyMath.ClearSkyTransmittance(m, m_fAerosolOpticalDepth);
-    }
 
-    // 简单云因子推断 — 委托给 SCR_EnvironmentAstronomyMath
-    protected float InferCloudFactor()
-    {
-        return SCR_EnvironmentAstronomyMath.InferCloudFactor(m_fCachedRainIntensity, m_fCachedSurfaceWetness, m_pCachedWeatherManager);
-    }
 
     // 云因子缓存包装（perf: 30s TTL，避免每5s做字符串匹配 + C++桥接）
     protected float GetCloudFactorCached()
@@ -916,19 +875,13 @@ class EnvironmentFactor
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         if (currentTime - m_fLastCloudFactorUpdateTime > CLOUD_FACTOR_CACHE_DURATION)
         {
-            m_fCachedCloudFactor = InferCloudFactor();
+            m_fCachedCloudFactor = SCR_EnvironmentAstronomyMath.InferCloudFactor(m_fCachedRainIntensity, m_fCachedSurfaceWetness, m_pCachedWeatherManager);
             m_fLastCloudFactorUpdateTime = currentTime;
         }
         return m_fCachedCloudFactor;
     }
 
 
-    // 估算季节均温（°C），用于长波下行中的环境参考温度，避免 T_atm = T_surface+2 导致的热失控
-    // 赤道约27°C，随纬度降低；北半球简易季节调制；北大西洋/中高纬海洋偏凉
-    protected float EstimateSeasonalAvgTemp(float lat, int dayOfYear)
-    {
-        return SCR_EnvironmentAstronomyMath.EstimateSeasonalAvgTemp(lat, dayOfYear);
-    }
 
 
     // 计算热应激倍数（基于当前导出的温度，考虑室内豁免）
@@ -1116,7 +1069,7 @@ class EnvironmentFactor
     // @return true表示正在下雨（有可见雨效），false表示未下雨
     bool IsRaining()
     {
-        return m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
+        return m_fCachedRainIntensity >= StaminaEnvironmentAdvConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
     }
     
     // ==================== 高级环境因子计算方法（v2.14.0）====================
@@ -1135,17 +1088,21 @@ class EnvironmentFactor
         float deltaTime = currentTime - m_fLastUpdateTime;
         
         // 1. 获取降雨强度（优先使用API，失败则回退到字符串匹配）
-        m_fCachedRainIntensity = CalculateRainIntensityFromAPI();
+        float rainIntensity = ReadSignalRainIntensity();
+        if (rainIntensity > StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_THRESHOLD)
+            m_fCachedRainIntensity = rainIntensity;
+        else
+            m_fCachedRainIntensity = SCR_EnvironmentWeatherApi.CalculateRainIntensityFromStateName(m_pCachedWeatherManager);
         
         // 2. 获取风速和风向
-        m_fCachedWindSpeed = CalculateWindSpeedFromAPI();
-        m_fCachedWindDirection = CalculateWindDirectionFromAPI();
+        m_fCachedWindSpeed = ReadSignalWindSpeed();
+        m_fCachedWindDirection = SCR_EnvironmentWeatherApi.CalculateWindDirectionFromAPI(m_pCachedWeatherManager);
         
         // 3. 计算风阻系数（基于玩家移动方向）
-        m_fCachedWindDrag = CalculateWindDrag(playerVelocity);
+        m_fCachedWindDrag = SCR_EnvironmentWeatherApi.CalculateWindDrag(m_fCachedWindSpeed, m_fCachedWindDirection, playerVelocity);
         
         // 4. 获取泥泞度系数
-        m_fCachedMudFactor = CalculateMudFactorFromAPI();
+        m_fCachedMudFactor = SCR_EnvironmentWeatherApi.CalculateMudFactorFromAPI(m_pCachedWeatherManager);
         
         // 5. 获取当前气温：通用经验模型（纬度+季节+海拔+昼夜+天气），不依赖物理求解，兼容各模组地图
         // perf: 仅首帧无条件初始化，之后严格按时间/位置触发，避免每5s双重计算
@@ -1154,7 +1111,7 @@ class EnvironmentFactor
             float lat = m_fLatitude; // perf: 缓存纬度，地图常数无需每次查询
             int year, month, day;
             m_pCachedWeatherManager.GetDate(year, month, day);
-            int n = DayOfYear(year, month, day);
+            int n = SCR_EnvironmentAstronomyMath.DayOfYear(year, month, day);
             
             // 首帧无条件初始化（仅一次）
             if (m_fLastTemperatureUpdateTime <= 0.0 && m_fCachedSurfaceTemperature == 20.0)
@@ -1163,7 +1120,7 @@ class EnvironmentFactor
                 float cloud = GetCloudFactorCached();
                 float rain = ReadSignalRainIntensity();
                 float altM = GetCurrentAltitudeMeters(owner);
-                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                float T = SCR_EnvironmentAstronomyMath.CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
                 if (owner)
@@ -1190,7 +1147,7 @@ class EnvironmentFactor
                 float cloud = GetCloudFactorCached();
                 float rain = ReadSignalRainIntensity();
                 float altM = GetCurrentAltitudeMeters(owner);
-                float T = CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
+                float T = SCR_EnvironmentAstronomyMath.CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
                 m_fCachedSurfaceTemperature = T;
                 m_fLastTemperatureUpdateTime = currentTime;
                 m_fNextTempStepLogTime = currentTime + m_fTempUpdateInterval;
@@ -1202,7 +1159,7 @@ class EnvironmentFactor
         }
         
         // 6. 获取地表湿度
-        m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
+        m_fCachedSurfaceWetness = ReadSignalWetness();
         
         // 7. 计算降雨湿重（基于降雨强度；需要 currentTime 计算线性衰减）
         CalculateRainWetWeight(currentTime);
@@ -1279,22 +1236,7 @@ class EnvironmentFactor
         m_fLastUpdateTime = currentTime;
     }
     
-    // 从API获取降雨强度（带字符串回退）
-    // @return 降雨强度（0.0-1.0）
-    protected float CalculateRainIntensityFromAPI()
-    {
-        float rainIntensity = ReadSignalRainIntensity();
-        if (rainIntensity > StaminaConstants.ENV_RAIN_INTENSITY_THRESHOLD)
-            return rainIntensity;
-        return SCR_EnvironmentWeatherApi.CalculateRainIntensityFromStateName(m_pCachedWeatherManager);
-    }
     
-    // 从API获取风速（perf: 信号内存读取）
-    // @return 风速（m/s）
-    protected float CalculateWindSpeedFromAPI()
-    {
-        return ReadSignalWindSpeed();
-    }
     
     // 从API获取风向
     // @return 风向（度，0-360）
@@ -1303,28 +1245,8 @@ class EnvironmentFactor
         return SCR_EnvironmentWeatherApi.CalculateWindDirectionFromAPI(m_pCachedWeatherManager);
     }
     
-    // 计算风阻系数（基于玩家移动方向）
-    // @param playerVelocity 玩家速度向量
-    // @return 风阻系数（0.0-1.0）
-    protected float CalculateWindDrag(vector playerVelocity)
-    {
-        return SCR_EnvironmentWeatherApi.CalculateWindDrag(m_fCachedWindSpeed, m_fCachedWindDirection, playerVelocity);
-    }
     
-    // 从API获取泥泞度系数
-    // @return 泥泞度系数（0.0-1.0）
-    protected float CalculateMudFactorFromAPI()
-    {
-        return SCR_EnvironmentWeatherApi.CalculateMudFactorFromAPI(m_pCachedWeatherManager);
-    }
     
-
-    // 从API获取地表湿度
-    // @return 地表湿度（0.0-1.0）
-    protected float CalculateSurfaceWetnessFromAPI()
-    {
-        return ReadSignalWetness();
-    }
     
     // 计算降雨湿重（基于降雨强度）
     // 降雨中：按强度非线性累积；停雨后：60秒线性衰减至0
@@ -1339,7 +1261,7 @@ class EnvironmentFactor
         bool isIndoor = IsUnderCover(m_pCachedOwner);
         
         // 检查是否在室外且正在下雨（需超过引擎下雨特效阈值，否则 0.1 等值无可见雨）
-        bool isOutdoorAndRaining = !isIndoor && m_fCachedRainIntensity >= StaminaConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
+        bool isOutdoorAndRaining = !isIndoor && m_fCachedRainIntensity >= StaminaEnvironmentAdvConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
         
         if (isOutdoorAndRaining)
         {
@@ -1349,8 +1271,8 @@ class EnvironmentFactor
 
             // 在室外且正在下雨：增加湿重
             // 计算湿重增加速率（非线性增长）
-            float accumulationRate = StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
-                                     Math.Pow(m_fCachedRainIntensity, StaminaConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
+            float accumulationRate = StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE * 
+                                     Math.Pow(m_fCachedRainIntensity, StaminaEnvironmentAdvConstants.ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT);
             
             // 增加湿重（上限使用 GetEnvRainWeightMax()，降雨单独上限低于组合池上限）
             m_fCachedRainWeight = Math.Clamp(

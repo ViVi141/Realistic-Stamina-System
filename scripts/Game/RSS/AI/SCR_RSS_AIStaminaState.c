@@ -40,9 +40,9 @@ class SCR_RSS_AIStaminaState
         float f = fatiguePercent01;
 
         // — 强制恢复：体力 < 5% 且持续 5s —
-        if (s < StaminaConstants.RSS_AI_STATE_COLLAPSE_THRESHOLD &&
+        if (s < StaminaMudSlipConstants.RSS_AI_STATE_COLLAPSE_THRESHOLD &&
             isStationary &&
-            timeStationarySec >= StaminaConstants.RSS_AI_STATE_FORCE_RECOVER_DELAY_SEC)
+            timeStationarySec >= StaminaMudSlipConstants.RSS_AI_STATE_FORCE_RECOVER_DELAY_SEC)
         {
             prevState = ERSS_AIStaminaState.RECOVERING;
             return ERSS_AIStaminaState.RECOVERING;
@@ -53,28 +53,28 @@ class SCR_RSS_AIStaminaState
         switch (state)
         {
         case ERSS_AIStaminaState.FRESH:
-            if (s < StaminaConstants.RSS_AI_STATE_FRESH_DOWN)
+            if (s < StaminaMudSlipConstants.RSS_AI_STATE_FRESH_DOWN)
                 state = ERSS_AIStaminaState.WINDED;
             break;
 
         case ERSS_AIStaminaState.WINDED:
-            if (s < StaminaConstants.RSS_AI_STATE_WINDED_DOWN)
+            if (s < StaminaMudSlipConstants.RSS_AI_STATE_WINDED_DOWN)
                 state = ERSS_AIStaminaState.FATIGUED;
-            else if (s >= StaminaConstants.RSS_AI_STATE_WINDED_UP)
+            else if (s >= StaminaMudSlipConstants.RSS_AI_STATE_WINDED_UP)
                 state = ERSS_AIStaminaState.FRESH;
             break;
 
         case ERSS_AIStaminaState.FATIGUED:
-            if (s < StaminaConstants.RSS_AI_STATE_FATIGUED_DOWN)
+            if (s < StaminaMudSlipConstants.RSS_AI_STATE_FATIGUED_DOWN)
                 state = ERSS_AIStaminaState.EXHAUSTED;
-            else if (s >= StaminaConstants.RSS_AI_STATE_FATIGUED_UP)
+            else if (s >= StaminaMudSlipConstants.RSS_AI_STATE_FATIGUED_UP)
                 state = ERSS_AIStaminaState.WINDED;
             break;
 
         case ERSS_AIStaminaState.EXHAUSTED:
-            if (s < StaminaConstants.RSS_AI_STATE_EXHAUSTED_DOWN)
+            if (s < StaminaMudSlipConstants.RSS_AI_STATE_EXHAUSTED_DOWN)
                 state = ERSS_AIStaminaState.COLLAPSED;
-            else if (s >= StaminaConstants.RSS_AI_STATE_EXHAUSTED_UP)
+            else if (s >= StaminaMudSlipConstants.RSS_AI_STATE_EXHAUSTED_UP)
                 state = ERSS_AIStaminaState.FATIGUED;
             break;
 
@@ -84,9 +84,9 @@ class SCR_RSS_AIStaminaState
             break;
 
         case ERSS_AIStaminaState.RECOVERING:
-            if (s >= StaminaConstants.RSS_AI_STATE_RECOVER_TO_EXHAUSTED)
+            if (s >= StaminaMudSlipConstants.RSS_AI_STATE_RECOVER_TO_EXHAUSTED)
             {
-                if (s >= StaminaConstants.RSS_AI_STATE_RECOVER_TO_FATIGUED)
+                if (s >= StaminaMudSlipConstants.RSS_AI_STATE_RECOVER_TO_FATIGUED)
                     state = ERSS_AIStaminaState.FATIGUED;
                 else
                     state = ERSS_AIStaminaState.EXHAUSTED;

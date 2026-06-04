@@ -14,7 +14,7 @@ modded class CharacterCamera1stPerson
     {
         super.OnUpdate(pDt, pOutResult);
 
-        if (StaminaConstants.IsRssPresentationNativeOnly())
+        if (StaminaConstants.RSS_PRESENTATION_NATIVE_ONLY())
             return;
 
         if (!m_ControllerComponent || !m_OwnerCharacter)
@@ -32,7 +32,7 @@ modded class CharacterCamera1stPerson
         float staminaPercent = GetStaminaPercent();
 
         float targetRaw = ComputeTargetSprintFovBonus(rssController, worldTimeSec, staminaPercent);
-        float tauTarget = StaminaConstants.GetCamSprintFovTargetSmoothTauSec();
+        float tauTarget = StaminaConstants.CAM_SPRINT_FOV_TARGET_SMOOTH_TAU_SEC;
         float alphaTarget = 1.0;
         if (tauTarget > 0.0001 && pDt > 0.0)
             alphaTarget = 1.0 - Math.Pow(2.718281828, -pDt / tauTarget);
@@ -40,8 +40,8 @@ modded class CharacterCamera1stPerson
             alphaTarget = 1.0;
         m_fSprintFovTargetSmoothed = m_fSprintFovTargetSmoothed + (targetRaw - m_fSprintFovTargetSmoothed) * alphaTarget;
         float targetFovBonus = m_fSprintFovTargetSmoothed;
-        float blendUpSec = StaminaConstants.GetCamSprintFovBlendUpSec();
-        float blendDownSec = StaminaConstants.GetCamSprintFovBlendDownSec();
+        float blendUpSec = StaminaConstants.CAM_SPRINT_FOV_BLEND_UP_SEC;
+        float blendDownSec = StaminaConstants.CAM_SPRINT_FOV_BLEND_DOWN_SEC;
         float blendSec = blendUpSec;
         if (Math.AbsFloat(targetFovBonus) < Math.AbsFloat(m_fSprintFovBonusCurrent))
             blendSec = blendDownSec;
@@ -52,7 +52,7 @@ modded class CharacterCamera1stPerson
             float factor = 1.0 - Math.Pow(2.718281828, -speed * pDt);
             newValue = Math.Lerp(m_fSprintFovBonusCurrent, targetFovBonus, factor);
         }
-        float maxRate = StaminaConstants.GetCamSprintFovMaxRateDegPerSec();
+        float maxRate = StaminaConstants.CAM_SPRINT_FOV_MAX_RATE_DEG_PER_SEC;
         if (maxRate > 0.0 && pDt > 0.0)
         {
             float maxDelta = maxRate * pDt;
@@ -81,7 +81,7 @@ modded class CharacterCamera1stPerson
         }
 
         float targetStress = rssController.RSS_GetMudSlipCameraShake01();
-        float smoothRate = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
+        float smoothRate = StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
         float blend = smoothRate * pDt;
         if (blend > 1.0)
             blend = 1.0;
@@ -94,16 +94,16 @@ modded class CharacterCamera1stPerson
             return;
         }
 
-        float freq = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
-        freq = freq + stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
+        float freq = StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
+        freq = freq + stress * StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
         m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad + pDt * 2.0 * Math.PI * freq;
         if (m_fMudSlipShakePhaseRad > 100000.0)
             m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad - 100000.0;
 
         float ph = m_fMudSlipShakePhaseRad;
-        float sYaw = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
-        float sPitch = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
-        float sRoll = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
+        float sYaw = stress * StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
+        float sPitch = stress * StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
+        float sRoll = stress * StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
         vector ypr = "0 0 0";
         ypr[0] = sYaw;
         ypr[1] = sPitch;
@@ -112,30 +112,30 @@ modded class CharacterCamera1stPerson
         Math3D.AnglesToMatrix(ypr, rotMat);
         Math3D.MatrixMultiply4(rotMat, pOutResult.m_CameraTM, pOutResult.m_CameraTM);
 
-        float fovJit = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
+        float fovJit = stress * StaminaMudSlipConstants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
         pOutResult.m_fFOV = fovBase + fovJit;
     }
 
     protected float ComputeTargetSprintFovBonus(SCR_CharacterControllerComponent rssController, float worldTimeSec, float staminaPercent)
     {
-        float limpLow = StaminaConstants.GetCamSprintFovLimpHystStaminaLow();
-        float limpHigh = StaminaConstants.GetCamSprintFovLimpHystStaminaHigh();
+        float limpLow = StaminaConstants.CAM_SPRINT_FOV_LIMP_HYST_STAMINA_LOW;
+        float limpHigh = StaminaConstants.CAM_SPRINT_FOV_LIMP_HYST_STAMINA_HIGH;
         if (staminaPercent < limpLow)
             m_bFovLimpHysteresisActive = true;
         else if (staminaPercent > limpHigh)
             m_bFovLimpHysteresisActive = false;
         if (m_bFovLimpHysteresisActive)
-            return StaminaConstants.GetCamSprintFovLimpDeg();
+            return StaminaConstants.CAM_SPRINT_FOV_LIMP_DEG;
         if (!rssController.IsSprinting())
             return 0.0;
         float sprintStart = rssController.GetSprintStartTime();
         if (sprintStart < 0.0)
-            return StaminaConstants.GetCamSprintFovCruiseDeg();
+            return StaminaConstants.CAM_SPRINT_FOV_CRUISE_DEG;
         float elapsed = worldTimeSec - sprintStart;
-        float burstDur = StaminaConstants.GetTacticalSprintBurstDuration();
+        float burstDur = StaminaConstants.TACTICAL_SPRINT_BURST_DURATION;
         if (elapsed < burstDur)
-            return StaminaConstants.GetCamSprintFovBurstDeg();
-        return StaminaConstants.GetCamSprintFovCruiseDeg();
+            return StaminaConstants.CAM_SPRINT_FOV_BURST_DEG;
+        return StaminaConstants.CAM_SPRINT_FOV_CRUISE_DEG;
     }
 
     protected float GetStaminaPercent()

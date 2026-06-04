@@ -182,3 +182,53 @@ class UISignalBridge
         return (m_iExhaustionSignal != -1);
     }
 }
+
+// ============================================================
+// 表现层桥接工具（从 SCR_RSS_PresentationBridge.c 合并）
+// ============================================================
+class SCR_RSS_PresentationBridge
+{
+    static float ClampShake01(float value)
+    {
+        if (value < 0.0)
+            return 0.0;
+        if (value > 1.0)
+            return 1.0;
+        return value;
+    }
+
+    static bool IsRagdollActive(CharacterAnimationComponent animComponent)
+    {
+        if (animComponent && animComponent.IsRagdollActive())
+            return true;
+        return false;
+    }
+}
+
+// ============================================================
+// RSS 统一日志门面（从 SCR_RSS_Logger.c 合并）
+// ============================================================
+class SCR_RSS_Logger
+{
+    static void Debug(string message)
+    {
+        if (!StaminaConfigBridge.IsDebugEnabled())
+            return;
+        Print(message);
+    }
+
+    static void Info(string message)
+    {
+        Print(message);
+    }
+
+    static void Warn(string message)
+    {
+        Print("[RSS][WARN] " + message);
+    }
+
+    static void Error(string message)
+    {
+        Print("[RSS][ERROR] " + message);
+    }
+}
