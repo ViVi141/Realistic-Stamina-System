@@ -41,6 +41,7 @@ class SCR_RSS_RecoveryCalculator
             {
                 epocState.SetIsInEpocDelay(false);
                 epocState.SetEpocDelayStartTime(-1.0);
+                epocState.ResetPeakPowerForNewRest();
             }
         }
         
@@ -57,14 +58,23 @@ class SCR_RSS_RecoveryCalculator
         return epocState.IsInEpocDelay();
     }
     
-    // 计算EPOC延迟期间的消耗
-    // @param speedBeforeStop 停止前的速度 (m/s)
-    // @return EPOC消耗率（每0.2秒）
-    static float CalculateEpocDrainRate(float speedBeforeStop)
+    // 计算EPOC延迟期间的消耗（v6：与峰值功率成正比）
+    static float CalculateEpocDrainRate(float speedBeforeStop, float peakPowerWatts = -1.0)
     {
         float epocDrainRate = SCR_RSS_Constants.EPOC_DRAIN_RATE;
-        float speedRatioForEpoc = Math.Clamp(speedBeforeStop / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
-        epocDrainRate = epocDrainRate * (1.0 + speedRatioForEpoc * 0.5); // 最多增加50%
+        if (peakPowerWatts > 1.0)
+        {
+            float cp = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+            if (cp <= 1.0)
+                cp = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+            float excess = Math.Max(peakPowerWatts - cp, 0.0);
+            epocDrainRate = epocDrainRate * (1.0 + excess / cp);
+        }
+        else
+        {
+            float speedRatioForEpoc = Math.Clamp(speedBeforeStop / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
+            epocDrainRate = epocDrainRate * (1.0 + speedRatioForEpoc * 0.5);
+        }
         return epocDrainRate;
     }
     

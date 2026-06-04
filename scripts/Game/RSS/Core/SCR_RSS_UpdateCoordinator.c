@@ -69,6 +69,7 @@ class StaminaDrainTickParams
     SCR_RSS_EpocState epocState;
     float currentTimeSec;
     float currentTimeForExerciseMs;
+    float appliedSpeedLimitMs;
 }
 
 class SCR_RSS_UpdateCoordinator
@@ -90,160 +91,50 @@ class SCR_RSS_UpdateCoordinator
     // @return 基础消耗率（每0.2秒）
     static float CalculateLandBaseDrainRate(
         float currentSpeed,
-        float encumbranceSpeedPenalty,
+        float appliedSpeedLimitMs,
         float currentWeightWithWet,
         float gradePercent,
         float terrainFactor,
         float windDrag,
         float coldStaticPenalty,
-        bool isSprinting = false,
         int currentMovementPhase = -1)
     {
-        float baseDrainRate = 0.0;
-
         if (currentMovementPhase >= 1 && currentSpeed > 0.05)
         {
-            float theoreticalMax = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
-                currentMovementPhase, encumbranceSpeedPenalty);
-            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, theoreticalMax);
+            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, appliedSpeedLimitMs);
         }
 
-        // 优先使用移动类型（如果可用）：0=idle, 1=walk, 2=run, 3=sprint
-        // 已统一公式：Walk/Run/Sprint 均用 Pandolf，不再对 Sprint 单独乘倍数
-        if (currentMovementPhase >= 0)
+        int phase = currentMovementPhase;
+        if (phase < 0)
+            phase = 2;
+
+        if (currentMovementPhase == 0 && currentSpeed < 0.1)
         {
-            if (currentMovementPhase == 0)
-            {
-                // Idle/Rest：仅在真正静止时恢复。
-                // 引擎/动画状态偶发把移动中的实体标记为 idle；若 currentSpeed 已经在移动范围内，
-                // 继续恢复会导致“冲刺/移动也回血”的反直觉行为。
-                if (currentSpeed < 0.1)
-                {
-                    baseDrainRate = -SCR_RSS_Constants.REST_RECOVERY_PER_TICK;
-                }
-                else
-                {
-                    float pandolfPerS = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                        currentSpeed,
-                        currentWeightWithWet,
-                        gradePercent,
-                        terrainFactor,
-                        true);
+            return -SCR_RSS_Constants.REST_RECOVERY_PER_TICK;
+        }
 
-                    float bodyWeightIdle = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
-                    if (currentWeightWithWet > bodyWeightIdle && SCR_RSS_ConfigBridge.GetLoadMetabolicDampening() < 1.0)
-                    {
-                        float unloadedPerS = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                            currentSpeed, bodyWeightIdle, gradePercent, terrainFactor, true);
-                        float loadExtra = pandolfPerS - unloadedPerS;
-                        pandolfPerS = unloadedPerS + loadExtra * SCR_RSS_ConfigBridge.GetLoadMetabolicDampening();
-                    }
-
-                    pandolfPerS = pandolfPerS * (1.0 + windDrag);
-                    baseDrainRate = pandolfPerS * 0.2;
-                }
-            }
-            else
-            {
-                // Walk/Run/Sprint：统一使用 Pandolf 能量消耗模型（以实际速度为主）
-                float pandolfPerS = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                    currentSpeed,
-                    currentWeightWithWet,
-                    gradePercent,
-                    terrainFactor,
-                    true);
-
-                // T1 负重代谢阻尼
-                float bodyWeightWRS = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
-                float unloadedPerSAtCurrentSpeed = -1.0;
-                bool needsDampening = (currentWeightWithWet > bodyWeightWRS && SCR_RSS_ConfigBridge.GetLoadMetabolicDampening() < 1.0);
-                if (needsDampening)
-                {
-                    unloadedPerSAtCurrentSpeed = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                        currentSpeed, bodyWeightWRS, gradePercent, terrainFactor, true);
-                    float loadExtra = pandolfPerS - unloadedPerSAtCurrentSpeed;
-                    pandolfPerS = unloadedPerSAtCurrentSpeed + loadExtra * SCR_RSS_ConfigBridge.GetLoadMetabolicDampening();
-                }
-
-                // 负重限速努力补偿（生理学近似）：当负重显著压低“跑/冲刺”的实际速度时，
-                // 单纯用实际速度会低估局部肌肉招募与步态低效带来的代谢成本。
-                // 用“无负重惩罚下的速度估计”计算同模型的上界，并按负重惩罚强度插值补回一部分。
-                // 仅对 Run/Sprint 生效，避免把 Walk 的自我节能策略也当作“努力维持目标速度”。
-                if (encumbranceSpeedPenalty > 0.0 && (currentMovementPhase == 2 || currentMovementPhase == 3) && currentSpeed > 0.1)
-                {
-                    float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
-                    float encPenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
-                    if (isSprinting || currentMovementPhase == 3)
-                        encPenalty = encPenalty * 1.5;
-                    float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
-                    encPenalty = Math.Clamp(encPenalty, 0.0, maxPenalty);
-
-                    float denom = 1.0 - encPenalty;
-                    denom = Math.Max(denom, 0.15);
-                    float unencumberedSpeedEstimate = currentSpeed / denom;
-                    unencumberedSpeedEstimate = Math.Min(unencumberedSpeedEstimate, 6.0); // 限制无负重速度最大值，避免消耗率过高
-
-                    float effortPandolfPerS = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                        unencumberedSpeedEstimate,
-                        currentWeightWithWet,
-                        gradePercent,
-                        terrainFactor,
-                        true);
-
-                    if (needsDampening)
-                    {
-                        float unloadedEffort;
-                        if (Math.AbsFloat(unencumberedSpeedEstimate - currentSpeed) < 0.01)
-                        {
-                            unloadedEffort = unloadedPerSAtCurrentSpeed;
-                        }
-                        else
-                        {
-                            unloadedEffort = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                                unencumberedSpeedEstimate, bodyWeightWRS, gradePercent, terrainFactor, true);
-                        }
-                        float effortExtra = effortPandolfPerS - unloadedEffort;
-                        effortPandolfPerS = unloadedEffort + effortExtra * SCR_RSS_ConfigBridge.GetLoadMetabolicDampening();
-                    }
-
-                    if (effortPandolfPerS > pandolfPerS)
-                    {
-                        float blend = Math.Clamp(encPenalty / 0.7, 0.0, 0.8); // 降低混合因子，减少额外消耗
-                        pandolfPerS = pandolfPerS + (effortPandolfPerS - pandolfPerS) * blend;
-                    }
-                }
-
-                pandolfPerS = pandolfPerS * (1.0 + windDrag);
-                baseDrainRate = pandolfPerS * 0.2; // 转换为每0.2秒
-            }
+        float pandolfPerS = 0.0;
+        if (currentSpeed < 0.1)
+        {
+            float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+            float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0);
+            pandolfPerS = SCR_RSS_MetabolismMath.CalculateStaticStandingCost(bodyWeight, loadWeight);
+            pandolfPerS = pandolfPerS * (1.0 + coldStaticPenalty);
         }
         else
         {
-            // Pandolf 统一消耗路径（v3.12+ 移除 Givoni 分支）
-            if (currentSpeed < 0.1)
-            {
-                // 静态负重站立消耗（Pandolf 静态项）
-                float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT; // 90kg
-                float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0); // 负重（去除身体重量，使用湿重）
-
-                float staticDrainRate = SCR_RSS_MetabolismMath.CalculateStaticStandingCost(bodyWeight, loadWeight);
-                staticDrainRate = staticDrainRate * (1.0 + coldStaticPenalty);
-                baseDrainRate = staticDrainRate * 0.2; // 每0.2秒
-            }
-            else
-            {
-                baseDrainRate = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-                    currentSpeed,
-                    currentWeightWithWet,
-                    gradePercent,
-                    terrainFactor,
-                    true);
-                baseDrainRate = baseDrainRate * (1.0 + windDrag);
-                baseDrainRate = baseDrainRate * 0.2;
-            }
+            float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                currentSpeed,
+                currentWeightWithWet,
+                gradePercent,
+                terrainFactor,
+                true,
+                phase);
+            pandolfPerS = SCR_RSS_MetabolismModel.StaminaDrainRatePerSecondFromPowerWatts(powerW);
         }
 
-        return baseDrainRate;
+        pandolfPerS = pandolfPerS * (1.0 + windDrag);
+        return pandolfPerS * 0.2;
     }
 
     // ==================== 速度计算和更新 ====================
@@ -409,9 +300,34 @@ class SCR_RSS_UpdateCoordinator
                 encumbrancePenalty = encumbrancePenalty * 1.5;
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
-            
-            // 应用负重惩罚得到最终的理论目标速度
+
             float theoreticalTargetSpeed = finalAbsoluteSpeedNoEncumbrance * (1.0 - encumbrancePenalty);
+
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                SCR_RSS_AnaerobicBurst anaBurst = controller.RSS_GetAnaerobicBurst();
+                if (anaBurst && anaBurst.GetCpModel())
+                {
+                    float totalWeightKg = controller.GetRssCurrentWeight()
+                        + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+                    float gradePct = 0.0;
+                    if (!shouldSuppressSlope)
+                    {
+                        GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                            controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
+                        gradePct = gradeRes.gradePercent;
+                    }
+                    float terrainFactor = 1.0;
+                    theoreticalTargetSpeed = SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs(
+                        encumbrancePenalty,
+                        totalWeightKg,
+                        gradePct,
+                        terrainFactor,
+                        anaBurst.GetCpModel(),
+                        currentWorldTime,
+                        0.017);
+                }
+            }
             
             // 动态获取引擎当前的原始速度（已被负重降低后的速度）
             float currentEngineOriginalSpeed;
@@ -560,8 +476,8 @@ class SCR_RSS_UpdateCoordinator
         bool swimmingVelocityDebugPrinted,
         IEntity owner,
         SCR_RSS_EnvironmentFactor environmentFactor = null,
-        bool isSprinting = false,
-        int currentMovementPhase = -1)
+        int currentMovementPhase = -1,
+        float appliedSpeedLimitMs = -1.0)
     {
         float baseDrainRate = 0.0;
         
@@ -619,13 +535,12 @@ class SCR_RSS_UpdateCoordinator
                 // 修复：调用内部方法计算陆地基础消耗率，避免与 SCR_RSS_StaminaConsumptionCalculator.c 重复
             baseDrainRate = CalculateLandBaseDrainRate(
                 currentSpeed,
-                encumbranceSpeedPenalty,
+                appliedSpeedLimitMs,
                 currentWeightWithWet,
                 gradePercent,
                 terrainFactor,
                 windDrag,
                 coldStaticPenalty,
-                isSprinting,
                 currentMovementPhase);
 
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
@@ -742,8 +657,8 @@ class SCR_RSS_UpdateCoordinator
             result.swimmingVelocityDebugPrinted,
             tick.owner,
             tick.environmentFactor,
-            tick.isSprinting,
-            tick.currentMovementPhase);
+            tick.currentMovementPhase,
+            tick.appliedSpeedLimitMs);
         result.baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         result.swimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
 
@@ -899,7 +814,14 @@ class SCR_RSS_UpdateCoordinator
         float epocDrainRate = 0.0;
         if (isInEpocDelay)
         {
-            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+            float peakP = -1.0;
+            if (epocState)
+            {
+                peakP = epocState.GetPeakPowerWatts();
+                if (peakP <= 1.0)
+                    peakP = epocState.GetLastPowerWatts();
+            }
+            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
         }
         
         // 计算总消耗率
@@ -1070,7 +992,16 @@ class SCR_RSS_UpdateCoordinator
 
         float epocDrainRate = 0.0;
         if (isInEpocDelay && !inVehicle)
-            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop);
+        {
+            float peakP = -1.0;
+            if (epocState)
+            {
+                peakP = epocState.GetPeakPowerWatts();
+                if (peakP <= 1.0)
+                    peakP = epocState.GetLastPowerWatts();
+            }
+            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
+        }
 
         float finalDrainRate = totalDrainRate + epocDrainRate;
         float netRatePerTick = recoveryRate - finalDrainRate;

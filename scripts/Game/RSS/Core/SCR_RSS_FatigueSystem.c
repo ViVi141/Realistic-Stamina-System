@@ -1,109 +1,138 @@
 // 疲劳积累系统模块
-// 负责处理疲劳积累和恢复（生理上限溢出处理）
-// 模块化拆分：从 PlayerBase.c 提取的独立功能模块
+// v6：积分疲劳 I(t) + 传统 excess-drain 路径
 
 class SCR_RSS_FatigueSystem
 {
-    // ==================== 状态变量 ====================
-    protected float m_fFatigueAccumulation = 0.0; // 疲劳积累值（0.0-1.0），影响最大体力上限
-    // DESIGN NOTE: Reduced FATIGUE_DECAY_MIN_REST_TIME from 60 to 15 seconds
-    // and increased FATIGUE_DECAY_RATE 5x (0.0001→0.0005) to make the fatigue
-    // system actually reachable in gameplay. Previous values required 60s
-    // uninterrupted rest + 600s to fully recover from max fatigue (30% cap),
-    // which is effectively unreachable in PvP. New values: 15s to start
-    // recovery, ~80s to full recovery from max fatigue.
-    protected const float FATIGUE_DECAY_RATE = 0.0005; // 疲劳恢复率（每0.2秒），长时间休息时疲劳逐渐减少
-    protected const float FATIGUE_DECAY_MIN_REST_TIME = 15.0; // 疲劳恢复所需的最小休息时间（秒），15秒喘口气即可
-    protected float m_fLastFatigueDecayTime = 0.0; // 上次疲劳恢复检查时间
-    protected float m_fLastRestStartTime = -1.0; // 上次开始休息的时间（-1表示未休息）
-    protected const float MAX_FATIGUE_PENALTY = 0.3; // 最大疲劳惩罚（30%），即疲劳积累最高时可降低30%最大体力上限
-    protected const float FATIGUE_CONVERSION_COEFF = 0.05; // 转换系数（5%），超出消耗转化为疲劳的系数
-    
-    // ==================== 公共方法 ====================
-    
-    // 初始化状态
+    protected float m_fFatigueAccumulation = 0.0;
+    protected float m_fFatigueIntegral = 0.0;
+    protected const float FATIGUE_DECAY_RATE = 0.0005;
+    protected const float FATIGUE_DECAY_MIN_REST_TIME = 15.0;
+    protected float m_fLastFatigueDecayTime = 0.0;
+    protected float m_fLastRestStartTime = -1.0;
+    protected const float MAX_FATIGUE_PENALTY = 0.3;
+    protected const float FATIGUE_CONVERSION_COEFF = 0.05;
+
     void Initialize(float currentTime)
     {
         m_fFatigueAccumulation = 0.0;
+        m_fFatigueIntegral = 0.0;
         m_fLastFatigueDecayTime = currentTime;
         m_fLastRestStartTime = -1.0;
     }
-    
-    // 处理疲劳积累（当体力消耗超过生理上限时）
-    // @param excessDrainRate 超出生理上限的消耗
+
     void ProcessFatigueAccumulation(float excessDrainRate)
     {
         if (excessDrainRate > 0.0)
         {
-            // 将超出消耗转化为疲劳积累
-            // 疲劳积累速度 = 超出消耗 × 转换系数
-            // 例如：超出0.01（50%超负荷）→ 疲劳积累 +0.0005
             float fatigueGain = excessDrainRate * FATIGUE_CONVERSION_COEFF;
             m_fFatigueAccumulation = Math.Clamp(m_fFatigueAccumulation + fatigueGain, 0.0, MAX_FATIGUE_PENALTY);
         }
     }
-    
-    // 处理疲劳恢复（长时间休息后）
-    // @param currentTime 当前世界时间
-    // @param currentSpeed 当前速度（用于判断是否静止）
+
+    //! v6 积分疲劳：dI/dt = w·P − R
+    void ProcessFatigueIntegral(
+        float powerWatts,
+        float loadKg,
+        float gradePercent,
+        float terrainFactor,
+        float timeDeltaSec,
+        float currentSpeedMs)
+    {
+        if (timeDeltaSec <= 0.0)
+            return;
+
+        float bodyW = SCR_RSS_Constants.CHARACTER_WEIGHT;
+        float loadRatio = 0.0;
+        if (bodyW > 0.0)
+            loadRatio = loadKg / bodyW;
+
+        float g = gradePercent * 0.01;
+        float w = 1.0
+            + SCR_RSS_Constants.V6_FATIGUE_K_LOAD * loadRatio
+            + SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g
+            + SCR_RSS_Constants.V6_FATIGUE_K_TERRAIN * (terrainFactor - 1.0);
+        if (w < 0.5)
+            w = 0.5;
+
+        float iNorm = GetFatigueIntegralNorm();
+        float r = 0.0;
+        if (currentSpeedMs < 0.05 || powerWatts < SCR_RSS_ConfigBridge.GetCriticalPowerWatts() * 0.5)
+        {
+            float oneMinus = 1.0 - iNorm;
+            r = SCR_RSS_Constants.V6_FATIGUE_K_RECOVERY * oneMinus * oneMinus * powerWatts;
+        }
+
+        float dI = (w * powerWatts - r) * timeDeltaSec * 0.0001;
+        m_fFatigueIntegral = Math.Clamp(m_fFatigueIntegral + dI, 0.0, SCR_RSS_Constants.V6_FATIGUE_I_MAX);
+
+        float legacyFromI = m_fFatigueIntegral * MAX_FATIGUE_PENALTY;
+        if (legacyFromI > m_fFatigueAccumulation)
+            m_fFatigueAccumulation = legacyFromI;
+        if (m_fFatigueAccumulation > MAX_FATIGUE_PENALTY)
+            m_fFatigueAccumulation = MAX_FATIGUE_PENALTY;
+    }
+
     void ProcessFatigueDecay(float currentTime, float currentSpeed)
     {
         bool isCurrentlyMoving = (currentSpeed > 0.05);
-        
-        // 跟踪休息时间（用于疲劳恢复）
+
         if (!isCurrentlyMoving)
         {
-            // 静止：记录休息开始时间
             if (m_fLastRestStartTime < 0.0)
                 m_fLastRestStartTime = currentTime;
-            
-            // 检查是否满足疲劳恢复条件（长时间休息）
-            if (m_fFatigueAccumulation > 0.0)
+
+            if (m_fFatigueAccumulation > 0.0 || m_fFatigueIntegral > 0.0)
             {
                 float restDuration = currentTime - m_fLastRestStartTime;
-                
+
                 if (restDuration >= FATIGUE_DECAY_MIN_REST_TIME)
                 {
-                    // CRITICAL FIX: Removed the `fatigueTimeDelta < 1.0` condition that
-                    // prevented decay from ever applying when the loop interval exceeded 1s,
-                    // or when m_fLastFatigueDecayTime was only updated on successful decay.
-                    // Now decays on every tick that meets the rest duration requirement.
                     float fatigueTimeDelta = currentTime - m_fLastFatigueDecayTime;
                     if (fatigueTimeDelta > 0.0)
                     {
-                        // 疲劳逐渐恢复（每0.2秒恢复 FATIGUE_DECAY_RATE）
-                        m_fFatigueAccumulation = Math.Max(m_fFatigueAccumulation - (FATIGUE_DECAY_RATE * (fatigueTimeDelta / 0.2)), 0.0);
+                        m_fFatigueAccumulation = Math.Max(
+                            m_fFatigueAccumulation - (FATIGUE_DECAY_RATE * (fatigueTimeDelta / 0.2)), 0.0);
+                        m_fFatigueIntegral = Math.Max(
+                            m_fFatigueIntegral - (FATIGUE_DECAY_RATE * 0.5 * (fatigueTimeDelta / 0.2)), 0.0);
                         m_fLastFatigueDecayTime = currentTime;
                     }
                 }
-                // 否则：休息时间不足，疲劳不恢复
             }
-            
+
             m_fLastFatigueDecayTime = currentTime;
         }
         else
         {
-            // 运动：重置休息时间
             m_fLastRestStartTime = -1.0;
         }
     }
-    
-    // 获取疲劳积累值
-    // @return 疲劳积累值（0.0-1.0）
+
     float GetFatigueAccumulation()
     {
         return m_fFatigueAccumulation;
     }
-    
-    // 计算最大体力上限（考虑疲劳惩罚）
-    // @return 最大体力上限（0.7-1.0），例如：30%疲劳 → 70%最大体力上限
+
+    float GetFatigueIntegralNorm()
+    {
+        if (SCR_RSS_Constants.V6_FATIGUE_I_MAX <= 0.0)
+            return 0.0;
+        return Math.Clamp(m_fFatigueIntegral / SCR_RSS_Constants.V6_FATIGUE_I_MAX, 0.0, 1.0);
+    }
+
+    float GetCpFatigueMultiplier()
+    {
+        float norm = GetFatigueIntegralNorm();
+        float mult = 1.0 - SCR_RSS_Constants.V6_CP_FATIGUE_K * norm;
+        if (mult < 0.82)
+            mult = 0.82;
+        return mult;
+    }
+
     float GetMaxStaminaCap()
     {
         return 1.0 - m_fFatigueAccumulation;
     }
-    
-    // 获取最大疲劳惩罚
-    // @return 最大疲劳惩罚（0.3 = 30%）
+
     float GetMaxFatiguePenalty()
     {
         return MAX_FATIGUE_PENALTY;

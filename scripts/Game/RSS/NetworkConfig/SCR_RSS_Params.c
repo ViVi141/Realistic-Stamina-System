@@ -394,4 +394,17 @@ class SCR_RSS_Params
 
     [Attribute(defvalue: "0.08", desc: "Anaerobic recovery per second. | 无氧恢复/s")]
     float anaerobic_recovery_per_sec;
+
+    // --- v6 CP-W' 学术拟真 ---
+    [Attribute(defvalue: "400.0", desc: "Critical power CP (W). | 临界功率 W")]
+    float critical_power_watts;
+
+    [Attribute(defvalue: "20000.0", desc: "W prime max (J). | 无氧做功容量 J")]
+    float w_prime_max_joules;
+
+    [Attribute(defvalue: "12.0", desc: "W prime recovery (W). | W'恢复 W/s")]
+    float w_prime_recovery_w_per_s;
+
+    [Attribute(defvalue: "1200.0", desc: "Sprint power cap (W). | 冲刺功率上限 W")]
+    float sprint_power_cap_watts;
 }

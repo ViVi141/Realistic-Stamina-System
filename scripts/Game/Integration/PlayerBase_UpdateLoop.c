@@ -158,34 +158,6 @@ modded class SCR_CharacterControllerComponent
         float currentTimeForExerciseMs = world.GetWorldTime();
         float currentTime = currentTimeForExerciseMs / 1000.0;
 
-        if (m_pAnaerobicBurst)
-        {
-            bool tickAnaerobic = Replication.IsServer();
-            if (!tickAnaerobic && isPlayer)
-            {
-                IEntity anaOwner = owner;
-                if (anaOwner == SCR_PlayerController.GetLocalControlledEntity())
-                    tickAnaerobic = true;
-            }
-
-            if (tickAnaerobic)
-            {
-                float anaDrain = SCR_RSS_ConfigBridge.GetAnaerobicDrainPerSec();
-                m_pAnaerobicBurst.Tick(isSprintActive, currentTime, GetSpeedUpdateIntervalMs() / 1000.0, anaDrain);
-                if (m_pStaminaState)
-                {
-                    m_pStaminaState.SetAnaerobic(m_pAnaerobicBurst.GetPool());
-                    m_pStaminaState.SetAerobic(staminaPercent);
-                }
-                if (Replication.IsServer())
-                {
-                    SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
-                        m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
-                    Replication.BumpMe();
-                }
-            }
-        }
-
         float terrainFactor = 1.0;
         if (m_pTerrainDetector)
             terrainFactor = m_pTerrainDetector.GetTerrainFactor(owner, currentTime, currentSpeed);
@@ -220,7 +192,8 @@ modded class SCR_CharacterControllerComponent
                 lastEngineBase);
         }
         
-        float baseSpeedMultiplier = SCR_RSS_MetabolismMath.CalculateSpeedMultiplierByStamina(staminaPercent);
+        float baseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(
+            staminaPercent, phaseNow, encumbranceSpeedPenalty);
         
         float currentWeight = 0.0;
         if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
@@ -244,6 +217,9 @@ modded class SCR_CharacterControllerComponent
         float storedEngineBase = GetRssSpeedLimitEngineBaseMs();
         if (storedEngineBase > 0.1)
             m_fLastRssEngineBaseForLimit = storedEngineBase;
+        m_fAppliedSpeedLimitMs = finalSpeedToApply * storedEngineBase;
+        if (m_fAppliedSpeedLimitMs <= 0.05)
+            m_fAppliedSpeedLimitMs = -1.0;
         SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, finalSpeedToApply);
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
@@ -356,6 +332,14 @@ modded class SCR_CharacterControllerComponent
 
         if (!isExhausted)
         {
+            float engineBase = GetRssSpeedLimitEngineBaseMs();
+            if (engineBase <= 0.05)
+                engineBase = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+
+            SCR_RSS_CriticalPowerModel cpModel = null;
+            if (m_pAnaerobicBurst)
+                cpModel = m_pAnaerobicBurst.GetCpModel();
+
             float correctedSpeed = SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier(
                 m_fLastRssSpeedMultiplierApplied,
                 currentSpeed,
@@ -364,13 +348,97 @@ modded class SCR_CharacterControllerComponent
                 totalWeightWithWetAndBody,
                 gradePercent,
                 terrainFactor,
-                isExhausted);
+                isExhausted,
+                engineBase,
+                currentTime,
+                cpModel);
             if (correctedSpeed != m_fLastRssSpeedMultiplierApplied)
             {
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, correctedSpeed);
                 m_fLastRssSpeedMultiplierApplied = correctedSpeed;
                 finalSpeedMultiplier = correctedSpeed;
+                m_fAppliedSpeedLimitMs = correctedSpeed * engineBase;
             }
+        }
+
+        if (m_pAnaerobicBurst)
+        {
+            bool tickAnaerobic = Replication.IsServer();
+            if (!tickAnaerobic && isPlayer)
+            {
+                IEntity anaOwner = owner;
+                if (anaOwner == SCR_PlayerController.GetLocalControlledEntity())
+                    tickAnaerobic = true;
+            }
+
+            if (tickAnaerobic)
+            {
+                float drainSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+                    currentSpeed, m_fAppliedSpeedLimitMs);
+                float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                    drainSpeed,
+                    totalWeightWithWetAndBody,
+                    gradePercent,
+                    terrainFactor,
+                    true,
+                    phaseNow);
+
+                SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
+                if (cpModel)
+                {
+                    float loadKg = Math.Max(totalWeightWithWetAndBody - SCR_RSS_MetabolismMath.CHARACTER_WEIGHT, 0.0);
+                    float envCpMult = 1.0;
+                    if (m_pEnvironmentFactor)
+                    {
+                        float heatPen = m_pEnvironmentFactor.GetHeatStressPenalty();
+                        envCpMult = 1.0 - heatPen * 0.35;
+                    }
+                    float fatigueNorm = 0.0;
+                    if (m_pFatigueSystem)
+                        fatigueNorm = m_pFatigueSystem.GetFatigueIntegralNorm();
+                    cpModel.SetRuntimeContext(loadKg, gradePercent, envCpMult, fatigueNorm);
+                    if (m_pFatigueSystem)
+                    {
+                        float cpMult = m_pFatigueSystem.GetCpFatigueMultiplier();
+                        cpModel.SetFatigueCpMultiplier(cpMult);
+                    }
+                }
+
+                m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, timeDeltaSec);
+                if (m_pEpocState)
+                    m_pEpocState.UpdateExercisePowerSample(powerW, currentSpeed);
+                if (m_pStaminaState)
+                {
+                    m_pStaminaState.SetAnaerobicFromCpModel(m_pAnaerobicBurst.GetCpModel());
+                    m_pStaminaState.SetAerobic(staminaPercent);
+                }
+                if (Replication.IsServer())
+                {
+                    SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
+                        m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
+                    Replication.BumpMe();
+                }
+            }
+        }
+
+        if (m_pFatigueSystem && !useSwimmingModel)
+        {
+            float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+                currentSpeed, m_fAppliedSpeedLimitMs);
+            float powerFat = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                drainSpeedFat,
+                totalWeightWithWetAndBody,
+                gradePercent,
+                terrainFactor,
+                true,
+                phaseNow);
+            m_pFatigueSystem.ProcessFatigueIntegral(
+                powerFat,
+                currentWeight,
+                gradePercent,
+                terrainFactor,
+                timeDeltaSec,
+                currentSpeed);
         }
 
         if (SCR_RSS_ConfigBridge.IsMudSlipMechanismEnabled())
@@ -449,6 +517,7 @@ modded class SCR_CharacterControllerComponent
         drainParams.epocState = m_pEpocState;
         drainParams.currentTimeSec = currentTime;
         drainParams.currentTimeForExerciseMs = currentTimeForExerciseMs;
+        drainParams.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
 
         StaminaDrainTickResult drainTick = SCR_RSS_UpdateCoordinator.CalculateTotalDrainRate(drainParams);
         totalDrainRate = drainTick.totalDrainRate;

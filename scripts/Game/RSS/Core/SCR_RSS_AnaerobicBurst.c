@@ -1,129 +1,100 @@
-//! v5 无氧爆发池：秒级消耗 + 分层冷却（不写入引擎 stamina 条）
+//! v6 无氧爆发：CP–W′ 焦耳池（对外保留 AnaerobicBurst 类名以减小 Integration  diff）
 
 class SCR_RSS_AnaerobicBurst
 {
-    protected float m_fPool;
-    protected float m_fCooldownUntilSec;
-    protected float m_fSprintStartSec;
-    protected bool m_bWasSprinting;
-    protected float m_fLastShortBurstReleaseSec;
-    protected bool m_bDepletionCooldownApplied;
+    protected ref SCR_RSS_CriticalPowerModel m_pCpModel;
 
     void SCR_RSS_AnaerobicBurst()
     {
-        m_fPool = 1.0;
-        m_fCooldownUntilSec = -1.0;
-        m_fSprintStartSec = -1.0;
-        m_bWasSprinting = false;
-        m_fLastShortBurstReleaseSec = -1.0;
-        m_bDepletionCooldownApplied = false;
+        m_pCpModel = new SCR_RSS_CriticalPowerModel();
+    }
+
+    SCR_RSS_CriticalPowerModel GetCpModel()
+    {
+        return m_pCpModel;
     }
 
     float GetPool()
     {
-        return m_fPool;
+        if (!m_pCpModel)
+            return 1.0;
+        return m_pCpModel.GetPool01();
+    }
+
+    float GetWPrimeJoules()
+    {
+        if (!m_pCpModel)
+            return SCR_RSS_Constants.V6_W_PRIME_MAX_JOULES_DEFAULT;
+        return m_pCpModel.GetWPrimeJoules();
     }
 
     float GetCooldownUntilSec()
     {
-        return m_fCooldownUntilSec;
+        if (!m_pCpModel)
+            return -1.0;
+        return m_pCpModel.GetCooldownUntilSec();
     }
 
-    //! 客户端 RplProp 回调写入（不触发 tick）
     void ApplyReplication(float pool, float cooldownUntilSec)
     {
-        m_fPool = Math.Clamp(pool, 0.0, 1.0);
-        m_fCooldownUntilSec = cooldownUntilSec;
+        if (!m_pCpModel)
+            return;
+        float maxJ = SCR_RSS_ConfigBridge.GetWPrimeMaxJoules();
+        m_pCpModel.ApplyReplication(pool, cooldownUntilSec, maxJ);
+    }
+
+    void ApplyReplicationJoules(float wPrimeJoules, float cooldownUntilSec, float wPrimeMaxJoules)
+    {
+        if (!m_pCpModel)
+            return;
+        if (wPrimeMaxJoules > 1.0)
+            m_pCpModel.ApplyReplication(wPrimeJoules / wPrimeMaxJoules, cooldownUntilSec, wPrimeMaxJoules);
     }
 
     float GetCooldownRemainingSec(float worldTimeSec)
     {
-        if (m_fCooldownUntilSec < 0.0)
+        if (!m_pCpModel)
             return 0.0;
-        float rem = m_fCooldownUntilSec - worldTimeSec;
-        if (rem < 0.0)
-            return 0.0;
-        return rem;
+        return m_pCpModel.GetCooldownRemainingSec(worldTimeSec);
     }
 
     bool IsOnCooldown(float worldTimeSec)
     {
-        return GetCooldownRemainingSec(worldTimeSec) > 0.0;
+        if (!m_pCpModel)
+            return false;
+        return m_pCpModel.IsOnCooldown(worldTimeSec);
     }
 
-    //! @param isSprinting 当前是否在 Sprint
-    //! @param worldTimeSec 世界时间（秒）
-    //! @param timeDeltaSec tick 间隔
-    //! @param drainPerSec 无氧消耗率（0-1 / s）
+    //! @param powerWatts 实测代谢功率（W）；v6 不再使用固定 drain/sec
+    void TickPower(float powerWatts, bool isSprinting, float worldTimeSec, float timeDeltaSec)
+    {
+        if (!m_pCpModel)
+            return;
+        m_pCpModel.Tick(powerWatts, isSprinting, worldTimeSec, timeDeltaSec);
+    }
+
+    //! 兼容旧调用：由功率代换
     void Tick(bool isSprinting, float worldTimeSec, float timeDeltaSec, float drainPerSec)
     {
+        if (!m_pCpModel)
+            return;
+        float cp = m_pCpModel.GetEffectiveCriticalPowerWatts();
+        float powerW = cp;
         if (isSprinting)
-        {
-            if (!m_bWasSprinting)
-                m_fSprintStartSec = worldTimeSec;
-
-            m_fPool = m_fPool - drainPerSec * timeDeltaSec;
-            if (m_fPool < 0.0)
-                m_fPool = 0.0;
-
-            if (m_fPool <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
-            {
-                if (!m_bDepletionCooldownApplied)
-                {
-                    float burstDuration = worldTimeSec - m_fSprintStartSec;
-                    if (burstDuration < 0.0)
-                        burstDuration = 0.0;
-                    ApplyCooldownOnSprintEnd(worldTimeSec, burstDuration, m_fPool);
-                    m_bDepletionCooldownApplied = true;
-                }
-            }
-        }
-        else
-        {
-            m_bDepletionCooldownApplied = false;
-            if (m_bWasSprinting)
-            {
-                float burstDuration = worldTimeSec - m_fSprintStartSec;
-                if (burstDuration < 0.0)
-                    burstDuration = 0.0;
-                ApplyCooldownOnSprintEnd(worldTimeSec, burstDuration, m_fPool);
-                m_fSprintStartSec = -1.0;
-            }
-
-            if (!IsOnCooldown(worldTimeSec))
-            {
-                float recoveryPerSec = SCR_RSS_ConfigBridge.GetAnaerobicRecoveryPerSec();
-                m_fPool = m_fPool + recoveryPerSec * timeDeltaSec;
-                if (m_fPool > 1.0)
-                    m_fPool = 1.0;
-            }
-        }
-
-        m_bWasSprinting = isSprinting;
+            powerW = cp + drainPerSec * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
+        m_pCpModel.Tick(powerW, isSprinting, worldTimeSec, timeDeltaSec);
     }
 
-    protected void ApplyCooldownOnSprintEnd(float worldTimeSec, float burstDurationSec, float reserveAtEnd)
+    void SetFatigueCpMultiplier(float mult)
     {
-        float fullCd = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
-        float shortCd = SCR_RSS_ConfigBridge.GetBurstCooldownShortSeconds();
+        if (m_pCpModel)
+            m_pCpModel.SetFatigueCpMultiplier(mult);
+    }
 
-        if (m_fPool <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
-        {
-            m_fCooldownUntilSec = worldTimeSec + fullCd;
-            return;
-        }
-
-        if (burstDurationSec <= SCR_RSS_Constants.V5_TACTICAL_SHORT_BURST_SEC)
-        {
-            m_fCooldownUntilSec = worldTimeSec + shortCd;
-            m_fLastShortBurstReleaseSec = worldTimeSec;
-            return;
-        }
-
-        float reserveRatio = reserveAtEnd;
-        float scaled = fullCd * (1.0 - SCR_RSS_Constants.V5_BURST_EARLY_RELEASE_BONUS * reserveRatio);
-        if (scaled < shortCd)
-            scaled = shortCd;
-        m_fCooldownUntilSec = worldTimeSec + scaled;
+    float GetAvailablePowerWatts(bool sprintIntent, float timeDeltaSec)
+    {
+        if (!m_pCpModel)
+            return SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+        return m_pCpModel.GetAvailablePowerWatts(sprintIntent, timeDeltaSec, 0.0);
     }
 }

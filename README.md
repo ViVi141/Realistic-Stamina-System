@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v5.0.0
+# Realistic Stamina System (RSS) v6.0.0
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-5.0.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -28,8 +28,10 @@
 
 ## 主要特性
 
-- ✅ **双稳态-应激性能模型**：平台期（25%-100%体力）保持恒定速度，衰减期（0%-25%）平滑下降
-- ✅ **5秒阻尼过渡（"撞墙"瞬间优化）**：在体力触及25%临界点时，使用5秒时间阻尼过渡
+- ✅ **v6 CP–W′ 功率预算**：Pandolf/ACSM 代谢 → 动态 CP → W′ 焦耳；Sprint = `invert(P_available)`
+- ✅ **相位行军档速度**：Walk/Run/Sprint 按配置 m/s；**无 25% 意志力平台期**
+- ✅ **Elite Skiba W′ 再填充**；Standard/Tactical 线性恢复 + 分层 cooldown
+- ✅ **v_drain 闭环**：消耗与 `SetSpeedLimit` 共用 `m_fAppliedSpeedLimitMs`
 - ✅ **坡度自适应步幅逻辑**：上坡时自动降低目标速度（坡度-速度负反馈）
 - ✅ **非线性坡度消耗**：小坡几乎无感，陡坡才真正吃力
 - ✅ **生理上限保护**：体力消耗有生理上限，防止数值爆炸

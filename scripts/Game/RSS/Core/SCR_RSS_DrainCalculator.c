@@ -1,23 +1,25 @@
-//! v5 消耗测速：v_drain = clamp(v_measured, 0, v_theoretical_max)
+//! v6 消耗测速与代谢限速：v_drain = min(v_meas, v_limit_applied)
 
 class SCR_RSS_DrainCalculator
 {
-    //! 统一陆地/游泳消耗速度输入，禁止 Run/Sprint 固定 3.8/5.5。
     //! @param measuredSpeedMs GetVelocity 水平模长（m/s）
-    //! @param theoreticalMaxMs 当前档位理论上限（m/s）
-    //! @return 用于 Pandolf 的速度（m/s）
-    static float GetDrainVelocityMs(float measuredSpeedMs, float theoreticalMaxMs)
+    //! @param appliedSpeedLimitMs 当前 RSS 已应用的绝对速度上限（m/s）；<=0 时回退相位理论档
+    //! @return 用于代谢模型的速度（m/s）
+    static float GetDrainVelocityMs(float measuredSpeedMs, float appliedSpeedLimitMs)
     {
         if (measuredSpeedMs < 0.0)
             measuredSpeedMs = 0.0;
-        if (theoreticalMaxMs < 0.05)
-            theoreticalMaxMs = 0.05;
-        if (measuredSpeedMs > theoreticalMaxMs)
-            return theoreticalMaxMs;
+
+        float capMs = appliedSpeedLimitMs;
+        if (capMs <= 0.05)
+            return measuredSpeedMs;
+
+        if (measuredSpeedMs > capMs)
+            return capMs;
         return measuredSpeedMs;
     }
 
-    //! 按移动相位返回理论速度上限（v5 行军档）
+    //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
     static float GetTheoreticalMaxSpeedMs(int movementPhase, float encumbranceSpeedPenalty)
     {
         float walk = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs();
@@ -41,31 +43,62 @@ class SCR_RSS_DrainCalculator
         return walk;
     }
 
-    //! Pandolf 功率（W）是否超过可持续阈值 → 触发渐进降速系数（0-1）
-    static float GetMetabolicOverspeedFactor(float pandolfWatts)
+    //! @deprecated v6 使用 GetEffectiveCriticalPowerWatts；保留作过渡
+    static float GetMetabolicOverspeedFactor(float powerWatts)
     {
-        float sustainable = SCR_RSS_ConfigBridge.GetSustainableWatts();
+        float sustainable = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
         if (sustainable <= 1.0)
-            sustainable = SCR_RSS_Constants.V5_SUSTAINABLE_WATTS_DEFAULT;
-        if (pandolfWatts <= sustainable)
+            sustainable = SCR_RSS_ConfigBridge.GetSustainableWatts();
+        if (sustainable <= 1.0)
+            sustainable = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+        if (powerWatts <= sustainable)
             return 1.0;
 
-        float ratio = sustainable / pandolfWatts;
+        float ratio = sustainable / powerWatts;
         if (ratio < SCR_RSS_Constants.V5_MIN_METABOLIC_SPEED_FACTOR)
             ratio = SCR_RSS_Constants.V5_MIN_METABOLIC_SPEED_FACTOR;
         return ratio;
     }
 
-    //! 代谢超速时对已应用速度倍率做渐进缩放（v5 速度—消耗闭环）
-    //! @param appliedSpeedMultiplier 当前 RSS 速度倍率
-    //! @param currentSpeedMs 实测水平速度（m/s）
-    //! @param movementPhase 移动相位（0 idle … 3 sprint）
-    //! @param encumbranceSpeedPenalty 负重速度惩罚 [0,1]
-    //! @param totalWeightKg 湿重+身体总重（kg）
-    //! @param gradePercent 坡度百分比
-    //! @param terrainFactor 地形系数
-    //! @param isExhausted 精疲力尽时跳过降速
-    //! @return 修正后倍率；未超速或与入参相同时不变
+    //! v6：代谢功率超 CP 时，将绝对速度上限压至 invert(P=CP)
+    static float GetMetabolicSpeedCapMs(
+        float currentSpeedMs,
+        int movementPhase,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        bool isExhausted,
+        float worldTimeSec,
+        SCR_RSS_CriticalPowerModel cpModel)
+    {
+        if (isExhausted)
+            return -1.0;
+
+        float cp = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+        if (cpModel)
+            cp = cpModel.GetEffectiveCriticalPowerWatts();
+        else
+            cp = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+
+        float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+            currentSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+
+        float availableP = cp;
+        if (cpModel)
+            availableP = cpModel.GetAvailablePowerWatts(movementPhase == 3, 0.017, worldTimeSec);
+
+        if (powerW <= availableP + 1.0)
+            return -1.0;
+
+        float targetP = availableP;
+        if (powerW > cp && movementPhase != 3)
+            targetP = cp;
+
+        return SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            targetP, totalWeightKg, gradePercent, terrainFactor, movementPhase);
+    }
+
+    //! 代谢限速 → 速度倍率（相对 engine base）
     static float GetMetabolicCorrectedSpeedMultiplier(
         float appliedSpeedMultiplier,
         float currentSpeedMs,
@@ -74,19 +107,23 @@ class SCR_RSS_DrainCalculator
         float totalWeightKg,
         float gradePercent,
         float terrainFactor,
-        bool isExhausted)
+        bool isExhausted,
+        float engineBaseMs,
+        float worldTimeSec,
+        SCR_RSS_CriticalPowerModel cpModel)
     {
-        if (isExhausted)
+        if (engineBaseMs <= 0.05)
+            engineBaseMs = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+
+        float capMs = GetMetabolicSpeedCapMs(
+            currentSpeedMs, movementPhase, totalWeightKg, gradePercent, terrainFactor, isExhausted, worldTimeSec, cpModel);
+        if (capMs < 0.0)
             return appliedSpeedMultiplier;
 
-        float theoreticalMaxMs = GetTheoreticalMaxSpeedMs(movementPhase, encumbranceSpeedPenalty);
-        float vDrainMs = GetDrainVelocityMs(currentSpeedMs, theoreticalMaxMs);
-        float pandolfWatts = SCR_RSS_MetabolismMath.CalculatePandolfEnergyExpenditure(
-            vDrainMs, totalWeightKg, gradePercent, terrainFactor, true);
-        float metaFactor = GetMetabolicOverspeedFactor(pandolfWatts);
-        if (metaFactor >= 0.999)
+        float appliedMs = appliedSpeedMultiplier * engineBaseMs;
+        if (appliedMs <= capMs + 0.01)
             return appliedSpeedMultiplier;
 
-        return Math.Clamp(appliedSpeedMultiplier * metaFactor, 0.01, 3.0);
+        return Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
     }
 }

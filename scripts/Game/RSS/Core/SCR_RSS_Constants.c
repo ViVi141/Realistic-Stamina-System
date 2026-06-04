@@ -755,4 +755,43 @@ class SCR_RSS_Constants
     static const float V5_BURST_COOLDOWN_FULL_DEFAULT = 180.0;
     static const float V5_BURST_COOLDOWN_SHORT_DEFAULT = 75.0;
     static const float V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT = 0.08;
+
+    // ==================== v6 学术拟真：ACSM + CP-W' ====================
+    //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
+    static const float V6_ACSM_REST_W = 50.0;
+    static const float V6_ACSM_LINEAR_W_PER_MS = 200.0;
+    static const float V6_ACSM_QUAD_W_PER_MS2 = 80.0;
+    static const float V6_ACSM_BLEND_START_MS = 2.0;
+    static const float V6_ACSM_BLEND_END_MS = 2.4;
+    static const float V6_INVERT_SPEED_MAX_MS = 6.0;
+    static const float V6_STANDING_REST_WATTS = 100.0;
+
+    //! CP-W' 默认（Elite；Standard/Tactical 在 Settings 中覆盖）
+    static const float V6_CRITICAL_POWER_WATTS_DEFAULT = 400.0;
+    static const float V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0;
+    static const float V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0;
+    static const float V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0;
+
+    // v6 动态 CP 修正（LF/TF，系数经 bench 标定，下坡不对 CP 加成）
+    static const float V6_CP_LOAD_REF_KG = 10.0;
+    static const float V6_CP_LOAD_DECAY_PER_KG = 0.002;
+    static const float V6_CP_SLOPE_K_UP = 0.015;
+    static const float V6_CP_FATIGUE_K = 0.18;
+    static const float V6_CP_ENV_FLOOR = 0.55;
+
+    // Skiba W′ 双指数再填充（Elite：CP ≤ 此阈值时启用）
+    static const float V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0;
+    static const float V6_W_PRIME_K_FAST = 0.15;
+    static const float V6_W_PRIME_K_SLOW = 0.008;
+    static const float V6_W_PRIME_LIM_RATIO = 0.5;
+
+    // 积分疲劳 I(t)
+    static const float V6_FATIGUE_I_MAX = 1.0;
+    static const float V6_FATIGUE_K_RECOVERY = 0.0008;
+    static const float V6_FATIGUE_K_LOAD = 0.15;
+    static const float V6_FATIGUE_K_SLOPE = 8.0;
+    static const float V6_FATIGUE_K_TERRAIN = 0.25;
+
+    //! @deprecated v6 玩家速度不再使用 Minetti 指数；AI 迁移后删除
+    static const float STAMINA_EXPONENT_LEGACY = 0.6;
 }

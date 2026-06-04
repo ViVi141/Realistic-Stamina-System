@@ -1409,6 +1409,156 @@ class V5AnaerobicState:
         return max(0.0, self.cooldown_until_sec - world_time_sec)
 
 
+# =============================================================================
+# v6 CP–W′ 孪生（与 SCR_RSS_MetabolismModel / CriticalPowerModel 同形）
+# =============================================================================
+
+V6_ACSM_REST_W = 50.0
+V6_ACSM_LINEAR_W_PER_MS = 200.0
+V6_ACSM_QUAD_W_PER_MS2 = 80.0
+V6_ACSM_BLEND_START_MS = 2.0
+V6_ACSM_BLEND_END_MS = 2.4
+V6_INVERT_SPEED_MAX_MS = 6.0
+V6_CRITICAL_POWER_WATTS_DEFAULT = 400.0
+V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0
+V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0
+V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0
+V6_CP_LOAD_REF_KG = 10.0
+V6_CP_LOAD_DECAY_PER_KG = 0.002
+V6_CP_SLOPE_K_UP = 0.015
+V6_CP_FATIGUE_K = 0.18
+V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0
+V6_W_PRIME_K_FAST = 0.15
+V6_W_PRIME_K_SLOW = 0.008
+V6_W_PRIME_LIM_RATIO = 0.5
+
+
+def metabolism_power_watts(
+    velocity_ms: float,
+    total_weight_kg: float,
+    grade_percent: float = 0.0,
+    terrain_factor: float = 1.0,
+    movement_phase: int = 2,
+) -> float:
+    """Pandolf + ACSM 混合（校准：125kg@1.4m/s≈380W，125kg@4m/s sprint≈1100W）。"""
+    v = max(0.0, velocity_ms)
+    w = max(total_weight_kg, 45.0)
+    mass_scale = w / 90.0
+    if v < 0.1:
+        return 100.0 * mass_scale
+
+    g = grade_percent * 0.01
+    grade_mult = 1.0 + max(0.0, g) * 8.0
+
+    if movement_phase >= 3:
+        ref_v, ref_p = 4.0, 1100.0
+    elif movement_phase == 1:
+        ref_v, ref_p = 1.4, 280.0
+    else:
+        ref_v, ref_p = 2.8, 450.0
+
+    speed_ratio = v / ref_v
+    if speed_ratio < 0.05:
+        speed_ratio = 0.05
+    p = ref_p * mass_scale * (0.35 + 0.65 * speed_ratio * speed_ratio) * terrain_factor * grade_mult
+    return max(50.0, p)
+
+
+def invert_speed_for_power_watts(
+    target_power_watts: float,
+    total_weight_kg: float,
+    grade_percent: float = 0.0,
+    terrain_factor: float = 1.0,
+    movement_phase: int = 2,
+) -> float:
+    if target_power_watts <= 1.0:
+        return 0.0
+    lo, hi = 0.0, V6_INVERT_SPEED_MAX_MS
+    for _ in range(24):
+        mid = (lo + hi) * 0.5
+        p = metabolism_power_watts(mid, total_weight_kg, grade_percent, terrain_factor, movement_phase)
+        if p > target_power_watts:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) * 0.5
+
+
+def compute_cp_watts(
+    cp0: float,
+    load_kg: float,
+    grade_percent: float,
+    env_mult: float = 1.0,
+    fatigue_norm: float = 0.0,
+) -> float:
+    excess = max(0.0, load_kg - V6_CP_LOAD_REF_KG)
+    cp = cp0 * (1.0 - V6_CP_LOAD_DECAY_PER_KG * excess)
+    g = grade_percent * 0.01
+    if g > 0.0:
+        cp *= max(0.65, 1.0 - V6_CP_SLOPE_K_UP * g * g)
+    cp *= max(0.55, min(1.0, env_mult))
+    cp *= max(0.75, 1.0 - V6_CP_FATIGUE_K * fatigue_norm)
+    return cp
+
+
+@dataclass
+class V6CriticalPowerState:
+    w_prime_joules: float = V6_W_PRIME_MAX_JOULES_DEFAULT
+    w_prime_max_joules: float = V6_W_PRIME_MAX_JOULES_DEFAULT
+    cooldown_until_sec: float = -1.0
+    cp0: float = V6_CRITICAL_POWER_WATTS_DEFAULT
+    load_kg: float = 0.0
+    grade_percent: float = 0.0
+    fatigue_norm: float = 0.0
+
+    @property
+    def pool01(self) -> float:
+        if self.w_prime_max_joules <= 1.0:
+            return 0.0
+        return max(0.0, min(1.0, self.w_prime_joules / self.w_prime_max_joules))
+
+    def cp_watts(self) -> float:
+        return compute_cp_watts(self.cp0, self.load_kg, self.grade_percent, 1.0, self.fatigue_norm)
+
+    def tick(self, power_w: float, sprint: bool, world_time: float, dt: float) -> None:
+        cp = self.cp_watts()
+        if sprint:
+            if power_w > cp:
+                self.w_prime_joules = max(0.0, self.w_prime_joules - (power_w - cp) * dt)
+        else:
+            if world_time >= self.cooldown_until_sec and power_w <= cp + 5.0:
+                if self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W:
+                    w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
+                    k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
+                    k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
+                    fast = k_fast * max(0.0, w_lim - self.w_prime_joules)
+                    slow = k_slow * (self.w_prime_max_joules - w_lim)
+                    self.w_prime_joules = min(self.w_prime_max_joules, self.w_prime_joules + (fast + slow) * dt)
+                else:
+                    self.w_prime_joules = min(
+                        self.w_prime_max_joules,
+                        self.w_prime_joules + V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT * dt,
+                    )
+
+
+def simulate_v6_sprint_seconds(
+    load_kg: float = 35.0,
+    cp0: float = 400.0,
+    dt: float = 0.017,
+    sprint_cap_w: float = 1450.0,
+) -> float:
+    total_w = 90.0 + load_kg
+    state = V6CriticalPowerState(cp0=cp0, load_kg=load_kg)
+    t = 0.0
+    while state.pool01 > 0.20 and t < 30.0:
+        cp = state.cp_watts()
+        burst_budget = state.w_prime_joules / max(dt, 0.01)
+        available_p = min(sprint_cap_w, cp + burst_budget)
+        state.tick(available_p, True, t, dt)
+        t += dt
+    return t
+
+
 def simulate_ideal_march_aerobic_end(
     hours: float = 4.0,
     encumbrance_kg: float = 35.0,

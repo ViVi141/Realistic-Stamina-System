@@ -1,66 +1,83 @@
-// EPOC延迟状态管理类
-// 用于封装EPOC延迟相关的状态变量（因为EnforceScript不支持基本类型的ref参数）
+// EPOC 延迟状态管理（v6：跟踪峰值代谢功率供 EPOC drain 标定）
 
 class SCR_RSS_EpocState
 {
-    float m_fEpocDelayStartTime = -1.0; // EPOC延迟开始时间（世界时间），-1表示未启动
-    bool m_bIsInEpocDelay = false; // 是否处于EPOC延迟期间
-    float m_fLastSpeedForEpoc = 0.0; // 上一帧的速度（用于检测速度变化）
-    float m_fSpeedBeforeStop = 0.0; // 停止前的速度（用于计算EPOC消耗）
-    
-    // 获取EPOC延迟开始时间
+    float m_fEpocDelayStartTime = -1.0;
+    bool m_bIsInEpocDelay = false;
+    float m_fLastSpeedForEpoc = 0.0;
+    float m_fSpeedBeforeStop = 0.0;
+    float m_fPeakPowerWatts = 0.0;
+    float m_fLastPowerWatts = 0.0;
+
     float GetEpocDelayStartTime()
     {
         return m_fEpocDelayStartTime;
     }
-    
-    // 设置EPOC延迟开始时间
+
     void SetEpocDelayStartTime(float time)
     {
         m_fEpocDelayStartTime = time;
     }
-    
-    // 获取是否处于EPOC延迟期间
+
     bool IsInEpocDelay()
     {
         return m_bIsInEpocDelay;
     }
-    
-    // 设置是否处于EPOC延迟期间
+
     void SetIsInEpocDelay(bool value)
     {
         m_bIsInEpocDelay = value;
     }
-    
-    // 获取上一帧的速度
+
     float GetLastSpeedForEpoc()
     {
         return m_fLastSpeedForEpoc;
     }
-    
-    // 设置上一帧的速度
+
     void SetLastSpeedForEpoc(float speed)
     {
         m_fLastSpeedForEpoc = speed;
     }
-    
-    // 获取停止前的速度
+
     float GetSpeedBeforeStop()
     {
         return m_fSpeedBeforeStop;
     }
-    
-    // 设置停止前的速度
+
     void SetSpeedBeforeStop(float speed)
     {
         m_fSpeedBeforeStop = speed;
     }
-    
-    // 重置EPOC状态
+
+    float GetPeakPowerWatts()
+    {
+        return m_fPeakPowerWatts;
+    }
+
+    float GetLastPowerWatts()
+    {
+        return m_fLastPowerWatts;
+    }
+
+    //! 运动 tick 调用：记录会话峰值功率（供 EPOC ∝ P_peak）
+    void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs)
+    {
+        m_fLastPowerWatts = Math.Max(powerWatts, 0.0);
+        if (currentSpeedMs > 0.05 && powerWatts > m_fPeakPowerWatts)
+            m_fPeakPowerWatts = powerWatts;
+    }
+
+    void ResetPeakPowerForNewRest()
+    {
+        m_fPeakPowerWatts = 0.0;
+    }
+
     void Reset()
     {
         m_fEpocDelayStartTime = -1.0;
         m_bIsInEpocDelay = false;
         m_fSpeedBeforeStop = 0.0;
+        m_fPeakPowerWatts = 0.0;
+        m_fLastPowerWatts = 0.0;
     }
 }

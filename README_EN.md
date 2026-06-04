@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.23.1
+# Realistic Stamina System (RSS) v6.0.0
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.23.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
@@ -17,19 +17,20 @@ It dynamically adjusts movement speed based on stamina, encumbrance, slope, envi
 
 ## Highlights
 
-- **Dual-state “stress/performance” model**: performance plateau at high stamina, smooth degradation near exhaustion.
-- **Wall-hit smoothing**: damping transition around the critical stamina threshold.
-- **Slope-adaptive movement**: slope-aware pacing and energy cost.
-- **Encumbrance system**: load affects “fuel economy” (stamina drain) more than hard speed caps.
-- **Pandolf-based drain**: all walking/running/sprinting stamina costs are computed using the Pandolf energy formula instead of fixed rates.
+- **v6 CP–W′ power budget**: Pandolf/ACSM metabolism → dynamic CP → W′ joules; Sprint = `invert(P_available)`.
+- **Phase-based march speeds**: Walk/Run/Sprint use configured m/s targets; **no 25% willpower plateau**.
+- **Elite Skiba W′ refill**; Standard/Tactical linear recovery + tiered cooldown.
+- **v_drain closed loop**: drain and `SetSpeedLimit` share `m_fAppliedSpeedLimitMs`.
+- **Slope-adaptive pacing**: Tobler-based uphill/downhill speed feedback.
+- **Encumbrance system**: load affects metabolic cost and dynamic CP more than hard speed caps.
 - **Movement types**: Idle / Walk / Run / Sprint.
 - **Environmental stress**: heat stress + rain wet weight.
 - **Swimming stamina management**: 3D physical model (drag + vertical work + treading).
-- **EPOC delay**: post-exercise oxygen consumption delay logic.
-- **Debug/status output**: 1s status + 5s detailed debug info (client-side).
-- **Modular architecture**: stamina update coordination, swimming state, debug display, etc.
+- **EPOC delay**: post-exercise oxygen consumption tied to peak exercise power.
+- **Modular architecture**: metabolism model, CP model, update coordination, etc.
 
-For the full, detailed (and frequently updated) explanation, see:
+For the full v6 calculation reference, see:
+- **`docs/RSS_v6_计算逻辑权威版.md`** (authoritative v6 logic, Chinese)
 - **Changelog**: `CHANGELOG.md`
 - **Chinese full README**: `README_CN.md`
 

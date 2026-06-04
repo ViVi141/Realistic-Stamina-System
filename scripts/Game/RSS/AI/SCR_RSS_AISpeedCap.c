@@ -98,14 +98,10 @@ class SCR_RSS_AISpeedCap
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 连续速度衰减曲线：与玩家系统同源的指数公式。
-    //! SpeedMul = 0.3 + 0.7 × staminaPercent ^ 0.6
+    //! 连续速度衰减曲线：v6 与玩家同源（相位目标 + 低 STA 跛行，无平台期）
     static float GetContinuousSpeedMultiplier(float staminaPercent01)
     {
-        float clamped = Math.Clamp(staminaPercent01, 0.0, 1.0);
-        float minMul = SCR_RSS_Constants.RSS_AI_SPEED_CONTINUOUS_MIN;
-        float range = 1.0 - minMul;
-        return minMul + range * Math.Pow(clamped, SCR_RSS_MetabolismMath.STAMINA_EXPONENT);
+        return SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(staminaPercent01, 2, 0.0);
     }
 
     //------------------------------------------------------------------------------------------------

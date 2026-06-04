@@ -1,5 +1,18 @@
 # 更新日志
 
+## [6.0.0] - 2026-06-04
+
+### v6 CP–W′ 学术拟真重构
+
+- **代谢统一** — `SCR_RSS_MetabolismModel`（Pandolf + ACSM 混合 + `InvertSpeedForPowerWatts`）；`v_drain = min(v_meas, appliedLimit)`
+- **CP–W′** — `SCR_RSS_CriticalPowerModel`（焦耳 W′、动态 CP load/slope/fatigue、Elite Skiba 双指数再填充）
+- **移除意志力平台期** — `CalculateSpeedMultiplierByStamina` 转发至 `CalculateV6PhaseSpeedMultiplier`（低 STA 跛行 only）
+- **Integration** — `TickPower` + `SetRuntimeContext`；`GetRssSprintAllowed` 走 CP 模型；`m_fAppliedSpeedLimitMs`
+- **疲劳/EPOC** — 积分疲劳 I(t)；EPOC drain ∝ 峰值功率
+- **AI** — `SCR_RSS_AISpeedCap` 与玩家同源 v6 相位曲线
+- **工具** — `test_v6_smoke.py`、`test_acft_2mile.py`；Python 孪生 v6 CP/W′；`bench_physio_anchors` v6 sprint 验收
+- **配置** — `m_sConfigVersion` / `ConfigManager` → 6.0.0；Params +4（CP/W′/sprint cap）
+
 ## [5.0.0] - 2026-06-04
 
 ### v5 双池体力系统（正式）

@@ -42,6 +42,12 @@ class SCR_RSS_StaminaState
         m_fAnaerobicBurst = Math.Clamp(value, 0.0, 1.0);
     }
 
+    void SetAnaerobicFromCpModel(SCR_RSS_CriticalPowerModel cpModel)
+    {
+        if (cpModel)
+            m_fAnaerobicBurst = cpModel.GetPool01();
+    }
+
     bool IsSprintAllowed()
     {
         if (m_bCollapseState)
@@ -51,5 +57,12 @@ class SCR_RSS_StaminaState
         if (m_fAerobicStamina < SCR_RSS_Constants.SPRINT_ENABLE_THRESHOLD)
             return false;
         return true;
+    }
+
+    bool IsSprintAllowedWithCp(SCR_RSS_CriticalPowerModel cpModel, float worldTimeSec)
+    {
+        if (!cpModel)
+            return IsSprintAllowed();
+        return cpModel.IsSprintAllowed(m_fAerobicStamina, m_bCollapseState, worldTimeSec);
     }
 }

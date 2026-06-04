@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.23.1
+# Realistic Stamina System (RSS) v6.0.0
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.23.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -33,9 +33,8 @@
 
 ### 主要特性
 
-- ✅ **双稳态-应激性能模型**：平台期（25%-100%体力）保持恒定速度，衰减期（0%-25%）平滑下降
-  - 使用SmoothStep函数实现25%-5%的平滑过渡缓冲区，避免突兀的"撞墙"效果
-  - 模拟意志力克服早期疲劳，生理崩溃时的平滑衰减
+- ✅ **v6 CP–W′ 功率预算**：Pandolf/ACSM 代谢 → 动态 CP → W′ 焦耳放电/再填充（Elite Skiba 双指数）
+- ✅ **相位行军档速度**：Walk/Run/Sprint 按配置 m/s 目标；低体力仅跛行（无 25% 意志力平台期）
 - ✅ **5秒阻尼过渡（"撞墙"瞬间优化）**：在体力触及25%临界点时，使用5秒时间阻尼过渡
   - 让玩家感觉角色"腿越来越重"，而不是"引擎突然断油"
   - 使用SmoothStep函数实现渐进式速度下降（从3.7 m/s逐渐降到约2.2 m/s）
@@ -398,7 +397,8 @@ RealisticStaminaSystem/
 
 **配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。详见 [docs/config_sync_summary.md](docs/config_sync_summary.md)。
 
-- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 体力系统计算逻辑与常量说明
+- **[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)** - v6.0.0 CP–W′ 计算逻辑（权威）
+- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 历史归档（v3/v5）
 - **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
 - **[tools/README.md](tools/README.md)** - 工具集完整文档
 

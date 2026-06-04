@@ -785,14 +785,57 @@ class SCR_RSS_ConfigBridge
 
     static float GetAnaerobicDrainPerSec()
     {
+        return 0.12;
+    }
+
+    static float GetCriticalPowerWatts()
+    {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
-            if (params && params.anaerobic_drain_per_sec > 0.0)
-                return params.anaerobic_drain_per_sec;
+            if (params && params.critical_power_watts > 1.0)
+                return params.critical_power_watts;
+            if (params && params.sustainable_watts > 1.0)
+                return params.sustainable_watts;
         }
-        return 0.12;
+        return SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+    }
+
+    static float GetWPrimeMaxJoules()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.w_prime_max_joules > 1.0)
+                return params.w_prime_max_joules;
+        }
+        return SCR_RSS_Constants.V6_W_PRIME_MAX_JOULES_DEFAULT;
+    }
+
+    static float GetWPrimeRecoveryWPerSec()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.w_prime_recovery_w_per_s > 0.0)
+                return params.w_prime_recovery_w_per_s;
+        }
+        return SCR_RSS_Constants.V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT;
+    }
+
+    static float GetSprintPowerCapWatts()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.sprint_power_cap_watts > 1.0)
+                return params.sprint_power_cap_watts;
+        }
+        return SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT;
     }
 
 }

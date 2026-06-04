@@ -13,7 +13,8 @@
 class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
-    static const int PARAMS_ARRAY_SIZE = 59;  // v5: 双池/行军档（无 legacy 字段）
+    static const int PARAMS_ARRAY_SIZE = 63;  // v6: +CP/W'/sprint cap
+    static const int PARAMS_ARRAY_SIZE_V5 = 59;
     static const int PARAMS_ARRAY_SIZE_LEGACY = 49;  // v3.22.x 网络包无蹲姿恢复槽
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
@@ -24,7 +25,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.0.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
@@ -163,7 +164,7 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.02;
 	m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_EliteStandard.env_surface_wetness_prone_penalty = 0.15;
-	ApplyV5ParamsDefaults(m_EliteStandard);
+	ApplyV6TierCpDefaults(m_EliteStandard, 0);
 }
 
 
@@ -229,7 +230,7 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.02;
 	m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_StandardMilsim.env_surface_wetness_prone_penalty = 0.15;
-	ApplyV5ParamsDefaults(m_StandardMilsim);
+	ApplyV6TierCpDefaults(m_StandardMilsim, 1);
 }
 
 
@@ -295,7 +296,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.02;
 	m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_TacticalAction.env_surface_wetness_prone_penalty = 0.15;
-	ApplyV5ParamsDefaults(m_TacticalAction);
+	ApplyV6TierCpDefaults(m_TacticalAction, 2);
 }
 
 
@@ -374,7 +375,7 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_fAltitudeMeters = 0.0;
         m_bMapOverWater = false;
         m_fFogDensity = 0.0;
-        ApplyV5ParamsDefaults(m_Custom);
+        ApplyV6TierCpDefaults(m_Custom, 1);
     }
 
     //! v5 双池参数字段默认值（三档预设 + Custom 共用）
@@ -391,6 +392,55 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         p.burst_cooldown_short_seconds = SCR_RSS_Constants.V5_BURST_COOLDOWN_SHORT_DEFAULT;
         p.anaerobic_drain_per_sec = 0.12;
         p.anaerobic_recovery_per_sec = SCR_RSS_Constants.V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT;
+        p.critical_power_watts = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+        p.w_prime_max_joules = SCR_RSS_Constants.V6_W_PRIME_MAX_JOULES_DEFAULT;
+        p.w_prime_recovery_w_per_s = SCR_RSS_Constants.V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT;
+        p.sprint_power_cap_watts = SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT;
+    }
+
+    //! v6 三档 CP-W' 分化（Elite=0 Standard=1 Tactical=2）
+    protected void ApplyV6TierCpDefaults(SCR_RSS_Params p, int tier)
+    {
+        if (!p)
+            return;
+        ApplyV5ParamsDefaults(p);
+        if (tier == 0)
+        {
+            p.critical_power_watts = 400.0;
+            p.w_prime_max_joules = 20000.0;
+            p.w_prime_recovery_w_per_s = 12.0;
+            p.sprint_power_cap_watts = 1450.0;
+            p.v5_walk_speed_ms = 1.4;
+            p.v5_run_speed_ms = 2.8;
+            p.v5_sprint_speed_ms = 4.0;
+            p.burst_cooldown_full_seconds = 180.0;
+            p.burst_cooldown_short_seconds = 75.0;
+        }
+        else if (tier == 1)
+        {
+            p.critical_power_watts = 420.0;
+            p.w_prime_max_joules = 24000.0;
+            p.w_prime_recovery_w_per_s = 15.0;
+            p.sprint_power_cap_watts = 1350.0;
+            p.v5_walk_speed_ms = 1.5;
+            p.v5_run_speed_ms = 3.0;
+            p.v5_sprint_speed_ms = 4.2;
+            p.burst_cooldown_full_seconds = 120.0;
+            p.burst_cooldown_short_seconds = 60.0;
+        }
+        else
+        {
+            p.critical_power_watts = 480.0;
+            p.w_prime_max_joules = 28000.0;
+            p.w_prime_recovery_w_per_s = 18.0;
+            p.sprint_power_cap_watts = 1500.0;
+            p.v5_walk_speed_ms = 1.6;
+            p.v5_run_speed_ms = 3.2;
+            p.v5_sprint_speed_ms = 4.5;
+            p.burst_cooldown_full_seconds = 90.0;
+            p.burst_cooldown_short_seconds = 45.0;
+        }
+        p.sustainable_watts = p.critical_power_watts;
     }
 
     // ==================== 调试配置 ====================
@@ -624,6 +674,10 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outArr.Insert(p.burst_cooldown_short_seconds);
         outArr.Insert(p.anaerobic_drain_per_sec);
         outArr.Insert(p.anaerobic_recovery_per_sec);
+        outArr.Insert(p.critical_power_watts);
+        outArr.Insert(p.w_prime_max_joules);
+        outArr.Insert(p.w_prime_recovery_w_per_s);
+        outArr.Insert(p.sprint_power_cap_watts);
     }
 
     static void ApplyParamsFromArray(SCR_RSS_Params p, array<float> values)
@@ -664,6 +718,20 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             migratedV5.Insert(0.12);
             migratedV5.Insert(SCR_RSS_Constants.V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT);
             ApplyParamsFromArray(p, migratedV5);
+            return;
+        }
+
+        if (values.Count() == PARAMS_ARRAY_SIZE_V5)
+        {
+            array<float> migratedV6 = new array<float>();
+            int m;
+            for (m = 0; m < PARAMS_ARRAY_SIZE_V5; m++)
+                migratedV6.Insert(values[m]);
+            migratedV6.Insert(SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT);
+            migratedV6.Insert(SCR_RSS_Constants.V6_W_PRIME_MAX_JOULES_DEFAULT);
+            migratedV6.Insert(SCR_RSS_Constants.V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT);
+            migratedV6.Insert(SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT);
+            ApplyParamsFromArray(p, migratedV6);
             return;
         }
 
@@ -730,6 +798,13 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         p.burst_cooldown_short_seconds = values[i++];
         p.anaerobic_drain_per_sec = values[i++];
         p.anaerobic_recovery_per_sec = values[i++];
+        if (values.Count() >= PARAMS_ARRAY_SIZE)
+        {
+            p.critical_power_watts = values[i++];
+            p.w_prime_max_joules = values[i++];
+            p.w_prime_recovery_w_per_s = values[i++];
+            p.sprint_power_cap_watts = values[i++];
+        }
     }
 
     static void WriteSettingsToArrays(SCR_RSS_Settings s, array<float> outFloats, array<int> outInts, array<bool> outBools)

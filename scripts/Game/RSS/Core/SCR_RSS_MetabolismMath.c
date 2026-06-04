@@ -116,53 +116,10 @@ class SCR_RSS_MetabolismMath
     //
     // @param staminaPercent 当前体力百分比 (0.0-1.0)
     // @return 速度倍数（相对于游戏最大速度）
+    // @deprecated v6 保留 legacy 调用；新代码请用 CalculateV6PhaseSpeedMultiplier
     static float CalculateSpeedMultiplierByStamina(float staminaPercent)
     {
-        // 确保体力百分比在有效范围内
-        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
-        
-        float baseSpeedMultiplier = 0.0;
-        
-        float smoothTransitionStart = SCR_RSS_ConfigBridge.GetSmoothTransitionStart();
-        
-        if (staminaPercent >= smoothTransitionStart)
-        {
-            // 意志力平台期（smoothTransitionStart%-100%）：保持恒定目标速度（3.8 m/s）
-            // 模拟士兵通过意志力克服早期疲劳，维持恒定性能
-            baseSpeedMultiplier = TARGET_RUN_SPEED_MULTIPLIER;
-        }
-        else if (staminaPercent >= SMOOTH_TRANSITION_END)
-        {
-            // 平滑过渡期（5%-smoothTransitionStart%）：使用SmoothStep建立缓冲区，避免突兀的"撞墙"效果
-            // 让开始下降时更柔和，接近力竭时下降更快
-            // t = (stamina - SMOOTH_TRANSITION_END) / (smoothTransitionStart - SMOOTH_TRANSITION_END)
-            // smoothT = t² × (3 - 2t)，这是一个平滑的S型曲线
-            float t = (staminaPercent - SMOOTH_TRANSITION_END) / (smoothTransitionStart - SMOOTH_TRANSITION_END); // 0.0-1.0
-            t = Math.Clamp(t, 0.0, 1.0);
-            float smoothT = t * t * (3.0 - 2.0 * t); // smoothstep函数
-            
-            // 在目标速度和跛行速度之间平滑过渡
-            // 当体力从25%降到5%时，速度从3.8 m/s平滑降到跛行速度
-            baseSpeedMultiplier = MIN_LIMP_SPEED_MULTIPLIER + (TARGET_RUN_SPEED_MULTIPLIER - MIN_LIMP_SPEED_MULTIPLIER) * smoothT;
-        }
-        else
-        {
-            // 生理崩溃期（0%-5%）：速度快速线性下降到跛行速度
-            // 0.05时为平滑过渡终点速度，0时为1.0m/s（MIN_LIMP_SPEED_MULTIPLIER）
-            float collapseFactor = staminaPercent / SMOOTH_TRANSITION_END; // 0.0-1.0
-            // 计算平滑过渡终点的速度（在5%体力时，此时smoothT=0，速度为MIN_LIMP_SPEED_MULTIPLIER）
-            baseSpeedMultiplier = MIN_LIMP_SPEED_MULTIPLIER * collapseFactor;
-            // 确保不会低于最小速度
-            baseSpeedMultiplier = Math.Max(baseSpeedMultiplier, MIN_LIMP_SPEED_MULTIPLIER * 0.8); // 最低不低于跛行速度的80%
-        }
-        
-        // 应用最小速度限制（防止体力完全耗尽时无法移动）
-        baseSpeedMultiplier = Math.Max(baseSpeedMultiplier, MIN_SPEED_MULTIPLIER);
-        
-        // 应用最大速度限制（防止超过游戏引擎限制）
-        baseSpeedMultiplier = Math.Min(baseSpeedMultiplier, MAX_SPEED_MULTIPLIER);
-        
-        return baseSpeedMultiplier;
+        return SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(staminaPercent, 2, 0.0);
     }
 
     // 获取基于当前负重惩罚的“跛行”速度倍率
@@ -584,163 +541,29 @@ class SCR_RSS_MetabolismMath
         // 所有移动阶段使用 Pandolf 公式计算消耗，再乘以负重因子。
         // 由于本函数并不直接感知坡度，将其设为0（平地）。
         const float gradePercent = 0.0;
-        float pandolf = CalculatePandolfDrain(velocity, currentWeight, gradePercent);
-        return pandolf * loadFactor;
+        float pandolfPerS = SCR_RSS_MetabolismModel.CalculatePandolfEnergyExpenditure(
+            velocity, currentWeight + CHARACTER_WEIGHT, gradePercent, 1.0, true, -1);
+        return pandolfPerS * 0.2 * loadFactor;
     }
-    
-    // 计算坡度修正乘数（基于百分比坡度，改进的下坡逻辑）
 
-    // ==================== Pandolf 消耗模型 ====================
-    // 使用完整的 Pandolf 能量消耗公式来计算速度阶段上的体力掉点。
-    // 本函数返回每0.2秒的体力消耗率（正值）。
-    // @param velocity 当前水平速度 (m/s)
-    // @param currentWeight 载具/装备总重 (kg)
-    // @param gradePercent 坡度百分比（例如 5% = 5.0）
-    // @return 耗率（正值，负表示恢复）
-    static float CalculatePandolfDrain(float velocity, float currentWeight, float gradePercent)
+    // ==================== Pandolf / 静态（v6 委托 SCR_RSS_MetabolismModel）====================
+
+    static float CalculatePandolfEnergyExpenditure(
+        float velocity,
+        float currentWeight,
+        float gradePercent,
+        float terrainFactor,
+        bool useSanteeCorrection)
     {
-        // Pandolf公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))
-        // 其中 M = (body+load)/referenceWeight
-        float bodyMass = CHARACTER_WEIGHT;
-        float totalMass = bodyMass + currentWeight;
-        float M = totalMass / REFERENCE_WEIGHT;
-        float V = velocity;
-        float G = gradePercent * 0.01; // 转换为小数
-        
-        float vOffset = PANDOLF_VELOCITY_OFFSET;
-        // Align with CalculatePandolfEnergyExpenditure: apply fitness bonus (0.80)
-        float fitnessBonus = SCR_RSS_Constants.FIXED_PANDOLF_FITNESS_BONUS;
-        float baseCoeff = PANDOLF_BASE_COEFF * fitnessBonus;
-        float velCoeff = PANDOLF_VELOCITY_COEFF;
-        float gradeBase = PANDOLF_GRADE_BASE_COEFF;
-        float gradeVel = PANDOLF_GRADE_VELOCITY_COEFF;
-        
-        float E = M * (baseCoeff + velCoeff * (V - vOffset) * (V - vOffset) + G * (gradeBase + gradeVel * V * V));
-        // 转换为每0.2s体力点
-        // 转换为每秒体力消耗率（从配置管理器获取最新系数）
-        float energyToStamina = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
-        float drainPerSec = E * energyToStamina;
-        // 每次 UpdateSpeedBasedOnStamina 调用间隔 0.2 秒
-        return drainPerSec * 0.2;
+        return SCR_RSS_MetabolismModel.CalculatePandolfEnergyExpenditure(
+            velocity, currentWeight, gradePercent, terrainFactor, useSanteeCorrection, -1);
     }
-    // 计算基于完整 Pandolf 模型的体力消耗率（包括坡度项、地形系数、Santee下坡修正）
-    // 
-    // 完整 Pandolf 模型公式：E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²)) · η
-    // 其中：
-    //   E = 能量消耗率（W/kg）
-    //   M = 总重量（身体重量 + 负重）
-    //   V = 速度（m/s）
-    //   G = 坡度（坡度百分比，例如 5% = 0.05，正数=上坡，负数=下坡）
-    //   η = 地形系数（Terrain Factor，1.0-1.8）
-    // 
-    // 简化版本（平地，G=0，η=1.0）：E = M·(2.7 + 3.2·(V-0.7)²)
-    // 
-    // 对于游戏实现，我们需要：
-    // 1. 将能量消耗率（W/kg）转换为体力消耗率（%/s）
-    // 2. 考虑负重的相对影响（相对于身体重量）
-    // 3. 将坡度项 G·(0.23 + 1.34·V²) 整合到计算中
-    // 4. 应用地形系数 η（影响移动消耗）
-    // 5. 应用 Santee 下坡修正（下坡超过-15%时的离心收缩）
-    //
-    // @param velocity 当前速度（m/s）
-    // @param currentWeight 当前总重量（kg），包括身体重量和负重
-    // @param gradePercent 坡度百分比（例如，5% = 5.0，-15% = -15.0），默认0.0（平地）
-    // @param terrainFactor 地形系数（η，1.0-1.8），默认1.0（铺装路面）
-    // @param useSanteeCorrection 是否使用 Santee 下坡修正，默认true
-    // @return 体力消耗率（%/s，每0.2秒的消耗率需要乘以 0.2）
-    static float CalculatePandolfEnergyExpenditure(float velocity, float currentWeight, float gradePercent = 0.0, float terrainFactor = 1.0, bool useSanteeCorrection = true)
+
+    static float CalculateStaticStandingCost(float bodyWeight, float loadWeight)
     {
-        // Pandolf 模型常量（使用类常量，避免变量名冲突）
-        
-        // 确保速度和重量有效
-        velocity = Math.Max(velocity, 0.0);
-        currentWeight = Math.Max(currentWeight, 0.0);
-        
-        // 速度接近 0 时不应返回“恢复”（负数）。移动阶段的低速通常来自限速/起步，
-        // 生理上仍存在静态支撑与姿态维持成本；此处用静态负重站立消耗回退。
-        if (velocity < 0.1)
-        {
-            float bodyWeight = CHARACTER_WEIGHT; // 90kg
-            float loadWeight = Math.Max(currentWeight - bodyWeight, 0.0);
-            float staticDrain = CalculateStaticStandingCost(bodyWeight, loadWeight);
-            return Math.Max(staticDrain, 0.0);
-        }
-        
-        // 计算基础项：2.7 + 3.2·(V-0.7)²
-        // 优化：对于顶尖运动员，运动时的经济性（Running Economy）更高
-        // 添加 fitness bonus 来降低基础代谢项
-        float velocityTerm = velocity - PANDOLF_VELOCITY_OFFSET;
-        float velocitySquaredTerm = velocityTerm * velocityTerm;
-        // 固定值（FITNESS_LEVEL=1.0）：1.0 - 0.2 × 1.0 = 0.80，防止不平等游玩
-        float fitnessBonus = SCR_RSS_Constants.FIXED_PANDOLF_FITNESS_BONUS;
-        float baseTerm = (PANDOLF_BASE_COEFF * fitnessBonus) + (PANDOLF_VELOCITY_COEFF * velocitySquaredTerm);
-        
-        // 计算坡度项：G·(0.23 + 1.34·V²)（Pandolf 原始项）
-        // 注意：坡度百分比需要转换为小数（例如 5% = 0.05）
-        float gradeDecimal = gradePercent * 0.01; // 转换为小数
-        float velocitySquared = velocity * velocity;
-        float gradeTerm = gradeDecimal * (PANDOLF_GRADE_BASE_COEFF + (PANDOLF_GRADE_VELOCITY_COEFF * velocitySquared));
-        
-        // 坡度保护：限制坡度项的最大贡献，防止极端坡度导致消耗爆炸
-        // 坡度项不应超过基础项的3倍（即最多增加300%消耗）
-        float maxGradeTerm = baseTerm * 3.0;
-        gradeTerm = Math.Min(gradeTerm, maxGradeTerm);
-        
-        // 生理学修正：缓下坡更省能、陡下坡刹车耗能（Margaria / Santee 等）
-        // 1) 缓下坡（约 0～-12%）：能耗最低区，放大 Pandolf 负坡度项的“省能”效果
-        if (gradePercent < 0.0 && gradePercent > -SCR_RSS_Constants.GENTLE_DOWNHILL_GRADE_MAX)
-        {
-            gradeTerm = gradeTerm * SCR_RSS_Constants.GENTLE_DOWNHILL_SAVINGS_MULTIPLIER;
-        }
-        // 2) 陡下坡（< -15%）：离心收缩/刹车导致能耗回升，叠加正向惩罚项
-        float steepDownhillPenalty = 0.0;
-        if (useSanteeCorrection && gradePercent < -SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD)
-        {
-            float absGrade = Math.AbsFloat(gradePercent);
-            float ramp = (absGrade - SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD) / 15.0;
-            if (ramp > 1.0)
-                ramp = 1.0;
-            steepDownhillPenalty = baseTerm * ramp * SCR_RSS_Constants.STEEP_DOWNHILL_PENALTY_MAX_FRACTION;
-        }
-        
-        // 应用地形系数：η
-        // 地形系数直接影响移动消耗，铺装路面 η=1.0，草地 η=1.2，沙地 η=1.8
-        terrainFactor = Math.Clamp(terrainFactor, 0.5, 3.0); // 限制在合理范围内
-        
-        // 完整的 Pandolf 能量消耗率：E = M·(基础项 + 坡度项 + 陡下坡惩罚) · η
-        // 注意：M 是总重量（kg），但我们使用相对于基准体重的倍数
-        // 使用标准体重（70kg）作为参考，计算相对重量倍数
-        float weightMultiplier = currentWeight / REFERENCE_WEIGHT;
-        // [修复] 与Python数字孪生保持一致，将下限从0.5改为0.1
-        // 只防止负数，不限制上限（完全尊重玩家选择）
-        weightMultiplier = Math.Max(weightMultiplier, 0.1); // 与Python一致
-
-        // [修复] 根据原始 Pandolf 公式，必须乘以 REFERENCE_WEIGHT 才能得到总瓦特数（Watts）
-        // 原始公式：E = M · (基础项 + 坡度项 + 陡下坡惩罚) · η；陡下坡惩罚仅在下坡 < -15% 时非零
-        float energyExpenditure = weightMultiplier * (baseTerm + gradeTerm + steepDownhillPenalty) * terrainFactor * REFERENCE_WEIGHT;
-        
-        // debug: log intermediates when debug enabled
-        if (SCR_RSS_ConfigBridge.IsDebugEnabled())
-        {
-        }
-        
-        // 将能量消耗率（W/kg）转换为体力消耗率（%/s）
-        // 优化：降低转换系数，让体力槽更耐用，达到ACFT标准（15:27完成2英里）
-        // 从0.0001降低到0.000015，减少约85%的体力消耗速度
-        float energyToStaminaCoeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
-        // clamp coefficient to sane range (avoid config typo)
-        energyToStaminaCoeff = Math.Clamp(energyToStaminaCoeff, 0.0, 0.1);
-        float staminaDrainRate = energyExpenditure * energyToStaminaCoeff;
-        
-        // debug: log coefficient and drain
-        
-        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
-        // 只防止负数，不限制上限
-        staminaDrainRate = Math.Max(staminaDrainRate, 0.0);
-
-        return staminaDrainRate;
+        return SCR_RSS_MetabolismModel.CalculateStaticStandingCost(bodyWeight, loadWeight);
     }
-    
+
     // 计算坡度自适应目标速度（坡度-速度负反馈）
     // 
     // 问题分析：现实中人爬坡时，会自动缩短步幅、降低速度以维持心肺负荷（体力消耗）。
@@ -912,59 +735,6 @@ class SCR_RSS_MetabolismMath
         }
 
         return Math.Clamp(1.8 + (density - 2.94) * 0.08, 1.8, 2.5);
-    }
-    
-    // ==================== 静态负重站立消耗（Pandolf 静态项）====================
-    // 基于 Pandolf 模型：当 V=0 时，背负重物原地站立也会消耗体力
-    // Pandolf 静态项公式：E_standing = 1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
-    // 其中：
-    //   W_body = 身体重量（kg）
-    //   L = 负重（kg）
-    // 
-    // @param bodyWeight 身体重量（kg），默认90kg
-    // @param loadWeight 负重（kg），当前携带的物品重量
-    // @return 静态站立消耗率（%/s），负数表示恢复，正数表示消耗
-    static float CalculateStaticStandingCost(float bodyWeight = 90.0, float loadWeight = 0.0)
-    {
-        // Pandolf 静态项常量（使用类常量，避免变量名冲突）
-        
-        // 确保重量有效
-        bodyWeight = Math.Max(bodyWeight, 0.0);
-        loadWeight = Math.Max(loadWeight, 0.0);
-        
-        // 空载时返回恢复率（负数）
-        if (loadWeight < 5.0)
-            return -0.0025; // 恢复率（负数）
-        
-        // 轻负重时返回小的恢复率
-        if (loadWeight < 15.0)
-            return -0.001; // 轻微恢复
-        
-        // 计算静态项：1.5·W_body + 2.0·(W_body + L)·(L/W_body)²
-        float baseStaticTerm = PANDOLF_STATIC_COEFF_1 * bodyWeight;
-        
-        float loadRatio = 0.0;
-        if (bodyWeight > 0.0)
-            loadRatio = loadWeight / bodyWeight;
-        
-        float loadStaticTerm = 0.0;
-        if (loadWeight > 0.0)
-        {
-            float loadRatioSquared = loadRatio * loadRatio;
-            loadStaticTerm = PANDOLF_STATIC_COEFF_2 * (bodyWeight + loadWeight) * loadRatioSquared;
-        }
-        
-        float staticEnergyExpenditure = baseStaticTerm + loadStaticTerm;
-        
-        // 将能量消耗率（W）转换为体力消耗率（%/s）
-        float energyToStaminaCoeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
-        float staticDrainRate = staticEnergyExpenditure * energyToStaminaCoeff;
-        
-        // [修复] 完全移除 clip 上限，让 Pandolf 模型自然输出
-        // 只防止负数，不限制上限
-        staticDrainRate = Math.Max(staticDrainRate, 0.0);
-
-        return staticDrainRate;
     }
 
 }

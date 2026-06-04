@@ -11,9 +11,11 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from rss_digital_twin_fix import (
     V5AnaerobicState,
+    V6CriticalPowerState,
     get_drain_velocity_ms,
     get_metabolic_overspeed_factor,
     simulate_ideal_march_aerobic_end,
+    simulate_v6_sprint_seconds,
 )
 
 
@@ -56,7 +58,15 @@ def main() -> int:
     else:
         print("  [PASS] sprint cooldown >= 120s")
 
-    # march 4h aerobic @ 35kg — 孪生已接入，待 v5 消耗率校准后改为 PASS/FAIL
+    # v6 CP-W' sprint @ 35kg Elite
+    v6_sprint_t = simulate_v6_sprint_seconds(load_kg=35.0, cp0=400.0)
+    if v6_sprint_t <= 15.0:
+        print(f"  [PASS] v6 sprint burst {v6_sprint_t:.2f}s <= 15s")
+    else:
+        print(f"  [FAIL] v6 sprint burst {v6_sprint_t:.2f}s > 15s")
+        failed += 1
+
+    # march 4h aerobic @ 35kg
     aerobic_end = simulate_ideal_march_aerobic_end(hours=4.0, encumbrance_kg=35.0)
     if aerobic_end >= 0.20:
         print(f"  [PASS] 35kg march 4h aerobic_end={aerobic_end:.3f} >= 0.20")

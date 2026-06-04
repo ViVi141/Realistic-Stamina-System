@@ -15,6 +15,39 @@ class SCR_RSS_SpeedCalculator
 
     // ==================== 公共方法 ====================
     
+    //! v6：相位目标速度倍率（无意志力平台期；低 STA 仅跛行）
+    static float CalculateV6PhaseSpeedMultiplier(
+        float staminaPercent,
+        int movementPhase,
+        float encumbranceSpeedPenalty)
+    {
+        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+
+        float walkMs = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs();
+        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
+        float sprintMs = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs();
+        float encMult = 1.0 - encumbranceSpeedPenalty;
+        if (encMult < 0.5)
+            encMult = 0.5;
+
+        float targetMs = runMs;
+        if (movementPhase == 3)
+            targetMs = sprintMs;
+        else if (movementPhase == 1)
+            targetMs = walkMs;
+        targetMs = targetMs * encMult;
+
+        float runMult = targetMs / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        float limpThreshold = SCR_RSS_Constants.SMOOTH_TRANSITION_END;
+        if (staminaPercent >= limpThreshold)
+            return Math.Clamp(runMult, SCR_RSS_Constants.MIN_SPEED_MULTIPLIER, 1.0);
+
+        float t = staminaPercent / limpThreshold;
+        t = Math.Clamp(t, 0.0, 1.0);
+        float limpMult = SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier(encumbranceSpeedPenalty);
+        return Math.Max(limpMult * t, SCR_RSS_Constants.MIN_SPEED_MULTIPLIER);
+    }
+
     // 计算基础速度倍数（根据体力百分比）
     // @param staminaPercent 当前体力百分比 (0.0-1.0)
     // @param collapseTransition "撞墙"阻尼过渡模块引用
@@ -22,20 +55,46 @@ class SCR_RSS_SpeedCalculator
     // @return 基础速度倍数
     static float CalculateBaseSpeedMultiplier(float staminaPercent, SCR_RSS_CollapseTransition collapseTransition, float currentWorldTime)
     {
-        // 更新"撞墙"阻尼过渡模块状态
         if (collapseTransition)
             collapseTransition.Update(currentWorldTime, staminaPercent);
-        
-        // 先计算正常情况下的基础速度倍数
-        float normalBaseSpeedMultiplier = SCR_RSS_MetabolismMath.CalculateSpeedMultiplierByStamina(staminaPercent);
-        
-        // 如果处于5秒阻尼过渡期间，使用模块计算过渡速度
+
+        float baseMult = CalculateV6PhaseSpeedMultiplier(staminaPercent, 2, 0.0);
+
         if (collapseTransition && collapseTransition.IsInTransition())
-        {
-            return collapseTransition.CalculateTransitionSpeedMultiplier(currentWorldTime, normalBaseSpeedMultiplier);
-        }
-        
-        return normalBaseSpeedMultiplier;
+            return collapseTransition.CalculateTransitionSpeedMultiplier(currentWorldTime, baseMult);
+
+        return baseMult;
+    }
+
+    //! v6 Sprint 绝对速度：invert(P = available burst power)
+    static float GetV6SprintSpeedMs(
+        float encumbrancePenalty,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        SCR_RSS_CriticalPowerModel cpModel,
+        float worldTimeSec,
+        float timeDeltaSec)
+    {
+        float encMult = 1.0 - encumbrancePenalty;
+        if (encMult < 0.5)
+            encMult = 0.5;
+
+        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() * encMult;
+        if (!cpModel)
+            return SCR_RSS_ConfigBridge.GetV5SprintSpeedMs() * encMult;
+
+        float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+        if (cpModel.GetPool01() <= threshold)
+            return runMs;
+
+        float availableP = cpModel.GetAvailablePowerWatts(true, timeDeltaSec, worldTimeSec);
+        float sprintMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            availableP, totalWeightKg, gradePercent, terrainFactor, 3);
+        sprintMs = sprintMs * encMult;
+        if (sprintMs < runMs)
+            sprintMs = runMs;
+        return sprintMs;
     }
     
     // 计算坡度自适应目标速度
@@ -232,10 +291,9 @@ class SCR_RSS_SpeedCalculator
         }
         else if (currentMovementPhase == 1) // Walk
         {
-            float walkBaseSpeedMultiplier = SCR_RSS_MetabolismMath.CalculateSpeedMultiplierByStamina(staminaPercent);
-            finalSpeedMultiplier = (walkBaseSpeedMultiplier * 0.8) * (1.0 - encumbrancePenalty); // 提高Walk基础速度
-            
-            // 放宽Walk阶段的速度限制范围
+            float walkBaseSpeedMultiplier = CalculateV6PhaseSpeedMultiplier(
+                staminaPercent, 1, encumbrancePenalty);
+            finalSpeedMultiplier = walkBaseSpeedMultiplier * (1.0 - encumbrancePenalty);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.9);
         }
         else // Idle

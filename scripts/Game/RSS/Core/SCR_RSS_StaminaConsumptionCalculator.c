@@ -163,13 +163,12 @@ class SCR_RSS_StaminaConsumptionCalculator
             float weight_for_base = currentWeight + SCR_RSS_Constants.CHARACTER_WEIGHT; // 装备+湿重 + 人体
             baseDrainRateByVelocity = SCR_RSS_UpdateCoordinator.CalculateLandBaseDrainRate(
                 currentSpeed,
-                0.0,
+                -1.0,
                 weight_for_base,
                 gradePercent,
                 terrainFactor,
                 windDrag,
                 coldStaticPenalty,
-                isSprinting,
                 currentMovementPhase);
         }
 

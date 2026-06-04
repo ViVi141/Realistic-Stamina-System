@@ -73,6 +73,7 @@ modded class SCR_CharacterControllerComponent
     protected float m_fRssMudSlipCameraShake01 = 0.0;
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected float m_fLastRssEngineBaseForLimit = 0.0;
+    protected float m_fAppliedSpeedLimitMs = -1.0;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
     
@@ -850,7 +851,10 @@ modded class SCR_CharacterControllerComponent
 
         bool isSprintActive = IsSprinting() || (GetCurrentMovementPhase() == 3);
         float anaDrain = SCR_RSS_ConfigBridge.GetAnaerobicDrainPerSec();
-        m_pAnaerobicBurst.Tick(isSprintActive, currentTime, intervalSec, anaDrain);
+        float powerW = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+        if (isSprintActive)
+            powerW = powerW + anaDrain * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
+        m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, intervalSec);
         if (m_pStaminaState)
         {
             m_pStaminaState.SetAnaerobic(m_pAnaerobicBurst.GetPool());
@@ -862,8 +866,23 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaUpdateTime = currentTime;
     }
 
+    SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
+    {
+        return m_pAnaerobicBurst;
+    }
+
     bool GetRssSprintAllowed()
     {
+        float worldTime = 0.0;
+        if (GetGame() && GetGame().GetWorld())
+            worldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        if (m_pStaminaState && m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+        {
+            return m_pStaminaState.IsSprintAllowedWithCp(
+                m_pAnaerobicBurst.GetCpModel(), worldTime);
+        }
+
         if (GetRssSprintCooldownRemainingSec() > 0.0)
             return false;
 
