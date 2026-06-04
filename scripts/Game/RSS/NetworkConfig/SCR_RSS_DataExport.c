@@ -110,12 +110,12 @@ class SCR_RSS_DataExport
             if (!SCR_RSS_API.IsRssManaged(entity))
                 continue;
 
-            // 服务器端：玩家角色不运行 UpdateSpeedBasedOnStamina，EnvironmentFactor 缓存未更新。
+            // 服务器端：玩家角色不运行 UpdateSpeedBasedOnStamina，SCR_RSS_EnvironmentFactor 缓存未更新。
             // 导出前强制刷新环境因子（气温、降雨、室内等），使服务器能独立计算。
             SCR_CharacterControllerComponent ctrl = SCR_RSS_API.GetRssController(entity);
             if (ctrl && ctrl.HasRssData())
             {
-                EnvironmentFactor env = ctrl.GetRssEnvironmentFactor();
+                SCR_RSS_EnvironmentFactor env = ctrl.GetRssEnvironmentFactor();
                 if (env)
                 {
                     float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;

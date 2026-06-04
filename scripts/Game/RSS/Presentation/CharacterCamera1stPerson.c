@@ -14,7 +14,7 @@ modded class CharacterCamera1stPerson
     {
         super.OnUpdate(pDt, pOutResult);
 
-        if (StaminaConstants.IsRssPresentationNativeOnly())
+        if (SCR_RSS_Constants.IsRssPresentationNativeOnly())
             return;
 
         if (!m_ControllerComponent || !m_OwnerCharacter)
@@ -32,7 +32,7 @@ modded class CharacterCamera1stPerson
         float staminaPercent = GetStaminaPercent();
 
         float targetRaw = ComputeTargetSprintFovBonus(rssController, worldTimeSec, staminaPercent);
-        float tauTarget = StaminaConstants.GetCamSprintFovTargetSmoothTauSec();
+        float tauTarget = SCR_RSS_Constants.GetCamSprintFovTargetSmoothTauSec();
         float alphaTarget = 1.0;
         if (tauTarget > 0.0001 && pDt > 0.0)
             alphaTarget = 1.0 - Math.Pow(2.718281828, -pDt / tauTarget);
@@ -40,8 +40,8 @@ modded class CharacterCamera1stPerson
             alphaTarget = 1.0;
         m_fSprintFovTargetSmoothed = m_fSprintFovTargetSmoothed + (targetRaw - m_fSprintFovTargetSmoothed) * alphaTarget;
         float targetFovBonus = m_fSprintFovTargetSmoothed;
-        float blendUpSec = StaminaConstants.GetCamSprintFovBlendUpSec();
-        float blendDownSec = StaminaConstants.GetCamSprintFovBlendDownSec();
+        float blendUpSec = SCR_RSS_Constants.GetCamSprintFovBlendUpSec();
+        float blendDownSec = SCR_RSS_Constants.GetCamSprintFovBlendDownSec();
         float blendSec = blendUpSec;
         if (Math.AbsFloat(targetFovBonus) < Math.AbsFloat(m_fSprintFovBonusCurrent))
             blendSec = blendDownSec;
@@ -52,7 +52,7 @@ modded class CharacterCamera1stPerson
             float factor = 1.0 - Math.Pow(2.718281828, -speed * pDt);
             newValue = Math.Lerp(m_fSprintFovBonusCurrent, targetFovBonus, factor);
         }
-        float maxRate = StaminaConstants.GetCamSprintFovMaxRateDegPerSec();
+        float maxRate = SCR_RSS_Constants.GetCamSprintFovMaxRateDegPerSec();
         if (maxRate > 0.0 && pDt > 0.0)
         {
             float maxDelta = maxRate * pDt;
@@ -72,7 +72,7 @@ modded class CharacterCamera1stPerson
 
     protected void ApplyMudSlipCameraShake(float pDt, SCR_CharacterControllerComponent rssController, float fovBase, out ScriptedCameraItemResult pOutResult)
     {
-        if (!StaminaConfigBridge.IsMudSlipMechanismEnabled())
+        if (!SCR_RSS_ConfigBridge.IsMudSlipMechanismEnabled())
         {
             m_fMudSlipShakeSmoothed01 = 0.0;
             m_fMudSlipShakePhaseRad = 0.0;
@@ -81,7 +81,7 @@ modded class CharacterCamera1stPerson
         }
 
         float targetStress = rssController.RSS_GetMudSlipCameraShake01();
-        float smoothRate = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
+        float smoothRate = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
         float blend = smoothRate * pDt;
         if (blend > 1.0)
             blend = 1.0;
@@ -94,16 +94,16 @@ modded class CharacterCamera1stPerson
             return;
         }
 
-        float freq = StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
-        freq = freq + stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
+        float freq = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
+        freq = freq + stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
         m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad + pDt * 2.0 * Math.PI * freq;
         if (m_fMudSlipShakePhaseRad > 100000.0)
             m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad - 100000.0;
 
         float ph = m_fMudSlipShakePhaseRad;
-        float sYaw = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
-        float sPitch = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
-        float sRoll = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
+        float sYaw = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
+        float sPitch = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
+        float sRoll = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
         vector ypr = "0 0 0";
         ypr[0] = sYaw;
         ypr[1] = sPitch;
@@ -112,30 +112,32 @@ modded class CharacterCamera1stPerson
         Math3D.AnglesToMatrix(ypr, rotMat);
         Math3D.MatrixMultiply4(rotMat, pOutResult.m_CameraTM, pOutResult.m_CameraTM);
 
-        float fovJit = stress * StaminaConstants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
+        float fovJit = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
         pOutResult.m_fFOV = fovBase + fovJit;
     }
 
     protected float ComputeTargetSprintFovBonus(SCR_CharacterControllerComponent rssController, float worldTimeSec, float staminaPercent)
     {
-        float limpLow = StaminaConstants.GetCamSprintFovLimpHystStaminaLow();
-        float limpHigh = StaminaConstants.GetCamSprintFovLimpHystStaminaHigh();
+        float limpLow = SCR_RSS_Constants.GetCamSprintFovLimpHystStaminaLow();
+        float limpHigh = SCR_RSS_Constants.GetCamSprintFovLimpHystStaminaHigh();
         if (staminaPercent < limpLow)
             m_bFovLimpHysteresisActive = true;
         else if (staminaPercent > limpHigh)
             m_bFovLimpHysteresisActive = false;
         if (m_bFovLimpHysteresisActive)
-            return StaminaConstants.GetCamSprintFovLimpDeg();
+            return SCR_RSS_Constants.GetCamSprintFovLimpDeg();
         if (!rssController.IsSprinting())
             return 0.0;
-        float sprintStart = rssController.GetSprintStartTime();
-        if (sprintStart < 0.0)
-            return StaminaConstants.GetCamSprintFovCruiseDeg();
-        float elapsed = worldTimeSec - sprintStart;
-        float burstDur = StaminaConstants.GetTacticalSprintBurstDuration();
-        if (elapsed < burstDur)
-            return StaminaConstants.GetCamSprintFovBurstDeg();
-        return StaminaConstants.GetCamSprintFovCruiseDeg();
+
+        float ana = rssController.GetRssAnaerobicPercent();
+        float burstDeg = SCR_RSS_Constants.GetCamSprintFovBurstDeg();
+        float cruiseDeg = SCR_RSS_Constants.GetCamSprintFovCruiseDeg();
+        if (ana >= 0.55)
+            return burstDeg;
+        float t = ana / 0.55;
+        if (t < 0.0)
+            t = 0.0;
+        return cruiseDeg + (burstDeg - cruiseDeg) * t;
     }
 
     protected float GetStaminaPercent()
@@ -153,7 +155,12 @@ modded class CharacterCamera1stPerson
         // screen edges" that players reported even with mud slip disabled.
         SCR_CharacterStaminaComponent rssStamina = SCR_CharacterStaminaComponent.Cast(staminaComp);
         if (rssStamina)
+        {
+            SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(m_OwnerCharacter.FindComponent(SCR_CharacterControllerComponent));
+            if (ctrl)
+                return ctrl.GetRssAerobicPercent();
             return rssStamina.GetTargetStamina();
+        }
         return staminaComp.GetStamina();
     }
 }

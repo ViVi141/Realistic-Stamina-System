@@ -16,7 +16,7 @@ modded class SCR_DesaturationEffect
 
     protected override void AddDesaturationEffect()
     {
-        if (StaminaConstants.IsRssPresentationNativeOnly())
+        if (SCR_RSS_Constants.IsRssPresentationNativeOnly())
         {
             super.AddDesaturationEffect();
             return;

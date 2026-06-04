@@ -1,6 +1,6 @@
 // 泥泞滑倒每帧逻辑与状态（从 PlayerBase 拆出以控制单文件编译体积）
 
-class RSS_MudSlipRunner
+class SCR_RSS_MudSlipRunner
 {
     // 9s 冷却：从「趴→蹲/站」锚定时刻起算；<0 表示本轮滑倒后尚未锚定
     protected float m_fMudSlipCooldownAnchorTime = -1.0;
@@ -18,7 +18,7 @@ class RSS_MudSlipRunner
         SCR_CharacterControllerComponent ctrl,
         bool useSwimmingModel,
         bool isSwimming,
-        EnvironmentFactor env,
+        SCR_RSS_EnvironmentFactor env,
         SCR_CharacterStaminaComponent stamina,
         float currentSpeed,
         bool isSprintActive,
@@ -38,9 +38,9 @@ class RSS_MudSlipRunner
         float turnRateRadPerSec = 0.0;
         float hLenSlip = horizontalVelForSlip.Length();
         float lastHLenSlip = m_vLastHorizontalVelocity.Length();
-        if (hLenSlip > StaminaConstants.ENV_SLIP_TURN_MIN_HORIZ_MS)
+        if (hLenSlip > SCR_RSS_Constants.ENV_SLIP_TURN_MIN_HORIZ_MS)
         {
-            if (lastHLenSlip > StaminaConstants.ENV_SLIP_TURN_MIN_HORIZ_MS)
+            if (lastHLenSlip > SCR_RSS_Constants.ENV_SLIP_TURN_MIN_HORIZ_MS)
             {
                 if (timeDeltaSec > 0.00001)
                 {
@@ -55,8 +55,8 @@ class RSS_MudSlipRunner
                         dot = -1.0;
                     float angleRad = Math.Acos(dot);
                     turnRateRadPerSec = angleRad / timeDeltaSec;
-                    if (turnRateRadPerSec > StaminaConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
-                        turnRateRadPerSec = StaminaConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
+                    if (turnRateRadPerSec > SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
+                        turnRateRadPerSec = SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
                 }
             }
         }
@@ -86,7 +86,7 @@ class RSS_MudSlipRunner
                     }
                     if (!anchored)
                     {
-                        float fbSec = StaminaConstants.ENV_MUD_SLIP_COOLDOWN_ANCHOR_FALLBACK_SEC;
+                        float fbSec = SCR_RSS_Constants.ENV_MUD_SLIP_COOLDOWN_ANCHOR_FALLBACK_SEC;
                         if (fbSec > 0.0)
                         {
                             if (!ctrl.RSS_IsRagdollActiveForCamera())
@@ -113,7 +113,7 @@ class RSS_MudSlipRunner
                 float camStress = 0.0;
                 if (!ctrl.RSS_IsRagdollActiveForCamera())
                 {
-                    camStress = MudSlipEffects.ComputeSlipCameraStress01(
+                    camStress = SCR_RSS_MudSlipEffects.ComputeSlipCameraStress01(
                         env,
                         currentSpeed,
                         isSprintActive,
@@ -135,7 +135,7 @@ class RSS_MudSlipRunner
                 {
                     if (!m_bMudSlipAwaitCooldownAnchor)
                     {
-                        if (MudSlipEffects.TryRollMudSlip(
+                        if (SCR_RSS_MudSlipEffects.TryRollMudSlip(
                             env,
                             currentSpeed,
                             isSprintActive,
@@ -153,7 +153,7 @@ class RSS_MudSlipRunner
                             m_fMudSlipEventWorldTime = currentWorldTime;
                             m_bMudSlipAwaitCooldownAnchor = true;
                             float stmBefore = stamina.GetTargetStamina();
-                            float stmAfter = stmBefore - StaminaConstants.ENV_MUD_SLIP_STAMINA_FRAC;
+                            float stmAfter = stmBefore - SCR_RSS_Constants.ENV_MUD_SLIP_STAMINA_FRAC;
                             stmAfter = Math.Clamp(stmAfter, 0.0, 1.0);
                             stamina.SetTargetStamina(stmAfter);
                             ctrl.RSS_TriggerMudSlipRagdoll();

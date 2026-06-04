@@ -12,7 +12,7 @@ modded class SCR_NoiseFilterEffect
     {
         super.DisplayUpdate(owner, timeSlice);
 
-        if (StaminaConstants.IsRssPresentationNativeOnly())
+        if (SCR_RSS_Constants.IsRssPresentationNativeOnly())
             return;
 
         if (m_bDisplaySuspended || !m_pCharacterEntity)
@@ -35,7 +35,7 @@ modded class SCR_NoiseFilterEffect
                 {
                     float now = GetGame().GetWorld().GetWorldTime() / 1000.0;
                     float elapsed = now - startTime;
-                    float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
+                    float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
                     if (elapsed >= 0.0 && elapsed < burstDuration)
                     {
                         bool isSprintActive = rssCtrl.IsSprinting() || (rssCtrl.GetCurrentMovementPhase() == 3);

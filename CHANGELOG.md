@@ -1,5 +1,28 @@
 # 更新日志
 
+## [5.0.0] - 2026-06-04
+
+### v5 双池体力系统（正式）
+
+- **双池语义** — 有氧池（STA 主条）+ 无氧池（冲刺资格/分层冷却）；`SCR_RSS_StaminaState` + `SCR_RSS_AnaerobicBurst`
+- **速度—消耗闭环** — `SCR_RSS_DrainCalculator` v_drain；`sustainable_watts` 代谢强制降速；v5 行军档 Walk/Run/Sprint 限速接入 `SCR_RSS_SpeedCalculator`
+- **冲刺门禁** — ANA 耗尽禁 Sprint；引擎条临时 poke + 5s 绝对速度阻尼（`SCR_RSS_SprintBlockSpeedTransition`）
+- **联机** — 无氧池 RplProp（`m_fReplAnaerobicPool` / cooldown）
+- **UI** — 主条仅有氧；Sprint CD 环在移动类型行；FOV 绑定无氧池（v5）
+- **预设** — Elite / Standard / Tactical（v5 双池默认）
+- **清理** — 删除死 Legacy 代码/Givoni 桩/AI 群组孤儿常量；`SCR_RSS_Settings.c.backup` 移除；移除 v4 过渡预设与升级控制台提示
+
+## [5.0.0-dev] - 2026-06-04
+
+### v5 归档与从零重写（big bang 基线）
+
+- **归档** — v3.23.1 全部 77 个 `.c` 改为 `*.c.v323archived`（Workbench 不编译）；只读副本在 `archive/v3.23.1/scripts/`。
+- **命名统一** — RSS 类统一 `SCR_RSS_*`；约定见 [`docs/RSS_CODING_STANDARDS.md`](docs/RSS_CODING_STANDARDS.md)。
+- **v5 核心** — 新增 `SCR_RSS_DrainCalculator`（v_drain）、`SCR_RSS_AnaerobicBurst`、`SCR_RSS_StaminaState`；`SCR_RSS_Params` +10 字段；API 扩展无氧池。
+- **Integration** — `PlayerBase.c` 拆分为 `PlayerBase.c` + `PlayerBase_Extensions.c`（≤64 KB）；体力仍为拦截壳 `SCR_StaminaOverride.c`。
+- **工具** — `tools/check_script_size.py`、`tools/port_archive_to_v5.py`、`tools/bench_physio_anchors.py`、`tools/test_v5_smoke.py`、`tools/rss_pipeline_v5.py`（stub）；`githooks/pre-commit`。
+- **清理（2026-06-04）** — 删除 `scripts/Game` 下 77 个 `.c.v323archived`；旧类名统一为 `SCR_RSS_*`；无氧 RplProp 并入 `SCR_RSS_NetworkSyncManager.c`；`SCR_RSS_EnvironmentFactor.c` 拆分调试模块（~61KB）；Workbench 编译通过。
+
 ## [3.23.1] - 2026-05-28
 
 ### 稳定版 — 适配 Arma Reforger 1.7 灌木丛减速

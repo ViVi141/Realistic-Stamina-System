@@ -366,4 +366,32 @@ class SCR_RSS_Params
     // 说明：值越大，湿地趴下时恢复越慢
     [Attribute(defvalue: "0.15", desc: "Environment surface wetness prone penalty.\nRecovery penalty when prone on wet surface.\nOptimized range: 0.1 - 0.2.\nHigher value = slower recovery when prone on wet surface.\n环境地表湿度趴下惩罚。\n湿地趴下时的恢复惩罚。\nOptuna 优化范围：0.1 - 0.2。\n值越大，湿地趴下时恢复越慢。")]
     float env_surface_wetness_prone_penalty;
+
+    // --- v5 双池 / 代谢锚点 ---
+    [Attribute(defvalue: "400.0", desc: "Sustainable metabolic watts (Pandolf). | 可持续代谢功率 W")]
+    float sustainable_watts;
+
+    [Attribute(defvalue: "1.4", desc: "v5 walk speed m/s @ 35kg ideal. | v5 行军步行速度")]
+    float v5_walk_speed_ms;
+
+    [Attribute(defvalue: "2.8", desc: "v5 run speed m/s. | v5 跑步速度")]
+    float v5_run_speed_ms;
+
+    [Attribute(defvalue: "4.0", desc: "v5 sprint peak m/s. | v5 冲刺峰值")]
+    float v5_sprint_speed_ms;
+
+    [Attribute(defvalue: "0.20", desc: "Anaerobic pool threshold for sprint. | 无氧池冲刺门槛")]
+    float anaerobic_sprint_enable_threshold;
+
+    [Attribute(defvalue: "180.0", desc: "Full burst cooldown seconds. | 无氧抽干冷却")]
+    float burst_cooldown_full_seconds;
+
+    [Attribute(defvalue: "75.0", desc: "Short burst cooldown seconds. | 战术短冲冷却")]
+    float burst_cooldown_short_seconds;
+
+    [Attribute(defvalue: "0.12", desc: "Anaerobic drain per second while sprinting. | 冲刺无氧消耗/s")]
+    float anaerobic_drain_per_sec;
+
+    [Attribute(defvalue: "0.08", desc: "Anaerobic recovery per second. | 无氧恢复/s")]
+    float anaerobic_recovery_per_sec;
 }

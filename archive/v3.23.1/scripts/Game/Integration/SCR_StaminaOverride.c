@@ -1,0 +1,277 @@
+// 体力系统完全覆盖
+// 完全禁用游戏原生的体力恢复和消耗计算，只使用自定义系统
+modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
+{
+    // 上次的体力值（用于检测非预期的体力变化）
+    protected float m_fLastKnownStamina = 1.0;
+    
+    // 标记：是否允许原生体力系统工作
+    // false = 完全禁用原生系统，只使用自定义系统
+    protected bool m_bAllowNativeStaminaSystem = false;
+    
+    // 目标体力值（由我们的自定义系统控制）
+    protected float m_fTargetStamina = 1.0;
+    
+    // 主动监控标志（控制是否继续监控）
+    protected bool m_bIsMonitoring = false;
+
+    // 监控间隔（毫秒）。16=60Hz 与服务器同步，50/100 可降低 CPU 占用
+    // DESIGN: 200ms matches UpdateSpeedBasedOnStamina main loop interval.
+    // 50ms provided no measurable benefit because SetTargetStamina already
+    // double-checks and corrects on every write. 200ms is sufficient to catch
+    // engine-origin stamina changes that bypass AddStamina().
+    protected const int STAMINA_MONITOR_INTERVAL_MS = 200;
+    
+    // 标记：是否是我们自己的调用（避免循环）
+    protected bool m_bIsOurOwnCall = false;
+    
+    // 关键发现：
+    // 1. OnStaminaDrain 是一个 event，每次体力值改变时都会触发（包括 AddStamina 调用）
+    // 2. AddStamina 是 proto external，无法覆盖，但调用它会触发 OnStaminaDrain 事件
+    // 3. 因此，我们可以通过覆盖 OnStaminaDrain 来拦截所有体力值变化
+    
+    // 每帧/每次体力变化时，拦截并重新设置体力值
+    // 这确保只有我们的自定义系统可以改变体力值
+    // 注意：原生系统调用 AddStamina 时会触发此事件，我们可以在这里拦截
+    override void OnStaminaDrain(float pDrain)
+    {
+        // 如果允许原生系统工作，调用父类方法
+        if (m_bAllowNativeStaminaSystem)
+        {
+            super.OnStaminaDrain(pDrain);
+            return;
+        }
+        
+        // 如果是我们自己的调用（通过 SetTargetStamina），允许执行
+        if (m_bIsOurOwnCall)
+        {
+            super.OnStaminaDrain(pDrain);
+            return;
+        }
+        
+        // 检测到原生系统试图修改体力值！
+        // 记录调试信息（每5次输出一次，避免日志过多，仅在客户端）
+        // [已注释] 拦截信息已禁用，减少日志输出
+        /*
+        IEntity owner = GetOwner();
+        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
+        {
+            static int interceptCounter = 0;
+            interceptCounter++;
+            if (interceptCounter >= 5)
+            {
+                float currentStamina = GetStamina();
+                PrintFormat("[RSS] Override 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
+                    Math.Round(pDrain * 100.0).ToString(),
+                    Math.Round(currentStamina * 100.0).ToString(),
+                    Math.Round(m_fTargetStamina * 100.0).ToString());
+                interceptCounter = 0;
+            }
+        }
+        */
+        
+        // 完全禁用原生系统：
+        // 1. 不调用父类方法（不触发原生体力恢复/消耗）
+        // 2. 立即纠正任何非预期的体力变化
+        // 注意：原生系统调用 AddStamina 时会触发此事件，我们在这里拦截并纠正
+        CorrectStaminaToTarget();
+    }
+    
+    // 纠正体力值到目标值（主动监控机制）
+    void CorrectStaminaToTarget()
+    {
+        float currentStamina = GetStamina();
+        
+        // 如果体力值 < 0（没有体力组件），不处理
+        if (currentStamina < 0.0)
+            return;
+        
+        // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
+        if (Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.001)
+        {
+            // 计算需要调整的体力量，使其回到目标值
+            float correction = m_fTargetStamina - currentStamina;
+            
+            // 标记这是我们自己的调用，允许执行
+            m_bIsOurOwnCall = true;
+            // 使用父类的 AddStamina 来设置体力值
+            super.AddStamina(correction);
+            m_bIsOurOwnCall = false;
+        }
+        
+        // 更新记录的体力值（使用实际值，而不是目标值）
+        m_fLastKnownStamina = GetStamina();
+    }
+    
+    // 启动主动监控（每帧检查，确保完全覆盖原生系统）
+    // 原生系统可能每帧都在恢复体力，所以需要每帧检查
+    void StartStaminaMonitor()
+    {
+        // 如果已经在监控，不重复启动
+        if (m_bIsMonitoring)
+            return;
+        
+        // 设置监控标志
+        m_bIsMonitoring = true;
+        
+        // 启动监控循环（检查原生系统干扰并纠正）
+        // STAMINA_MONITOR_INTERVAL_MS：200ms 与主力循环同步
+        // CRITICAL FIX: GetGame() may be null during late initialization / teardown.
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
+    }
+    
+    // 停止主动监控
+    void StopStaminaMonitor()
+    {
+        // 设置标志为 false，停止监控循环
+        m_bIsMonitoring = false;
+        
+        // 移除所有可能存在的 CallLater 调用，确保不会再执行
+        // CRITICAL FIX: GetGame() may return null during game exit / teardown.
+        // Without this check, the destructor path crashes with Access Violation at 0x0.
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().Remove(MonitorStamina);
+    }
+    
+    // 监控体力值（定期调用，确保完全覆盖原生系统）
+    // 原生系统可能每帧都在恢复体力，所以需要频繁检查
+    void MonitorStamina()
+    {
+        // 如果允许原生系统工作，或监控已停止，不继续监控
+        if (m_bAllowNativeStaminaSystem || !m_bIsMonitoring)
+            return;
+        
+        // 获取当前体力值前，先检查组件是否仍然有效
+        if (!this || GetOwner() == null)
+        {
+            // 如果组件已失效，停止监控
+            StopStaminaMonitor();
+            return;
+        }
+        
+        // 获取当前体力值
+        float currentStamina = GetStamina();
+        
+        // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
+        // 提高精度到0.0001，确保与60Hz服务器同步
+        if (currentStamina >= 0.0 && Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.0001)
+        {
+            // 检测到原生系统干扰，记录调试信息
+            float deviation = currentStamina - m_fTargetStamina;
+            
+            // 如果偏差超过0.5%，输出警告（降低阈值，更敏感，仅在客户端）
+            // [已注释] 拦截信息已禁用，减少日志输出
+            /*
+            IEntity owner = GetOwner();
+            if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
+            {
+                static int warningCounter = 0;
+                warningCounter++;
+                if (Math.AbsFloat(deviation) > 0.005 && warningCounter >= 10) // 每10次输出一次
+                {
+                    PrintFormat("[RSS] Override 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
+                        Math.Round(currentStamina * 100.0).ToString(),
+                        Math.Round(m_fTargetStamina * 100.0).ToString(),
+                        Math.Round(deviation * 100.0).ToString());
+                    warningCounter = 0;
+                }
+            }
+            */
+            
+            // 立即纠正体力值
+            CorrectStaminaToTarget();
+        }
+        
+        if (GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
+    }
+    
+    // 设置目标体力值（由我们的自定义系统调用）
+    // 这是唯一允许改变体力的方式
+    void SetTargetStamina(float targetStamina)
+    {
+        m_fTargetStamina = Math.Clamp(targetStamina, 0.0, 1.0);
+        
+        // 立即应用目标体力值（直接调用父类的 AddStamina）
+        float currentStamina = GetStamina();
+        if (currentStamina >= 0.0)
+        {
+            float correction = m_fTargetStamina - currentStamina;
+            
+            // 标记这是我们自己的调用，允许执行
+            // 注意：调用 AddStamina 会触发 OnStaminaDrain 事件
+            m_bIsOurOwnCall = true;
+            // 直接调用父类方法设置体力值
+            super.AddStamina(correction);
+            m_bIsOurOwnCall = false;
+            
+            // 立即再次检查，确保设置成功（原生系统可能在设置后立即恢复）
+            float verifyStamina = GetStamina();
+            if (Math.AbsFloat(verifyStamina - m_fTargetStamina) > 0.001)
+            {
+                // 如果设置后立即被改变，再次纠正
+                float reCorrection = m_fTargetStamina - verifyStamina;
+                m_bIsOurOwnCall = true;
+                super.AddStamina(reCorrection);
+                m_bIsOurOwnCall = false;
+            }
+        }
+        
+        // 更新记录的体力值（使用实际设置后的值）
+        float finalStamina = GetStamina();
+        if (finalStamina >= 0.0)
+            m_fLastKnownStamina = finalStamina;
+    }
+    
+    // 获取目标体力值
+    float GetTargetStamina()
+    {
+        return m_fTargetStamina;
+    }
+    
+    // 允许/禁用原生体力系统
+    // false = 完全禁用原生系统（推荐）
+    // true = 允许原生系统工作（不推荐）
+    void SetAllowNativeStaminaSystem(bool allow)
+    {
+        m_bAllowNativeStaminaSystem = allow;
+        
+        // 根据设置启动或停止监控
+        if (allow)
+        {
+            StopStaminaMonitor();
+        }
+        else
+        {
+            // CRITICAL FIX: Only start the 50ms monitor loop for player-controlled
+            // entities. AI stamina is managed by the server's UpdateSpeedBasedOnStamina,
+            // and the OnStaminaDrain override plus CorrectStaminaToTarget in
+            // SetTargetStamina already provide sufficient protection without a
+            // per-entity 50ms polling loop. This eliminates ~1280 calls/sec for 64 AI.
+            IEntity owner = GetOwner();
+            if (owner)
+            {
+                SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
+                if (ctrl && ctrl.IsPlayerControlled())
+                    StartStaminaMonitor();
+            }
+        }
+    }
+    
+    //! 析构函数：实体删除时取消 MonitorStamina 的 CallLater，防止 use-after-free
+    void ~SCR_CharacterStaminaComponent()
+    {
+        StopStaminaMonitor();
+    }
+
+    // 组件初始化时启动监控
+    // 注意：使用 OnInit 而不是 OnPostInit（如果基类支持）
+    // 如果基类不支持 OnInit，监控将在 SetAllowNativeStaminaSystem(false) 时启动
+    
+    // 获取是否允许原生体力系统
+    bool GetAllowNativeStaminaSystem()
+    {
+        return m_bAllowNativeStaminaSystem;
+    }
+}

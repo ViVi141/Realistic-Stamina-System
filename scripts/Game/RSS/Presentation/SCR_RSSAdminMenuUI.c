@@ -177,7 +177,7 @@ class SCR_RSSAdminMenuUI
         if (gameMode)
             gameMode.RSS_ReplicateConfigNow();
 
-        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+        SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
     }
 
     //! 通过本地玩家控制器的 RPC 将配置推送到服务端

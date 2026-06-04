@@ -1,0 +1,310 @@
+// 体力消耗计算模块
+// 负责计算体力消耗率（Pandolf模型、姿态修正、Sprint消耗等）
+// 模块化拆分：从 PlayerBase.c 提取的体力消耗计算逻辑
+//
+// v3.20.0 性能优化：非Sprint情况下走快路径，跳过完整的环境因子展开，
+// 直接使用 SCR_RSS_EnvironmentFactor.GetQuickEnvironmentMultiplier() 的缓存值。
+// Sprint / 游泳 / 复杂场景仍走完整路径，保证精度。
+
+class SCR_RSS_StaminaConsumptionCalculator
+{
+    // ==================== 公共方法 ====================
+    
+    // 计算体力消耗率
+    // @param currentSpeed 当前速度 (m/s)
+    // @param currentWeight 当前重量 (kg)
+    // @param gradePercent 坡度百分比
+    // @param terrainFactor 地形系数
+    // @param postureMultiplier 姿态修正倍数
+    // @param totalEfficiencyFactor 综合效率因子
+    // @param fatigueFactor 疲劳因子
+    // @param encumbranceStaminaDrainMultiplier 负重体力消耗倍数
+    // @param fatigueSystem 疲劳积累系统模块引用
+    // @param out baseDrainRateByVelocity 基础消耗率（输出，用于恢复计算）
+    // @param environmentFactor 环境因子模块引用（v2.14.0新增）
+    // @param owner 角色实体引用（用于手持物品检测，v2.15.0新增）
+    // @return 体力消耗率（每0.2秒）
+    static float CalculateStaminaConsumption(
+        float currentSpeed,
+        float currentWeight,
+        float gradePercent,
+        float terrainFactor,
+        float postureMultiplier,
+        float totalEfficiencyFactor,
+        float fatigueFactor,
+        float encumbranceStaminaDrainMultiplier,
+        SCR_RSS_FatigueSystem fatigueSystem,
+        out float baseDrainRateByVelocity,
+        SCR_RSS_EnvironmentFactor environmentFactor = null,
+        IEntity owner = null,
+        bool isSprinting = false,
+        int currentMovementPhase = -1)
+    {
+        // ── 快路径（v3.20.0 性能优化）────────────────────────────────────
+        // 非Sprint、非游泳的常规移动：跳过完整环境因子展开，使用缓存乘数。
+        // 条件：不在Sprint（phase!=3 且 !isSprinting）且 baseDrainRateByVelocity 已由调用方预填。
+        bool isSprintPhase = (isSprinting || currentMovementPhase == 3);
+        if (!isSprintPhase && baseDrainRateByVelocity > 0.0)
+        {
+            // 应用室内坡度抑制
+            if (environmentFactor)
+            {
+                if (owner && environmentFactor.ShouldSuppressTerrainSlopeForEntity(owner))
+                    gradePercent = 0.0;
+                else if (!owner && environmentFactor.IsIndoor())
+                    gradePercent = 0.0;
+            }
+
+            // 应用温度修正
+            float fastBase = baseDrainRateByVelocity;
+            // Save pre-temp value for baseDrainRateByVelocity output (to match full path)
+            float preTempBase = fastBase;
+            if (environmentFactor && fastBase > 0.0)
+                fastBase = environmentFactor.AdjustEnergyForTemperature(fastBase);
+
+            // 应用姿态修正
+            if (fastBase > 0.0)
+                fastBase = fastBase * postureMultiplier;
+
+            // 应用效率与疲劳
+            float fastDrain = fastBase * totalEfficiencyFactor * fatigueFactor;
+
+            // 应用轻量级环境乘数（泥泞+风阻+热应激缓存值）
+            if (environmentFactor)
+                fastDrain = fastDrain * environmentFactor.GetQuickEnvironmentMultiplier();
+
+            // 应用负重消耗倍数
+            fastDrain = fastDrain * encumbranceStaminaDrainMultiplier;
+
+            // CRITICAL FIX: Output preTempBase (before temperature adjustment) as
+            // baseDrainRateByVelocity, matching the full-path behavior where
+            // originalBaseDrainRate saves the value before AdjustEnergyForTemperature.
+            // Previously we output fastBase/postureMultiplier which included the
+            // temperature adjustment, causing recovery calculations to receive
+            // an inflated base drain rate.
+            baseDrainRateByVelocity = preTempBase;
+
+            return fastDrain;
+        }
+
+        // ==================== v2.14.0 环境因子修正（完整路径）====================
+
+        // 获取高级环境因子（如果环境因子模块存在）
+        float windDrag = 0.0;
+        float mudTerrainFactor = 0.0;
+        float totalWetWeight = 0.0;
+        float coldStaticPenalty = 0.0;
+
+        if (environmentFactor)
+        {
+            windDrag = environmentFactor.GetWindDrag();
+            mudTerrainFactor = environmentFactor.GetMudTerrainFactor();
+            totalWetWeight = environmentFactor.GetTotalWetWeight();
+            coldStaticPenalty = environmentFactor.GetColdStaticPenalty();
+
+            // 检查是否在室内，如果是则忽略坡度影响
+            // 使用 ShouldSuppressTerrainSlopeForEntity(owner) 与速度/坡度计算一致
+            if (owner && environmentFactor.ShouldSuppressTerrainSlopeForEntity(owner))
+            {
+                gradePercent = 0.0; // 室内或建筑物内有顶体积时坡度为0
+            }
+            else if (!owner && environmentFactor.IsIndoor())
+            {
+                gradePercent = 0.0; // 无 owner 时回退到 IsIndoor()
+            }
+        }
+
+        // ==================== 手持重物额外消耗 ====================
+        const float itemBonus = 1.0; // 默认无额外消耗
+        
+        if (owner)
+        {
+            // 通过 InventoryStorageManagerComponent 检测玩家右手或双手插槽
+            // TODO: 实现手持物品检测逻辑
+            // 预留：根据物品重量或 Tag 判断的逻辑结构
+            // 示例逻辑：
+            /*
+            InventoryStorageManagerComponent inventoryManager = InventoryStorageManagerComponent.Cast(owner.FindComponent(InventoryStorageManagerComponent));
+            if (inventoryManager)
+            {
+                // 获取右手或双手插槽的物品
+                IEntity rightHandItem = inventoryManager.GetItemInSlot("RightHand");
+                IEntity twoHandedItem = inventoryManager.GetItemInSlot("TwoHanded");
+                
+                if (rightHandItem || twoHandedItem)
+                {
+                    // 检测到手持实体，增加消耗乘数
+                    itemBonus = 1.2; // 暂时固定为1.2倍，后续可根据物品重量或Tag调整
+                    
+                    // TODO: 根据物品重量或Tag调整消耗乘数
+                    // 例如：
+                    // float itemWeight = rightHandItem ? rightHandItem.GetWeight() : (twoHandedItem ? twoHandedItem.GetWeight() : 0.0);
+                    // if (itemWeight > 5.0) // 大于5kg的物品
+                    //     itemBonus = 1.5;
+                    // else if (itemWeight > 2.0) // 大于2kg的物品
+                    //     itemBonus = 1.2;
+                }
+            }
+            */
+        }
+        
+        // 应用泥泞地形系数（修正地形因子）
+        terrainFactor = terrainFactor + mudTerrainFactor;
+        
+        // 应用降雨湿重（修正当前重量）
+        currentWeight = currentWeight + totalWetWeight;
+
+        // ==================== 修复：调用公共静态方法计算基础消耗率 ====================
+        // 如果调用方已经计算好了基线（例如 PlayerBase），我们应使用该值以确保一致性；否则自己计算并确保体重包含身体质量
+        bool usedFallback = false;
+        if (baseDrainRateByVelocity <= 0.0)
+        {
+            usedFallback = true;
+            float weight_for_base = currentWeight + SCR_RSS_Constants.CHARACTER_WEIGHT; // 装备+湿重 + 人体
+            baseDrainRateByVelocity = SCR_RSS_UpdateCoordinator.CalculateLandBaseDrainRate(
+                currentSpeed,
+                0.0,
+                weight_for_base,
+                gradePercent,
+                terrainFactor,
+                windDrag,
+                coldStaticPenalty,
+                isSprinting,
+                currentMovementPhase);
+        }
+
+        // 在应用姿态之前，使用环境因子对机械能耗做温度/风速补偿
+        // [修复 v2.16.0] AdjustEnergyForTemperature 现已正确将额外 Watts 转换为体力/tick 单位
+        float beforeTempAdj = baseDrainRateByVelocity;
+        if (environmentFactor && baseDrainRateByVelocity > 0.0)
+        {
+            baseDrainRateByVelocity = environmentFactor.AdjustEnergyForTemperature(baseDrainRateByVelocity);
+        }
+
+        // 保存原始基础消耗率（用于恢复计算，在应用姿态修正之前）
+        float originalBaseDrainRate = baseDrainRateByVelocity;
+        if (SCR_RSS_DebugBatchManager.IsDebugBatchActive())
+        {
+            int fbFlag = 0;
+            if (usedFallback) fbFlag = 1;
+            string line1 = string.Format("[RSS] ConsCalc: fb=%1 baseDrain=%2 tempAdj=%3 weight=%4 speed=%5 grade=%6",
+                fbFlag,
+                Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
+                Math.Round((baseDrainRateByVelocity - beforeTempAdj) * 1000000.0) / 1000000.0,
+                Math.Round(currentWeight * 10.0) / 10.0,
+                Math.Round(currentSpeed * 1000.0) / 1000.0,
+                Math.Round(gradePercent * 100.0) / 100.0);
+            SCR_RSS_DebugBatchManager.AddDebugBatchLine(line1);
+        }
+        
+        // 应用姿态修正（只在消耗时应用）
+        if (baseDrainRateByVelocity > 0.0)
+        {
+            baseDrainRateByVelocity = baseDrainRateByVelocity * postureMultiplier;
+        }
+        
+        // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
+        float baseDrainRate = 0.0;
+        if (baseDrainRateByVelocity < 0.0)
+        {
+            // 恢复时，直接使用恢复率（负数）
+            baseDrainRate = baseDrainRateByVelocity;
+        }
+        else
+        {
+            // 消耗时，应用效率因子和疲劳因子
+            baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
+        }
+        
+        // 综合体力消耗率
+        float totalDrainRate = 0.0;
+        if (baseDrainRate < 0.0)
+        {
+            // 恢复时，直接使用恢复率（负数）
+            totalDrainRate = baseDrainRate;
+        }
+        else
+        {
+            // 消耗时：Pandolf 速度项自然体现 Sprint 更高消耗，不再单独乘 sprint 倍数
+            totalDrainRate = baseDrainRate;
+
+            // 应用负重体力消耗倍数（修复：此前传入但未使用）
+            totalDrainRate = totalDrainRate * encumbranceStaminaDrainMultiplier;
+
+            // 应用手持重物额外消耗
+            totalDrainRate = totalDrainRate * itemBonus;
+        }
+
+
+        
+        // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
+        baseDrainRateByVelocity = originalBaseDrainRate;
+        if (SCR_RSS_DebugBatchManager.IsDebugBatchActive())
+        {
+            string line2 = string.Format("[RSS] ConsCalc: outBase=%1 total=%2",
+                Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,
+                Math.Round(totalDrainRate * 1000.0) / 1000.0);
+            SCR_RSS_DebugBatchManager.AddDebugBatchLine(line2);
+        }
+        
+        return totalDrainRate;
+    }
+    
+    // 计算姿态修正倍数
+    // @param currentSpeed 当前速度 (m/s)
+    // @param controller 角色控制器组件（用于获取姿态）
+    // @return 姿态修正倍数
+    // 修复：使用配置参数而非硬编码常量，使管理员可以调整姿态消耗倍数
+    static float CalculatePostureMultiplier(float currentSpeed, SCR_CharacterControllerComponent controller)
+    {
+        float postureMultiplier = SCR_RSS_Constants.POSTURE_STAND_MULTIPLIER; // 默认站立姿态（1.0）
+        if (currentSpeed > 0.05) // 只在移动时应用姿态修正
+        {
+            ECharacterStance currentStance = controller.GetStance();
+            if (currentStance == ECharacterStance.CROUCH)
+            {
+                // 修复：使用配置参数而非硬编码常量
+                postureMultiplier = SCR_RSS_ConfigBridge.GetPostureCrouchMultiplier();
+            }
+            else if (currentStance == ECharacterStance.PRONE)
+            {
+                // 修复：使用配置参数而非硬编码常量
+                postureMultiplier = SCR_RSS_ConfigBridge.GetPostureProneMultiplier();
+            }
+        }
+        return postureMultiplier;
+    }
+    
+    // 计算代谢适应效率因子
+    // @param speedRatio 速度比率 (0.0-1.0)
+    // @return 代谢适应效率因子
+    static float CalculateMetabolicEfficiencyFactor(float speedRatio)
+    {
+        float metabolicEfficiencyFactor = 1.0;
+        if (speedRatio < SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD)
+        {
+            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR; // 0.9
+        }
+        else if (speedRatio < SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD)
+        {
+            float t = (speedRatio - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD) / 
+                      (SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD);
+            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR + 
+                                       t * (SCR_RSS_MetabolismMath.ANAEROBIC_EFFICIENCY_FACTOR - SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR);
+        }
+        else
+        {
+            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.ANAEROBIC_EFFICIENCY_FACTOR; // 1.2
+        }
+        return metabolicEfficiencyFactor;
+    }
+    
+    // 计算健康状态效率因子
+    // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接返回，防止不平等游玩
+    // = clamp(1.0 - 0.35 × 1.0, 0.7, 1.0) = clamp(0.65, 0.7, 1.0) = 0.70
+    // @return 0.70（固定常量）
+    static float CalculateFitnessEfficiencyFactor()
+    {
+        return SCR_RSS_Constants.FIXED_FITNESS_EFFICIENCY_FACTOR;
+    }
+}

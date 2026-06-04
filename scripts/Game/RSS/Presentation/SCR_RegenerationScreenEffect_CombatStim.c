@@ -7,7 +7,7 @@ modded class SCR_RegenerationScreenEffect
 
     override void UpdateEffect(float timeSlice)
     {
-        if (StaminaConstants.IsRssPresentationNativeOnly())
+        if (SCR_RSS_Constants.IsRssPresentationNativeOnly())
         {
             super.UpdateEffect(timeSlice);
             return;

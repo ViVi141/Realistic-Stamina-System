@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "3.23.1";  // 当前模组版本
+    protected static const string CURRENT_VERSION = "5.0.0";
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -59,7 +59,7 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bHintDisplayEnabled = true;
         m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
-        m_Settings.m_bEnableMudSlipMechanism = false;  // NOTE: disabled pending camera tuning (see StaminaConstants design note)
+        m_Settings.m_bEnableMudSlipMechanism = false;  // NOTE: disabled pending camera tuning (see SCR_RSS_Constants design note)
         m_Settings.m_bEnableAIStaminaCombatEffects = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
@@ -160,15 +160,15 @@ class SCR_RSS_ConfigManager
                 m_Settings.InitPresets(false);
             }
             
-            // 检查版本号并执行迁移
+            // 版本号与模组不一致时静默写回当前版本
             string configVersion = m_Settings.m_sConfigVersion;
             if (!configVersion || configVersion == "")
                 configVersion = "0.0.0";
             
             if (configVersion != CURRENT_VERSION)
             {
-                Print("[RSS_ConfigManager] Config version mismatch: JSON=" + configVersion + ", Mod=" + CURRENT_VERSION);
-                MigrateConfig(configVersion);
+                m_Settings.m_sConfigVersion = CURRENT_VERSION;
+                Save();
             }
             
             // 验证配置：只修正无效字段，不重置整个配置（避免丢失用户自定义）
@@ -246,78 +246,6 @@ class SCR_RSS_ConfigManager
                       ", sprint_drain=" + activeParams.sprint_stamina_drain_multiplier.ToString());
             }
         }
-    }
-    
-    // 配置迁移：将旧版本配置升级到新版本
-    // 保留用户已有的配置值，只添加新字段的默认值
-    protected static void MigrateConfig(string oldVersion)
-    {
-        Print("[RSS_ConfigManager] Migrating config from v" + oldVersion + " to v" + CURRENT_VERSION);
-        
-        // 创建新的默认配置用于获取新字段的默认值
-        SCR_RSS_Settings defaultSettings = new SCR_RSS_Settings();
-        defaultSettings.InitPresets();
-        
-        // ==================== v3.4.0 新增字段 ====================
-        // HUD 显示系统
-        if (m_Settings.m_iHintUpdateInterval <= 0)
-            m_Settings.m_iHintUpdateInterval = DEFAULT_UPDATE_INTERVAL_MS;
-        if (m_Settings.m_fHintDuration <= 0.0)
-            m_Settings.m_fHintDuration = DEFAULT_HINT_DURATION;
-        // m_bHintDisplayEnabled：新版本默认关闭 HUD
-        // 从旧版本升级时，保持 false（不再强制开启）
-        
-        // 确保预设选择有效
-        if (!m_Settings.m_sSelectedPreset || m_Settings.m_sSelectedPreset == "")
-        {
-            m_Settings.m_sSelectedPreset = "StandardMilsim";
-            Print("[RSS_ConfigManager] Migration: Set m_sSelectedPreset = StandardMilsim");
-        }
-        
-        // ==================== 更新版本号并保存 ====================
-        m_Settings.m_sConfigVersion = CURRENT_VERSION;
-        Save();
-        Print("[RSS_ConfigManager] Migration completed. Config saved with version " + CURRENT_VERSION);
-    }
-    
-    // 比较版本号
-    // 返回: -1 如果 v1 < v2, 0 如果 v1 == v2, 1 如果 v1 > v2
-    protected static int CompareVersions(string v1, string v2)
-    {
-        // 简单的版本比较：将版本号转换为数字进行比较
-        // 例如 "3.4.0" -> 3*10000 + 4*100 + 0 = 30400
-        int num1 = VersionToNumber(v1);
-        int num2 = VersionToNumber(v2);
-        
-        if (num1 < num2)
-            return -1;
-        else if (num1 > num2)
-            return 1;
-        else
-            return 0;
-    }
-    
-    // 将版本号字符串转换为数字
-    // "3.4.0" -> 30400
-    protected static int VersionToNumber(string version)
-    {
-        if (!version || version == "")
-            return 0;
-        
-        // 分割版本号
-        array<string> parts = new array<string>();
-        version.Split(".", parts, false);
-        
-        int result = 0;
-        int multiplier = 10000;
-        
-        for (int i = 0; i < parts.Count() && i < 3; i++)
-        {
-            result += parts[i].ToInt() * multiplier;
-            multiplier = multiplier / 100;
-        }
-        
-        return result;
     }
     
     // 确保所有字段有合理的默认值
@@ -398,7 +326,6 @@ class SCR_RSS_ConfigManager
         
         // 注意：m_bHintDisplayEnabled / m_bDebugLogEnabled 不覆盖，保留用户设置
         // 用户通过 JSON 修改的 UI 设置（hint、debug）必须被保留
-        // 迁移逻辑 MigrateConfig 已处理首次从 pre-3.4.0 升级时的默认值
         
         // 如果有任何默认值被设置，保存配置（客户端仅更新缓存，不写盘）
         if (needsSave)

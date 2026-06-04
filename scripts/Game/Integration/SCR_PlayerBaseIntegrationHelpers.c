@@ -1,6 +1,6 @@
 class SCR_PlayerBaseRssApiHelper
 {
-    static bool HasRssData(SCR_CharacterStaminaComponent staminaComponent, EnvironmentFactor environmentFactor)
+    static bool HasRssData(SCR_CharacterStaminaComponent staminaComponent, SCR_RSS_EnvironmentFactor environmentFactor)
     {
         return (staminaComponent != null && environmentFactor != null);
     }
@@ -20,7 +20,7 @@ class SCR_PlayerBaseRssApiHelper
     }
 
     static float GetCurrentWeight(
-        EncumbranceCache encumbranceCache,
+        SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_CharacterInventoryStorageComponent cachedInventoryComponent)
     {
         if (encumbranceCache && encumbranceCache.IsCacheValid())
@@ -43,7 +43,7 @@ class SCR_PlayerBaseDebugHelper
         int currentMovementPhase,
         SCR_CharacterControllerComponent controller)
     {
-        DebugDisplay.OutputStatusInfo(
+        SCR_RSS_DebugDisplay.OutputStatusInfo(
             owner,
             lastSecondSpeed,
             lastStaminaPercent,
@@ -57,7 +57,7 @@ class SCR_PlayerBaseDebugHelper
 
 class SCR_PlayerBaseInventoryHelper
 {
-    static void UpdateEncumbranceCache(EncumbranceCache encumbranceCache)
+    static void UpdateEncumbranceCache(SCR_RSS_EncumbranceCache encumbranceCache)
     {
         if (encumbranceCache)
             encumbranceCache.UpdateCache();
@@ -89,7 +89,7 @@ class SCR_PlayerBaseConfigHelper
 
     static bool IsRssDebugEnabled()
     {
-        return StaminaConfigBridge.IsDebugEnabled();
+        return SCR_RSS_ConfigBridge.IsDebugEnabled();
     }
 }
 
@@ -194,13 +194,13 @@ class SCR_PlayerBaseMovementHelper
         else
         {
             if (lastWasSprinting)
-                nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+                nextSprintCooldownUntil = currentTimeSprint + SCR_RSS_Constants.GetTacticalSprintCooldown();
         }
 
         if (isSprintActive && nextSprintStartTime >= 0.0)
         {
-            float burstDuration = StaminaConstants.GetTacticalSprintBurstDuration();
-            float bufferDuration = StaminaConstants.GetTacticalSprintBurstBufferDuration();
+            float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
+            float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
             float elapsed = currentTimeSprint - nextSprintStartTime;
             if (burstDuration > 0.0)
             {
@@ -208,7 +208,7 @@ class SCR_PlayerBaseMovementHelper
                 {
                     if (elapsed >= burstDuration + bufferDuration)
                     {
-                        nextSprintCooldownUntil = currentTimeSprint + StaminaConstants.GetTacticalSprintCooldown();
+                        nextSprintCooldownUntil = currentTimeSprint + SCR_RSS_Constants.GetTacticalSprintCooldown();
                         nextSprintStartTime = -1.0;
                     }
                 }
@@ -221,7 +221,7 @@ class SCR_PlayerBaseMovementHelper
 
 class SCR_PlayerBaseNetworkHelper
 {
-    static float GetServerWeight(IEntity owner, EncumbranceCache encumbranceCache)
+    static float GetServerWeight(IEntity owner, SCR_RSS_EncumbranceCache encumbranceCache)
     {
         if (encumbranceCache && encumbranceCache.IsCacheValid())
             return encumbranceCache.GetCurrentWeight();
@@ -253,8 +253,8 @@ class SCR_PlayerBaseNetworkHelper
 
     static float CalculateEncumbrancePenaltyFallback(float serverWeight)
     {
-        float effectiveWeight = Math.Max(serverWeight - StaminaConstants.BASE_WEIGHT, 0.0);
-        float bodyMassPercent = effectiveWeight / StaminaConstants.CHARACTER_WEIGHT;
+        float effectiveWeight = Math.Max(serverWeight - SCR_RSS_Constants.BASE_WEIGHT, 0.0);
+        float bodyMassPercent = effectiveWeight / SCR_RSS_Constants.CHARACTER_WEIGHT;
         float ratio = Math.Clamp(bodyMassPercent, 0.0, 2.0);
         float rawPenalty = 0.0;
         if (ratio <= 0.3)
@@ -275,9 +275,9 @@ class SCR_PlayerBaseNetworkHelper
             }
         }
 
-        float coeff = StaminaConfigBridge.GetEncumbranceSpeedPenaltyCoeff();
+        float coeff = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyCoeff();
         rawPenalty = rawPenalty * (coeff / 0.20);
-        float maxPenalty = StaminaConfigBridge.GetEncumbranceSpeedPenaltyMax();
+        float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         return Math.Clamp(rawPenalty, 0.0, maxPenalty);
     }
 
@@ -301,9 +301,9 @@ class SCR_PlayerBaseNetworkHelper
         float currentWetWeight,
         float vehicleTimeToDepleteSec,
         float vehicleTimeToFullSec,
-        TerrainDetector terrainDetector,
-        EnvironmentFactor environmentFactor,
-        StanceTransitionManager stanceTransitionManager)
+        SCR_RSS_TerrainDetector terrainDetector,
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        SCR_RSS_StanceTransitionManager stanceTransitionManager)
     {
         DebugInfoParams vehicleParams = new DebugInfoParams();
         vehicleParams.owner = owner;

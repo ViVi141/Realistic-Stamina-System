@@ -24,6 +24,9 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     
     // 标记：是否是我们自己的调用（避免循环）
     protected bool m_bIsOurOwnCall = false;
+
+    //! >= 0 时引擎条应显示此值（冲刺门禁），m_fTargetStamina 仍是有氧权威
+    protected float m_fTransientEngineDisplay = -1.0;
     
     // 关键发现：
     // 1. OnStaminaDrain 是一个 event，每次体力值改变时都会触发（包括 AddStamina 调用）
@@ -49,34 +52,17 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             return;
         }
         
-        // 检测到原生系统试图修改体力值！
-        // 记录调试信息（每5次输出一次，避免日志过多，仅在客户端）
-        // [已注释] 拦截信息已禁用，减少日志输出
-        /*
-        IEntity owner = GetOwner();
-        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
-        {
-            static int interceptCounter = 0;
-            interceptCounter++;
-            if (interceptCounter >= 5)
-            {
-                float currentStamina = GetStamina();
-                PrintFormat("[RSS] Override 拦截到原生系统体力修改！pDrain=%1%%, 当前体力=%2%%, 目标=%3%%", 
-                    Math.Round(pDrain * 100.0).ToString(),
-                    Math.Round(currentStamina * 100.0).ToString(),
-                    Math.Round(m_fTargetStamina * 100.0).ToString());
-                interceptCounter = 0;
-            }
-        }
-        */
-        
-        // 完全禁用原生系统：
-        // 1. 不调用父类方法（不触发原生体力恢复/消耗）
-        // 2. 立即纠正任何非预期的体力变化
-        // 注意：原生系统调用 AddStamina 时会触发此事件，我们在这里拦截并纠正
+        // 完全禁用原生系统：不调用 super，立即纠正非预期变化
         CorrectStaminaToTarget();
     }
     
+    protected float GetExpectedEngineStamina()
+    {
+        if (m_fTransientEngineDisplay >= 0.0)
+            return m_fTransientEngineDisplay;
+        return m_fTargetStamina;
+    }
+
     // 纠正体力值到目标值（主动监控机制）
     void CorrectStaminaToTarget()
     {
@@ -85,12 +71,14 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 如果体力值 < 0（没有体力组件），不处理
         if (currentStamina < 0.0)
             return;
+
+        float expectedStamina = GetExpectedEngineStamina();
         
         // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
-        if (Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.001)
+        if (Math.AbsFloat(currentStamina - expectedStamina) > 0.001)
         {
             // 计算需要调整的体力量，使其回到目标值
-            float correction = m_fTargetStamina - currentStamina;
+            float correction = expectedStamina - currentStamina;
             
             // 标记这是我们自己的调用，允许执行
             m_bIsOurOwnCall = true;
@@ -153,9 +141,11 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 获取当前体力值
         float currentStamina = GetStamina();
         
+        float expectedStamina = GetExpectedEngineStamina();
+
         // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
         // 提高精度到0.0001，确保与60Hz服务器同步
-        if (currentStamina >= 0.0 && Math.AbsFloat(currentStamina - m_fTargetStamina) > 0.0001)
+        if (currentStamina >= 0.0 && Math.AbsFloat(currentStamina - expectedStamina) > 0.0001)
         {
             // 检测到原生系统干扰，记录调试信息
             float deviation = currentStamina - m_fTargetStamina;
@@ -192,6 +182,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     void SetTargetStamina(float targetStamina)
     {
         m_fTargetStamina = Math.Clamp(targetStamina, 0.0, 1.0);
+        m_fTransientEngineDisplay = -1.0;
         
         // 立即应用目标体力值（直接调用父类的 AddStamina）
         float currentStamina = GetStamina();
@@ -228,6 +219,36 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     float GetTargetStamina()
     {
         return m_fTargetStamina;
+    }
+
+    //! 仅改引擎 GetStamina() 显示/原生门禁读数，不修改 m_fTargetStamina（冲刺门禁用）
+    void ApplyTransientEngineStamina(float engineValue)
+    {
+        engineValue = Math.Clamp(engineValue, 0.0, 1.0);
+        m_fTransientEngineDisplay = engineValue;
+        float currentStamina = GetStamina();
+        if (currentStamina < 0.0)
+            return;
+
+        float correction = engineValue - currentStamina;
+        if (Math.AbsFloat(correction) < 0.0001)
+            return;
+
+        m_bIsOurOwnCall = true;
+        super.AddStamina(correction);
+        m_bIsOurOwnCall = false;
+
+        float finalStamina = GetStamina();
+        if (finalStamina >= 0.0)
+            m_fLastKnownStamina = finalStamina;
+    }
+
+    //! 将引擎条恢复为 RSS 有氧目标（冲刺门禁结束后）
+    void RestoreEngineStaminaFromTarget()
+    {
+        m_fTransientEngineDisplay = -1.0;
+        ApplyTransientEngineStamina(m_fTargetStamina);
+        m_fTransientEngineDisplay = -1.0;
     }
     
     // 允许/禁用原生体力系统

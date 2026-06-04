@@ -13,7 +13,7 @@
 class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
-    static const int PARAMS_ARRAY_SIZE = 50;  // WriteParamsToArray/ApplyParamsFromArray 字段数（含 crouching_recovery_multiplier）
+    static const int PARAMS_ARRAY_SIZE = 59;  // v5: 双池/行军档（无 legacy 字段）
     static const int PARAMS_ARRAY_SIZE_LEGACY = 49;  // v3.22.x 网络包无蹲姿恢复槽
     static const int SETTINGS_FLOATS_SIZE = 17;
     static const int SETTINGS_INTS_SIZE = 5;
@@ -27,7 +27,7 @@ class SCR_RSS_Settings
     [Attribute("3.4.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
-    [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard(最拟真) | StandardMilsim(平衡) | TacticalAction(流畅) | Custom(自定义)", "EliteStandard StandardMilsim TacticalAction Custom")]
+    [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
     string m_sSelectedPreset;
 
     // ==================== 预设参数包 ====================
@@ -154,6 +154,7 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.02;
 	m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_EliteStandard.env_surface_wetness_prone_penalty = 0.15;
+	ApplyV5ParamsDefaults(m_EliteStandard);
 }
 
 
@@ -219,6 +220,7 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.02;
 	m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_StandardMilsim.env_surface_wetness_prone_penalty = 0.15;
+	ApplyV5ParamsDefaults(m_StandardMilsim);
 }
 
 
@@ -284,13 +286,8 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.02;
 	m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_TacticalAction.env_surface_wetness_prone_penalty = 0.15;
+	ApplyV5ParamsDefaults(m_TacticalAction);
 }
-
-
-
-
-
-
 
 
     
@@ -368,6 +365,23 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         m_fAltitudeMeters = 0.0;
         m_bMapOverWater = false;
         m_fFogDensity = 0.0;
+        ApplyV5ParamsDefaults(m_Custom);
+    }
+
+    //! v5 双池参数字段默认值（三档预设 + Custom 共用）
+    protected void ApplyV5ParamsDefaults(SCR_RSS_Params p)
+    {
+        if (!p)
+            return;
+        p.sustainable_watts = SCR_RSS_Constants.V5_SUSTAINABLE_WATTS_DEFAULT;
+        p.v5_walk_speed_ms = SCR_RSS_Constants.V5_WALK_SPEED_MS_DEFAULT;
+        p.v5_run_speed_ms = SCR_RSS_Constants.V5_RUN_SPEED_MS_DEFAULT;
+        p.v5_sprint_speed_ms = SCR_RSS_Constants.V5_SPRINT_SPEED_MS_DEFAULT;
+        p.anaerobic_sprint_enable_threshold = SCR_RSS_Constants.V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT;
+        p.burst_cooldown_full_seconds = SCR_RSS_Constants.V5_BURST_COOLDOWN_FULL_DEFAULT;
+        p.burst_cooldown_short_seconds = SCR_RSS_Constants.V5_BURST_COOLDOWN_SHORT_DEFAULT;
+        p.anaerobic_drain_per_sec = 0.12;
+        p.anaerobic_recovery_per_sec = SCR_RSS_Constants.V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT;
     }
 
     // ==================== 调试配置 ====================
@@ -592,6 +606,15 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         outArr.Insert(p.env_temperature_heat_penalty_coeff);
         outArr.Insert(p.env_temperature_cold_recovery_penalty_coeff);
         outArr.Insert(p.env_surface_wetness_prone_penalty);
+        outArr.Insert(p.sustainable_watts);
+        outArr.Insert(p.v5_walk_speed_ms);
+        outArr.Insert(p.v5_run_speed_ms);
+        outArr.Insert(p.v5_sprint_speed_ms);
+        outArr.Insert(p.anaerobic_sprint_enable_threshold);
+        outArr.Insert(p.burst_cooldown_full_seconds);
+        outArr.Insert(p.burst_cooldown_short_seconds);
+        outArr.Insert(p.anaerobic_drain_per_sec);
+        outArr.Insert(p.anaerobic_recovery_per_sec);
     }
 
     static void ApplyParamsFromArray(SCR_RSS_Params p, array<float> values)
@@ -613,6 +636,25 @@ protected void InitTacticalActionDefaults(bool shouldInit)
             for (k = 3; k < PARAMS_ARRAY_SIZE_LEGACY; k++)
                 migrated.Insert(values[k]);
             ApplyParamsFromArray(p, migrated);
+            return;
+        }
+
+        if (values.Count() == 50)
+        {
+            array<float> migratedV5 = new array<float>();
+            int j;
+            for (j = 0; j < 50; j++)
+                migratedV5.Insert(values[j]);
+            migratedV5.Insert(SCR_RSS_Constants.V5_SUSTAINABLE_WATTS_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_WALK_SPEED_MS_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_RUN_SPEED_MS_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_SPRINT_SPEED_MS_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_BURST_COOLDOWN_FULL_DEFAULT);
+            migratedV5.Insert(SCR_RSS_Constants.V5_BURST_COOLDOWN_SHORT_DEFAULT);
+            migratedV5.Insert(0.12);
+            migratedV5.Insert(SCR_RSS_Constants.V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT);
+            ApplyParamsFromArray(p, migratedV5);
             return;
         }
 
@@ -670,6 +712,15 @@ protected void InitTacticalActionDefaults(bool shouldInit)
         p.env_temperature_heat_penalty_coeff = values[i++];
         p.env_temperature_cold_recovery_penalty_coeff = values[i++];
         p.env_surface_wetness_prone_penalty = values[i++];
+        p.sustainable_watts = values[i++];
+        p.v5_walk_speed_ms = values[i++];
+        p.v5_run_speed_ms = values[i++];
+        p.v5_sprint_speed_ms = values[i++];
+        p.anaerobic_sprint_enable_threshold = values[i++];
+        p.burst_cooldown_full_seconds = values[i++];
+        p.burst_cooldown_short_seconds = values[i++];
+        p.anaerobic_drain_per_sec = values[i++];
+        p.anaerobic_recovery_per_sec = values[i++];
     }
 
     static void WriteSettingsToArrays(SCR_RSS_Settings s, array<float> outFloats, array<int> outInts, array<bool> outBools)

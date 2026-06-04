@@ -8,7 +8,7 @@ class SCR_PlayerBaseRpcHandler
         float weight,
         float currentTime,
         float clientTimestamp,
-        NetworkSyncManager networkSync,
+        SCR_RSS_NetworkSyncManager networkSync,
         bool isDebugEnabled,
         out bool shouldIgnore)
     {
@@ -63,14 +63,14 @@ class SCR_PlayerBaseRpcHandler
         float slopeAngleDegrees,
         float sprintStartTime)
     {
-        float validated = StaminaUpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
+        float validated = SCR_RSS_UpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
             clampedStamina, encumbrancePenalty, isSprinting, movementPhase,
             isExhausted, canSprint, currentSpeed, slopeAngleDegrees, sprintStartTime);
         return Math.Clamp(validated, 0.15, 1.0);
     }
 
     static bool ProcessClientReport_ShouldSync(
-        NetworkSyncManager networkSync,
+        SCR_RSS_NetworkSyncManager networkSync,
         float validated,
         float currentTime,
         out float speedDiff)

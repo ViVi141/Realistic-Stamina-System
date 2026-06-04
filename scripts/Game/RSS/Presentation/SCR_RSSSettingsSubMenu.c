@@ -55,7 +55,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         super.OnTabHide();
 
         // 本地 HUD：所有人立即生效
-        SCR_StaminaHUDComponent.SetLocalHUDEnabled(GetSpin(m_wHUDLocal));
+        SCR_RSS_StaminaHUDComponent.SetLocalHUDEnabled(GetSpin(m_wHUDLocal));
 
         // 管理员：服务器开关写入
         if (m_bIsAdmin)
@@ -93,7 +93,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
                 // 专用服务器管理员客户端：通过 RPC 推送到服务端
                 SendConfigToServer("", debugLog, hudServer, dataExportKeep, mudSlip, aiCombat, disableAI, disableAISt);
             }
-            SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+            SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
         }
     }
 
@@ -115,7 +115,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected void LoadFromSettings()
     {
         // HUD Local：始终读本地覆盖
-        SetSpin(m_wHUDLocal, SCR_StaminaHUDComponent.GetLocalHUDEnabled());
+        SetSpin(m_wHUDLocal, SCR_RSS_StaminaHUDComponent.GetLocalHUDEnabled());
 
         if (!m_bIsAdmin) return;
 
@@ -174,7 +174,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
                 dataExportKeep, GetSpin(m_wMudSlipToggle), GetSpin(m_wAICombatToggle),
                 GetSpin(m_wDisableAIToggle), GetSpin(m_wDisableAIStaminaToggle));
         }
-        SCR_StaminaHUDComponent.SyncHintDisplayWithSettings();
+        SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
         LoadFromSettings();
     }
 

@@ -12,13 +12,13 @@ class SCR_PlayerBaseVehicleHelper
         IEntity owner,
         CompartmentAccessComponent compartmentAccess,
         SCR_CharacterStaminaComponent staminaComponent,
-        ExerciseTracker exerciseTracker,
-        FatigueSystem fatigueSystem,
-        EpocState epocState,
-        EncumbranceCache encumbranceCache,
-        EnvironmentFactor environmentFactor,
-        TerrainDetector terrainDetector,
-        StanceTransitionManager stanceTransitionManager,
+        SCR_RSS_ExerciseTracker exerciseTracker,
+        SCR_RSS_FatigueSystem fatigueSystem,
+        SCR_RSS_EpocState epocState,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        SCR_RSS_TerrainDetector terrainDetector,
+        SCR_RSS_StanceTransitionManager stanceTransitionManager,
         inout float lastStaminaUpdateTime,
         float currentWetWeight,
         int speedUpdateIntervalMs,
@@ -54,8 +54,8 @@ class SCR_PlayerBaseVehicleHelper
         float vehicleNetRatePerSec = 0.0;
         if (vehicleStaminaPercent < 1.0)
         {
-            vehicleNetRatePerSec = StaminaUpdateCoordinator.GetNetStaminaRatePerSecond(
-                vehicleStaminaPercent, false, 0.0, -StaminaConstants.REST_RECOVERY_PER_TICK, 0.0, 0.0, 1.0,
+            vehicleNetRatePerSec = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+                vehicleStaminaPercent, false, 0.0, -SCR_RSS_Constants.REST_RECOVERY_PER_TICK, 0.0, 0.0, 1.0,
                 epocState, encumbranceCache, exerciseTracker, ctrl, null, true);
             float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
 
@@ -119,7 +119,7 @@ class SCR_PlayerBaseVehicleHelper
                 terrainDetector,
                 environmentFactor,
                 stanceTransitionManager);
-            DebugDisplay.OutputHintInfo(vehicleParams);
+            SCR_RSS_DebugDisplay.OutputHintInfo(vehicleParams);
         }
 
         ctrl.RSS_SetMudSlipCameraShake01(0.0);

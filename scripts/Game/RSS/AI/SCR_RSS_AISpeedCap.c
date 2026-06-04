@@ -4,7 +4,7 @@
 //! 同时包含连续速度衰减曲线（与玩家同源 STAMINA_EXPONENT = 0.6）。
 //!
 //! 调用方：PlayerBase.c 每帧 Tick
-//! 不侵入原生行为树节点——通过 SetMovementTypeWanted + SetSpeedLimit（经 SCR_RSS_CharacterSpeedBridge）间接控制。
+//! 不侵入原生行为树节点——通过 SetMovementTypeWanted + SetSpeedLimit（经 SCR_RSS_SpeedBridge）间接控制。
 
 class SCR_RSS_AISpeedCap
 {
@@ -42,7 +42,7 @@ class SCR_RSS_AISpeedCap
             if (compAccess && compAccess.GetCompartment())
                 return;
         }
-        if (SwimmingStateManager.IsSwimming(ctrl))
+        if (SCR_RSS_SwimmingStateManager.IsSwimming(ctrl))
             return;
 
         // 被压制时不限速（保命优先）
@@ -68,13 +68,13 @@ class SCR_RSS_AISpeedCap
         case ERSS_AIStaminaState.FATIGUED:
             // RUN + 限速到 65%
             maxMovement = EMovementType.RUN;
-            speedMul = StaminaConstants.RSS_AI_SPEED_FATIGUED_LIMIT;
+            speedMul = SCR_RSS_Constants.RSS_AI_SPEED_FATIGUED_LIMIT;
             break;
 
         case ERSS_AIStaminaState.EXHAUSTED:
             // WALK + 限速到 40%
             maxMovement = EMovementType.WALK;
-            speedMul = StaminaConstants.RSS_AI_SPEED_EXHAUSTED_LIMIT;
+            speedMul = SCR_RSS_Constants.RSS_AI_SPEED_EXHAUSTED_LIMIT;
             break;
 
         case ERSS_AIStaminaState.COLLAPSED:
@@ -94,7 +94,7 @@ class SCR_RSS_AISpeedCap
         }
 
         AISetMovementTypeWanted(owner, maxMovement);
-        SCR_RSS_CharacterSpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
+        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -103,9 +103,9 @@ class SCR_RSS_AISpeedCap
     static float GetContinuousSpeedMultiplier(float staminaPercent01)
     {
         float clamped = Math.Clamp(staminaPercent01, 0.0, 1.0);
-        float minMul = StaminaConstants.RSS_AI_SPEED_CONTINUOUS_MIN;
+        float minMul = SCR_RSS_Constants.RSS_AI_SPEED_CONTINUOUS_MIN;
         float range = 1.0 - minMul;
-        return minMul + range * Math.Pow(clamped, RealisticStaminaSpeedSystem.STAMINA_EXPONENT);
+        return minMul + range * Math.Pow(clamped, SCR_RSS_MetabolismMath.STAMINA_EXPONENT);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ class SCR_RSS_AISpeedCap
     {
         float contMul = GetContinuousSpeedMultiplier(staminaPercent);
         // 恢复期间至少保证能 WALK
-        return Math.Max(contMul, StaminaConstants.RSS_AI_SPEED_RECOVERING_MIN);
+        return Math.Max(contMul, SCR_RSS_Constants.RSS_AI_SPEED_RECOVERING_MIN);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -147,6 +147,6 @@ class SCR_RSS_AISpeedCap
     //! 是否启用了 AI 移动限速模块（从 JSON 配置读取）
     static bool IsEnabled()
     {
-        return StaminaConfigBridge.IsAIStaminaIntegrationEnabled();
+        return SCR_RSS_ConfigBridge.IsAIStaminaIntegrationEnabled();
     }
 }

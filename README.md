@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v3.23.1
+# Realistic Stamina System (RSS) v5.0.0
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-3.23.1-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-5.0.0-blue)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
@@ -45,7 +45,7 @@
 - ✅ **深度生理压制恢复系统**：包含呼吸困顿期、负重恢复惩罚、边际效应衰减等机制
 - ✅ **环境因子系统**：热应激、降雨湿重、风阻、泥泞度、气温、地表湿度系统
 - ✅ **实时状态 HUD 显示**：屏幕右上角紧凑状态条，显示10项关键信息
-- ✅ **配置版本管理**：自动检测并迁移旧版本配置，保留用户设置
+- ✅ **配置版本标记**：JSON 内 `m_sConfigVersion` 与模组版本对齐（不跨版本迁移；需 v4 请固定旧版模组）
 - ✅ **游泳体力管理**：3D物理模型，包含水平阻力、垂直上浮/下潜功率、静态踩水功率
 
 ## 项目结构
@@ -106,7 +106,7 @@ RealisticStaminaSystem/
 │       │   │   └── SCR_AIGroup_RSS.c                  # modded SCR_AIGroup hooks
 │       │   ├── NetworkConfig/           # 网络与配置（7 文件）
 │       │   │   ├── SCR_NetworkSync.c                 # 客户端上报／服务端权威校验／三层限流
-│       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本迁移／热重载）
+│       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本标记／热重载）
 │       │   │   ├── SCR_RSS_Settings.c                # 可序列化配置类（41+ 参数，3 预设）
 │       │   │   ├── SCR_RSS_ConfigSyncUtils.c         # 配置同步工具
 │       │   │   ├── SCR_RSS_API.c                     # 外部模组 API

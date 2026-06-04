@@ -1,8 +1,21 @@
 # RSS 项目引擎 API 使用清单
 
+> **v5 更新（5.0.0-dev）**：限速统一经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`；有氧池经 `SCR_StaminaOverride` 拦截壳；无氧池 **不** 写入引擎条，用 `[RplProp]` 同步。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
+
 > 统计范围：`scripts/` 目录下所有 `.c` 文件  
-> 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*`、`StaminaConstants`、`RealisticStaminaSpeedSystem` 等项目内部类）  
+> 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*` 等项目内部类）  
 > **路径约定**：文中 `PlayerBase.c` 均指 `scripts/Game/Integration/PlayerBase.c`（`modded class SCR_CharacterControllerComponent`）。
+
+## v5 新增/变更锚点
+
+| 职责 | v5 模块 | 官方 API |
+|------|---------|----------|
+| 速度合并 | `SCR_RSS_SpeedBridge.c` | `SCR_ChimeraCharacter.SetSpeedLimit` |
+| 有氧注入 | `SCR_StaminaOverride.c` | `OnStaminaDrain` / `ApplyDrain` 拦截 + `AddStamina` |
+| 无氧同步 | `SCR_RSS_NetworkSyncManager.c`（静态 RplProp 辅助）+ PlayerBase `[RplProp]` | 不绑定 `GetStamina()` |
+| 环境采样 | `SCR_RSS_WeatherApi.c` | `TimeAndWeatherManagerEntity` 只读输入 |
+| 配置复制 | `SCR_RSS_ServerBootstrap.c` | `[RplProp(onRplName:)]` on GameMode |
+| HUD 数据 | `SCR_RSS_StaminaHUDComponent.c` | `WorkspaceWidget` + `GUIColors` |
 
 ---
 

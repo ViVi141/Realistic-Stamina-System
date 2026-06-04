@@ -11,7 +11,7 @@ class SCR_RSS_AICombatDecay
     //! 主入口
     static void Apply(IEntity owner, ERSS_AIStaminaState state)
     {
-        if (!StaminaConfigBridge.IsAIStaminaCombatEffectsEnabled())
+        if (!SCR_RSS_ConfigBridge.IsAIStaminaCombatEffectsEnabled())
             return;
         if (!owner)
             return;
@@ -74,33 +74,33 @@ class SCR_RSS_AICombatDecay
             break;
 
         case ERSS_AIStaminaState.WINDED:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_WINDED;
-            fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_WINDED;
-            skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_WINDED;
+            perceptionMul = SCR_RSS_Constants.RSS_AI_COMBAT_PERCEPTION_WINDED;
+            fireRateMul = SCR_RSS_Constants.RSS_AI_COMBAT_FIRE_RATE_WINDED;
+            skillMul = SCR_RSS_Constants.RSS_AI_COMBAT_SKILL_WINDED;
             break;
 
         case ERSS_AIStaminaState.FATIGUED:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_FATIGUED;
-            fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_FATIGUED;
-            skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_FATIGUED;
+            perceptionMul = SCR_RSS_Constants.RSS_AI_COMBAT_PERCEPTION_FATIGUED;
+            fireRateMul = SCR_RSS_Constants.RSS_AI_COMBAT_FIRE_RATE_FATIGUED;
+            skillMul = SCR_RSS_Constants.RSS_AI_COMBAT_SKILL_FATIGUED;
             break;
 
         case ERSS_AIStaminaState.EXHAUSTED:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_EXHAUSTED;
-            fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_EXHAUSTED;
-            skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_EXHAUSTED;
+            perceptionMul = SCR_RSS_Constants.RSS_AI_COMBAT_PERCEPTION_EXHAUSTED;
+            fireRateMul = SCR_RSS_Constants.RSS_AI_COMBAT_FIRE_RATE_EXHAUSTED;
+            skillMul = SCR_RSS_Constants.RSS_AI_COMBAT_SKILL_EXHAUSTED;
             break;
 
         case ERSS_AIStaminaState.COLLAPSED:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_COLLAPSED;
-            fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_COLLAPSED;
-            skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_COLLAPSED;
+            perceptionMul = SCR_RSS_Constants.RSS_AI_COMBAT_PERCEPTION_COLLAPSED;
+            fireRateMul = SCR_RSS_Constants.RSS_AI_COMBAT_FIRE_RATE_COLLAPSED;
+            skillMul = SCR_RSS_Constants.RSS_AI_COMBAT_SKILL_COLLAPSED;
             break;
 
         case ERSS_AIStaminaState.RECOVERING:
-            perceptionMul = StaminaConstants.RSS_AI_COMBAT_PERCEPTION_RECOVERING;
-            fireRateMul = StaminaConstants.RSS_AI_COMBAT_FIRE_RATE_RECOVERING;
-            skillMul = StaminaConstants.RSS_AI_COMBAT_SKILL_RECOVERING;
+            perceptionMul = SCR_RSS_Constants.RSS_AI_COMBAT_PERCEPTION_RECOVERING;
+            fireRateMul = SCR_RSS_Constants.RSS_AI_COMBAT_FIRE_RATE_RECOVERING;
+            skillMul = SCR_RSS_Constants.RSS_AI_COMBAT_SKILL_RECOVERING;
             break;
 
         default:

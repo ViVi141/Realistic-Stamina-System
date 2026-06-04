@@ -1369,6 +1369,79 @@ class RSSDigitalTwin:
 
 
 # =============================================================================
+# v5 双池 stub（与 SCR_RSS_DrainCalculator / SCR_RSS_AnaerobicBurst C 端契约）
+# =============================================================================
+
+def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> float:
+    """与 SCR_RSS_DrainCalculator.GetDrainVelocityMs 一致。"""
+    measured_ms = max(0.0, measured_ms)
+    theoretical_max_ms = max(0.05, theoretical_max_ms)
+    if measured_ms > theoretical_max_ms:
+        return theoretical_max_ms
+    return measured_ms
+
+
+def get_metabolic_overspeed_factor(
+    pandolf_watts: float,
+    sustainable_watts: float = 400.0,
+    min_factor: float = 0.35,
+) -> float:
+    """与 SCR_RSS_DrainCalculator.GetMetabolicOverspeedFactor 一致。"""
+    if pandolf_watts <= sustainable_watts:
+        return 1.0
+    ratio = sustainable_watts / pandolf_watts
+    return max(min_factor, ratio)
+
+
+@dataclass
+class V5AnaerobicState:
+    """v5 无氧池简化孪生（不写入有氧 stamina 条）。"""
+
+    pool: float = 1.0
+    cooldown_until_sec: float = -1.0
+
+    def tick_sprint(self, dt_sec: float, drain_per_sec: float) -> None:
+        self.pool = max(0.0, self.pool - drain_per_sec * dt_sec)
+
+    def cooldown_remaining(self, world_time_sec: float) -> float:
+        if self.cooldown_until_sec < 0.0:
+            return 0.0
+        return max(0.0, self.cooldown_until_sec - world_time_sec)
+
+
+def simulate_ideal_march_aerobic_end(
+    hours: float = 4.0,
+    encumbrance_kg: float = 35.0,
+    speed_ms: float = 1.39,
+    dt_sec: float = 2.0,
+) -> float:
+    """理想平地行军：返回结束时有氧池比例（0..1）。
+
+    与 bench_physio_anchors 4h/35kg 锚点契约一致；使用 RSSDigitalTwin 主循环，
+    关闭随机扰动，2s 步长以控制 CI 耗时。
+    """
+    twin = RSSDigitalTwin(RSSConstants())
+    total_weight = twin.constants.CHARACTER_WEIGHT + encumbrance_kg
+    t = 0.0
+    end_sec = hours * 3600.0
+    while t < end_sec:
+        twin.step(
+            speed_ms,
+            total_weight,
+            0.0,
+            1.0,
+            Stance.STAND,
+            MovementType.WALK,
+            t,
+            enable_randomness=False,
+            wind_drag=0.0,
+            time_delta_override=dt_sec,
+        )
+        t += dt_sec
+    return float(twin.stamina)
+
+
+# =============================================================================
 # 测试入口
 # =============================================================================
 if __name__ == '__main__':

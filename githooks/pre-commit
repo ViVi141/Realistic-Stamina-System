@@ -1,0 +1,4 @@
+#!/bin/sh
+# Install: git config core.hooksPath githooks
+python tools/check_script_size.py
+exit $?
