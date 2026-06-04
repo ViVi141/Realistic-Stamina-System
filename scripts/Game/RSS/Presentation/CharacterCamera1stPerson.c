@@ -25,9 +25,15 @@ modded class CharacterCamera1stPerson
             return;
 
         Game game = GetGame();
-        if (!game) return;
+        if (!game)
+        {
+            return;
+        }
         World world = game.GetWorld();
-        if (!world) return;
+        if (!world)
+        {
+            return;
+        }
         float worldTimeSec = world.GetWorldTime() / 1000.0;
         float staminaPercent = GetStaminaPercent();
 

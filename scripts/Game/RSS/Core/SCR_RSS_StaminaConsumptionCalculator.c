@@ -186,7 +186,10 @@ class SCR_RSS_StaminaConsumptionCalculator
         if (SCR_RSS_DebugBatchManager.IsDebugBatchActive())
         {
             int fbFlag = 0;
-            if (usedFallback) fbFlag = 1;
+            if (usedFallback)
+            {
+                fbFlag = 1;
+            }
             string line1 = string.Format("[RSS] ConsCalc: fb=%1 baseDrain=%2 tempAdj=%3 weight=%4 speed=%5 grade=%6",
                 fbFlag,
                 Math.Round(baseDrainRateByVelocity * 1000.0) / 1000.0,

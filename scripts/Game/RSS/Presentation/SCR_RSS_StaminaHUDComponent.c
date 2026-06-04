@@ -198,7 +198,10 @@ class SCR_RSS_StaminaHUDComponent
 
         // 否则跟随服务器设置
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
         if (settings.m_bHintDisplayEnabled)
             Init();
@@ -299,17 +302,50 @@ class SCR_RSS_StaminaHUDComponent
         }
         
         int widgetCount = 0;
-        if (m_wTextStamina) widgetCount++;
-        if (m_wTextSpeed) widgetCount++;
-        if (m_wTextWeight) widgetCount++;
-        if (m_wTextMove) widgetCount++;
-        if (m_wTextSlope) widgetCount++;
-        if (m_wTextHeat) widgetCount++;
-        if (m_wTextWind) widgetCount++;
-        if (m_wTextLocation) widgetCount++;
-        if (m_wTextGround) widgetCount++;
-        if (m_wTextWet) widgetCount++;
-        if (m_wTextTime) widgetCount++;
+        if (m_wTextStamina)
+        {
+            widgetCount++;
+        }
+        if (m_wTextSpeed)
+        {
+            widgetCount++;
+        }
+        if (m_wTextWeight)
+        {
+            widgetCount++;
+        }
+        if (m_wTextMove)
+        {
+            widgetCount++;
+        }
+        if (m_wTextSlope)
+        {
+            widgetCount++;
+        }
+        if (m_wTextHeat)
+        {
+            widgetCount++;
+        }
+        if (m_wTextWind)
+        {
+            widgetCount++;
+        }
+        if (m_wTextLocation)
+        {
+            widgetCount++;
+        }
+        if (m_wTextGround)
+        {
+            widgetCount++;
+        }
+        if (m_wTextWet)
+        {
+            widgetCount++;
+        }
+        if (m_wTextTime)
+        {
+            widgetCount++;
+        }
         
         // 记录创建时的 world generation，用于跨 session 的悬空检测
         m_iCreatedInGeneration = s_iWorldGeneration;

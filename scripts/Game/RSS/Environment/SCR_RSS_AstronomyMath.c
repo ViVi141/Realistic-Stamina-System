@@ -116,15 +116,24 @@ class SCR_RSS_AstronomyMath
     {
         outLatDeg = 0.0;
         outLonDeg = 0.0;
-        if (!weatherManager) return 0.0;
+        if (!weatherManager)
+        {
+            return 0.0;
+        }
 
         float sr = 0.0, ss = 0.0;
         if (!weatherManager.GetSunriseHour(sr) || !weatherManager.GetSunsetHour(ss))
             return 0.0;
 
-        if (ss < sr) ss += 24.0;
+        if (ss < sr)
+        {
+            ss += 24.0;
+        }
         float L = ss - sr;
-        if (L <= 0.0 || L >= 24.0) return 0.0;
+        if (L <= 0.0 || L >= 24.0)
+        {
+            return 0.0;
+        }
 
         int year, month, day;
         weatherManager.GetDate(year, month, day);
@@ -134,7 +143,10 @@ class SCR_RSS_AstronomyMath
         float omega0_rad = omega0_deg * Math.DEG2RAD;
         float decl = SolarDeclination(n);
         float tanDecl = Math.Tan(decl);
-        if (Math.AbsFloat(tanDecl) < 1e-6) return 0.0;
+        if (Math.AbsFloat(tanDecl) < 1e-6)
+        {
+            return 0.0;
+        }
 
         float tanPhi = -Math.Cos(omega0_rad) / tanDecl;
         float denom = Math.Sqrt(1.0 + tanPhi * tanPhi);
@@ -152,7 +164,10 @@ class SCR_RSS_AstronomyMath
         float conf = 1.0;
         conf -= Math.Clamp(cloud * 0.5, 0.0, 0.5);
         conf -= Math.Clamp(1.0 - Math.AbsFloat(tanDecl) * 1000.0, 0.0, 0.3);
-        if (L < 2.0 || L > 22.0) conf -= 0.3;
+        if (L < 2.0 || L > 22.0)
+        {
+            conf -= 0.3;
+        }
         conf = Math.Clamp(conf, 0.0, 1.0);
 
         outLatDeg = latDeg;
@@ -175,7 +190,10 @@ class SCR_RSS_AstronomyMath
     {
         outLatDeg = 0.0;
         outLonDeg = 0.0;
-        if (!weatherManager) return 0.0;
+        if (!weatherManager)
+        {
+            return 0.0;
+        }
 
         float obsSR = 0.0, obsSS = 0.0;
         if (!weatherManager.GetSunriseHour(obsSR) || !weatherManager.GetSunsetHour(obsSS))
@@ -188,7 +206,10 @@ class SCR_RSS_AstronomyMath
         float tz = timeZoneOffsetHours;
         float dst = weatherManager.GetDSTOffset();
 
-        if (obsSS < obsSR) obsSS += 24.0;
+        if (obsSS < obsSR)
+        {
+            obsSS += 24.0;
+        }
         float obsL = obsSS - obsSR;
         float obsNoon = (obsSR + obsSS) * 0.5;
         while (obsNoon >= 24.0) obsNoon -= 24.0;
@@ -205,8 +226,14 @@ class SCR_RSS_AstronomyMath
                 bool okSR = weatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
                 bool okSS = weatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
                 float penalty = 0.0;
-                if (!okSR || !okSS) penalty = 10.0;
-                if (ss_c < sr_c) ss_c += 24.0;
+                if (!okSR || !okSS)
+                {
+                    penalty = 10.0;
+                }
+                if (ss_c < sr_c)
+                {
+                    ss_c += 24.0;
+                }
                 float Lc = ss_c - sr_c;
                 float noon_c = (sr_c + ss_c) * 0.5;
                 while (noon_c >= 24.0) noon_c -= 24.0;
@@ -223,15 +250,24 @@ class SCR_RSS_AstronomyMath
             float localBestErr = bestErr, localBestLat = bestLat, localBestLon = bestLon;
             for (float lat = bestLat - searchRadius; lat <= bestLat + searchRadius; lat += step)
             {
-                if (lat < -89.9 || lat > 89.9) continue;
+                if (lat < -89.9 || lat > 89.9)
+                {
+                    continue;
+                }
                 for (float lon = bestLon - searchRadius; lon <= bestLon + searchRadius; lon += step)
                 {
                     float sr_c = 0.0, ss_c = 0.0;
                     bool okSR = weatherManager.GetSunriseHourForDate(year, month, day, lat, lon, tz, dst, sr_c);
                     bool okSS = weatherManager.GetSunsetHourForDate(year, month, day, lat, lon, tz, dst, ss_c);
                     float penalty = 0.0;
-                    if (!okSR || !okSS) penalty = 10.0;
-                    if (ss_c < sr_c) ss_c += 24.0;
+                    if (!okSR || !okSS)
+                    {
+                        penalty = 10.0;
+                    }
+                    if (ss_c < sr_c)
+                    {
+                        ss_c += 24.0;
+                    }
                     float Lc = ss_c - sr_c;
                     float noon_c = (sr_c + ss_c) * 0.5;
                     while (noon_c >= 24.0) noon_c -= 24.0;

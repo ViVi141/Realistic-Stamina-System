@@ -68,9 +68,18 @@ class SCR_RSS_Settings
         bool initStandard = !m_StandardMilsim;
         bool initTactical = !m_TacticalAction;
 
-        if (initElite) m_EliteStandard = new SCR_RSS_Params();
-        if (initStandard) m_StandardMilsim = new SCR_RSS_Params();
-        if (initTactical) m_TacticalAction = new SCR_RSS_Params();
+        if (initElite)
+        {
+            m_EliteStandard = new SCR_RSS_Params();
+        }
+        if (initStandard)
+        {
+            m_StandardMilsim = new SCR_RSS_Params();
+        }
+        if (initTactical)
+        {
+            m_TacticalAction = new SCR_RSS_Params();
+        }
         
         // 2. 处理 Custom 预设：仅在不存在时初始化默认值
         bool initCustom = !m_Custom;

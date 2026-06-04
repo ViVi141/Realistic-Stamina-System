@@ -70,19 +70,37 @@ class SCR_RSSAdminMenuUI
         // 绑定预设按钮
         SCR_ButtonTextComponent btn;
         btn = SCR_ButtonTextComponent.GetButtonText("BtnElite", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnPresetElite);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnPresetElite);
+        }
         btn = SCR_ButtonTextComponent.GetButtonText("BtnStandard", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnPresetStandard);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnPresetStandard);
+        }
         btn = SCR_ButtonTextComponent.GetButtonText("BtnTactical", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnPresetTactical);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnPresetTactical);
+        }
         btn = SCR_ButtonTextComponent.GetButtonText("BtnCustom", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnPresetCustom);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnPresetCustom);
+        }
 
         // 绑定操作按钮
         btn = SCR_ButtonTextComponent.GetButtonText("BtnReload", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnReloadConfig);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnReloadConfig);
+        }
         btn = SCR_ButtonTextComponent.GetButtonText("BtnSave", m_wRoot);
-        if (btn) btn.m_OnClicked.Insert(OnSaveAndSync);
+        if (btn)
+        {
+            btn.m_OnClicked.Insert(OnSaveAndSync);
+        }
 
         // 初始化复选框状态
         RefreshCheckboxes();
@@ -98,15 +116,39 @@ class SCR_RSSAdminMenuUI
     protected void RefreshCheckboxes()
     {
         SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
-        if (m_wChkDebug)    m_wChkDebug.SetChecked(settings.m_bDebugLogEnabled);
-        if (m_wChkHUD)      m_wChkHUD.SetChecked(settings.m_bHintDisplayEnabled);
-        if (m_wChkDataExport) m_wChkDataExport.SetChecked(settings.m_bDataExportEnabled);
-        if (m_wChkMudSlip)  m_wChkMudSlip.SetChecked(settings.m_bEnableMudSlipMechanism);
-        if (m_wChkAICombat) m_wChkAICombat.SetChecked(settings.m_bEnableAIStaminaCombatEffects);
-        if (m_wChkDisableAI) m_wChkDisableAI.SetChecked(settings.m_bDisableAIAllCalc);
-        if (m_wChkDisableAIStamina) m_wChkDisableAIStamina.SetChecked(settings.m_bDisableAIStaminaCalc);
+        if (m_wChkDebug)
+        {
+            m_wChkDebug.SetChecked(settings.m_bDebugLogEnabled);
+        }
+        if (m_wChkHUD)
+        {
+            m_wChkHUD.SetChecked(settings.m_bHintDisplayEnabled);
+        }
+        if (m_wChkDataExport)
+        {
+            m_wChkDataExport.SetChecked(settings.m_bDataExportEnabled);
+        }
+        if (m_wChkMudSlip)
+        {
+            m_wChkMudSlip.SetChecked(settings.m_bEnableMudSlipMechanism);
+        }
+        if (m_wChkAICombat)
+        {
+            m_wChkAICombat.SetChecked(settings.m_bEnableAIStaminaCombatEffects);
+        }
+        if (m_wChkDisableAI)
+        {
+            m_wChkDisableAI.SetChecked(settings.m_bDisableAIAllCalc);
+        }
+        if (m_wChkDisableAIStamina)
+        {
+            m_wChkDisableAIStamina.SetChecked(settings.m_bDisableAIStaminaCalc);
+        }
     }
 
     //------------------------------------------------------------------------------------------------
@@ -114,7 +156,10 @@ class SCR_RSSAdminMenuUI
     protected void RefreshUI()
     {
         SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
         string preset = settings.m_sSelectedPreset;
         if (!preset || preset == "")
@@ -157,21 +202,48 @@ class SCR_RSSAdminMenuUI
     protected void SaveSwitchesToSettings()
     {
         SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
-        if (m_wChkDebug)    settings.m_bDebugLogEnabled = m_wChkDebug.IsChecked();
-        if (m_wChkHUD)      settings.m_bHintDisplayEnabled = m_wChkHUD.IsChecked();
-        if (m_wChkDataExport) settings.m_bDataExportEnabled = m_wChkDataExport.IsChecked();
-        if (m_wChkMudSlip)  settings.m_bEnableMudSlipMechanism = m_wChkMudSlip.IsChecked();
-        if (m_wChkAICombat) settings.m_bEnableAIStaminaCombatEffects = m_wChkAICombat.IsChecked();
-        if (m_wChkDisableAI) settings.m_bDisableAIAllCalc = m_wChkDisableAI.IsChecked();
-        if (m_wChkDisableAIStamina) settings.m_bDisableAIStaminaCalc = m_wChkDisableAIStamina.IsChecked();
+        if (m_wChkDebug)
+        {
+            settings.m_bDebugLogEnabled = m_wChkDebug.IsChecked();
+        }
+        if (m_wChkHUD)
+        {
+            settings.m_bHintDisplayEnabled = m_wChkHUD.IsChecked();
+        }
+        if (m_wChkDataExport)
+        {
+            settings.m_bDataExportEnabled = m_wChkDataExport.IsChecked();
+        }
+        if (m_wChkMudSlip)
+        {
+            settings.m_bEnableMudSlipMechanism = m_wChkMudSlip.IsChecked();
+        }
+        if (m_wChkAICombat)
+        {
+            settings.m_bEnableAIStaminaCombatEffects = m_wChkAICombat.IsChecked();
+        }
+        if (m_wChkDisableAI)
+        {
+            settings.m_bDisableAIAllCalc = m_wChkDisableAI.IsChecked();
+        }
+        if (m_wChkDisableAIStamina)
+        {
+            settings.m_bDisableAIStaminaCalc = m_wChkDisableAIStamina.IsChecked();
+        }
     }
 
     //------------------------------------------------------------------------------------------------
     protected void TriggerReplication()
     {
-        if (!GetGame()) return;
+        if (!GetGame())
+        {
+            return;
+        }
 
         SCR_BaseGameMode gameMode = SCR_BaseGameMode.Cast(GetGame().GetGameMode());
         if (gameMode)
@@ -184,7 +256,10 @@ class SCR_RSSAdminMenuUI
     protected void SendConfigToServer(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
     {
         IEntity player = SCR_PlayerController.GetLocalControlledEntity();
-        if (!player) return;
+        if (!player)
+        {
+            return;
+        }
 
         SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
             player.FindComponent(SCR_CharacterControllerComponent));
@@ -194,7 +269,10 @@ class SCR_RSSAdminMenuUI
 
     protected bool IsChkChecked(CheckBoxWidget chk)
     {
-        if (!chk) return false;
+        if (!chk)
+        {
+            return false;
+        }
         return chk.IsChecked();
     }
 
@@ -207,7 +285,10 @@ class SCR_RSSAdminMenuUI
     protected void ApplyPreset(string preset, bool forceRefresh)
     {
         SCR_RSS_Settings settings = GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
         if (Replication.IsServer())
         {

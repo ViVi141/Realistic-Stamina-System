@@ -117,10 +117,16 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         // HUD Local：始终读本地覆盖
         SetSpin(m_wHUDLocal, SCR_RSS_StaminaHUDComponent.GetLocalHUDEnabled());
 
-        if (!m_bIsAdmin) return;
+        if (!m_bIsAdmin)
+        {
+            return;
+        }
 
         SCR_RSS_Settings s = GetSettings();
-        if (!s) return;
+        if (!s)
+        {
+            return;
+        }
 
         // 管理员区域
         SetSpin(m_wHUDServer,  s.m_bHintDisplayEnabled);
@@ -133,11 +139,23 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
         if (m_wPresetSelector)
         {
             string preset = s.m_sSelectedPreset;
-            if (!preset || preset == "") preset = "StandardMilsim";
+            if (!preset || preset == "")
+            {
+                preset = "StandardMilsim";
+            }
             int idx = 1;
-            if (preset == "EliteStandard")   idx = 0;
-            else if (preset == "StandardMilsim") idx = 1;
-            else if (preset == "TacticalAction") idx = 2;
+            if (preset == "EliteStandard")
+            {
+                idx = 0;
+            }
+            else if (preset == "StandardMilsim")
+            {
+                idx = 1;
+            }
+            else if (preset == "TacticalAction")
+            {
+                idx = 2;
+            }
             else                              idx = 3;
             m_wPresetSelector.SetCurrentItem(idx, false, false);
         }
@@ -147,13 +165,28 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected void OnPresetChanged(SCR_ComboBoxComponent combo, int index)
     {
         SCR_RSS_Settings s = GetSettings();
-        if (!s) return;
+        if (!s)
+        {
+            return;
+        }
         string preset;
-        if (index == 0)       preset = "EliteStandard";
-        else if (index == 1)  preset = "StandardMilsim";
-        else if (index == 2)  preset = "TacticalAction";
+        if (index == 0)
+        {
+            preset = "EliteStandard";
+        }
+        else if (index == 1)
+        {
+            preset = "StandardMilsim";
+        }
+        else if (index == 2)
+        {
+            preset = "TacticalAction";
+        }
         else                  preset = "Custom";
-        if (preset == s.m_sSelectedPreset) return;
+        if (preset == s.m_sSelectedPreset)
+        {
+            return;
+        }
 
         if (Replication.IsServer())
         {
@@ -182,7 +215,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     protected void SendConfigToServer(string preset, bool debugLog, bool hintDisplay, bool dataExport, bool mudSlip, bool aiCombat, bool disableAI, bool disableAIStamina)
     {
         IEntity player = SCR_PlayerController.GetLocalControlledEntity();
-        if (!player) return;
+        if (!player)
+        {
+            return;
+        }
 
         SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
             player.FindComponent(SCR_CharacterControllerComponent));
@@ -200,7 +236,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     {
         int pid = GetGame().GetPlayerController().GetPlayerId();
         PlayerManager pm = GetGame().GetPlayerManager();
-        if (!pm) return false;
+        if (!pm)
+        {
+            return false;
+        }
         return pm.HasPlayerRole(pid, EPlayerRole.ADMINISTRATOR)
             || pm.HasPlayerRole(pid, EPlayerRole.SESSION_ADMINISTRATOR)
             || pm.HasPlayerRole(pid, EPlayerRole.GAME_MASTER);
@@ -208,7 +247,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 
     protected void SetSpin(SCR_SpinBoxComponent spin, bool value)
     {
-        if (!spin) return;
+        if (!spin)
+        {
+            return;
+        }
         int idx = 0;
         if (value)
             idx = 1;
@@ -217,27 +259,39 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 
     protected bool GetSpin(SCR_SpinBoxComponent spin)
     {
-        if (!spin) return false;
+        if (!spin)
+        {
+            return false;
+        }
         return spin.GetCurrentIndex() != 0;
     }
 
     protected void HideWidget(string name, bool hide)
     {
         Widget w = m_wRoot.FindAnyWidget(name);
-        if (w) w.SetVisible(!hide);
+        if (w)
+        {
+            w.SetVisible(!hide);
+        }
     }
 
     protected SCR_SpinBoxComponent FindSpinBox(string name)
     {
         Widget w = m_wRoot.FindAnyWidget(name);
-        if (!w) return null;
+        if (!w)
+        {
+            return null;
+        }
         return SCR_SpinBoxComponent.Cast(w.FindHandler(SCR_SpinBoxComponent));
     }
 
     protected SCR_ComboBoxComponent FindComboBox(string name)
     {
         Widget w = m_wRoot.FindAnyWidget(name);
-        if (!w) return null;
+        if (!w)
+        {
+            return null;
+        }
         return SCR_ComboBoxComponent.Cast(w.FindHandler(SCR_ComboBoxComponent));
     }
 

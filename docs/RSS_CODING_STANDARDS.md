@@ -30,7 +30,8 @@
 | StaminaOverride | ≤ 15 KB / ≤ 250 行（拦截壳 only） |
 | RSS/Core 等 | ≤ 45 KB / ≤ 700 行 |
 
-运行：`python tools/check_script_size.py`
+运行：`python tools/check_script_size.py`  
+运行：`python tools/check_enforce_syntax.py`（禁用语法 + 单行 `if`）
 
 ## 4. Official-first + 两大例外
 
@@ -69,5 +70,6 @@ RSS/MudSlip/     → 泥泞滑倒
 ## 8. PR 检查
 
 - [ ] `check_script_size.py` 通过
+- [ ] `check_enforce_syntax.py` 通过
 - [ ] 写明官方锚点或例外理由
 - [ ] 未在 Integration 内联 Pandolf / 环境惩罚

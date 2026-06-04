@@ -144,12 +144,30 @@ class SCR_RSS_AICombatDecay
     //------------------------------------------------------------------------------------------------
     protected static EAISkill ValueToNearestAISkill(int v)
     {
-        if (v <= 0)           return EAISkill.NONE;
-        if (v < 15)           return EAISkill.NOOB;
-        if (v < 35)           return EAISkill.ROOKIE;
-        if (v < 60)           return EAISkill.REGULAR;
-        if (v < 75)           return EAISkill.VETERAN;
-        if (v < 90)           return EAISkill.EXPERT;
+        if (v <= 0)
+        {
+            return EAISkill.NONE;
+        }
+        if (v < 15)
+        {
+            return EAISkill.NOOB;
+        }
+        if (v < 35)
+        {
+            return EAISkill.ROOKIE;
+        }
+        if (v < 60)
+        {
+            return EAISkill.REGULAR;
+        }
+        if (v < 75)
+        {
+            return EAISkill.VETERAN;
+        }
+        if (v < 90)
+        {
+            return EAISkill.EXPERT;
+        }
                               return EAISkill.CYLON;
     }
 }

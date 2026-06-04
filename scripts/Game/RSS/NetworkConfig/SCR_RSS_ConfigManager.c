@@ -349,7 +349,10 @@ class SCR_RSS_ConfigManager
     // 保存配置文件（原子写入：先写临时文件再 rename）
     static void Save()
     {
-        if (!m_Settings) m_Settings = new SCR_RSS_Settings();
+        if (!m_Settings)
+        {
+            m_Settings = new SCR_RSS_Settings();
+        }
 
         if (!CanWriteConfig())
         {
@@ -441,7 +444,10 @@ class SCR_RSS_ConfigManager
     // 更新配置缓存
     protected static void UpdateConfigCache()
     {
-        if (!m_Settings) return;
+        if (!m_Settings)
+        {
+            return;
+        }
         
         // 创建配置副本作为缓存
         m_CachedSettings = new SCR_RSS_Settings();
@@ -606,7 +612,10 @@ class SCR_RSS_ConfigManager
         array<ref SCR_RSS_Params> presets = { m_Settings.m_EliteStandard, m_Settings.m_StandardMilsim, m_Settings.m_TacticalAction, m_Settings.m_Custom };
         foreach (SCR_RSS_Params p : presets)
         {
-            if (!p) continue;
+            if (!p)
+            {
+                continue;
+            }
 
             if (p.encumbrance_speed_penalty_exponent < ENCUMBRANCE_EXP_MIN)
             {

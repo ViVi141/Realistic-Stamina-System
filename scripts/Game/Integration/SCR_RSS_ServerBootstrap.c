@@ -81,7 +81,10 @@ modded class SCR_BaseGameMode
 
         int playerId = GetGame().GetPlayerController().GetPlayerId();
         PlayerManager pm = GetGame().GetPlayerManager();
-        if (!pm) return;
+        if (!pm)
+        {
+            return;
+        }
 
         if (!pm.HasPlayerRole(playerId, EPlayerRole.ADMINISTRATOR)
             && !pm.HasPlayerRole(playerId, EPlayerRole.SESSION_ADMINISTRATOR)
@@ -131,10 +134,19 @@ modded class SCR_BaseGameMode
     //------------------------------------------------------------------------------------------------
     protected void RssServerDataExportScheduleIfNeeded()
     {
-        if (!Replication.IsServer()) return;
+        if (!Replication.IsServer())
+        {
+            return;
+        }
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings || !settings.m_bDataExportEnabled) return;
-        if (m_bRssDataExportLoopRunning) return;
+        if (!settings || !settings.m_bDataExportEnabled)
+        {
+            return;
+        }
+        if (m_bRssDataExportLoopRunning)
+        {
+            return;
+        }
 
         m_bRssDataExportLoopRunning = true;
         if (GetGame())
@@ -172,10 +184,16 @@ modded class SCR_BaseGameMode
     // Server: 只复制差异数据（预设名 + 开关 + Custom 参数若有）
     protected void RSS_BuildAndReplicateConfig()
     {
-        if (!Replication.IsServer()) return;
+        if (!Replication.IsServer())
+        {
+            return;
+        }
 
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings) return;
+        if (!settings)
+        {
+            return;
+        }
 
         m_sRssConfigVersion  = settings.m_sConfigVersion;
         m_sRssSelectedPreset = settings.m_sSelectedPreset;
@@ -210,7 +228,10 @@ modded class SCR_BaseGameMode
     // Client: 收到差异数据 → 本地 InitPresets + 应用开关
     protected void OnRssConfigReplicated()
     {
-        if (Replication.IsServer()) return;
+        if (Replication.IsServer())
+        {
+            return;
+        }
         if (!GetGame())
             return;
         // m_bRssConfigInitialized 未参与 Rpl 复制，客户端恒为 false 会误拦截；改为校验已复制的字段。

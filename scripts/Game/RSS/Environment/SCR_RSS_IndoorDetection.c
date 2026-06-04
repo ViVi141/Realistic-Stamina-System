@@ -339,7 +339,10 @@ class SCR_RSS_IndoorDetection
             world.TraceMove(m_pTraceParamEnclosed, null);
 
             bool hit = (m_pTraceParamEnclosed.TraceEnt != null) || (m_pTraceParamEnclosed.SurfaceProps != null) || (m_pTraceParamEnclosed.ColliderName != string.Empty);
-            if (hit) hits++;
+            if (hit)
+            {
+                hits++;
+            }
 
             if (m_bIndoorDebug)
             {
