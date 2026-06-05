@@ -1,3 +1,17 @@
+//! 状态行代谢诊断（EnforceScript 方法参数上限 16）
+class RSS_StatusMetabLogSnapshot
+{
+    float metabolismPowerW;
+    float metabolismPowerMetW;
+    float metabolismPowerRawW;
+    float effectiveCpW;
+    float aerobicPowerW;
+    float finalDrainPerTick;
+    float metabolicNetPerTick;
+    float capRatchetPerTick;
+    float netStaminaPerTick;
+}
+
 //! 本地玩家 Debug/HUD 单 tick 快照（EnforceScript 方法参数上限 16）
 class RSS_StaminaDebugOutputParams
 {
@@ -18,6 +32,17 @@ class RSS_StaminaDebugOutputParams
     int currentMovementPhase;
     int effectiveMovementPhase;
     float rainWeight;
+    float maxStaminaCap;
+    float fatigueIntegralNorm;
+    float metabolismPowerW;
+    float metabolismPowerMetW;
+    float metabolismPowerRawW;
+    float effectiveCpW;
+    float aerobicPowerW;
+    float finalDrainRate;
+    float metabolicNetPerTick;
+    float capRatchetPerTick;
+    float netStaminaPerTick;
 }
 
 modded class SCR_CharacterControllerComponent
@@ -433,6 +458,8 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pFatigueSystem && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
+            float capBeforeFatigue = m_pFatigueSystem.GetMaxStaminaCap();
+
             float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
                 currentSpeed, m_fAppliedSpeedLimitMs);
             float powerFat = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
@@ -441,14 +468,31 @@ modded class SCR_CharacterControllerComponent
                 gradePercent,
                 terrainFactor,
                 true,
-                phaseNow);
+                effectivePhase);
+            float cpForFatigue = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+            if (m_pAnaerobicBurst)
+            {
+                SCR_RSS_CriticalPowerModel cpModelFat = m_pAnaerobicBurst.GetCpModel();
+                if (cpModelFat)
+                    cpForFatigue = cpModelFat.GetEffectiveCriticalPowerWatts();
+            }
+            if (cpForFatigue <= 1.0)
+                cpForFatigue = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+            float aerobicPowerFat = SCR_RSS_MetabolismModel.AerobicPowerWattsForStaminaDrain(
+                powerFat, cpForFatigue);
             m_pFatigueSystem.ProcessFatigueIntegral(
-                powerFat,
+                aerobicPowerFat,
                 currentWeight,
                 gradePercent,
                 terrainFactor,
                 timeDeltaSec,
                 currentSpeed);
+
+            m_fLastCapRatchetPerTick = capBeforeFatigue - m_pFatigueSystem.GetMaxStaminaCap();
+        }
+        else
+        {
+            m_fLastCapRatchetPerTick = 0.0;
         }
 
         if (SCR_RSS_ConfigBridge.IsMudSlipMechanismEnabled())
@@ -551,6 +595,83 @@ modded class SCR_CharacterControllerComponent
 
         if (owner == SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled() && IsPlayerControlled())
             SCR_RSS_DebugBatchManager.StartDebugBatch();
+
+        float staminaBeforeUpdate = staminaPercent;
+        float maxStaCapDbg = 1.0;
+        float fatigueNormDbg = 0.0;
+        if (m_pFatigueSystem)
+        {
+            maxStaCapDbg = m_pFatigueSystem.GetMaxStaminaCap();
+            fatigueNormDbg = m_pFatigueSystem.GetFatigueIntegralNorm();
+        }
+
+        float metabPowerDbg = -1.0;
+        float metabPowerMetDbg = -1.0;
+        float metabPowerRawDbg = -1.0;
+        float metabCpDbg = drainParams.effectiveCriticalPowerWatts;
+        float metabAerobicDbg = -1.0;
+        if (!useSwimmingModel)
+        {
+            float drainVelDbg = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+                currentSpeed, m_fAppliedSpeedLimitMs);
+            if (drainVelDbg < SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS
+                && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            {
+                float capFallback = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
+                    effectiveMovementPhase, encumbranceSpeedPenalty);
+                drainVelDbg = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, capFallback);
+            }
+            if (drainVelDbg >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            {
+                metabPowerMetDbg = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                    drainVelDbg,
+                    totalWeightWithWetAndBody,
+                    gradePercent,
+                    terrainFactor,
+                    true,
+                    effectiveMovementPhase);
+                if (metabCpDbg <= 1.0)
+                {
+                    metabCpDbg = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+                    if (metabCpDbg <= 1.0)
+                        metabCpDbg = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+                }
+                metabAerobicDbg = SCR_RSS_MetabolismModel.AerobicPowerWattsForStaminaDrain(
+                    metabPowerMetDbg, metabCpDbg);
+                metabPowerDbg = metabAerobicDbg;
+                if (currentSpeed > drainVelDbg + 0.05)
+                {
+                    metabPowerRawDbg = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                        currentSpeed,
+                        totalWeightWithWetAndBody,
+                        gradePercent,
+                        terrainFactor,
+                        true,
+                        effectiveMovementPhase);
+                }
+            }
+        }
+
+        float finalDrainDbg = SCR_RSS_UpdateCoordinator.ComputeFinalDrainRatePerTick(
+            useSwimmingModel,
+            currentSpeed,
+            totalDrainRate,
+            m_pEpocState,
+            false);
+        float metabolicNetDbg = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+            staminaBeforeUpdate,
+            useSwimmingModel,
+            currentSpeed,
+            totalDrainRate,
+            baseDrainRateByVelocity,
+            baseDrainRateByVelocityForModule,
+            heatStressMultiplier,
+            m_pEpocState,
+            m_pEncumbranceCache,
+            m_pExerciseTracker,
+            this,
+            m_pEnvironmentFactor,
+            false) / 5.0;
         
         if (m_pStaminaComponent)
         {
@@ -609,13 +730,30 @@ modded class SCR_CharacterControllerComponent
         m_fLastStaminaPercent = staminaPercent;
         m_fLastSpeedMultiplier = finalSpeedMultiplier;
 
+        float netStaminaTickDbg = staminaPercent - staminaBeforeUpdate;
+
+        RSS_StatusMetabLogSnapshot metabSnap = new RSS_StatusMetabLogSnapshot();
+        metabSnap.metabolismPowerW = metabPowerDbg;
+        metabSnap.metabolismPowerMetW = metabPowerMetDbg;
+        metabSnap.metabolismPowerRawW = metabPowerRawDbg;
+        metabSnap.effectiveCpW = metabCpDbg;
+        metabSnap.aerobicPowerW = metabAerobicDbg;
+        metabSnap.finalDrainPerTick = finalDrainDbg;
+        metabSnap.metabolicNetPerTick = metabolicNetDbg;
+        metabSnap.capRatchetPerTick = m_fLastCapRatchetPerTick;
+        metabSnap.netStaminaPerTick = netStaminaTickDbg;
+
         RSS_UpdateStatusLogSnapshot(
             currentSpeed,
             staminaPercent,
             finalSpeedMultiplier,
             isSprinting,
             phaseNow,
-            effectivePhase);
+            effectivePhase,
+            maxStaCapDbg,
+            GetRssAnaerobicPercent(),
+            fatigueNormDbg,
+            metabSnap);
 
         RSS_DebugLogAiStaminaTick(
             owner, staminaPercent, currentWeight, finalSpeedMultiplier,
@@ -639,6 +777,17 @@ modded class SCR_CharacterControllerComponent
         debugTick.currentMovementPhase = currentMovementPhase;
         debugTick.effectiveMovementPhase = effectiveMovementPhase;
         debugTick.rainWeight = rainWeight;
+        debugTick.maxStaminaCap = maxStaCapDbg;
+        debugTick.fatigueIntegralNorm = fatigueNormDbg;
+        debugTick.metabolismPowerW = metabPowerDbg;
+        debugTick.metabolismPowerMetW = metabPowerMetDbg;
+        debugTick.metabolismPowerRawW = metabPowerRawDbg;
+        debugTick.effectiveCpW = metabCpDbg;
+        debugTick.aerobicPowerW = metabAerobicDbg;
+        debugTick.finalDrainRate = finalDrainDbg;
+        debugTick.metabolicNetPerTick = metabolicNetDbg;
+        debugTick.capRatchetPerTick = m_fLastCapRatchetPerTick;
+        debugTick.netStaminaPerTick = netStaminaTickDbg;
         RSS_DebugOutputPlayerStaminaAndHints(owner, debugTick);
         
         SCR_RSS_DebugBatchManager.FlushDebugBatch();
@@ -847,6 +996,18 @@ modded class SCR_CharacterControllerComponent
         debugParams.anaerobicPercent = GetRssAnaerobicPercent();
         debugParams.sprintCooldownSec = GetRssSprintCooldownRemainingSec();
         debugParams.burstCooldownFullSec = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
+        debugParams.maxStaminaCap = tick.maxStaminaCap;
+        debugParams.fatigueIntegralNorm = tick.fatigueIntegralNorm;
+        debugParams.metabolismPowerW = tick.metabolismPowerW;
+        debugParams.metabolismPowerMetW = tick.metabolismPowerMetW;
+        debugParams.metabolismPowerRawW = tick.metabolismPowerRawW;
+        debugParams.effectiveCpW = tick.effectiveCpW;
+        debugParams.aerobicPowerW = tick.aerobicPowerW;
+        debugParams.totalDrainPerTick = tick.totalDrainRate;
+        debugParams.finalDrainPerTick = tick.finalDrainRate;
+        debugParams.metabolicNetPerTick = tick.metabolicNetPerTick;
+        debugParams.capRatchetPerTick = tick.capRatchetPerTick;
+        debugParams.netStaminaPerTick = tick.netStaminaPerTick;
         if (needDebugOutput)
             SCR_RSS_DebugDisplay.OutputDebugInfo(debugParams);
         if (needHintOutput)

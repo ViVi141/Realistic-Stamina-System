@@ -144,6 +144,13 @@ class SCR_RSS_UpdateCoordinator
         float pandolfPerS = SCR_RSS_MetabolismModel.StaminaDrainRatePerSecondFromPowerWatts(
             powerW, effectiveCriticalPowerWatts);
 
+        if (phase == 3)
+        {
+            pandolfPerS = pandolfPerS * SCR_RSS_Constants.V6_SPRINT_AEROBIC_DRAIN_FACTOR;
+            if (effectiveCriticalPowerWatts > 1.0 && powerW > effectiveCriticalPowerWatts)
+                pandolfPerS = pandolfPerS * SCR_RSS_Constants.V6_SPRINT_WPRIME_STA_RELIEF;
+        }
+
         // 风阻/热应激由 StaminaConsumptionCalculator.GetQuickEnvironmentMultiplier 单层施加，此处不再叠 windDrag
         return pandolfPerS * SCR_RSS_Constants.RSS_STAMINA_TICK_SEC;
     }

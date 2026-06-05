@@ -31,6 +31,18 @@ class DebugInfoParams
     float anaerobicPercent;       // v5 无氧池
     float sprintCooldownSec;      // v5 冲刺冷却剩余
     float burstCooldownFullSec;   // v5 满冷却时长
+    float maxStaminaCap;          // 疲劳积分体力上限（1−疲劳惩罚）
+    float fatigueIntegralNorm;    // v6 积分疲劳 I 归一化
+    float metabolismPowerW;       // STA 计费功率 P_bill = min(P_met, CP)
+    float metabolismPowerMetW;  // 代谢模型全功率 P_met（测速后）
+    float metabolismPowerRawW;    // 未限速瞬时功率 P_raw (W)，仅诊断对照
+    float effectiveCpW;           // 有效临界功率 CP (W)
+    float aerobicPowerW;          // 与 P_bill 相同，保留兼容
+    float totalDrainPerTick;      // 粗消耗 /tick（姿态/环境前）
+    float finalDrainPerTick;      // 实际扣减 /tick（含 EPOC、静止代谢分流）
+    float metabolicNetPerTick;    // 代谢净值 /tick（恢复−finalDrain）
+    float capRatchetPerTick;      // 疲劳 cap 下压 /tick
+    float netStaminaPerTick;      // 实际 STA 变化 /tick
 }
 
 class SCR_RSS_DebugDisplay
@@ -51,15 +63,7 @@ class SCR_RSS_DebugDisplay
     // @return 移动类型字符串
     static string FormatMovementType(bool isSprinting, int currentMovementPhase)
     {
-        if (isSprinting || currentMovementPhase == 3)
-            return "Sprint";
-        else if (currentMovementPhase == 2)
-            return "Run";
-        else if (currentMovementPhase == 1)
-            return "Walk";
-        else if (currentMovementPhase == 0)
-            return "Idle";
-        return "Unknown";
+        return SCR_RSS_SpeedCalculator.FormatMovementPhaseLabel(isSprinting, currentMovementPhase);
     }
     
     // 格式化坡度信息字符串（中英双语）
@@ -204,6 +208,49 @@ class SCR_RSS_DebugDisplay
         debugMessage += stanceTransitionInfo;
         
         return debugMessage;
+    }
+
+    //! 代谢/疲劳诊断（排查 70% 平台、Sprint 过快）
+    static string FormatMetabolismDiagnosticInfo(DebugInfoParams params)
+    {
+        if (params.metabolismPowerW <= 1.0)
+            return "";
+
+        int capPct = Math.Round(params.maxStaminaCap * 100.0);
+        int anaPct = Math.Round(params.anaerobicPercent * 100.0);
+        int pBillW = Math.Round(params.metabolismPowerW);
+        int cpW = Math.Round(params.effectiveCpW);
+        float drainTick = params.finalDrainPerTick;
+        if (drainTick <= 0.0 && params.totalDrainPerTick > 0.0)
+            drainTick = params.totalDrainPerTick;
+        float metaNetTick = params.metabolicNetPerTick;
+        float capRatchetTick = params.capRatchetPerTick;
+        float netTick = params.netStaminaPerTick;
+        int fatPct = Math.Round(params.fatigueIntegralNorm * 100.0);
+
+        string line = string.Format(
+            " | 代谢:P_bill=%1W CP=%2W finalDrain=%3 metaNet=%4 capΔ=%5 net=%6/t cap=%7%% W'=%8%% If=%9%%",
+            pBillW.ToString(),
+            cpW.ToString(),
+            Math.Round(drainTick * 100000.0) / 100000.0,
+            Math.Round(metaNetTick * 100000.0) / 100000.0,
+            Math.Round(capRatchetTick * 100000.0) / 100000.0,
+            Math.Round(netTick * 100000.0) / 100000.0,
+            capPct.ToString(),
+            anaPct.ToString(),
+            fatPct.ToString());
+
+        if (params.metabolismPowerMetW > params.metabolismPowerW + 50.0)
+        {
+            int pMetW = Math.Round(params.metabolismPowerMetW);
+            line = line + string.Format(" P_met=%1W", pMetW.ToString());
+        }
+        if (params.metabolismPowerRawW > params.metabolismPowerMetW + 50.0)
+        {
+            int rawW = Math.Round(params.metabolismPowerRawW);
+            line = line + string.Format(" P_raw=%1W", rawW.ToString());
+        }
+        return line;
     }
     
     // ==================== 环境因子信息格式化 ====================
@@ -407,7 +454,8 @@ class SCR_RSS_DebugDisplay
         {
             speedSourceStr = string.Format(" | 速度来源:%1 | Speed Source:%2", params.speedSource, params.speedSource);
         }
-        SCR_RSS_DebugBatchManager.AddDebugBatchLine(debugMessage + speedSourceStr + envInfo);
+        string metabInfo = FormatMetabolismDiagnosticInfo(params);
+        SCR_RSS_DebugBatchManager.AddDebugBatchLine(debugMessage + speedSourceStr + metabInfo + envInfo);
     }
     
     // 输出状态信息（每秒一次）
@@ -458,6 +506,13 @@ class SCR_RSS_DebugDisplay
             Math.Round(snapshotStaminaPercent * 100.0),
             Math.Round(snapshotSpeedMultiplier * 100.0) / 100.0,
             movementTypeStr);
+
+        if (controller)
+        {
+            string statusMetab = controller.RSS_FormatStatusMetabolismDiagnostic();
+            if (statusMetab != "")
+                statusMessage = statusMessage + statusMetab;
+        }
         
         Print(statusMessage);
         

@@ -36,6 +36,20 @@ class SCR_RSS_SpeedCalculator
         return true;
     }
 
+    //! 移动相位 → 调试标签（与 SCR_RSS_DebugDisplay.FormatMovementType 同形）
+    static string FormatMovementPhaseLabel(bool isSprinting, int movementPhase)
+    {
+        if (isSprinting || movementPhase == 3)
+            return "Sprint";
+        if (movementPhase == 2)
+            return "Run";
+        if (movementPhase == 1)
+            return "Walk";
+        if (movementPhase == 0)
+            return "Idle";
+        return "Unknown";
+    }
+
     //! 状态/HUD：引擎 Idle + 惯性时标注为「Run惯性」等
     static string FormatMovementTypeForDisplay(
         bool isSprinting,
@@ -47,11 +61,11 @@ class SCR_RSS_SpeedCalculator
         {
             if (currentSpeedMs >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
             {
-                string coastLabel = FormatMovementType(false, effectivePhase);
+                string coastLabel = FormatMovementPhaseLabel(false, effectivePhase);
                 return coastLabel + "惯性";
             }
         }
-        return FormatMovementType(isSprinting, enginePhase);
+        return FormatMovementPhaseLabel(isSprinting, enginePhase);
     }
 
     //! v6：相位目标速度倍率（无意志力平台期；低 STA 仅跛行）

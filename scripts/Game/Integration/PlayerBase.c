@@ -12,6 +12,19 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bStatusLogSprinting = false;
     protected int m_iStatusLogEnginePhase = 0;
     protected int m_iStatusLogEffectivePhase = 0;
+    protected float m_fStatusLogMaxCap = 1.0;
+    protected float m_fStatusLogAnaerobicPct = 1.0;
+    protected float m_fStatusLogPowerW = -1.0;
+    protected float m_fStatusLogPowerMetW = -1.0;
+    protected float m_fStatusLogPowerRawW = -1.0;
+    protected float m_fStatusLogCpW = -1.0;
+    protected float m_fStatusLogStaPW = -1.0;
+    protected float m_fStatusLogDrainTick = 0.0;
+    protected float m_fStatusLogNetTick = 0.0;
+    protected float m_fStatusLogFatigueNorm = 0.0;
+    protected float m_fStatusLogCapRatchetTick = 0.0;
+    protected float m_fStatusLogMetabolicNetTick = 0.0;
+    protected float m_fLastCapRatchetPerTick = 0.0;
     //! 松键惯性：上一非 Idle 引擎相位（1=Walk, 2=Run, 3=Sprint）
     protected int m_iLastNonIdleMovementPhase = 2;
     
@@ -311,7 +324,11 @@ modded class SCR_CharacterControllerComponent
         float finalSpeedMultiplier,
         bool isSprinting,
         int engineMovementPhase,
-        int effectiveMovementPhase)
+        int effectiveMovementPhase,
+        float maxStaminaCap,
+        float anaerobicPercent,
+        float fatigueIntegralNorm,
+        RSS_StatusMetabLogSnapshot metab)
     {
         m_fStatusLogSpeed = currentSpeed;
         m_fStatusLogStamina = staminaPercent;
@@ -319,6 +336,57 @@ modded class SCR_CharacterControllerComponent
         m_bStatusLogSprinting = isSprinting;
         m_iStatusLogEnginePhase = engineMovementPhase;
         m_iStatusLogEffectivePhase = effectiveMovementPhase;
+        m_fStatusLogMaxCap = maxStaminaCap;
+        m_fStatusLogAnaerobicPct = anaerobicPercent;
+        m_fStatusLogFatigueNorm = fatigueIntegralNorm;
+        if (metab)
+        {
+            m_fStatusLogPowerW = metab.metabolismPowerW;
+            m_fStatusLogPowerMetW = metab.metabolismPowerMetW;
+            m_fStatusLogPowerRawW = metab.metabolismPowerRawW;
+            m_fStatusLogCpW = metab.effectiveCpW;
+            m_fStatusLogStaPW = metab.aerobicPowerW;
+            m_fStatusLogDrainTick = metab.finalDrainPerTick;
+            m_fStatusLogMetabolicNetTick = metab.metabolicNetPerTick;
+            m_fStatusLogCapRatchetTick = metab.capRatchetPerTick;
+            m_fStatusLogNetTick = metab.netStaminaPerTick;
+        }
+    }
+
+    string RSS_FormatStatusMetabolismDiagnostic()
+    {
+        if (m_fStatusLogPowerW <= 1.0)
+            return "";
+
+        int capPct = Math.Round(m_fStatusLogMaxCap * 100.0);
+        int anaPct = Math.Round(m_fStatusLogAnaerobicPct * 100.0);
+        int pBillW = Math.Round(m_fStatusLogPowerW);
+        int cpW = Math.Round(m_fStatusLogCpW);
+        int fatPct = Math.Round(m_fStatusLogFatigueNorm * 100.0);
+
+        string line = string.Format(
+            " | cap=%1%% W'=%2%% P_bill=%3 CP=%4 finalDrain=%5 metaNet=%6 capΔ=%7 net=%8/t If=%9%%",
+            capPct.ToString(),
+            anaPct.ToString(),
+            pBillW.ToString(),
+            cpW.ToString(),
+            Math.Round(m_fStatusLogDrainTick * 100000.0) / 100000.0,
+            Math.Round(m_fStatusLogMetabolicNetTick * 100000.0) / 100000.0,
+            Math.Round(m_fStatusLogCapRatchetTick * 100000.0) / 100000.0,
+            Math.Round(m_fStatusLogNetTick * 100000.0) / 100000.0,
+            fatPct.ToString());
+
+        if (m_fStatusLogPowerMetW > m_fStatusLogPowerW + 50.0)
+        {
+            int pMetW = Math.Round(m_fStatusLogPowerMetW);
+            line = line + string.Format(" P_met=%1W", pMetW.ToString());
+        }
+        if (m_fStatusLogPowerRawW > m_fStatusLogPowerMetW + 50.0)
+        {
+            int rawW = Math.Round(m_fStatusLogPowerRawW);
+            line = line + string.Format(" P_raw=%1W", rawW.ToString());
+        }
+        return line;
     }
 
     void CollectSpeedSample()

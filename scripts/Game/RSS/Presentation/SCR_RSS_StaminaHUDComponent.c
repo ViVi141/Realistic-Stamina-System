@@ -476,10 +476,19 @@ class SCR_RSS_StaminaHUDComponent
         Color speedColor = GetSpeedColor(speedPct);
         Color tempColor = GetTempColor(tempC);
         
-        // 更新体力（v5：主条仅有氧池；无氧池通过 Sprint CD 环反馈）
+        // 更新体力：主条 STA；Sprint 或 W′ 未满时并列显示 W′
         if (m_wTextStamina)
         {
-            m_wTextStamina.SetText("STA " + staminaPct.ToString() + "%");
+            int anaPct = Math.Clamp(Math.Round(s_fCachedAnaerobicPercent * 100.0), 0, 100);
+            string staminaText = "STA " + staminaPct.ToString() + "%";
+            bool showWPrime = false;
+            if (s_sCachedMoveType == "Sprint")
+                showWPrime = true;
+            else if (anaPct < 98)
+                showWPrime = true;
+            if (showWPrime)
+                staminaText = staminaText + " W'" + anaPct.ToString() + "%";
+            m_wTextStamina.SetText(staminaText);
             m_wTextStamina.SetColor(staminaColor);
         }
 

@@ -791,9 +791,15 @@ class SCR_RSS_Constants
     // 积分疲劳 I(t)
     static const float V6_FATIGUE_I_MAX = 1.0;
     static const float V6_FATIGUE_K_RECOVERY = 0.0008;
-    static const float V6_FATIGUE_K_LOAD = 0.15;
+    static const float V6_FATIGUE_K_LOAD = 0.10;
     static const float V6_FATIGUE_K_SLOPE = 8.0;
-    static const float V6_FATIGUE_K_TERRAIN = 0.25;
+    static const float V6_FATIGUE_K_TERRAIN = 0.18;
+    //! dI/dt 缩放（原 0.0001 过快顶满 70% cap）
+    static const float V6_FATIGUE_INTEGRAL_SCALE = 0.000055;
+
+    //! Sprint 有氧 STA 扣减校准（W′ 放电时叠加 WPRIME 系数）
+    static const float V6_SPRINT_AEROBIC_DRAIN_FACTOR = 0.72;
+    static const float V6_SPRINT_WPRIME_STA_RELIEF = 0.65;
 
     //! @deprecated v6 玩家速度不再使用 Minetti 指数；AI 迁移后删除
     static const float STAMINA_EXPONENT_LEGACY = 0.6;

@@ -608,6 +608,10 @@ class RSSDigitalTwin:
         if effective_cp_watts > 1.0 and power_w > effective_cp_watts:
             aerobic_w = effective_cp_watts
         per_sec = max(aerobic_w * coeff * cal, 0.0)
+        if phase == 3:
+            per_sec = per_sec * V6_SPRINT_AEROBIC_DRAIN_FACTOR
+            if effective_cp_watts > 1.0 and power_w > effective_cp_watts:
+                per_sec = per_sec * V6_SPRINT_WPRIME_STA_RELIEF
         return per_sec * (1.0 + wind_drag)
 
     # -------------------------------------------------------------------------
@@ -1465,6 +1469,12 @@ V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0
 V6_W_PRIME_K_FAST = 0.15
 V6_W_PRIME_K_SLOW = 0.008
 V6_W_PRIME_LIM_RATIO = 0.5
+V6_FATIGUE_K_LOAD = 0.10
+V6_FATIGUE_K_TERRAIN = 0.18
+V6_FATIGUE_INTEGRAL_SCALE = 0.000055
+V6_MAX_FATIGUE_PENALTY = 0.2
+V6_SPRINT_AEROBIC_DRAIN_FACTOR = 0.72
+V6_SPRINT_WPRIME_STA_RELIEF = 0.65
 
 
 def calculate_pandolf_power_watts(

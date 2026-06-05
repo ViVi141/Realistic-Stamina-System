@@ -9,7 +9,7 @@ class SCR_RSS_FatigueSystem
     protected const float FATIGUE_DECAY_MIN_REST_TIME = 15.0;
     protected float m_fLastFatigueDecayTime = 0.0;
     protected float m_fLastRestStartTime = -1.0;
-    protected const float MAX_FATIGUE_PENALTY = 0.3;
+    protected const float MAX_FATIGUE_PENALTY = 0.2;
     protected const float FATIGUE_CONVERSION_COEFF = 0.05;
 
     void Initialize(float currentTime)
@@ -62,7 +62,7 @@ class SCR_RSS_FatigueSystem
             r = SCR_RSS_Constants.V6_FATIGUE_K_RECOVERY * oneMinus * oneMinus * powerWatts;
         }
 
-        float dI = (w * powerWatts - r) * timeDeltaSec * 0.0001;
+        float dI = (w * powerWatts - r) * timeDeltaSec * SCR_RSS_Constants.V6_FATIGUE_INTEGRAL_SCALE;
         m_fFatigueIntegral = Math.Clamp(m_fFatigueIntegral + dI, 0.0, SCR_RSS_Constants.V6_FATIGUE_I_MAX);
 
         float legacyFromI = m_fFatigueIntegral * MAX_FATIGUE_PENALTY;
