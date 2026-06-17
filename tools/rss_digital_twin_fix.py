@@ -10,9 +10,11 @@ simulate_mission 使用 PlayerBase 同序逻辑：先 GetVelocity 测速再算�
 (GetDynamicOriginalEngineMaxSpeed: Sprint=5.5, Run=3.8)，与 RSS SetSpeedLimit 理论限速解耦。
 """
 
+import json
 import numpy as np
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import random
 
@@ -420,13 +422,26 @@ class RSSDigitalTwin:
         self._sprint_cooldown_until = -1.0
         self._measured_velocity_ms = 0.0
         self._applied_speed_limit_mult = 1.0
+        self._applied_speed_limit_ms = -1.0
         self.environment_factor.heat_stress = 0.0
         self.environment_factor.cold_stress = 0.0
         self.environment_factor.cold_static_penalty = 0.0
+        self.fatigue = TwinFatigueSystem()
+        self.fatigue.initialize(0.0)
 
-    # -------------------------------------------------------------------------
-    # CalculateStaticStandingCost - SCR_RealisticStaminaSystem.c 1135-1168
-    # -------------------------------------------------------------------------
+    def _critical_power_watts(self) -> float:
+        cp0 = getattr(self.constants, 'CRITICAL_POWER_WATTS', 0.0)
+        if cp0 > 1.0:
+            return float(cp0)
+        cp0 = getattr(self.constants, 'V6_CRITICAL_POWER_WATTS_DEFAULT', V6_CRITICAL_POWER_WATTS_DEFAULT)
+        return float(cp0)
+
+    def _apply_stamina_cap_clamp(self, stamina_before: float, new_stamina: float) -> float:
+        max_cap = self.fatigue.get_max_stamina_cap()
+        new_stamina = float(np.clip(new_stamina, 0.0, max_cap))
+        if stamina_before > max_cap:
+            return max_cap
+        return new_stamina
     def _static_standing_cost(self, body_weight: float, load_weight: float) -> float:
         """与 C CalculateStaticStandingCost 完全一致。返回 %/s，负数表示恢复。"""
         body_weight = max(0.0, body_weight)
@@ -911,8 +926,9 @@ class RSSDigitalTwin:
 
             tick_scale = time_delta / STAMINA_TICK_SEC
             stamina_delta = float(net_change) * tick_scale
-            self.stamina += stamina_delta
-            self.stamina = np.clip(self.stamina, 0.0, 1.0)
+            stamina_before = self.stamina
+            self.stamina = self._apply_stamina_cap_clamp(
+                stamina_before, stamina_before + stamina_delta)
 
             self.base_drain_rate_by_velocity = base_for_rec
             self.final_drain_rate = total_drain
@@ -931,7 +947,9 @@ class RSSDigitalTwin:
             self.recovery_rate = 0.001
             fallback_drain = 0.001 * (time_delta / STAMINA_TICK_SEC)
             self.net_change = -fallback_drain
-            self.stamina = np.clip(self.stamina - fallback_drain, 0.0, 1.0)
+            stamina_before = self.stamina
+            self.stamina = self._apply_stamina_cap_clamp(
+                stamina_before, stamina_before - fallback_drain)
             if len(self.stamina_history) < self.max_history_length:
                 self.stamina_history.append(self.stamina)
                 self.time_history.append(current_time)
@@ -1049,22 +1067,86 @@ class RSSDigitalTwin:
         engine_original_ms: float,
         theoretical_limited_ms: float,
     ) -> float:
-        """
-        PlayerBase 消耗用 GetVelocity 水平速度 (上限 7.0 m/s)。
-        冲刺/跑步：动画组件在 limit=1.0 时的原速 (Sprint 5.5 / Run 3.8)，
-        与 RSS SetSpeedLimit 理论目标解耦——这也是实测 sprint 消耗高于旧孪生的主因。
-        步行/静止：用 RSS 理论限速或实测速度。
-        """
+        """v6：消耗测速 = min(v_meas, v_limit)；与 CalculateLandBaseDrainRate 一致。"""
         if movement_phase == MovementType.IDLE:
             return 0.0
-        if (is_sprinting or movement_phase == MovementType.SPRINT) and can_sprint:
-            return min(VELOCITY_HORIZ_CAP_MS, max(0.0, engine_original_ms))
-        if movement_phase == MovementType.RUN:
-            return min(VELOCITY_HORIZ_CAP_MS, max(0.0, engine_original_ms))
+
         measured = max(0.0, self._measured_velocity_ms)
-        if measured > 0.05:
-            return min(VELOCITY_HORIZ_CAP_MS, measured)
-        return min(VELOCITY_HORIZ_CAP_MS, max(0.0, theoretical_limited_ms))
+        if measured < 0.05:
+            measured = max(0.0, theoretical_limited_ms)
+
+        cap_ms = self._applied_speed_limit_ms
+        if cap_ms <= 0.05:
+            cap_ms = theoretical_limited_ms
+        if cap_ms <= 0.05:
+            cap_ms = engine_original_ms
+
+        return get_drain_velocity_ms(measured, cap_ms)
+
+    def get_metabolic_accounting_velocity_ms(
+        self,
+        movement_phase: int,
+        is_sprinting: bool,
+        can_sprint: bool,
+        engine_original_ms: float,
+        theoretical_limited_ms: float,
+    ) -> float:
+        """超限速时按 v_meas 记账；否则同 get_drain_velocity_ms。"""
+        if movement_phase == MovementType.IDLE:
+            return 0.0
+
+        measured = max(0.0, self._measured_velocity_ms)
+        if measured < 0.05:
+            measured = max(0.0, theoretical_limited_ms)
+
+        cap_ms = self._applied_speed_limit_ms
+        if cap_ms <= 0.05:
+            cap_ms = theoretical_limited_ms
+        if cap_ms <= 0.05:
+            cap_ms = engine_original_ms
+
+        return get_metabolic_accounting_velocity_ms(measured, cap_ms)
+
+    def _resolve_current_speed_ms(self, theoretical_ms: float) -> float:
+        measured = max(0.0, self._measured_velocity_ms)
+        if measured < 0.05:
+            return max(0.0, theoretical_ms)
+        return measured
+
+    def _apply_metabolic_speed_limit(
+        self,
+        speed_limit_mult: float,
+        current_speed_ms: float,
+        movement_phase: int,
+        current_weight: float,
+        grade_percent: float,
+        terrain_factor: float,
+        engine_base_ms: float,
+    ) -> float:
+        load_kg = max(current_weight - getattr(self.constants, 'CHARACTER_WEIGHT', 90.0), 0.0)
+        cp = compute_cp_watts(
+            self._critical_power_watts(),
+            load_kg,
+            grade_percent,
+            1.0,
+            self.fatigue.get_fatigue_integral_norm(),
+        )
+        exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
+        metab_phase = movement_phase
+        if metab_phase < MovementType.WALK:
+            metab_phase = MovementType.RUN
+
+        return get_metabolic_corrected_speed_multiplier(
+            speed_limit_mult,
+            current_speed_ms,
+            metab_phase,
+            current_weight,
+            grade_percent,
+            terrain_factor,
+            exhausted,
+            engine_base_ms,
+            cp,
+        )
 
     def compute_speed_limit_multiplier(
         self, theoretical_target_ms: float, engine_original_ms: float
@@ -1144,17 +1226,40 @@ class RSSDigitalTwin:
             theoretical_ms, engine_original_ms
         )
 
+        current_speed_ms = self._resolve_current_speed_ms(theoretical_ms)
+        speed_limit_mult = self._apply_metabolic_speed_limit(
+            speed_limit_mult,
+            current_speed_ms,
+            effective_phase,
+            current_weight,
+            grade_percent,
+            terrain_factor,
+            engine_original_ms,
+        )
+
+        applied_limit_ms = speed_limit_mult * engine_original_ms
+        if applied_limit_ms <= 0.05:
+            self._applied_speed_limit_ms = -1.0
+        else:
+            self._applied_speed_limit_ms = applied_limit_ms
+
+        limit_for_power_ms = self._applied_speed_limit_ms
+        if limit_for_power_ms <= 0.05:
+            limit_for_power_ms = applied_limit_ms
+
         if intent_phase == MovementType.IDLE or theoretical_ms < 0.1:
             drain_speed = 0.0
             engine_phase = MovementType.IDLE
         else:
-            drain_speed = self.get_drain_velocity_ms(
-                effective_phase,
-                is_sprinting,
-                can_sprint,
-                engine_original_ms,
-                theoretical_ms,
-            )
+            measured_for_drain = max(0.0, self._measured_velocity_ms)
+            if measured_for_drain < 0.05:
+                measured_for_drain = max(0.0, theoretical_ms)
+            cap_ms = limit_for_power_ms
+            if cap_ms <= 0.05:
+                cap_ms = theoretical_ms
+            if cap_ms <= 0.05:
+                cap_ms = engine_original_ms
+            drain_speed = get_drain_velocity_ms(measured_for_drain, cap_ms)
 
         engine_movement_phase = self._compute_engine_movement_phase(
             effective_phase,
@@ -1163,6 +1268,28 @@ class RSSDigitalTwin:
             current_weight,
             enable_randomness,
         )
+
+        self.fatigue.process_decay(current_time, current_speed_ms)
+        if current_speed_ms >= RSS_IDLE_SPEED_THRESHOLD_MPS:
+            load_kg = max(current_weight - getattr(self.constants, 'CHARACTER_WEIGHT', 90.0), 0.0)
+            mov_phase = self._movement_phase_from_type(engine_movement_phase)
+            fatigue_v = get_drain_velocity_ms(current_speed_ms, limit_for_power_ms)
+            power_fat = metabolism_power_watts(
+                fatigue_v,
+                current_weight,
+                grade_percent,
+                terrain_factor,
+                mov_phase,
+            )
+            self.fatigue.process_integral(
+                power_fat,
+                load_kg,
+                grade_percent,
+                terrain_factor,
+                time_delta,
+                current_speed_ms,
+                self._critical_power_watts(),
+            )
 
         self.step(
             drain_speed,
@@ -1178,9 +1305,13 @@ class RSSDigitalTwin:
         )
 
         if drain_speed >= 0.1:
-            self._measured_velocity_ms = min(
+            new_meas = min(
                 VELOCITY_HORIZ_CAP_MS, engine_original_ms * speed_limit_mult
             )
+            # 闭环孪生：测速跟随 RSS 限速（避免 limit 抖动造成伪超速）
+            if self._applied_speed_limit_ms > 0.05:
+                new_meas = min(new_meas, self._applied_speed_limit_ms)
+            self._measured_velocity_ms = new_meas
         else:
             self._measured_velocity_ms = 0.0
         self._applied_speed_limit_mult = speed_limit_mult
@@ -1414,16 +1545,172 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
     return measured_ms
 
 
+V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
+V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.2
+
+
+def is_wprime_pool_available_for_overspeed(
+    w_prime_pool01: float,
+    threshold: float = V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+) -> bool:
+    return w_prime_pool01 > threshold
+
+
+def get_metabolic_accounting_velocity_ms(
+    measured_ms: float,
+    applied_limit_ms: float,
+    w_prime_pool01: float = 1.0,
+) -> float:
+    """与 SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs 一致。"""
+    measured_ms = max(0.0, measured_ms)
+    if applied_limit_ms > 0.05 and measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS:
+        if not is_wprime_pool_available_for_overspeed(w_prime_pool01):
+            return get_drain_velocity_ms(measured_ms, applied_limit_ms)
+        return measured_ms
+    return get_drain_velocity_ms(measured_ms, applied_limit_ms)
+
+
+def get_metabolic_accounting_power_watts(
+    measured_ms: float,
+    applied_limit_ms: float,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    movement_phase: int,
+    w_prime_pool01: float = 1.0,
+) -> float:
+    v_acct = get_metabolic_accounting_velocity_ms(measured_ms, applied_limit_ms, w_prime_pool01)
+    return metabolism_power_watts(
+        v_acct, total_weight_kg, grade_percent, terrain_factor, movement_phase
+    )
+
+
+def get_client_overspeed_excess_drain_per_second(
+    measured_ms: float,
+    applied_limit_ms: float,
+    w_prime_pool01: float,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    movement_phase: int,
+    effective_critical_power_watts: float = -1.0,
+) -> float:
+    if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+        return 0.0
+    if is_wprime_pool_available_for_overspeed(w_prime_pool01):
+        return 0.0
+    p_meas = metabolism_power_watts(
+        measured_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
+    )
+    v_drain = get_drain_velocity_ms(measured_ms, applied_limit_ms)
+    p_drain = metabolism_power_watts(
+        v_drain, total_weight_kg, grade_percent, terrain_factor, movement_phase
+    )
+    excess_w = p_meas - p_drain
+    if excess_w <= 1.0:
+        return 0.0
+    return stamina_drain_rate_per_second_from_power_watts(excess_w, -1.0)
+
+
+def stamina_drain_rate_per_second_from_power_watts(
+    power_watts: float,
+    critical_power_cap_watts: float = -1.0,
+    energy_to_stamina_coeff: float = 1.55e-07,
+) -> float:
+    aerobic_w = power_watts
+    if critical_power_cap_watts > 1.0 and power_watts > critical_power_cap_watts:
+        aerobic_w = critical_power_cap_watts
+    coeff = max(0.0, min(0.1, energy_to_stamina_coeff)) * V6_STAMINA_DRAIN_CALIBRATION
+    return max(aerobic_w * coeff, 0.0)
+
+
+def is_metabolic_overspeed_accounting(measured_ms: float, applied_limit_ms: float) -> bool:
+    if applied_limit_ms <= 0.05:
+        return False
+    return measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS
+
+
 def get_metabolic_overspeed_factor(
     pandolf_watts: float,
     sustainable_watts: float = 400.0,
     min_factor: float = 0.35,
 ) -> float:
-    """与 SCR_RSS_DrainCalculator.GetMetabolicOverspeedFactor 一致。"""
+    """与 SCR_RSS_DrainCalculator.GetMetabolicOverspeedFactor 一致（v5 过渡）。"""
     if pandolf_watts <= sustainable_watts:
         return 1.0
     ratio = sustainable_watts / pandolf_watts
     return max(min_factor, ratio)
+
+
+def get_metabolic_speed_cap_ms(
+    current_speed_ms: float,
+    movement_phase: int,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    is_exhausted: bool,
+    effective_cp_watts: float,
+) -> float:
+    """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形（孪生不含 W' 瞬时加成）。"""
+    if is_exhausted:
+        return -1.0
+    if movement_phase < 1:
+        return -1.0
+
+    power_w = metabolism_power_watts(
+        max(0.0, current_speed_ms),
+        total_weight_kg,
+        grade_percent,
+        terrain_factor,
+        movement_phase,
+    )
+    available_p = effective_cp_watts
+    if power_w <= available_p + 1.0:
+        return -1.0
+
+    target_p = effective_cp_watts
+    if power_w > effective_cp_watts and movement_phase != MovementType.SPRINT:
+        target_p = effective_cp_watts
+
+    return invert_speed_for_power_watts(
+        target_p,
+        total_weight_kg,
+        grade_percent,
+        terrain_factor,
+        movement_phase,
+    )
+
+
+def get_metabolic_corrected_speed_multiplier(
+    applied_speed_multiplier: float,
+    current_speed_ms: float,
+    movement_phase: int,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    is_exhausted: bool,
+    engine_base_ms: float,
+    effective_cp_watts: float,
+) -> float:
+    """与 SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier 同形。"""
+    cap_ms = get_metabolic_speed_cap_ms(
+        current_speed_ms,
+        movement_phase,
+        total_weight_kg,
+        grade_percent,
+        terrain_factor,
+        is_exhausted,
+        effective_cp_watts,
+    )
+    if cap_ms < 0.0:
+        return applied_speed_multiplier
+    if engine_base_ms <= 0.05:
+        engine_base_ms = 5.5
+
+    applied_ms = applied_speed_multiplier * engine_base_ms
+    if applied_ms <= cap_ms + 0.01:
+        return applied_speed_multiplier
+    return float(np.clip(cap_ms / engine_base_ms, 0.01, 3.0))
 
 
 @dataclass
@@ -1465,6 +1752,112 @@ V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0
 V6_W_PRIME_K_FAST = 0.15
 V6_W_PRIME_K_SLOW = 0.008
 V6_W_PRIME_LIM_RATIO = 0.5
+
+V6_FATIGUE_I_MAX = 1.0
+V6_FATIGUE_K_RECOVERY = 0.0008
+V6_FATIGUE_K_LOAD = 0.15
+V6_FATIGUE_K_SLOPE = 8.0
+V6_FATIGUE_K_TERRAIN = 0.25
+V6_MAX_FATIGUE_PENALTY = 0.3
+RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1
+
+
+class TwinFatigueSystem:
+    """与 SCR_RSS_FatigueSystem 同形（v6 积分疲劳 + 上限 cap）。"""
+
+    def __init__(self):
+        self.fatigue_accumulation = 0.0
+        self.fatigue_integral = 0.0
+        self.last_fatigue_decay_time = 0.0
+        self.last_rest_start_time = -1.0
+        self.fatigue_decay_rate = 0.0005
+        self.fatigue_decay_min_rest_time = 15.0
+
+    def initialize(self, current_time: float) -> None:
+        self.fatigue_accumulation = 0.0
+        self.fatigue_integral = 0.0
+        self.last_fatigue_decay_time = current_time
+        self.last_rest_start_time = -1.0
+
+    def get_fatigue_integral_norm(self) -> float:
+        if V6_FATIGUE_I_MAX <= 0.0:
+            return 0.0
+        return float(np.clip(self.fatigue_integral / V6_FATIGUE_I_MAX, 0.0, 1.0))
+
+    def get_max_stamina_cap(self) -> float:
+        return 1.0 - self.fatigue_accumulation
+
+    def process_integral(
+        self,
+        power_watts: float,
+        load_kg: float,
+        grade_percent: float,
+        terrain_factor: float,
+        time_delta_sec: float,
+        current_speed_ms: float,
+        critical_power_watts: float,
+    ) -> None:
+        if time_delta_sec <= 0.0:
+            return
+
+        body_w = 90.0
+        load_ratio = 0.0
+        if body_w > 0.0:
+            load_ratio = load_kg / body_w
+
+        g = grade_percent * 0.01
+        w = (
+            1.0
+            + V6_FATIGUE_K_LOAD * load_ratio
+            + V6_FATIGUE_K_SLOPE * g * g
+            + V6_FATIGUE_K_TERRAIN * (terrain_factor - 1.0)
+        )
+        if w < 0.5:
+            w = 0.5
+
+        i_norm = self.get_fatigue_integral_norm()
+        r = 0.0
+        if current_speed_ms < 0.05 or power_watts < critical_power_watts * 0.5:
+            one_minus = 1.0 - i_norm
+            r = V6_FATIGUE_K_RECOVERY * one_minus * one_minus * power_watts
+
+        d_i = (w * power_watts - r) * time_delta_sec * 0.0001
+        self.fatigue_integral = float(np.clip(
+            self.fatigue_integral + d_i, 0.0, V6_FATIGUE_I_MAX))
+
+        legacy_from_i = self.fatigue_integral * V6_MAX_FATIGUE_PENALTY
+        if legacy_from_i > self.fatigue_accumulation:
+            self.fatigue_accumulation = legacy_from_i
+        if self.fatigue_accumulation > V6_MAX_FATIGUE_PENALTY:
+            self.fatigue_accumulation = V6_MAX_FATIGUE_PENALTY
+
+    def process_decay(self, current_time: float, current_speed: float) -> None:
+        is_moving = current_speed >= RSS_IDLE_SPEED_THRESHOLD_MPS
+
+        if not is_moving:
+            if self.last_rest_start_time < 0.0:
+                self.last_rest_start_time = current_time
+
+            if self.fatigue_accumulation > 0.0 or self.fatigue_integral > 0.0:
+                rest_duration = current_time - self.last_rest_start_time
+                if rest_duration >= self.fatigue_decay_min_rest_time:
+                    fatigue_time_delta = current_time - self.last_fatigue_decay_time
+                    if fatigue_time_delta > 0.0:
+                        self.fatigue_accumulation = max(
+                            self.fatigue_accumulation
+                            - (self.fatigue_decay_rate * (fatigue_time_delta / 0.2)),
+                            0.0,
+                        )
+                        self.fatigue_integral = max(
+                            self.fatigue_integral
+                            - (self.fatigue_decay_rate * 0.5 * (fatigue_time_delta / 0.2)),
+                            0.0,
+                        )
+                        self.last_fatigue_decay_time = current_time
+
+            self.last_fatigue_decay_time = current_time
+        else:
+            self.last_rest_start_time = -1.0
 
 
 def calculate_pandolf_power_watts(
@@ -1646,33 +2039,52 @@ def simulate_v6_sprint_seconds(
     return t
 
 
+def _load_elite_preset_params_from_json() -> Dict:
+    """EliteStandard v4 JSON（标定 coeff 源）。"""
+    path = Path(__file__).resolve().parent / "optimized_rss_config_elitestandard_v4.json"
+    if not path.is_file():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    return {k: float(v) for k, v in data.items() if not str(k).startswith("_")}
+
+
 def simulate_ideal_march_aerobic_end(
     hours: float = 4.0,
     encumbrance_kg: float = 35.0,
     speed_ms: float = 1.39,
     dt_sec: float = 2.0,
+    params: Optional[Dict] = None,
+    constants: Optional["RSSConstants"] = None,
 ) -> float:
     """理想平地行军：返回结束时有氧池比例（0..1）。
 
-    与 bench_physio_anchors 4h/35kg 锚点契约一致；使用 RSSDigitalTwin 主循环，
-    关闭随机扰动，2s 步长以控制 CI 耗时。
+    与 bench_physio_anchors 4h/35kg 锚点契约一致；使用 game_player_tick + 疲劳 cap。
+    默认 Elite preset（含标定 energy_to_stamina_coeff）。
     """
-    twin = RSSDigitalTwin(RSSConstants())
+    if constants is None:
+        trial = params if params is not None else _load_elite_preset_params_from_json()
+        if trial:
+            merged = merge_game_aligned_params(
+                {k: float(v) for k, v in trial.items() if not str(k).startswith("_")}
+            )
+            constants = RSSConstants(**merged)
+        else:
+            constants = RSSConstants()
+    twin = RSSDigitalTwin(constants)
     total_weight = twin.constants.CHARACTER_WEIGHT + encumbrance_kg
     t = 0.0
     end_sec = hours * 3600.0
     while t < end_sec:
-        twin.step(
-            speed_ms,
+        twin.game_player_tick(
+            MovementType.WALK,
             total_weight,
             0.0,
             1.0,
             Stance.STAND,
-            MovementType.WALK,
             t,
+            dt_sec,
             enable_randomness=False,
-            wind_drag=0.0,
-            time_delta_override=dt_sec,
         )
         t += dt_sec
     return float(twin.stamina)

@@ -37,6 +37,7 @@ from rss_digital_twin_fix import (
     RSSConstants,
     merge_game_aligned_params,
     STAMINA_TICK_SEC,
+    RSS_PLAYER_TICK_SEC,
 )
 
 # =============================================================================
@@ -287,6 +288,7 @@ class MissionResult:
     idle_duration_s: float         # 静止/恢复窗口总时长（秒）
     exhaustion_duration_s: float   # 体力<15%的时间
     completion_possible: bool      # 是否全程体力>0
+    observed_depletion_pct_per_s: float = 0.0  # 运动阶段条上观测掉速（%/s，含 cap clamp）
 
 def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
     """运行一个完整 Mission 的数字孪生仿真（PlayerBase 同序 game_player_tick）。"""
@@ -308,7 +310,7 @@ def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
         wind_coeff = getattr(twin.constants, 'ENV_WIND_RESISTANCE_COEFF', 0.05)
         twin._scenario_wind_drag = min(1.0, mission.wind_speed * wind_coeff)
 
-    dt = getattr(twin, '_dt', STAMINA_TICK_SEC)
+    dt = getattr(twin, '_dt', RSS_PLAYER_TICK_SEC)
     current_time = 0.0
     stamina_trace = []
     speed_trace = []
@@ -321,12 +323,13 @@ def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
     for phase in mission.phases:
         steps = int(phase.duration_s / dt)
         intent_phase = int(phase.movement)
-        if intent_phase == MovementType.IDLE or phase.speed_ms < 0.1:
+        is_idle_phase = (intent_phase == MovementType.IDLE)
+        if is_idle_phase:
             idle_duration_s += phase.duration_s
         for _ in range(steps):
             prev_stamina = twin.stamina
 
-            if intent_phase == MovementType.IDLE or phase.speed_ms < 0.1:
+            if is_idle_phase:
                 drain_speed = twin.game_player_tick(
                     MovementType.IDLE,
                     current_weight,
@@ -374,6 +377,16 @@ def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
     min_stamina = min(stamina_trace) if stamina_trace else 0.0
     mean_active = np.mean(active_stamina) if active_stamina else min_stamina
 
+    depletion_samples = []
+    for k in range(1, len(stamina_trace)):
+        prev_s = stamina_trace[k - 1]
+        cur_s = stamina_trace[k]
+        if cur_s < prev_s - 1e-9 and prev_s > 0.82:
+            depletion_samples.append((prev_s - cur_s) / dt * 100.0)
+    observed_depletion = 0.0
+    if depletion_samples:
+        observed_depletion = float(np.mean(depletion_samples))
+
     return MissionResult(
         mission_name=mission.name,
         total_duration_s=mission.total_duration_s,
@@ -385,6 +398,7 @@ def simulate_mission(twin: RSSDigitalTwin, mission: Mission) -> MissionResult:
         idle_duration_s=idle_duration_s,
         exhaustion_duration_s=exhaustion_duration,
         completion_possible=min_stamina > 0.0,
+        observed_depletion_pct_per_s=observed_depletion,
     )
 
 # =============================================================================

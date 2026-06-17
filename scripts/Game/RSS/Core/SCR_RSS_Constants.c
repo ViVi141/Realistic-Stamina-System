@@ -800,6 +800,8 @@ class SCR_RSS_Constants
 
     //! 陆地静止/运动分界（m/s）：ExerciseTracker、ResolveMovementDrain、EPOC 取消、恢复对齐
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
+    //! 超限速代谢记账：v_meas 超出 v_limit 超过此值则 W′ 按实测速度（疲劳仍 v_drain）
+    static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
     //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
     static const float RSS_STAMINA_TICK_SEC = 0.2;
 }

@@ -117,7 +117,7 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 
 	// EliteStandard — v4 optimizer: parameter_realism最小 → 最贴近C参考值
 	// 8-mission multi-phase scenarios + environment stress (2026-05)
-	m_EliteStandard.energy_to_stamina_coeff = 7.173939269261512e-07;
+	m_EliteStandard.energy_to_stamina_coeff = 1.55e-07;
 	m_EliteStandard.base_recovery_rate = 1.5347845665467625e-04;
 	m_EliteStandard.standing_recovery_multiplier = 1.1033940520181997;
 	m_EliteStandard.prone_recovery_multiplier = 2.3436692109309787;

@@ -720,7 +720,7 @@ class SCR_RSS_DebugDisplay
         {
             World world = GetGame().GetWorld();
             if (world)
-                worldTime = world.GetWorldTime();
+                worldTime = world.GetWorldTime() / 1000.0;
         }
         if (s_fDrainDiagLastStamina >= 0.0 && s_fDrainDiagLastWorldTime >= 0.0)
         {
@@ -847,18 +847,43 @@ class SCR_RSS_DebugDisplay
 
         float drainVelMs = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
             tick.currentSpeed, tick.appliedSpeedLimitMs);
+        float acctVelMs = SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs(
+            tick.currentSpeed, tick.appliedSpeedLimitMs, tick.wPrimePool01);
 
-        string line3 = string.Format(
-            "[RSS][P] 代谢=%1W CP=%2 v_drain=%3m/s v_meas=%4m/s v_limit=%5 | env=%6 步行恢复=%7 EPOC=%8 上限=%9%%",
+        string overspeedStr = "off";
+        if (SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+            tick.currentSpeed, tick.appliedSpeedLimitMs))
+        {
+            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
+                overspeedStr = "on";
+        }
+
+        string line3Head = string.Format(
+            "[RSS][P] 代谢=%1W CP=%2 v_drain=%3m/s v_acct=%4m/s v_meas=%5m/s v_pos=%6m/s v_limit=%7",
             Math.Round(tick.powerWatts),
             cpStr,
             Math.Round(drainVelMs * 100.0) / 100.0,
+            Math.Round(acctVelMs * 100.0) / 100.0,
             Math.Round(tick.currentSpeed * 100.0) / 100.0,
-            limitStr,
+            Math.Round(tick.landPositionDeltaSpeedMs * 100.0) / 100.0,
+            limitStr);
+        float fatiguePowerDbg = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+            tick.currentSpeed,
+            tick.appliedSpeedLimitMs,
+            tick.totalWeightWithWetAndBody,
+            tick.gradePercent,
+            tick.terrainFactor,
+            tick.effectiveMovementPhase);
+        string line3Tail = string.Format(
+            " | env=%1 步行恢复=%2 EPOC=%3 上限=%4%% P_fat=%5W 超速记账=%6 超速罚=%7%/s",
             Math.Round(tick.environmentMult * 1000.0) / 1000.0,
             walkRecStr,
             epocStr,
-            Math.Round(tick.targetStaminaCap * 100.0));
+            Math.Round(tick.targetStaminaCap * 100.0),
+            Math.Round(fatiguePowerDbg),
+            overspeedStr,
+            Math.Round(tick.overspeedExtraDrainPerSec * 10000.0) / 100.0);
+        string line3 = line3Head + line3Tail;
         AppendDrainDebugLine(line3);
     }
 

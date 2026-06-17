@@ -16,7 +16,7 @@ v_meas → P(v) [MetabolismModel]
       → SetSpeedLimit [SpeedBridge]
 ```
 
-**测速消耗**：`v_drain = min(v_meas, m_fAppliedSpeedLimitMs)` — 与表现限速同一标尺。
+**测速消耗**：`v_drain = min(v_meas, v_limit_applied)`；**当 v_meas > v_limit + 0.12 m/s** 时，**W′** 按实测速度记账；**疲劳积分**仍用 `v_drain` 功率（超额先走 W′）。
 
 ---
 

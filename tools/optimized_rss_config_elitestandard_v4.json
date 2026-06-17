@@ -1,5 +1,5 @@
 {
-  "energy_to_stamina_coeff": 9.394120091518767e-07,
+  "energy_to_stamina_coeff": 1.55e-07,
   "base_recovery_rate": 0.00010492121526596935,
   "standing_recovery_multiplier": 0.9447342785131861,
   "crouching_recovery_multiplier": 1.550603874024253,

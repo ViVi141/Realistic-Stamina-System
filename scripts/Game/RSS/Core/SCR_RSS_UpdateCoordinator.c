@@ -71,6 +71,7 @@ class StaminaDrainTickParams
     float currentTimeForExerciseMs;
     float appliedSpeedLimitMs;
     float effectiveCriticalPowerWatts;
+    float wPrimePool01;
 }
 
 //! HUD 耗尽/回满 ETA 结果
@@ -107,11 +108,14 @@ class SCR_RSS_UpdateCoordinator
         float coldStaticPenalty,
         int currentMovementPhase = -1,
         float encumbranceSpeedPenalty = 0.0,
-        float effectiveCriticalPowerWatts = -1.0)
+        float effectiveCriticalPowerWatts = -1.0,
+        float wPrimePool01 = 1.0)
     {
         float idleThreshold = SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS;
 
-        if (currentMovementPhase >= 1 && currentSpeed > 0.05)
+        float measuredSpeedMs = currentSpeed;
+        float speedForPowerMs = measuredSpeedMs;
+        if (currentMovementPhase >= 1 && measuredSpeedMs > 0.05)
         {
             float capMs = appliedSpeedLimitMs;
             if (capMs <= 0.05)
@@ -119,14 +123,15 @@ class SCR_RSS_UpdateCoordinator
                 capMs = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
                     currentMovementPhase, encumbranceSpeedPenalty);
             }
-            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, capMs);
+            speedForPowerMs = SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs(
+                measuredSpeedMs, capMs, wPrimePool01);
         }
 
         int phase = currentMovementPhase;
         if (phase < 0)
             phase = 2;
 
-        if (currentSpeed < idleThreshold)
+        if (measuredSpeedMs < idleThreshold)
         {
             float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
             float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0);
@@ -135,7 +140,7 @@ class SCR_RSS_UpdateCoordinator
         }
 
         float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            currentSpeed,
+            speedForPowerMs,
             currentWeightWithWet,
             gradePercent,
             terrainFactor,
@@ -347,6 +352,43 @@ class SCR_RSS_UpdateCoordinator
                         0.017);
                 }
             }
+
+            if (!(isSprinting || currentMovementPhase == 3))
+            {
+                SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetAnaerobicBurst();
+                if (anaRun && anaRun.GetCpModel())
+                {
+                    SCR_RSS_CriticalPowerModel cpRun = anaRun.GetCpModel();
+                    if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpRun.GetPool01()))
+                    {
+                        float totalWeightKg = controller.GetRssCurrentWeight()
+                            + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+                        float gradePct = 0.0;
+                        if (!shouldSuppressSlope)
+                        {
+                            GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                                controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
+                            gradePct = gradeRes.gradePercent;
+                        }
+                        float runTerrain = terrainFactor;
+                        if (runTerrain < 0.5)
+                            runTerrain = 0.5;
+                        if (runTerrain > 3.0)
+                            runTerrain = 3.0;
+                        int runPhase = currentMovementPhase;
+                        if (runPhase < 1)
+                            runPhase = 2;
+                        float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                            cpRun.GetEffectiveCriticalPowerWatts(),
+                            totalWeightKg,
+                            gradePct,
+                            runTerrain,
+                            runPhase);
+                        if (cpCapMs > 0.05 && theoreticalTargetSpeed > cpCapMs)
+                            theoreticalTargetSpeed = cpCapMs;
+                    }
+                }
+            }
             
             // 动态获取引擎当前的原始速度（已被负重降低后的速度）
             float currentEngineOriginalSpeed;
@@ -497,7 +539,8 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         int currentMovementPhase = -1,
         float appliedSpeedLimitMs = -1.0,
-        float effectiveCriticalPowerWatts = -1.0)
+        float effectiveCriticalPowerWatts = -1.0,
+        float wPrimePool01 = 1.0)
     {
         float baseDrainRate = 0.0;
         
@@ -563,7 +606,8 @@ class SCR_RSS_UpdateCoordinator
                 coldStaticPenalty,
                 currentMovementPhase,
                 encumbranceSpeedPenalty,
-                effectiveCriticalPowerWatts);
+                effectiveCriticalPowerWatts,
+                wPrimePool01);
 
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
             // 因此不再需要对固定 Sprint 基线做特殊处理。
@@ -687,7 +731,8 @@ class SCR_RSS_UpdateCoordinator
             tick.environmentFactor,
             tick.currentMovementPhase,
             tick.appliedSpeedLimitMs,
-            tick.effectiveCriticalPowerWatts);
+            tick.effectiveCriticalPowerWatts,
+            tick.wPrimePool01);
         result.baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         result.swimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
 

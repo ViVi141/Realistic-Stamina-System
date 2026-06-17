@@ -46,4 +46,18 @@ class SCR_RSS_SpeedBridge
             return;
         ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit);
     }
+
+    //! W′ 耗尽等硬 metabolic 钳制：SetSpeedLimit + OverrideMaxSpeed（仅强钳制路径，避免覆盖灌木减速）
+    static void ApplyHardStaminaSpeedClamp(IEntity owner, float limit)
+    {
+        ApplyStaminaSpeedLimit(owner, limit);
+
+        if (!owner)
+            return;
+
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            owner.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl)
+            ctrl.OverrideMaxSpeed(Math.Clamp(limit, 0.01, 1.0));
+    }
 }

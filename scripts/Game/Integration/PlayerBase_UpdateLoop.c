@@ -31,6 +31,9 @@ class RSS_StaminaDebugOutputParams
     float timeToDepleteSec;
     float timeToFullSec;
     bool epocActive;
+    float wPrimePool01;
+    float landPositionDeltaSpeedMs;
+    float overspeedExtraDrainPerSec;
 }
 
 modded class SCR_CharacterControllerComponent
@@ -159,7 +162,14 @@ modded class SCR_CharacterControllerComponent
         {
             velocity = GetVelocity();
             currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
-            m_bHasLastPositionSample = false;
+
+            float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
+            SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+                owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
+            m_vLastPositionSample = posSpeedResult.lastPositionSample;
+            m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
+            m_vComputedVelocity = posSpeedResult.computedVelocity;
+            m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
         }
         
         bool isSprintingNow = IsSprinting();
@@ -392,17 +402,20 @@ modded class SCR_CharacterControllerComponent
 
             if (tickAnaerobic)
             {
-                float drainSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
-                    currentSpeed, m_fAppliedSpeedLimitMs);
-                float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                    drainSpeed,
+                SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
+                float pool01BeforeTick = 1.0;
+                if (cpModel)
+                    pool01BeforeTick = cpModel.GetPool01();
+
+                float powerW = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
+                    currentSpeed,
+                    m_fAppliedSpeedLimitMs,
                     totalWeightWithWetAndBody,
                     gradePercent,
                     terrainFactor,
-                    true,
-                    effectivePhase);
+                    effectivePhase,
+                    pool01BeforeTick);
 
-                SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
                 if (cpModel)
                 {
                     float loadKg = Math.Max(totalWeightWithWetAndBody - SCR_RSS_MetabolismMath.CHARACTER_WEIGHT, 0.0);
@@ -440,16 +453,51 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+        if (!isExhausted && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
-            float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
-                currentSpeed, m_fAppliedSpeedLimitMs);
-            float powerFat = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                drainSpeedFat,
+            SCR_RSS_CriticalPowerModel cpPostTick = null;
+            if (m_pAnaerobicBurst)
+                cpPostTick = m_pAnaerobicBurst.GetCpModel();
+
+            float pool01AfterTick = 1.0;
+            if (cpPostTick)
+                pool01AfterTick = cpPostTick.GetPool01();
+
+            float wPrimeCapMs = SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs(
+                currentSpeed,
+                m_fAppliedSpeedLimitMs,
+                pool01AfterTick,
+                phaseNow,
                 totalWeightWithWetAndBody,
                 gradePercent,
                 terrainFactor,
-                true,
+                cpPostTick);
+
+            if (wPrimeCapMs > 0.05)
+            {
+                float engineBase = GetRssSpeedLimitEngineBaseMs();
+                if (engineBase <= 0.05)
+                    engineBase = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+
+                float forcedMult = Math.Clamp(wPrimeCapMs / engineBase, 0.01, 3.0);
+                if (forcedMult < m_fLastRssSpeedMultiplierApplied - 0.001)
+                {
+                    SCR_RSS_SpeedBridge.ApplyHardStaminaSpeedClamp(owner, forcedMult);
+                    m_fLastRssSpeedMultiplierApplied = forcedMult;
+                    finalSpeedMultiplier = forcedMult;
+                    m_fAppliedSpeedLimitMs = forcedMult * engineBase;
+                }
+            }
+        }
+
+        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+        {
+            float powerFat = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+                currentSpeed,
+                m_fAppliedSpeedLimitMs,
+                totalWeightWithWetAndBody,
+                gradePercent,
+                terrainFactor,
                 phaseNow);
             m_pFatigueSystem.ProcessFatigueIntegral(
                 powerFat,
@@ -539,11 +587,15 @@ modded class SCR_CharacterControllerComponent
         drainParams.currentTimeForExerciseMs = currentTimeForExerciseMs;
         drainParams.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
         drainParams.effectiveCriticalPowerWatts = -1.0;
+        drainParams.wPrimePool01 = 1.0;
         if (m_pAnaerobicBurst)
         {
             SCR_RSS_CriticalPowerModel cpForDrain = m_pAnaerobicBurst.GetCpModel();
             if (cpForDrain)
+            {
                 drainParams.effectiveCriticalPowerWatts = cpForDrain.GetEffectiveCriticalPowerWatts();
+                drainParams.wPrimePool01 = cpForDrain.GetPool01();
+            }
         }
         else
         {
@@ -563,18 +615,18 @@ modded class SCR_CharacterControllerComponent
         if (m_pEnvironmentFactor)
             environmentMultDbg = m_pEnvironmentFactor.GetQuickEnvironmentMultiplier();
 
-        float drainSpeedDbg = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
-            currentSpeed, m_fAppliedSpeedLimitMs);
         float powerWattsDbg = 0.0;
+        float wPrimePool01Dbg = drainParams.wPrimePool01;
         if (!useSwimmingModel)
         {
-            powerWattsDbg = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                drainSpeedDbg,
+            powerWattsDbg = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
+                currentSpeed,
+                m_fAppliedSpeedLimitMs,
                 totalWeightWithWetAndBody,
                 gradePercent,
                 terrainFactor,
-                true,
-                effectiveMovementPhase);
+                effectiveMovementPhase,
+                wPrimePool01Dbg);
         }
 
         bool needLocalDebugBatch = false;
@@ -592,6 +644,20 @@ modded class SCR_CharacterControllerComponent
         if (needLocalDebugBatch)
             SCR_RSS_DebugBatchManager.StartDebugBatch();
         
+        float overspeedExtraPerSec = 0.0;
+        if (!useSwimmingModel && m_fAppliedSpeedLimitMs > 0.05)
+        {
+            overspeedExtraPerSec = SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond(
+                currentSpeed,
+                m_fAppliedSpeedLimitMs,
+                drainParams.wPrimePool01,
+                totalWeightWithWetAndBody,
+                gradePercent,
+                terrainFactor,
+                effectiveMovementPhase,
+                drainParams.effectiveCriticalPowerWatts);
+        }
+
         if (m_pStaminaComponent)
         {
             float newTargetStamina = SCR_RSS_UpdateCoordinator.UpdateStaminaValue(
@@ -611,6 +677,10 @@ modded class SCR_CharacterControllerComponent
                 m_pEnvironmentFactor,
                 timeDeltaSec);
             
+            if (overspeedExtraPerSec > 0.000001)
+                newTargetStamina = newTargetStamina - overspeedExtraPerSec * timeDeltaSec;
+            newTargetStamina = Math.Clamp(newTargetStamina, 0.0, 1.0);
+
             m_pStaminaComponent.SetTargetStamina(newTargetStamina);
             if (m_pStaminaState)
                 m_pStaminaState.SetAerobic(newTargetStamina);
@@ -686,6 +756,9 @@ modded class SCR_CharacterControllerComponent
         debugTick.timeDeltaSec = timeDeltaSec;
         debugTick.totalWeightWithWetAndBody = totalWeightWithWetAndBody;
         debugTick.powerWatts = powerWattsDbg;
+        debugTick.wPrimePool01 = wPrimePool01Dbg;
+        debugTick.landPositionDeltaSpeedMs = m_fLandPositionDeltaSpeedMs;
+        debugTick.overspeedExtraDrainPerSec = overspeedExtraPerSec;
         debugTick.environmentMult = environmentMultDbg;
         debugTick.targetStaminaCap = 1.0;
         debugTick.capShrinkPerSec = 0.0;
@@ -694,14 +767,12 @@ modded class SCR_CharacterControllerComponent
             debugTick.targetStaminaCap = m_pFatigueSystem.GetMaxStaminaCap();
             if (!useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
             {
-                float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
-                    currentSpeed, m_fAppliedSpeedLimitMs);
-                float powerFat = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                    drainSpeedFat,
+                float powerFat = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+                    currentSpeed,
+                    m_fAppliedSpeedLimitMs,
                     totalWeightWithWetAndBody,
                     gradePercent,
                     terrainFactor,
-                    true,
                     phaseNow);
                 debugTick.capShrinkPerSec = m_pFatigueSystem.EstimateCapShrinkPerSecond(
                     powerFat,

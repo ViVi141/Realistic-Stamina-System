@@ -1,4 +1,6 @@
 #!/bin/sh
 # Install: git config core.hooksPath githooks
+set -e
+python tools/test_v6_smoke.py
+python tools/rss_pipeline_v6.py validate --fast
 python tools/check_script_size.py
-exit $?

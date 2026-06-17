@@ -85,6 +85,7 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected float m_fLastRssEngineBaseForLimit = 0.0;
     protected float m_fAppliedSpeedLimitMs = -1.0;
+    protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
     
