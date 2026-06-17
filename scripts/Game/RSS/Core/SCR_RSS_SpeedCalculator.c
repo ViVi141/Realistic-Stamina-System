@@ -11,8 +11,6 @@ class GradeCalculationResult
 
 class SCR_RSS_SpeedCalculator
 {
-    protected static ref GradeCalculationResult s_pResultGrade;
-
     // ==================== 公共方法 ====================
     
     //! 引擎 phase=Idle 但仍有水平惯性速度时，沿用上一非 Idle 相位（限速/代谢/调试）
@@ -47,11 +45,11 @@ class SCR_RSS_SpeedCalculator
         {
             if (currentSpeedMs >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
             {
-                string coastLabel = FormatMovementType(false, effectivePhase);
+                string coastLabel = SCR_RSS_DebugDisplay.FormatMovementType(false, effectivePhase);
                 return coastLabel + "惯性";
             }
         }
-        return FormatMovementType(isSprinting, enginePhase);
+        return SCR_RSS_DebugDisplay.FormatMovementType(isSprinting, enginePhase);
     }
 
     //! v6：相位目标速度倍率（无意志力平台期；低 STA 仅跛行）
@@ -475,10 +473,9 @@ class SCR_RSS_SpeedCalculator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         vector velocity = vector.Zero)
     {
-        if (!s_pResultGrade)
-            s_pResultGrade = new GradeCalculationResult();
-        s_pResultGrade.gradePercent = 0.0;
-        s_pResultGrade.slopeAngleDegrees = slopeAngleDegrees;
+        GradeCalculationResult result = new GradeCalculationResult();
+        result.gradePercent = 0.0;
+        result.slopeAngleDegrees = slopeAngleDegrees;
         
         // 完整室内或建筑物内有顶体积：返回零坡度（与 GetSlopeAngle 一致）
         if (environmentFactor && controller)
@@ -486,8 +483,8 @@ class SCR_RSS_SpeedCalculator
             IEntity ownerForCheck = controller.GetOwner();
             if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
             {
-                s_pResultGrade.slopeAngleDegrees = 0.0;
-                return s_pResultGrade;
+                result.slopeAngleDegrees = 0.0;
+                return result;
             }
         }
         
@@ -502,7 +499,7 @@ class SCR_RSS_SpeedCalculator
         {
             // 获取坡度角度并转换为坡度百分比（传入 velocity 用于判断上下坡）
             float rawAngleDeg = GetSlopeAngle(controller, environmentFactor, velocity);
-            s_pResultGrade.slopeAngleDegrees = rawAngleDeg;
+            result.slopeAngleDegrees = rawAngleDeg;
             // 将角度转换为斜率比：tan(angle_rad)
             float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
             // Clamp ratio to reasonable range (-100%..100%) to avoid terrain/measurement glitches
@@ -512,12 +509,12 @@ class SCR_RSS_SpeedCalculator
                 if (SCR_RSS_ConfigBridge.IsDebugEnabled())
                 slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             }
-            s_pResultGrade.gradePercent = slopeRatio * 100.0;
+            result.gradePercent = slopeRatio * 100.0;
             if (SCR_RSS_ConfigBridge.IsDebugEnabled())
             {
             }
         }
         
-        return s_pResultGrade;
+        return result;
     }
 }

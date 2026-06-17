@@ -279,9 +279,11 @@ modded class SCR_CharacterControllerComponent
                 currentTime,
                 m_fWetWeightStartTime,
                 m_fCurrentWetWeight,
+                m_fSwimStartTimeSec,
                 owner);
             m_fWetWeightStartTime = wetWeightResult.wetWeightStartTime;
             m_fCurrentWetWeight = wetWeightResult.currentWetWeight;
+            m_fSwimStartTimeSec = wetWeightResult.swimStartTimeSec;
             m_bWasSwimming = isSwimming;
         }
         
@@ -374,12 +376,6 @@ modded class SCR_CharacterControllerComponent
         if (m_pAnaerobicBurst)
         {
             bool tickAnaerobic = Replication.IsServer();
-            if (!tickAnaerobic && isPlayer)
-            {
-                IEntity anaOwner = owner;
-                if (anaOwner == SCR_PlayerController.GetLocalControlledEntity())
-                    tickAnaerobic = true;
-            }
 
             if (tickAnaerobic)
             {

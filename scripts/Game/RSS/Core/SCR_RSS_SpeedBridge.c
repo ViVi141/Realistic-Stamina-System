@@ -19,7 +19,7 @@ class SCR_RSS_SpeedBridge
     }
 
     //! 将 RSS 体力速度倍率写入角色限速图（与灌木/铁丝网等取全局最小值）。
-    //! limit=1.0 时移除 RSS 来源（不再由 RSS 限速）。
+    //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source（见 docs/灌木丛移动减速机制.md）。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)
     {
         if (!owner)

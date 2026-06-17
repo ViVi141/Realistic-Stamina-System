@@ -115,11 +115,8 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 设置标志为 false，停止监控循环
         m_bIsMonitoring = false;
         
-        // 移除所有可能存在的 CallLater 调用，确保不会再执行
-        // CRITICAL FIX: GetGame() may return null during game exit / teardown.
-        // Without this check, the destructor path crashes with Access Violation at 0x0.
-        if (GetGame() && GetGame().GetCallqueue())
-            GetGame().GetCallqueue().Remove(MonitorStamina);
+        // m_bIsMonitoring=false 后 pending MonitorStamina 入口即 return 且不再重调度
+        // 不使用 Remove(MonitorStamina)：全局 Remove 会取消所有实体的监控回调
     }
     
     // 监控体力值（定期调用，确保完全覆盖原生系统）

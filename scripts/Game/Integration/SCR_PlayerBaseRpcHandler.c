@@ -8,6 +8,7 @@ class SCR_PlayerBaseRpcHandler
         float weight,
         float currentTime,
         float clientTimestamp,
+        bool isCriticalData,
         SCR_RSS_NetworkSyncManager networkSync,
         bool isDebugEnabled,
         out bool shouldIgnore)
@@ -30,7 +31,7 @@ class SCR_PlayerBaseRpcHandler
             return 0.0;
         }
 
-        if (networkSync && !networkSync.AcceptClientReport(currentTime, weight != 0.0))
+        if (networkSync && !networkSync.AcceptClientReport(currentTime, isCriticalData))
         {
             if (isDebugEnabled)
                 PrintFormat("[RSS] Ignored too-frequent stamina report (time=%1)", currentTime);
@@ -66,7 +67,7 @@ class SCR_PlayerBaseRpcHandler
         float validated = SCR_RSS_UpdateCoordinator.CalculateFinalSpeedMultiplierFromInputs(
             clampedStamina, encumbrancePenalty, isSprinting, movementPhase,
             isExhausted, canSprint, currentSpeed, slopeAngleDegrees, sprintStartTime);
-        return Math.Clamp(validated, 0.15, 1.0);
+        return Math.Clamp(validated, 0.15, 3.0);
     }
 
     static bool ProcessClientReport_ShouldSync(

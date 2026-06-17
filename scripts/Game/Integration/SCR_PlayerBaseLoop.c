@@ -44,4 +44,25 @@ class SCR_PlayerBaseLoop
             return;
         ctrl.CollectSpeedSample();
     }
+
+    static void InitStaminaHudBridge(SCR_CharacterControllerComponent ctrl)
+    {
+        if (!ctrl)
+            return;
+        ctrl.InitStaminaHUD();
+    }
+
+    static void WaitForGameModeConfigBridge(SCR_CharacterControllerComponent ctrl)
+    {
+        if (!ctrl)
+            return;
+        ctrl.RSS_WaitForGameModeConfig();
+    }
+
+    static void MudSlipFinishRagdollBridge(SCR_CharacterControllerComponent ctrl)
+    {
+        if (!ctrl)
+            return;
+        ctrl.RSS_MudSlip_FinishRagdoll();
+    }
 }
