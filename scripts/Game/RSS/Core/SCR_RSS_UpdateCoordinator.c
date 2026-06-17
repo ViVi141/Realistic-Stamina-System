@@ -1037,7 +1037,8 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_RSS_ExerciseTracker exerciseTracker,
         SCR_CharacterControllerComponent controller,
-        SCR_RSS_EnvironmentFactor environmentFactor)
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        float capShrinkPerSec)
     {
         StaminaEtaResult result = new StaminaEtaResult();
         result.timeToDepleteSec = -1.0;
@@ -1063,12 +1064,19 @@ class SCR_RSS_UpdateCoordinator
             epocState,
             false) * 5.0;
 
-        // HUD ETA：与 UpdateStaminaValue / GetNetStaminaRatePerSecond 同形（净恢复 - 总消耗）
+        // HUD ETA：有氧净消耗 + 疲劳上限收缩（体力贴近 cap 时）
         if (drainPerSec > recoveryPerSec)
         {
             float netLossPerSec = drainPerSec - recoveryPerSec;
-            if (netLossPerSec > 0.0)
-                result.timeToDepleteSec = Math.Min(staminaPercent / netLossPerSec, 7200.0);
+            float effectiveLossPerSec = netLossPerSec;
+            if (capShrinkPerSec > 0.0)
+            {
+                float capGap = staminaPercent - targetStaminaCap;
+                if (Math.AbsFloat(capGap) < 0.02 || staminaPercent > targetStaminaCap)
+                    effectiveLossPerSec = netLossPerSec + capShrinkPerSec;
+            }
+            if (effectiveLossPerSec > 0.0)
+                result.timeToDepleteSec = Math.Min(staminaPercent / effectiveLossPerSec, 7200.0);
         }
         else if (recoveryPerSec > drainPerSec && staminaPercent < targetStaminaCap - 0.001)
         {

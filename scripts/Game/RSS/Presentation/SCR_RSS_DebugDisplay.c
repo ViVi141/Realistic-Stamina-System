@@ -42,6 +42,8 @@ class SCR_RSS_DebugDisplay
     protected static string m_sLastStaminaStatus = ""; // 上次体力状态，用于检测状态变化
     protected static float m_fLastTerrainForceUpdateTime = 0.0; // 上次地形 ForceUpdate 时间（调试节流）
     protected static const float TERRAIN_DEBUG_UPDATE_INTERVAL = 0.5; // 地形 ForceUpdate 节流间隔（秒）
+    protected static float s_fDrainDiagLastStamina = -1.0; // 上次 [RSS][Drain] 批次体力（用于观测速率）
+    protected static float s_fDrainDiagLastWorldTime = -1.0;
 
     // ==================== 公共方法 ====================
     
@@ -654,6 +656,215 @@ class SCR_RSS_DebugDisplay
             params.anaerobicPercent,
             params.sprintCooldownSec,
             params.burstCooldownFullSec);
+    }
+
+    //! 体力消耗 / ETA 诊断行（Debug 或 HUD Hint 开启时，由批次管理器每秒输出）
+    static void OutputStaminaDrainDiagnostics(
+        RSS_StaminaDebugOutputParams tick,
+        SCR_CharacterControllerComponent controller,
+        SCR_RSS_EpocState epocState,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        SCR_RSS_ExerciseTracker exerciseTracker,
+        SCR_RSS_EnvironmentFactor environmentFactor)
+    {
+        if (!tick || !controller)
+            return;
+        // 仅在本秒批次窗口内写入；避免每 17ms tick 直接 Print 刷屏
+        if (!SCR_RSS_DebugBatchManager.IsDebugBatchActive())
+            return;
+
+        float recoveryPerTick = SCR_RSS_UpdateCoordinator.ComputeRecoveryRatePerTick(
+            tick.staminaPercent,
+            tick.currentSpeed,
+            tick.baseDrainRateByVelocity,
+            tick.baseDrainRateByVelocityForModule,
+            tick.heatStressMultiplier,
+            epocState,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            false);
+
+        float finalDrainPerTick = SCR_RSS_UpdateCoordinator.ComputeFinalDrainRatePerTick(
+            tick.useSwimmingModel,
+            tick.currentSpeed,
+            tick.totalDrainRate,
+            epocState,
+            false);
+
+        float netPerTick = recoveryPerTick - finalDrainPerTick;
+        float tickSec = SCR_RSS_Constants.RSS_STAMINA_TICK_SEC;
+        float perSecMult = 1.0 / tickSec;
+        float recoveryPerSec = recoveryPerTick * perSecMult;
+        float drainPerSec = finalDrainPerTick * perSecMult;
+        float netPerSec = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+            tick.staminaPercent,
+            tick.useSwimmingModel,
+            tick.currentSpeed,
+            tick.totalDrainRate,
+            tick.baseDrainRateByVelocity,
+            tick.baseDrainRateByVelocityForModule,
+            tick.heatStressMultiplier,
+            epocState,
+            encumbranceCache,
+            exerciseTracker,
+            controller,
+            environmentFactor,
+            false);
+
+        float tickScale = Math.Clamp(tick.timeDeltaSec / tickSec, 0.01, 2.0);
+        float observedPctPerSec = 0.0;
+        float worldTime = 0.0;
+        if (GetGame())
+        {
+            World world = GetGame().GetWorld();
+            if (world)
+                worldTime = world.GetWorldTime();
+        }
+        if (s_fDrainDiagLastStamina >= 0.0 && s_fDrainDiagLastWorldTime >= 0.0)
+        {
+            float obsDt = worldTime - s_fDrainDiagLastWorldTime;
+            if (obsDt > 0.05)
+            {
+                observedPctPerSec = (tick.staminaPercent - s_fDrainDiagLastStamina) / obsDt * 100.0;
+            }
+        }
+        s_fDrainDiagLastStamina = tick.staminaPercent;
+        s_fDrainDiagLastWorldTime = worldTime;
+
+        float linearDepleteSec = -1.0;
+        if (drainPerSec > recoveryPerSec)
+        {
+            float netLoss = drainPerSec - recoveryPerSec;
+            float effectiveLoss = netLoss;
+            if (tick.capShrinkPerSec > 0.0)
+            {
+                float capGap = tick.staminaPercent - tick.targetStaminaCap;
+                if (Math.AbsFloat(capGap) < 0.02 || tick.staminaPercent > tick.targetStaminaCap)
+                    effectiveLoss = netLoss + tick.capShrinkPerSec;
+            }
+            if (effectiveLoss > 0.0)
+                linearDepleteSec = tick.staminaPercent / effectiveLoss;
+        }
+
+        float linearFullSec = -1.0;
+        if (recoveryPerSec > drainPerSec && tick.staminaPercent < tick.targetStaminaCap - 0.001)
+        {
+            float netGain = recoveryPerSec - drainPerSec;
+            if (netGain > 0.000001)
+            {
+                float remaining = tick.targetStaminaCap - tick.staminaPercent;
+                linearFullSec = remaining / netGain;
+            }
+        }
+
+        bool walkRecoveryZone = false;
+        float walkRecoveryThreshold = SCR_RSS_Constants.GetWalkRecoveryZoneThreshold();
+        if (!tick.useSwimmingModel && !tick.isSprintActive && tick.staminaPercent < walkRecoveryThreshold)
+        {
+            if (tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+                walkRecoveryZone = true;
+        }
+
+        string epocStr = "off";
+        if (tick.epocActive)
+            epocStr = "on";
+
+        string walkRecStr = "off";
+        if (walkRecoveryZone)
+            walkRecStr = "on";
+
+        string hudDepleteStr = "—";
+        if (tick.timeToDepleteSec >= 0.0)
+            hudDepleteStr = Math.Round(tick.timeToDepleteSec).ToString() + "s";
+
+        string hudFullStr = "—";
+        if (tick.timeToFullSec >= 0.0)
+            hudFullStr = Math.Round(tick.timeToFullSec).ToString() + "s";
+
+        string linearDepleteStr = "—";
+        if (linearDepleteSec >= 0.0)
+            linearDepleteStr = Math.Round(linearDepleteSec).ToString() + "s";
+
+        string linearFullStr = "—";
+        if (linearFullSec >= 0.0)
+            linearFullStr = Math.Round(linearFullSec).ToString() + "s";
+
+        float netPctPerSec = netPerSec * 100.0;
+        float capRatePctPerSec = tick.capShrinkPerSec * 100.0;
+        float effectiveLossPctPerSec = 0.0;
+        if (drainPerSec > recoveryPerSec)
+        {
+            float netLoss = drainPerSec - recoveryPerSec;
+            effectiveLossPctPerSec = netLoss * 100.0;
+            if (tick.capShrinkPerSec > 0.0)
+            {
+                float capGap = tick.staminaPercent - tick.targetStaminaCap;
+                if (Math.AbsFloat(capGap) < 0.02 || tick.staminaPercent > tick.targetStaminaCap)
+                    effectiveLossPctPerSec = (netLoss + tick.capShrinkPerSec) * 100.0;
+            }
+        }
+
+        string line1Head = string.Format(
+            "[RSS][Drain] tick: 恢复=%1 消耗=%2 净=%3 | /s: 恢复=%4 消耗=%5 净=%6%%/s",
+            Math.Round(recoveryPerTick * 1000000.0) / 1000000.0,
+            Math.Round(finalDrainPerTick * 1000000.0) / 1000000.0,
+            Math.Round(netPerTick * 1000000.0) / 1000000.0,
+            Math.Round(recoveryPerSec * 1000000.0) / 1000000.0,
+            Math.Round(drainPerSec * 1000000.0) / 1000000.0,
+            Math.Round(netPctPerSec * 1000.0) / 1000.0);
+        string line1Tail = string.Format(
+            " capRate=%1%%/s 有效=%2%%/s | 观测=%3%%/s dt=%4s scale=%5",
+            Math.Round(capRatePctPerSec * 1000.0) / 1000.0,
+            Math.Round(effectiveLossPctPerSec * 1000.0) / 1000.0,
+            Math.Round(observedPctPerSec * 1000.0) / 1000.0,
+            Math.Round(tick.timeDeltaSec * 1000.0) / 1000.0,
+            Math.Round(tickScale * 1000.0) / 1000.0);
+        string line1 = line1Head + line1Tail;
+        AppendDrainDebugLine(line1);
+
+        string line2 = string.Format(
+            "[RSS][ETA] HUD耗尽=%1 线性耗尽=%2 HUD回满=%3 线性回满=%4 | base=%5 total=%6",
+            hudDepleteStr,
+            linearDepleteStr,
+            hudFullStr,
+            linearFullStr,
+            Math.Round(tick.baseDrainRateByVelocity * 1000000.0) / 1000000.0,
+            Math.Round(tick.totalDrainRate * 1000000.0) / 1000000.0);
+        AppendDrainDebugLine(line2);
+
+        string cpStr = "—";
+        if (tick.effectiveCriticalPowerWatts > 1.0)
+            cpStr = Math.Round(tick.effectiveCriticalPowerWatts).ToString() + "W";
+
+        string limitStr = "—";
+        if (tick.appliedSpeedLimitMs > 0.05)
+        {
+            float limitRounded = Math.Round(tick.appliedSpeedLimitMs * 100.0) / 100.0;
+            limitStr = limitRounded.ToString() + "m/s";
+        }
+
+        float drainVelMs = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+            tick.currentSpeed, tick.appliedSpeedLimitMs);
+
+        string line3 = string.Format(
+            "[RSS][P] 代谢=%1W CP=%2 v_drain=%3m/s v_meas=%4m/s v_limit=%5 | env=%6 步行恢复=%7 EPOC=%8 上限=%9%%",
+            Math.Round(tick.powerWatts),
+            cpStr,
+            Math.Round(drainVelMs * 100.0) / 100.0,
+            Math.Round(tick.currentSpeed * 100.0) / 100.0,
+            limitStr,
+            Math.Round(tick.environmentMult * 1000.0) / 1000.0,
+            walkRecStr,
+            epocStr,
+            Math.Round(tick.targetStaminaCap * 100.0));
+        AppendDrainDebugLine(line3);
+    }
+
+    protected static void AppendDrainDebugLine(string line)
+    {
+        SCR_RSS_DebugBatchManager.AddDebugBatchLine(line);
     }
     
     // 输出简洁的状态 Hint（更新 HUD 显示）

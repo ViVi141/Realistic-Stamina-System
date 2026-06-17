@@ -12,9 +12,17 @@ class SCR_RSS_DebugBatchManager
     protected static ref array<string> s_aDebugBatchLines = null;
 
     // 启动本秒的调试批次，返回是否应输出（每秒一次）
+    // Debug 日志或 HUD Hint 任一开启时均可启动（Hint 用于 ETA/消耗诊断行）
     static bool StartDebugBatch()
     {
-        if (!SCR_RSS_ConfigBridge.IsDebugEnabled())
+        bool wantBatch = SCR_RSS_ConfigBridge.IsDebugEnabled();
+        if (!wantBatch)
+        {
+            SCR_RSS_Settings hintSettings = SCR_RSS_ConfigManager.GetSettings();
+            if (hintSettings && hintSettings.m_bHintDisplayEnabled)
+                wantBatch = true;
+        }
+        if (!wantBatch)
             return false;
         World world = GetGame().GetWorld();
         if (!world)

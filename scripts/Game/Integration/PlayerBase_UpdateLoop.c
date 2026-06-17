@@ -15,9 +15,22 @@ class RSS_StaminaDebugOutputParams
     float slopeAngleDegrees;
     bool isSwimming;
     bool isSprinting;
+    bool isSprintActive;
     int currentMovementPhase;
     int effectiveMovementPhase;
     float rainWeight;
+    float terrainFactor;
+    float appliedSpeedLimitMs;
+    float effectiveCriticalPowerWatts;
+    float timeDeltaSec;
+    float totalWeightWithWetAndBody;
+    float powerWatts;
+    float environmentMult;
+    float targetStaminaCap;
+    float capShrinkPerSec;
+    float timeToDepleteSec;
+    float timeToFullSec;
+    bool epocActive;
 }
 
 modded class SCR_CharacterControllerComponent
@@ -545,7 +558,38 @@ modded class SCR_CharacterControllerComponent
         baseDrainRateByVelocityForModule = drainTick.baseDrainRateByVelocityForModule;
         m_bSwimmingVelocityDebugPrinted = drainTick.swimmingVelocityDebugPrinted;
 
-        if (owner == SCR_PlayerController.GetLocalControlledEntity() && IsRssDebugEnabled() && IsPlayerControlled())
+        float effectiveCriticalPowerWattsDbg = drainParams.effectiveCriticalPowerWatts;
+        float environmentMultDbg = 1.0;
+        if (m_pEnvironmentFactor)
+            environmentMultDbg = m_pEnvironmentFactor.GetQuickEnvironmentMultiplier();
+
+        float drainSpeedDbg = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+            currentSpeed, m_fAppliedSpeedLimitMs);
+        float powerWattsDbg = 0.0;
+        if (!useSwimmingModel)
+        {
+            powerWattsDbg = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                drainSpeedDbg,
+                totalWeightWithWetAndBody,
+                gradePercent,
+                terrainFactor,
+                true,
+                effectiveMovementPhase);
+        }
+
+        bool needLocalDebugBatch = false;
+        if (owner == SCR_PlayerController.GetLocalControlledEntity() && IsPlayerControlled())
+        {
+            if (IsRssDebugEnabled())
+                needLocalDebugBatch = true;
+            else
+            {
+                SCR_RSS_Settings batchSettings = SCR_RSS_ConfigManager.GetSettings();
+                if (batchSettings && batchSettings.m_bHintDisplayEnabled)
+                    needLocalDebugBatch = true;
+            }
+        }
+        if (needLocalDebugBatch)
             SCR_RSS_DebugBatchManager.StartDebugBatch();
         
         if (m_pStaminaComponent)
@@ -635,6 +679,41 @@ modded class SCR_CharacterControllerComponent
         debugTick.currentMovementPhase = currentMovementPhase;
         debugTick.effectiveMovementPhase = effectiveMovementPhase;
         debugTick.rainWeight = rainWeight;
+        debugTick.isSprintActive = isSprintActive;
+        debugTick.terrainFactor = terrainFactor;
+        debugTick.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
+        debugTick.effectiveCriticalPowerWatts = effectiveCriticalPowerWattsDbg;
+        debugTick.timeDeltaSec = timeDeltaSec;
+        debugTick.totalWeightWithWetAndBody = totalWeightWithWetAndBody;
+        debugTick.powerWatts = powerWattsDbg;
+        debugTick.environmentMult = environmentMultDbg;
+        debugTick.targetStaminaCap = 1.0;
+        debugTick.capShrinkPerSec = 0.0;
+        if (m_pFatigueSystem)
+        {
+            debugTick.targetStaminaCap = m_pFatigueSystem.GetMaxStaminaCap();
+            if (!useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            {
+                float drainSpeedFat = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
+                    currentSpeed, m_fAppliedSpeedLimitMs);
+                float powerFat = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                    drainSpeedFat,
+                    totalWeightWithWetAndBody,
+                    gradePercent,
+                    terrainFactor,
+                    true,
+                    phaseNow);
+                debugTick.capShrinkPerSec = m_pFatigueSystem.EstimateCapShrinkPerSecond(
+                    powerFat,
+                    currentWeight,
+                    gradePercent,
+                    terrainFactor,
+                    currentSpeed);
+            }
+        }
+        debugTick.epocActive = false;
+        if (m_pEpocState)
+            debugTick.epocActive = m_pEpocState.IsInEpocDelay();
         RSS_DebugOutputPlayerStaminaAndHints(owner, debugTick);
         
         SCR_RSS_DebugBatchManager.FlushDebugBatch();
@@ -801,12 +880,27 @@ modded class SCR_CharacterControllerComponent
                 m_pEncumbranceCache,
                 m_pExerciseTracker,
                 this,
-                m_pEnvironmentFactor);
+                m_pEnvironmentFactor,
+                tick.capShrinkPerSec);
             if (eta)
             {
                 timeToDepleteSec = eta.timeToDepleteSec;
                 timeToFullSec = eta.timeToFullSec;
             }
+        }
+
+        tick.timeToDepleteSec = timeToDepleteSec;
+        tick.timeToFullSec = timeToFullSec;
+
+        if (needDebugOutput || needHintOutput)
+        {
+            SCR_RSS_DebugDisplay.OutputStaminaDrainDiagnostics(
+                tick,
+                this,
+                m_pEpocState,
+                m_pEncumbranceCache,
+                m_pExerciseTracker,
+                m_pEnvironmentFactor);
         }
 
         DebugInfoParams debugParams = new DebugInfoParams();
