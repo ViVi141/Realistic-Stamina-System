@@ -30,21 +30,25 @@ from rss_digital_twin_fix import (
 
 
 def _wprime_discharge_ok() -> bool:
-    st = V6CriticalPowerState(cp0=400.0, load_kg=0.0)
+    st = V6CriticalPowerState(cp0=400.0)
+    st.set_runtime_context(0.0, 0.0, 1.0, 0.0)
     dt = 0.017
     cap = 1450.0
+    t = 0.0
     for _ in range(900):
-        cp = st.cp_watts()
+        cp = st.get_effective_critical_power_watts()
         burst = st.w_prime_joules / dt
         p = min(cap, cp + burst)
-        st.tick(p, True, 0.0, dt)
+        st.tick(p, True, t, dt)
+        t += dt
     return st.pool01 < 0.25
 
 
 def _wprime_discharge_run_ok() -> bool:
-    st = V6CriticalPowerState(cp0=400.0, load_kg=35.0)
+    st = V6CriticalPowerState(cp0=400.0)
+    st.set_runtime_context(35.0, 0.0, 1.0, 0.0)
     dt = 0.017
-    cp = st.cp_watts()
+    cp = st.get_effective_critical_power_watts()
     power_run = cp + 120.0
     j0 = st.w_prime_joules
     st.tick(power_run, False, 0.0, dt, 1.2)

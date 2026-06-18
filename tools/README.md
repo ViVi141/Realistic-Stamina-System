@@ -15,6 +15,8 @@ Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
 | `test_v6_smoke.py` | v6 CP–W′ / 代谢契约冒烟 |
 | `schemas/rss_params_v5.schema.json` | v5/v6 可嵌入参数字段 |
 | `optimized_rss_config_*_v4.json` | v4 三档预设（当前 C 端主要来源） |
+| `optimized_rss_config_*_v6.json` | v6 优化产出预设（待 embed 到 C 端） |
+| `compare_presets.py` | v4 vs v6 关键参数对比 |
 | `embed_json_to_c.py` | JSON → `SCR_RSS_Settings.c`（可选） |
 
 设计说明：`docs/RSS_v6_优化管线设计.md`

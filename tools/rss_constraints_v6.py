@@ -120,8 +120,12 @@ def check_v5_sprint_cooldown() -> ConstraintCheck:
     )
 
 
-def check_v6_cp_sprint_burst(load_kg: float = 35.0, cp0: float = 400.0) -> ConstraintCheck:
-    t = simulate_v6_sprint_seconds(load_kg=load_kg, cp0=cp0)
+def check_v6_cp_sprint_burst(load_kg: float = 35.0, cp0: float = 400.0,
+                             w_prime_max: float = 20000.0,
+                             sprint_cap_w: float = 1450.0) -> ConstraintCheck:
+    t = simulate_v6_sprint_seconds(load_kg=load_kg, cp0=cp0,
+                                   w_prime_max=w_prime_max,
+                                   sprint_cap_w=sprint_cap_w)
     ok = t <= SPRINT_BURST_MAX_SEC
     return ConstraintCheck(
         "v6_cp_sprint_burst_35kg",
@@ -200,8 +204,13 @@ def evaluate_physio_anchors(
     params: Optional[Dict] = None,
 ) -> ConstraintReport:
     trial_params = None
+    w_prime_max = 20000.0
+    sprint_cap_w = 1450.0
     if params:
         trial_params = dict(params)
+        cp0 = float(params.get("critical_power_watts", cp0))
+        w_prime_max = float(params.get("w_prime_max_joules", w_prime_max))
+        sprint_cap_w = float(params.get("sprint_power_cap_watts", sprint_cap_w))
     elif cp0 != 400.0:
         trial_params = {"critical_power_watts": cp0}
 
@@ -210,7 +219,7 @@ def evaluate_physio_anchors(
         check_metabolic_overspeed_contract(),
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),
-        check_v6_cp_sprint_burst(load_kg, cp0),
+        check_v6_cp_sprint_burst(load_kg, cp0, w_prime_max, sprint_cap_w),
         check_sustain_run_observed(trial_params, duration_s=90.0),
         check_march_4h_aerobic_end(load_kg, params=trial_params),
     ]
@@ -218,7 +227,7 @@ def evaluate_physio_anchors(
 
 
 def evaluate_hard_constraints(params: Optional[Dict] = None) -> ConstraintReport:
-    """硬约束门禁。params 为 trial 合并参数（含 cp0、coeff 等）。"""
+    """硬约束门禁。params 为 trial 合并参数（含 cp0、w_prime_max 等）。"""
     cp0 = 400.0
     if params:
         cp0 = float(params.get("critical_power_watts", cp0))

@@ -428,6 +428,10 @@ class RSSDigitalTwin:
         self.environment_factor.cold_static_penalty = 0.0
         self.fatigue = TwinFatigueSystem()
         self.fatigue.initialize(0.0)
+        self.v6_cp_state = V6CriticalPowerState(
+            cp0=self._critical_power_watts(),
+            sprint_power_cap=getattr(self.constants, 'SPRINT_POWER_CAP_WATTS',
+                                     V6_SPRINT_POWER_CAP_WATTS_DEFAULT))
 
     def _critical_power_watts(self) -> float:
         cp0 = getattr(self.constants, 'CRITICAL_POWER_WATTS', 0.0)
@@ -921,6 +925,24 @@ class RSSDigitalTwin:
                 movement_type=movement_type)
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
+
+            # ── v6 CP–W′ Tick ──
+            bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+            load_kg = max(current_weight - bw, 0.0)
+            phase = movement_type
+            if phase == MovementType.IDLE:
+                phase = MovementType.WALK
+            self.v6_cp_state.set_runtime_context(
+                load_kg, grade_percent, 1.0,
+                self.fatigue.get_fatigue_integral_norm())
+            self.v6_cp_state.set_fatigue_cp_multiplier(
+                self.fatigue.get_cp_fatigue_multiplier())
+            metabolic_power = metabolism_power_watts(
+                speed, current_weight, grade_percent, terrain_factor, phase)
+            self.v6_cp_state.tick(
+                metabolic_power, is_sprinting, current_time, time_delta, speed)
+            # ──
+
             net_change = recovery_rate - total_drain
             net_change = np.clip(float(net_change), -0.1, 0.01)
 
@@ -1124,13 +1146,14 @@ class RSSDigitalTwin:
         engine_base_ms: float,
     ) -> float:
         load_kg = max(current_weight - getattr(self.constants, 'CHARACTER_WEIGHT', 90.0), 0.0)
-        cp = compute_cp_watts(
-            self._critical_power_watts(),
-            load_kg,
-            grade_percent,
-            1.0,
-            self.fatigue.get_fatigue_integral_norm(),
-        )
+        # 更新 v6 CP 状态上下文
+        self.v6_cp_state.set_runtime_context(
+            load_kg, grade_percent, 1.0,
+            self.fatigue.get_fatigue_integral_norm())
+        self.v6_cp_state.set_fatigue_cp_multiplier(
+            self.fatigue.get_cp_fatigue_multiplier())
+        effective_cp = self.v6_cp_state.get_effective_critical_power_watts()
+
         exhausted = self.stamina <= getattr(self.constants, 'EXHAUSTION_THRESHOLD', 0.0)
         metab_phase = movement_phase
         if metab_phase < MovementType.WALK:
@@ -1145,7 +1168,7 @@ class RSSDigitalTwin:
             terrain_factor,
             exhausted,
             engine_base_ms,
-            cp,
+            effective_cp,
         )
 
     def compute_speed_limit_multiplier(
@@ -1760,6 +1783,13 @@ V6_FATIGUE_K_SLOPE = 8.0
 V6_FATIGUE_K_TERRAIN = 0.25
 V6_MAX_FATIGUE_PENALTY = 0.3
 RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1
+V6_CP_ENV_FLOOR = 0.55
+V6_STANDING_REST_WATTS = 100.0
+V5_TACTICAL_SHORT_BURST_SEC = 3.0
+V5_BURST_EARLY_RELEASE_BONUS = 0.45
+V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.20
+V5_BURST_COOLDOWN_FULL_DEFAULT = 180.0
+V5_BURST_COOLDOWN_SHORT_DEFAULT = 75.0
 
 
 class TwinFatigueSystem:
@@ -1786,6 +1816,12 @@ class TwinFatigueSystem:
 
     def get_max_stamina_cap(self) -> float:
         return 1.0 - self.fatigue_accumulation
+
+    def get_cp_fatigue_multiplier(self) -> float:
+        """与 SCR_RSS_FatigueSystem.GetCpFatigueMultiplier 同形。"""
+        norm = self.get_fatigue_integral_norm()
+        mult = 1.0 - V6_CP_FATIGUE_K * norm
+        return max(mult, 0.82)
 
     def process_integral(
         self,
@@ -1972,53 +2008,251 @@ def compute_cp_watts(
     return cp
 
 
-@dataclass
 class V6CriticalPowerState:
-    w_prime_joules: float = V6_W_PRIME_MAX_JOULES_DEFAULT
-    w_prime_max_joules: float = V6_W_PRIME_MAX_JOULES_DEFAULT
-    cooldown_until_sec: float = -1.0
-    cp0: float = V6_CRITICAL_POWER_WATTS_DEFAULT
-    load_kg: float = 0.0
-    grade_percent: float = 0.0
-    fatigue_norm: float = 0.0
+    """v6 CP–W′ 临界功率模型 — 与 SCR_RSS_CriticalPowerModel.c 完全同形。
 
+    核心逻辑：
+    - Morin–Petit: P > CP → W′ 放电（焦耳）；静止且非 Sprint 时不放电
+    - Elite Skiba 双指数再填充 or 标准线性恢复
+    - Sprint 冷却（耗尽→满冷却 / 提前释放→短冷却）
+    - 动态 CP：load/slope/env/fatigue 四因子调制
+    """
+
+    def __init__(self, cp0: float = V6_CRITICAL_POWER_WATTS_DEFAULT,
+                 w_prime_max: float = V6_W_PRIME_MAX_JOULES_DEFAULT,
+                 sprint_power_cap: float = V6_SPRINT_POWER_CAP_WATTS_DEFAULT):
+        self.cp0 = cp0
+        self.w_prime_max_joules = w_prime_max
+        self.sprint_power_cap_watts = sprint_power_cap
+        self.reset_to_full()
+
+        # 上下文（SetRuntimeContext）
+        self.load_kg = 0.0
+        self.grade_percent = 0.0
+        self.env_cp_mult = 1.0
+        self.fatigue_norm = 0.0
+        self.fatigue_cp_multiplier = 1.0
+
+    # ── 状态管理 ──
+    def reset_to_full(self):
+        self.w_prime_joules = self.w_prime_max_joules
+        self.cooldown_until_sec = -1.0
+        self.sprint_start_sec = -1.0
+        self.was_sprinting = False
+        self.last_short_burst_release_sec = -1.0
+        self.depletion_cooldown_applied = False
+
+    def set_runtime_context(self, load_kg: float, grade_percent: float,
+                            env_cp_mult: float, fatigue_norm: float):
+        self.load_kg = max(load_kg, 0.0)
+        self.grade_percent = grade_percent
+        self.env_cp_mult = max(V6_CP_ENV_FLOOR, min(env_cp_mult, 1.0))
+        self.fatigue_norm = max(0.0, min(fatigue_norm, 1.0))
+
+    def set_fatigue_cp_multiplier(self, mult: float):
+        self.fatigue_cp_multiplier = max(0.75, min(mult, 1.0))
+
+    # ── 属性 ──
     @property
     def pool01(self) -> float:
         if self.w_prime_max_joules <= 1.0:
             return 0.0
         return max(0.0, min(1.0, self.w_prime_joules / self.w_prime_max_joules))
 
-    def cp_watts(self) -> float:
-        return compute_cp_watts(self.cp0, self.load_kg, self.grade_percent, 1.0, self.fatigue_norm)
+    @property
+    def cooldown_remaining(self) -> float:
+        if self.cooldown_until_sec < 0.0:
+            return 0.0
+        return max(0.0, self.cooldown_until_sec)  # caller subtracts world_time
 
-    def tick(self, power_w: float, sprint: bool, world_time: float, dt: float, current_speed_ms: float = 0.0) -> None:
-        cp = self.cp_watts()
-        if power_w > cp:
-            allow = True
-            if current_speed_ms < 0.05 and not sprint:
-                allow = False
-            if allow:
-                self.w_prime_joules = max(0.0, self.w_prime_joules - (power_w - cp) * dt)
-        if not sprint and world_time >= self.cooldown_until_sec and power_w <= cp + 5.0:
-            if self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W:
-                w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
-                k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
-                k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
-                fast = 0.0
-                if self.w_prime_joules < w_lim:
-                    fast = k_fast * (w_lim - self.w_prime_joules)
-                slow = 0.0
-                if self.w_prime_joules >= w_lim:
-                    slow = k_slow * (self.w_prime_max_joules - self.w_prime_joules)
-                self.w_prime_joules = min(
-                    self.w_prime_max_joules,
-                    self.w_prime_joules + (fast + slow) * dt,
-                )
-            else:
-                self.w_prime_joules = min(
-                    self.w_prime_max_joules,
-                    self.w_prime_joules + V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT * dt,
-                )
+    def cooldown_remaining_at(self, world_time_sec: float) -> float:
+        if self.cooldown_until_sec < 0.0:
+            return 0.0
+        return max(0.0, self.cooldown_until_sec - world_time_sec)
+
+    def is_on_cooldown(self, world_time_sec: float) -> bool:
+        return self.cooldown_remaining_at(world_time_sec) > 0.0
+
+    # ── 动态 CP 计算 ──
+    def compute_cp_base_watts(self) -> float:
+        """与 C ComputeCpBaseWatts 完全一致：load/slope/env 三因子调制。"""
+        return compute_cp_watts(self.cp0, self.load_kg, self.grade_percent,
+                                self.env_cp_mult, 0.0)  # fatigue 经 GetEffectiveCriticalPowerWatts
+
+    def get_effective_critical_power_watts(self) -> float:
+        """含疲劳乘数：effective = cp_base * fatigue_mult。"""
+        return self.compute_cp_base_watts() * self.fatigue_cp_multiplier
+
+    # ── Skiba vs 线性恢复判断 ──
+    def _uses_skiba_recovery(self) -> bool:
+        return self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W
+
+    # ── W′ 恢复（Skiba 双指数 or 线性）─与 C ApplyWPrimeRecovery 同形──
+    def _apply_w_prime_recovery(self, power_watts: float, cp: float, dt: float):
+        if self._uses_skiba_recovery():
+            w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
+            k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
+            k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
+            k_fast = max(k_fast, 0.01)
+            k_slow = max(k_slow, 0.0001)
+
+            fast_term = 0.0
+            if self.w_prime_joules < w_lim:
+                fast_term = k_fast * (w_lim - self.w_prime_joules)
+            slow_term = 0.0
+            if self.w_prime_joules >= w_lim:
+                slow_term = k_slow * (self.w_prime_max_joules - self.w_prime_joules)
+            self.w_prime_joules += (fast_term + slow_term) * dt
+        else:
+            recovery_w = V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT  # simplified; C uses ConfigBridge
+            self.w_prime_joules += recovery_w * dt
+
+        self.w_prime_joules = min(self.w_prime_joules, self.w_prime_max_joules)
+
+    # ── 可用功率（含 W′ 爆发预算）──
+    def get_available_power_watts(self, sprint_intent: bool, dt: float, world_time_sec: float) -> float:
+        cp = self.get_effective_critical_power_watts()
+        if not sprint_intent:
+            return cp
+        if self.is_on_cooldown(world_time_sec):
+            return cp
+
+        cap = self.sprint_power_cap_watts
+        if cap <= cp:
+            cap = cp + V6_SPRINT_POWER_CAP_WATTS_DEFAULT * 0.5
+
+        if self.w_prime_joules <= 0.0:
+            return cp
+
+        burst_budget = self.w_prime_joules / max(dt, 0.01)
+        available = cp + burst_budget
+        return min(available, cap)
+
+    # ── Sprint 准入判断 ──
+    def is_sprint_allowed(self, aerobic_stamina: float, collapse_state: bool, world_time_sec: float) -> bool:
+        if collapse_state:
+            return False
+        if aerobic_stamina < 0.25:  # SPRINT_ENABLE_THRESHOLD
+            return False
+        if self.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+            return False
+        if self.is_on_cooldown(world_time_sec):
+            return False
+        return True
+
+    # ── Sprint 结束冷却 ──
+    def _apply_cooldown_on_sprint_end(self, world_time_sec: float, burst_duration_sec: float, reserve_at_end01: float):
+        full_cd = V5_BURST_COOLDOWN_FULL_DEFAULT
+        short_cd = V5_BURST_COOLDOWN_SHORT_DEFAULT
+
+        if reserve_at_end01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+            # 耗尽 → 满冷却
+            self.cooldown_until_sec = world_time_sec + full_cd
+            return
+
+        if burst_duration_sec <= V5_TACTICAL_SHORT_BURST_SEC:
+            # 短爆发 → 短冷却
+            self.cooldown_until_sec = world_time_sec + short_cd
+            self.last_short_burst_release_sec = world_time_sec
+            return
+
+        # 中等爆发 → 按剩余池缩放冷却
+        scaled = full_cd * (1.0 - V5_BURST_EARLY_RELEASE_BONUS * reserve_at_end01)
+        scaled = max(scaled, short_cd)
+        self.cooldown_until_sec = world_time_sec + scaled
+
+    # ── 主 Tick ──
+    def tick(self, power_watts: float, sprint_intent: bool, world_time_sec: float,
+             dt: float, current_speed_ms: float = 0.0):
+        cp = self.get_effective_critical_power_watts()
+
+        # Morin–Petit: P > CP 消耗 W′；静止且非 Sprint 意图时不放电
+        if power_watts > cp:
+            allow_discharge = True
+            if current_speed_ms < 0.05 and not sprint_intent:
+                allow_discharge = False
+            if allow_discharge:
+                drain_j = (power_watts - cp) * dt
+                self.w_prime_joules = max(0.0, self.w_prime_joules - drain_j)
+
+        if sprint_intent:
+            # 首次 sprint 记录开始时间
+            if not self.was_sprinting:
+                self.sprint_start_sec = world_time_sec
+
+            # 池耗尽时标记冷却（持续 sprint 中仅触发一次）
+            if self.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+                if not self.depletion_cooldown_applied:
+                    burst_dur = world_time_sec - self.sprint_start_sec
+                    burst_dur = max(burst_dur, 0.0)
+                    self._apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01)
+                    self.depletion_cooldown_applied = True
+        else:
+            self.depletion_cooldown_applied = False
+            # sprint→非sprint 转换
+            if self.was_sprinting:
+                burst_dur = world_time_sec - self.sprint_start_sec
+                burst_dur = max(burst_dur, 0.0)
+                self._apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01)
+                self.sprint_start_sec = -1.0
+
+            # 非冷却 + P <= CP+5 → W′ 恢复
+            if not self.is_on_cooldown(world_time_sec) and power_watts <= cp + 5.0:
+                self._apply_w_prime_recovery(power_watts, cp, dt)
+
+        self.was_sprinting = sprint_intent
+
+    # ── W′ 耗尽超速钳位 ──
+    def get_w_prime_exhausted_overspeed_cap_ms(
+        self,
+        measured_speed_ms: float,
+        applied_speed_limit_ms: float,
+        movement_phase: int,
+        total_weight_kg: float,
+        grade_percent: float,
+        terrain_factor: float,
+    ) -> float:
+        """与 SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs 同形。
+        返回 W′ 耗尽时应强制应用的绝对速度上限（m/s），否则返回 -1。
+        """
+        if not is_metabolic_overspeed_accounting(measured_speed_ms, applied_speed_limit_ms):
+            return -1.0
+        if is_wprime_pool_available_for_overspeed(self.pool01, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT):
+            return -1.0
+
+        cp = self.get_effective_critical_power_watts()
+        if cp <= 1.0:
+            cp = V6_CRITICAL_POWER_WATTS_DEFAULT
+
+        # 用 CP 反解可持续速度
+        return invert_speed_for_power_watts(
+            cp, total_weight_kg, grade_percent, terrain_factor, movement_phase)
+
+
+def get_w_prime_exhausted_overspeed_cap_ms(
+    measured_ms: float,
+    applied_limit_ms: float,
+    w_prime_pool01: float,
+    movement_phase: int,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    cp_model=None,
+) -> float:
+    """与 SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs 同形。
+    返回 W′ 耗尽时应强制应用的绝对速度上限（m/s）；否则 -1。
+    """
+    if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+        return -1.0
+    if is_wprime_pool_available_for_overspeed(w_prime_pool01):
+        return -1.0
+    if cp_model is not None:
+        cp = cp_model.get_effective_critical_power_watts()
+    else:
+        cp = V6_CRITICAL_POWER_WATTS_DEFAULT
+    if cp <= 1.0:
+        return -1.0
+    return invert_speed_for_power_watts(cp, total_weight_kg, grade_percent, terrain_factor, movement_phase)
 
 
 def simulate_v6_sprint_seconds(
@@ -2026,14 +2260,19 @@ def simulate_v6_sprint_seconds(
     cp0: float = 400.0,
     dt: float = 0.017,
     sprint_cap_w: float = 1450.0,
+    w_prime_max: float = V6_W_PRIME_MAX_JOULES_DEFAULT,
 ) -> float:
+    """v6 CP–W′ sprint 爆发时长（W′ 池从满降至 20%）。
+
+    接受完整 v6 参数，用于优化管线硬约束门禁。
+    """
     total_w = 90.0 + load_kg
-    state = V6CriticalPowerState(cp0=cp0, load_kg=load_kg)
+    state = V6CriticalPowerState(cp0=cp0, w_prime_max=w_prime_max,
+                                  sprint_power_cap=sprint_cap_w)
+    state.set_runtime_context(load_kg, 0.0, 1.0, 0.0)
     t = 0.0
     while state.pool01 > 0.20 and t < 30.0:
-        cp = state.cp_watts()
-        burst_budget = state.w_prime_joules / max(dt, 0.01)
-        available_p = min(sprint_cap_w, cp + burst_budget)
+        available_p = state.get_available_power_watts(True, dt, t)
         state.tick(available_p, True, t, dt)
         t += dt
     return t
