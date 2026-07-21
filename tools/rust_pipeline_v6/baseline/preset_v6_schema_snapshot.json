@@ -1,0 +1,87 @@
+{
+  "files": [
+    "optimized_rss_config_elitestandard_v6.json",
+    "optimized_rss_config_standardmilsim_v6.json",
+    "optimized_rss_config_tacticalaction_v6.json"
+  ],
+  "schema": {
+    "_metrics_v6": [
+      "object"
+    ],
+    "base_recovery_rate": [
+      "number"
+    ],
+    "critical_power_watts": [
+      "number"
+    ],
+    "crouching_recovery_multiplier": [
+      "number"
+    ],
+    "encumbrance_speed_penalty_coeff": [
+      "number"
+    ],
+    "encumbrance_stamina_drain_coeff": [
+      "number"
+    ],
+    "energy_to_stamina_coeff": [
+      "number"
+    ],
+    "fast_recovery_multiplier": [
+      "number"
+    ],
+    "load_recovery_penalty_coeff": [
+      "number"
+    ],
+    "max_recovery_per_tick": [
+      "number"
+    ],
+    "medium_recovery_multiplier": [
+      "number"
+    ],
+    "posture_crouch_multiplier": [
+      "number"
+    ],
+    "posture_prone_multiplier": [
+      "number"
+    ],
+    "prone_recovery_multiplier": [
+      "number"
+    ],
+    "recovery_nonlinear_coeff": [
+      "number"
+    ],
+    "slow_recovery_multiplier": [
+      "number"
+    ],
+    "sprint_enable_threshold": [
+      "number"
+    ],
+    "sprint_power_cap_watts": [
+      "number"
+    ],
+    "sprint_speed_boost": [
+      "number"
+    ],
+    "standing_recovery_multiplier": [
+      "number"
+    ],
+    "v5_run_speed_ms": [
+      "number"
+    ],
+    "v5_sprint_speed_ms": [
+      "number"
+    ],
+    "v5_walk_speed_ms": [
+      "number"
+    ],
+    "w_prime_max_joules": [
+      "number"
+    ],
+    "w_prime_recovery_w_per_s": [
+      "number"
+    ],
+    "willpower_threshold": [
+      "number"
+    ]
+  }
+}

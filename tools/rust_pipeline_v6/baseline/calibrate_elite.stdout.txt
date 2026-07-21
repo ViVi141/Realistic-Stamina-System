@@ -1,0 +1,7 @@
+[V6] calibrate — Elite energy_to_stamina_coeff（4h 行军 + Run sustain obs）
+  preset=EliteStandard
+  energy_to_stamina_coeff=1.5434510736655111e-07
+  march_4h_aerobic_end=0.2023 (min 0.2)
+  sustain_run_obs=1.140 %/s (band 0.6–1.4)
+  elapsed=14.7s
+[V6] calibrate: OK

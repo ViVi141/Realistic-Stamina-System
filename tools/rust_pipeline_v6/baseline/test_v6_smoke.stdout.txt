@@ -1,0 +1,13 @@
+  [PASS] drain_applied_limit
+  [PASS] overspeed_accounting
+  [PASS] overspeed_excess_drain
+  [PASS] metabolism_power_positive
+  [PASS] invert_speed_monotonic
+  [PASS] cp_load_penalty
+  [PASS] wprime_discharge
+  [PASS] wprime_discharge_run
+  [PASS] elite_sprint_duration
+  [PASS] fatigue_cap_clamp
+  [PASS] sustain_run_observed
+  [PASS] march_4h_aerobic_end
+test_v6_smoke: 12/12 passed

@@ -1,7 +1,7 @@
 # Realistic Stamina System — Tools
 
 Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
-当前已新增 Rust 入口（Phase-A）：`rust_pipeline_v6/`。
+当前已新增 Rust 入口（Phase-A）：`rust_pipeline_v6/`，并提供基线冻结命令用于纯 Rust 迁移对齐。
 
 ## 文件一览
 
@@ -19,7 +19,7 @@ Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
 | `optimized_rss_config_*_v6.json` | v6 优化产出预设（待 embed 到 C 端） |
 | `compare_presets.py` | v4 vs v6 关键参数对比 |
 | `embed_json_to_c.py` | JSON → `SCR_RSS_Settings.c`（可选） |
-| `rust_pipeline_v6/` | Rust CLI 入口（`validate/calibrate/optimize/dual-run`），当前代理到 Python v6 管线 |
+| `rust_pipeline_v6/` | Rust CLI 入口（`validate/calibrate/optimize/dual-run/freeze-baseline`），当前代理到 Python v6 管线并可冻结迁移基线 |
 
 设计说明：`docs/RSS_v6_优化管线设计.md`
 
@@ -42,6 +42,7 @@ python test_v6_smoke.py
 ```bash
 cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- validate --fast
 cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- dual-run --fast
+cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- freeze-baseline
 ```
 
 > `dual-run` 会执行同参数下的校验输出一致性检查（Rust 入口 vs Python 入口）。

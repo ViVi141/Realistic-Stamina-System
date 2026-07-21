@@ -1,0 +1,16 @@
+[V6] validate — 生理锚点 + 三档 preset 软指标
+  [PASS] (hard) drain_velocity_clamp: expected 4.0 m/s, got 4.0000
+  [PASS] (soft) metabolic_overspeed_factor: expected 0.5, got 0.5000 (v5 legacy API)
+  [PASS] (hard) v5_sprint_burst_duration: empty pool in 8.4s (max 15.0s)
+  [PASS] (hard) v5_sprint_cooldown: cooldown remaining 180s (min 120.0s)
+  [PASS] (hard) v6_cp_sprint_burst_35kg: W' burst 14.96s (max 15.0s)
+  [PASS] (hard) sustain_run_observed_35kg: obs=1.140%/s (band 0.6–1.4)
+  [PASS] (hard) march_4h_aerobic_end_35kg: aerobic_end=0.200 (min 0.2)
+
+  [EliteStandard] sustain=0.322 combat=0.697 recovery=0.000994 drift=1.936 obs=1.14%/s
+
+  [StandardMilsim] sustain=0.312 combat=0.642 recovery=0.001005 drift=0.357 obs=1.14%/s
+
+  [TacticalAction] sustain=0.311 combat=0.638 recovery=0.001220 drift=0.277 obs=1.14%/s
+
+[V6] validate: all hard constraints passed
