@@ -117,35 +117,35 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 
 	// EliteStandard — v6 optimizer merge
 	// 低 combat_ease + 低 recovery_ease → 最拟真/最硬核
-	m_EliteStandard.energy_to_stamina_coeff = 1.4052973610715763e-07;
-	m_EliteStandard.base_recovery_rate = 1.0564497640821737e-04;
-	m_EliteStandard.standing_recovery_multiplier = 0.7353687337323424;
-	m_EliteStandard.prone_recovery_multiplier = 1.7286058692336248;
-	m_EliteStandard.load_recovery_penalty_coeff = 2.6313337008231866e-04;
+	m_EliteStandard.energy_to_stamina_coeff = 1.4593284710755133e-07;
+	m_EliteStandard.base_recovery_rate = 1.0030387909203436e-04;
+	m_EliteStandard.standing_recovery_multiplier = 0.796412019414914;
+	m_EliteStandard.prone_recovery_multiplier = 1.7312129261791298;
+	m_EliteStandard.load_recovery_penalty_coeff = 1.2995201637331909e-04;
 	m_EliteStandard.load_recovery_penalty_exponent = 2.0;
-	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.23088825928801723;
+	m_EliteStandard.encumbrance_speed_penalty_coeff = 0.37844351517688724;
 	m_EliteStandard.encumbrance_speed_penalty_exponent = 1.5;
 	m_EliteStandard.encumbrance_speed_penalty_max = 0.75;
-	m_EliteStandard.encumbrance_stamina_drain_coeff = 2.7929749597161533;
+	m_EliteStandard.encumbrance_stamina_drain_coeff = 2.5925609910032934;
 	m_EliteStandard.load_metabolic_dampening = 0.70;
-	m_EliteStandard.max_recovery_per_tick = 2.0550060675948590e-04;
+	m_EliteStandard.max_recovery_per_tick = 2.0034202337190746e-04;
 	m_EliteStandard.sprint_stamina_drain_multiplier = 3.5;
 	m_EliteStandard.fatigue_accumulation_coeff = 0.015;
 	m_EliteStandard.fatigue_max_factor = 2.0;
 	m_EliteStandard.aerobic_efficiency_factor = 0.9;
 	m_EliteStandard.anaerobic_efficiency_factor = 1.2;
-	m_EliteStandard.recovery_nonlinear_coeff = 0.32925078152974263;
-	m_EliteStandard.fast_recovery_multiplier = 1.4186012688155194;
-	m_EliteStandard.medium_recovery_multiplier = 0.9361920457516453;
-	m_EliteStandard.slow_recovery_multiplier = 0.2904836711314353;
+	m_EliteStandard.recovery_nonlinear_coeff = 0.332535980851909;
+	m_EliteStandard.fast_recovery_multiplier = 1.5770927224406137;
+	m_EliteStandard.medium_recovery_multiplier = 1.1499453503976915;
+	m_EliteStandard.slow_recovery_multiplier = 0.3486963569246246;
 	m_EliteStandard.marginal_decay_threshold = 0.8;
 	m_EliteStandard.marginal_decay_coeff = 1.1;
 	m_EliteStandard.min_recovery_stamina_threshold = 0.2;
 	m_EliteStandard.min_recovery_rest_time_seconds = 3.0;
-	m_EliteStandard.sprint_speed_boost = 0.19623161604377692;
+	m_EliteStandard.sprint_speed_boost = 0.2013269405716817;
 	m_EliteStandard.sprint_velocity_threshold = 5.5;
-	m_EliteStandard.posture_crouch_multiplier = 3.4937791445610715;
-	m_EliteStandard.posture_prone_multiplier = 3.7535530451607992;
+	m_EliteStandard.posture_crouch_multiplier = 2.8202803317519862;
+	m_EliteStandard.posture_prone_multiplier = 3.4394280293057373;
 	m_EliteStandard.jump_efficiency = 0.22;
 	m_EliteStandard.jump_height_guess = 0.5;
 	m_EliteStandard.jump_horizontal_speed_guess = 0.0;
@@ -164,17 +164,17 @@ protected void InitEliteStandardDefaults(bool shouldInit)
 	m_EliteStandard.env_temperature_heat_penalty_coeff = 0.02;
 	m_EliteStandard.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_EliteStandard.env_surface_wetness_prone_penalty = 0.15;
-	m_EliteStandard.crouching_recovery_multiplier = 1.3403187659503903;
-	m_EliteStandard.willpower_threshold = 0.32147839368913333;
-	m_EliteStandard.sprint_enable_threshold = 0.2551909181788435;
+	m_EliteStandard.crouching_recovery_multiplier = 1.716711323922316;
+	m_EliteStandard.willpower_threshold = 0.3374882939231991;
+	m_EliteStandard.sprint_enable_threshold = 0.25260579413441897;
 	ApplyV6TierCpDefaults(m_EliteStandard, 0);
-	m_EliteStandard.critical_power_watts = 437.28470543196613;
-	m_EliteStandard.sprint_power_cap_watts = 1476.194005723497;
+	m_EliteStandard.critical_power_watts = 416.1787042448379;
+	m_EliteStandard.sprint_power_cap_watts = 1480.8389364187096;
 	m_EliteStandard.v5_run_speed_ms = 2.8;
 	m_EliteStandard.v5_sprint_speed_ms = 4.0;
 	m_EliteStandard.v5_walk_speed_ms = 1.4;
-	m_EliteStandard.w_prime_max_joules = 1.8647166074888410e+04;
-	m_EliteStandard.w_prime_recovery_w_per_s = 11.835855248628661;
+	m_EliteStandard.w_prime_max_joules = 1.9466600112989196e+04;
+	m_EliteStandard.w_prime_recovery_w_per_s = 12.229550264435996;
 }
 
 
@@ -193,35 +193,35 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 
 	// StandardMilsim — v6 optimizer merge
 	// 战斗/恢复折中 → 拟真与可玩性平衡
-	m_StandardMilsim.energy_to_stamina_coeff = 1.4815053616344395e-07;
-	m_StandardMilsim.base_recovery_rate = 9.9218360896045400e-05;
-	m_StandardMilsim.standing_recovery_multiplier = 0.829052812751814;
-	m_StandardMilsim.prone_recovery_multiplier = 2.039545892218541;
-	m_StandardMilsim.load_recovery_penalty_coeff = 1.8907689995731631e-04;
+	m_StandardMilsim.energy_to_stamina_coeff = 1.3864551637791169e-07;
+	m_StandardMilsim.base_recovery_rate = 9.1624424433786323e-05;
+	m_StandardMilsim.standing_recovery_multiplier = 0.7423485735612504;
+	m_StandardMilsim.prone_recovery_multiplier = 2.0363541770620674;
+	m_StandardMilsim.load_recovery_penalty_coeff = 1.8086838546266723e-04;
 	m_StandardMilsim.load_recovery_penalty_exponent = 2.0;
-	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.21607823044084976;
+	m_StandardMilsim.encumbrance_speed_penalty_coeff = 0.24028221276597928;
 	m_StandardMilsim.encumbrance_speed_penalty_exponent = 1.5;
 	m_StandardMilsim.encumbrance_speed_penalty_max = 0.75;
-	m_StandardMilsim.encumbrance_stamina_drain_coeff = 2.5977228091871685;
+	m_StandardMilsim.encumbrance_stamina_drain_coeff = 2.8808362894670116;
 	m_StandardMilsim.load_metabolic_dampening = 0.70;
-	m_StandardMilsim.max_recovery_per_tick = 2.7275827935323228e-04;
+	m_StandardMilsim.max_recovery_per_tick = 2.5425656815227627e-04;
 	m_StandardMilsim.sprint_stamina_drain_multiplier = 3.5;
 	m_StandardMilsim.fatigue_accumulation_coeff = 0.015;
 	m_StandardMilsim.fatigue_max_factor = 2.0;
 	m_StandardMilsim.aerobic_efficiency_factor = 0.9;
 	m_StandardMilsim.anaerobic_efficiency_factor = 1.2;
-	m_StandardMilsim.recovery_nonlinear_coeff = 0.405034509357283;
-	m_StandardMilsim.fast_recovery_multiplier = 1.4082111747733346;
-	m_StandardMilsim.medium_recovery_multiplier = 0.8842335347017138;
-	m_StandardMilsim.slow_recovery_multiplier = 0.41792859413730477;
+	m_StandardMilsim.recovery_nonlinear_coeff = 0.2870510503378082;
+	m_StandardMilsim.fast_recovery_multiplier = 1.48927074489227;
+	m_StandardMilsim.medium_recovery_multiplier = 0.9441305212507949;
+	m_StandardMilsim.slow_recovery_multiplier = 0.3126350150409171;
 	m_StandardMilsim.marginal_decay_threshold = 0.8;
 	m_StandardMilsim.marginal_decay_coeff = 1.1;
 	m_StandardMilsim.min_recovery_stamina_threshold = 0.2;
 	m_StandardMilsim.min_recovery_rest_time_seconds = 3.0;
-	m_StandardMilsim.sprint_speed_boost = 0.18142802688942816;
+	m_StandardMilsim.sprint_speed_boost = 0.20821059994424765;
 	m_StandardMilsim.sprint_velocity_threshold = 5.5;
-	m_StandardMilsim.posture_crouch_multiplier = 3.1379467793680664;
-	m_StandardMilsim.posture_prone_multiplier = 3.327343373425811;
+	m_StandardMilsim.posture_crouch_multiplier = 2.6823673092175495;
+	m_StandardMilsim.posture_prone_multiplier = 3.2016604930536623;
 	m_StandardMilsim.jump_efficiency = 0.22;
 	m_StandardMilsim.jump_height_guess = 0.5;
 	m_StandardMilsim.jump_horizontal_speed_guess = 0.0;
@@ -240,17 +240,17 @@ protected void InitStandardMilsimDefaults(bool shouldInit)
 	m_StandardMilsim.env_temperature_heat_penalty_coeff = 0.02;
 	m_StandardMilsim.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_StandardMilsim.env_surface_wetness_prone_penalty = 0.15;
-	m_StandardMilsim.crouching_recovery_multiplier = 1.3943393354080702;
-	m_StandardMilsim.willpower_threshold = 0.3786647666656783;
-	m_StandardMilsim.sprint_enable_threshold = 0.22693752617264004;
+	m_StandardMilsim.crouching_recovery_multiplier = 1.819398628523687;
+	m_StandardMilsim.willpower_threshold = 0.39436466144790644;
+	m_StandardMilsim.sprint_enable_threshold = 0.27164378173147763;
 	ApplyV6TierCpDefaults(m_StandardMilsim, 1);
-	m_StandardMilsim.critical_power_watts = 414.3323154406136;
-	m_StandardMilsim.sprint_power_cap_watts = 1419.7729146601216;
+	m_StandardMilsim.critical_power_watts = 423.5075734138627;
+	m_StandardMilsim.sprint_power_cap_watts = 1394.686073661673;
 	m_StandardMilsim.v5_run_speed_ms = 2.8;
 	m_StandardMilsim.v5_sprint_speed_ms = 4.0;
 	m_StandardMilsim.v5_walk_speed_ms = 1.4;
-	m_StandardMilsim.w_prime_max_joules = 1.8647166074888410e+04;
-	m_StandardMilsim.w_prime_recovery_w_per_s = 12.75965910377976;
+	m_StandardMilsim.w_prime_max_joules = 1.6477247351547787e+04;
+	m_StandardMilsim.w_prime_recovery_w_per_s = 12.59165104623012;
 }
 
 
@@ -269,35 +269,35 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 
 	// TacticalAction — v6 optimizer merge
 	// 高 combat_ease + 高 recovery_ease → 战斗最宽容
-	m_TacticalAction.energy_to_stamina_coeff = 1.3895035805315387e-07;
-	m_TacticalAction.base_recovery_rate = 1.0112664081545137e-04;
-	m_TacticalAction.standing_recovery_multiplier = 0.8742004941870383;
-	m_TacticalAction.prone_recovery_multiplier = 1.8420377889994266;
-	m_TacticalAction.load_recovery_penalty_coeff = 1.8907689995731631e-04;
+	m_TacticalAction.energy_to_stamina_coeff = 1.4919032776393118e-07;
+	m_TacticalAction.base_recovery_rate = 1.0131228915602011e-04;
+	m_TacticalAction.standing_recovery_multiplier = 0.7573692646644503;
+	m_TacticalAction.prone_recovery_multiplier = 2.162501286240867;
+	m_TacticalAction.load_recovery_penalty_coeff = 1.2149472109949035e-04;
 	m_TacticalAction.load_recovery_penalty_exponent = 2.0;
-	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.18490208757712012;
+	m_TacticalAction.encumbrance_speed_penalty_coeff = 0.1800428263052857;
 	m_TacticalAction.encumbrance_speed_penalty_exponent = 1.5;
 	m_TacticalAction.encumbrance_speed_penalty_max = 0.75;
-	m_TacticalAction.encumbrance_stamina_drain_coeff = 2.5977228091871685;
+	m_TacticalAction.encumbrance_stamina_drain_coeff = 2.881260531085687;
 	m_TacticalAction.load_metabolic_dampening = 0.70;
-	m_TacticalAction.max_recovery_per_tick = 3.2889840555718440e-04;
+	m_TacticalAction.max_recovery_per_tick = 4.1578866585820234e-04;
 	m_TacticalAction.sprint_stamina_drain_multiplier = 3.5;
 	m_TacticalAction.fatigue_accumulation_coeff = 0.015;
 	m_TacticalAction.fatigue_max_factor = 2.0;
 	m_TacticalAction.aerobic_efficiency_factor = 0.9;
 	m_TacticalAction.anaerobic_efficiency_factor = 1.2;
-	m_TacticalAction.recovery_nonlinear_coeff = 0.515518468862333;
-	m_TacticalAction.fast_recovery_multiplier = 1.4082111747733346;
-	m_TacticalAction.medium_recovery_multiplier = 1.1139404420014114;
-	m_TacticalAction.slow_recovery_multiplier = 0.4402796465197669;
+	m_TacticalAction.recovery_nonlinear_coeff = 0.4477796275807342;
+	m_TacticalAction.fast_recovery_multiplier = 1.4235722877707795;
+	m_TacticalAction.medium_recovery_multiplier = 0.981903744366977;
+	m_TacticalAction.slow_recovery_multiplier = 0.44325968052068776;
 	m_TacticalAction.marginal_decay_threshold = 0.8;
 	m_TacticalAction.marginal_decay_coeff = 1.1;
 	m_TacticalAction.min_recovery_stamina_threshold = 0.2;
 	m_TacticalAction.min_recovery_rest_time_seconds = 3.0;
-	m_TacticalAction.sprint_speed_boost = 0.18142802688942816;
+	m_TacticalAction.sprint_speed_boost = 0.19881576225586733;
 	m_TacticalAction.sprint_velocity_threshold = 5.5;
-	m_TacticalAction.posture_crouch_multiplier = 3.1379467793680664;
-	m_TacticalAction.posture_prone_multiplier = 3.327343373425811;
+	m_TacticalAction.posture_crouch_multiplier = 2.9239079839681934;
+	m_TacticalAction.posture_prone_multiplier = 4.0484658685926815;
 	m_TacticalAction.jump_efficiency = 0.22;
 	m_TacticalAction.jump_height_guess = 0.5;
 	m_TacticalAction.jump_horizontal_speed_guess = 0.0;
@@ -316,17 +316,17 @@ protected void InitTacticalActionDefaults(bool shouldInit)
 	m_TacticalAction.env_temperature_heat_penalty_coeff = 0.02;
 	m_TacticalAction.env_temperature_cold_recovery_penalty_coeff = 0.05;
 	m_TacticalAction.env_surface_wetness_prone_penalty = 0.15;
-	m_TacticalAction.crouching_recovery_multiplier = 1.3943393354080702;
-	m_TacticalAction.willpower_threshold = 0.34642007878577946;
-	m_TacticalAction.sprint_enable_threshold = 0.24514152810811823;
+	m_TacticalAction.crouching_recovery_multiplier = 1.8564152475074183;
+	m_TacticalAction.willpower_threshold = 0.3582293048803262;
+	m_TacticalAction.sprint_enable_threshold = 0.24007973201750984;
 	ApplyV6TierCpDefaults(m_TacticalAction, 2);
-	m_TacticalAction.critical_power_watts = 406.5461024514368;
-	m_TacticalAction.sprint_power_cap_watts = 1402.77448456414;
+	m_TacticalAction.critical_power_watts = 366.6762796495928;
+	m_TacticalAction.sprint_power_cap_watts = 1495.3572073177568;
 	m_TacticalAction.v5_run_speed_ms = 2.8;
 	m_TacticalAction.v5_sprint_speed_ms = 4.0;
 	m_TacticalAction.v5_walk_speed_ms = 1.4;
-	m_TacticalAction.w_prime_max_joules = 1.8647166074888410e+04;
-	m_TacticalAction.w_prime_recovery_w_per_s = 12.75965910377976;
+	m_TacticalAction.w_prime_max_joules = 2.0205822802540995e+04;
+	m_TacticalAction.w_prime_recovery_w_per_s = 11.815141219032595;
 }
 
 

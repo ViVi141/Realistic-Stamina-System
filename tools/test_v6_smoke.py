@@ -140,6 +140,23 @@ def _mobility_ok() -> bool:
     return c0.passed and c35.passed
 
 
+def _tier_scalar_gradients_ok() -> bool:
+    from rss_pipeline_v6 import V6Metrics, scalarize_tier_metrics, make_mo_sampler
+
+    hard = V6Metrics(0.30, 0.05, 0.690, 0.0010, 1.5)
+    easy = V6Metrics(0.30, 0.02, 0.700, 0.0020, 1.5)
+    elite_hard = scalarize_tier_metrics(hard, 0.36, "EliteStandard")
+    elite_easy = scalarize_tier_metrics(easy, 0.20, "EliteStandard")
+    tac_hard = scalarize_tier_metrics(hard, 0.36, "TacticalAction")
+    tac_easy = scalarize_tier_metrics(easy, 0.20, "TacticalAction")
+    if elite_hard >= elite_easy:
+        return False
+    if tac_easy >= tac_hard:
+        return False
+    sampler = make_mo_sampler("nsga3", 92)
+    return sampler is not None
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
@@ -154,6 +171,7 @@ SCENARIOS = [
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
     ("mobility_run_speed", lambda: _mobility_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
+    ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
 ]
 
 
