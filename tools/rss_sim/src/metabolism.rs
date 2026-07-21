@@ -1,0 +1,151 @@
+use crate::constants::{
+    TOBLER_W_AT_FLAT_KMH, V6_ACSM_BLEND_END_MS, V6_ACSM_BLEND_START_MS, V6_ACSM_LINEAR_W_PER_MS,
+    V6_ACSM_QUAD_W_PER_MS2, V6_ACSM_REST_W, V6_CP_FATIGUE_K, V6_CP_LOAD_DECAY_PER_KG,
+    V6_CP_LOAD_REF_KG, V6_CP_SLOPE_K_UP, V6_INVERT_SPEED_MAX_MS,
+};
+use crate::math::clip_f64;
+
+pub fn tobler_speed_multiplier(
+    angle_deg: f64,
+    uphill_boost: f64,
+    downhill_boost: f64,
+    downhill_max: f64,
+    dampening: f64,
+    min_mult: f64,
+) -> f64 {
+    let mut s = angle_deg.to_radians().tan();
+    s = clip_f64(s, -1.0, 1.0);
+    let w_kmh = 6.0 * (-3.5 * (s + 0.05).abs()).exp();
+    let mut mult = w_kmh / TOBLER_W_AT_FLAT_KMH;
+    mult = mult.max(min_mult);
+    if angle_deg > 0.0 {
+        mult *= uphill_boost;
+    } else if angle_deg < 0.0 {
+        mult *= downhill_boost;
+        mult = mult.min(downhill_max);
+    }
+    mult = 1.0 + dampening * (mult - 1.0);
+    clip_f64(mult, min_mult, downhill_max)
+}
+
+pub fn calculate_pandolf_power_watts(
+    velocity_ms: f64,
+    total_weight_kg: f64,
+    grade_percent: f64,
+    terrain_factor: f64,
+) -> f64 {
+    let v = velocity_ms.max(0.0);
+    let w = total_weight_kg.max(0.0);
+    let terrain_factor = clip_f64(terrain_factor, 0.5, 3.0);
+    let ref_w = 90.0;
+
+    if v < 0.1 {
+        let body_w = ref_w;
+        let load_w = (w - body_w).max(0.0);
+        if load_w < 5.0 {
+            return 100.0 * (w / ref_w);
+        }
+        let base_static = 1.2 * body_w;
+        let load_ratio = if body_w > 0.0 { load_w / body_w } else { 0.0 };
+        let load_static = 1.6 * (body_w + load_w) * (load_ratio * load_ratio);
+        return (base_static + load_static).max(0.0);
+    }
+
+    let vt = v - 0.7;
+    let base_term = (2.7 * 0.80) + (3.2 * vt * vt);
+    let g = grade_percent * 0.01;
+    let mut grade_term = g * (0.23 + 1.34 * v * v);
+    grade_term = grade_term.min(base_term * 3.0);
+    if grade_percent < 0.0 && grade_percent > -12.0 {
+        grade_term *= 1.25;
+    }
+    let mut steep_penalty = 0.0;
+    if grade_percent < -15.0 {
+        let abs_g = grade_percent.abs();
+        let ramp = ((abs_g - 15.0) / 15.0).min(1.0);
+        steep_penalty = base_term * ramp * 0.5;
+    }
+    let w_mult = (w / ref_w).max(0.1);
+    (w_mult * (base_term + grade_term + steep_penalty) * terrain_factor * ref_w).max(0.0)
+}
+
+pub fn calculate_acsm_power_watts(velocity_ms: f64, total_weight_kg: f64) -> f64 {
+    let v = velocity_ms.max(0.0);
+    let w = total_weight_kg.max(45.0);
+    let mass_scale = w / 90.0;
+    let pref = V6_ACSM_REST_W + V6_ACSM_LINEAR_W_PER_MS * v + V6_ACSM_QUAD_W_PER_MS2 * v * v;
+    (pref * mass_scale).max(0.0)
+}
+
+pub fn get_acsm_blend_weight(velocity_ms: f64) -> f64 {
+    if velocity_ms <= V6_ACSM_BLEND_START_MS {
+        return 0.0;
+    }
+    if velocity_ms >= V6_ACSM_BLEND_END_MS {
+        return 1.0;
+    }
+    (velocity_ms - V6_ACSM_BLEND_START_MS) / (V6_ACSM_BLEND_END_MS - V6_ACSM_BLEND_START_MS)
+}
+
+pub fn metabolism_power_watts(
+    velocity_ms: f64,
+    total_weight_kg: f64,
+    grade_percent: f64,
+    terrain_factor: f64,
+    movement_phase: i32,
+) -> f64 {
+    let pandolf_w =
+        calculate_pandolf_power_watts(velocity_ms, total_weight_kg, grade_percent, terrain_factor);
+    let prefer_acsm = movement_phase == 2 || movement_phase == 3 || velocity_ms >= V6_ACSM_BLEND_END_MS;
+    if !prefer_acsm && velocity_ms < V6_ACSM_BLEND_START_MS {
+        return pandolf_w;
+    }
+    let acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg);
+    let mut blend = get_acsm_blend_weight(velocity_ms);
+    if movement_phase == 3 {
+        blend = blend.max(0.85);
+    }
+    pandolf_w * (1.0 - blend) + acsm_w * blend
+}
+
+pub fn invert_speed_for_power_watts(
+    target_power_watts: f64,
+    total_weight_kg: f64,
+    grade_percent: f64,
+    terrain_factor: f64,
+    movement_phase: i32,
+) -> f64 {
+    if target_power_watts <= 1.0 {
+        return 0.0;
+    }
+    let mut lo = 0.0;
+    let mut hi = V6_INVERT_SPEED_MAX_MS;
+    for _ in 0..24 {
+        let mid = (lo + hi) * 0.5;
+        let p = metabolism_power_watts(mid, total_weight_kg, grade_percent, terrain_factor, movement_phase);
+        if p > target_power_watts {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    (lo + hi) * 0.5
+}
+
+pub fn compute_cp_watts(
+    cp0: f64,
+    load_kg: f64,
+    grade_percent: f64,
+    env_mult: f64,
+    fatigue_norm: f64,
+) -> f64 {
+    let excess = (load_kg - V6_CP_LOAD_REF_KG).max(0.0);
+    let mut cp = cp0 * (1.0 - V6_CP_LOAD_DECAY_PER_KG * excess);
+    let g = grade_percent * 0.01;
+    if g > 0.0 {
+        cp *= (1.0 - V6_CP_SLOPE_K_UP * g * g).max(0.65);
+    }
+    cp *= clip_f64(env_mult, 0.55, 1.0);
+    cp *= (1.0 - V6_CP_FATIGUE_K * fatigue_norm).max(0.75);
+    cp
+}

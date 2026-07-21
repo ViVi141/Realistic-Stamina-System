@@ -1,0 +1,248 @@
+use crate::constants::{
+    MOVEMENT_IDLE, RSS_PLAYER_TICK_SEC, STAMINA_TICK_SEC, STANCE_STAND,
+};
+use crate::twin::RSSDigitalTwin;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+
+fn default_grade_pct() -> f64 {
+    0.0
+}
+fn default_terrain() -> f64 {
+    1.0
+}
+fn default_label() -> String {
+    String::new()
+}
+fn default_description() -> String {
+    String::new()
+}
+fn default_temperature() -> f64 {
+    20.0
+}
+fn default_wind_speed() -> f64 {
+    0.0
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Phase {
+    pub duration_s: f64,
+    pub speed_ms: f64,
+    pub movement: i32,
+    pub stance: i32,
+    #[serde(default = "default_grade_pct")]
+    pub grade_pct: f64,
+    #[serde(default = "default_terrain")]
+    pub terrain: f64,
+    #[serde(default = "default_label")]
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Mission {
+    pub name: String,
+    pub load_kg: f64,
+    pub phases: Vec<Phase>,
+    #[serde(default = "default_description")]
+    pub description: String,
+    #[serde(default = "default_temperature")]
+    pub temperature: f64,
+    #[serde(default = "default_wind_speed")]
+    pub wind_speed: f64,
+}
+
+impl Mission {
+    pub fn total_duration_s(&self) -> f64 {
+        self.phases.iter().map(|p| p.duration_s).sum()
+    }
+
+    pub fn current_weight(&self) -> f64 {
+        90.0 + self.load_kg
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MissionResult {
+    pub mission_name: String,
+    pub total_duration_s: f64,
+    pub stamina_trace: Vec<f64>,
+    pub speed_trace: Vec<f64>,
+    pub min_stamina: f64,
+    pub mean_stamina_active: f64,
+    pub recovery_gain: f64,
+    pub idle_duration_s: f64,
+    pub exhaustion_duration_s: f64,
+    pub completion_possible: bool,
+    pub observed_depletion_pct_per_s: f64,
+}
+
+pub fn simulate_mission(
+    py: Python<'_>,
+    twin: &mut RSSDigitalTwin,
+    mission: &Mission,
+    fast_mode: bool,
+) -> PyResult<MissionResult> {
+    twin.reset(py)?;
+
+    twin.set_scenario_wind_drag(py, 0.0)?;
+    let mut cold_stress = 0.0;
+    let mut cold_static_penalty = 0.0;
+    if mission.temperature < 5.0 {
+        let c = &twin.constants;
+        cold_stress = (5.0 - mission.temperature) * c.env_temperature_cold_recovery_penalty_coeff;
+        cold_static_penalty = (5.0 - mission.temperature) * c.env_temperature_cold_static_penalty;
+    }
+    twin.set_environment(
+        py,
+        mission.temperature,
+        mission.wind_speed,
+        cold_stress,
+        cold_static_penalty,
+    )?;
+
+    if mission.wind_speed >= 1.0 {
+        let wind_drag = (mission.wind_speed * twin.constants.env_wind_resistance_coeff).min(1.0);
+        twin.set_scenario_wind_drag(py, wind_drag)?;
+    }
+
+    let dt = if fast_mode {
+        STAMINA_TICK_SEC
+    } else {
+        RSS_PLAYER_TICK_SEC
+    };
+    twin.set_dt(py, dt)?;
+
+    let mut current_time = 0.0;
+    let mut stamina_trace: Vec<f64> = Vec::new();
+    let mut speed_trace: Vec<f64> = Vec::new();
+    let mut total_recovery_gain = 0.0;
+    let mut idle_duration_s = 0.0;
+    let mut exhaustion_duration_s = 0.0;
+    let current_weight = mission.current_weight();
+    let wind_drag = twin.get_scenario_wind_drag(py)?;
+
+    for phase in &mission.phases {
+        let steps = (phase.duration_s / dt) as usize;
+        let intent_phase = phase.movement;
+        let is_idle_phase = intent_phase == MOVEMENT_IDLE;
+        if is_idle_phase {
+            idle_duration_s += phase.duration_s;
+        }
+
+        for _ in 0..steps {
+            let prev_stamina = twin.stamina(py)?;
+            let drain_speed = if is_idle_phase {
+                twin.game_player_tick(
+                    py,
+                    MOVEMENT_IDLE,
+                    current_weight,
+                    phase.grade_pct,
+                    phase.terrain,
+                    phase.stance,
+                    current_time,
+                    dt,
+                    wind_drag,
+                    false,
+                )?
+            } else {
+                twin.game_player_tick(
+                    py,
+                    intent_phase,
+                    current_weight,
+                    phase.grade_pct,
+                    phase.terrain,
+                    phase.stance,
+                    current_time,
+                    dt,
+                    wind_drag,
+                    false,
+                )?
+            };
+
+            current_time += dt;
+            let now_stamina = twin.stamina(py)?;
+            stamina_trace.push(now_stamina);
+            speed_trace.push(drain_speed);
+
+            if now_stamina > prev_stamina {
+                total_recovery_gain += now_stamina - prev_stamina;
+            }
+            if now_stamina < 0.15 {
+                exhaustion_duration_s += dt;
+            }
+        }
+    }
+
+    let mut active_stamina: Vec<f64> = Vec::new();
+    let mut t = 0.0;
+    for phase in &mission.phases {
+        let n_steps = (phase.duration_s / dt) as usize;
+        for j in 0..n_steps {
+            let idx = (t / dt) as usize + j;
+            if idx < stamina_trace.len() && phase.movement != MOVEMENT_IDLE {
+                active_stamina.push(stamina_trace[idx]);
+            }
+        }
+        t += phase.duration_s;
+    }
+
+    let min_stamina = if stamina_trace.is_empty() {
+        0.0
+    } else {
+        stamina_trace
+            .iter()
+            .fold(f64::INFINITY, |acc, v| if *v < acc { *v } else { acc })
+    };
+    let mean_active = if active_stamina.is_empty() {
+        min_stamina
+    } else {
+        active_stamina.iter().sum::<f64>() / active_stamina.len() as f64
+    };
+
+    let mut depletion_samples: Vec<f64> = Vec::new();
+    for k in 1..stamina_trace.len() {
+        let prev_s = stamina_trace[k - 1];
+        let cur_s = stamina_trace[k];
+        if cur_s < prev_s - 1e-9 && prev_s > 0.82 {
+            depletion_samples.push((prev_s - cur_s) / dt * 100.0);
+        }
+    }
+    let observed_depletion_pct_per_s = if depletion_samples.is_empty() {
+        0.0
+    } else {
+        depletion_samples.iter().sum::<f64>() / depletion_samples.len() as f64
+    };
+
+    Ok(MissionResult {
+        mission_name: mission.name.clone(),
+        total_duration_s: mission.total_duration_s(),
+        stamina_trace,
+        speed_trace,
+        min_stamina,
+        mean_stamina_active: mean_active,
+        recovery_gain: total_recovery_gain,
+        idle_duration_s,
+        exhaustion_duration_s,
+        completion_possible: min_stamina > 0.0,
+        observed_depletion_pct_per_s,
+    })
+}
+
+pub fn ideal_march_mission(hours: f64) -> Mission {
+    Mission {
+        name: "ideal_march".to_string(),
+        load_kg: 35.0,
+        phases: vec![Phase {
+            duration_s: hours * 3600.0,
+            speed_ms: 1.39,
+            movement: 1,
+            stance: STANCE_STAND,
+            grade_pct: 0.0,
+            terrain: 1.0,
+            label: "march".to_string(),
+        }],
+        description: String::new(),
+        temperature: 20.0,
+        wind_speed: 0.0,
+    }
+}

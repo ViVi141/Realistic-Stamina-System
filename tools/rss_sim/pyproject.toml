@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rss_sim"
+version = "0.1.0"
+description = "Rust-backed RSS simulation bindings"
+requires-python = ">=3.9"
+
+[tool.maturin]
+module-name = "rss_sim"
+bindings = "pyo3"
