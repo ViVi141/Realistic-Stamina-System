@@ -13,4 +13,7 @@ cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- dual-run --fast
 
 ## Scope
 
-Phase-A keeps Python v6 as execution backend while switching command entry and regression flow to Rust.
+- **Phase-A**：CLI 代理到 Python v6（`dual-run` 校验入口一致性）。
+- **Phase-B（方案 A）**：仿真核已独立为 `tools/rss_sim`（PyO3）；`optimize` 的 trial 仿真经 `rss_sim_backend` 走 Rust，Optuna 仍在 Python。
+
+构建 Rust 仿真核后，`validate --fast` 与 `optimize` 自动加速；未构建时行为与纯 Python 一致。
