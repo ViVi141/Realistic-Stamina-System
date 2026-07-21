@@ -41,6 +41,14 @@ pub const V5_BURST_EARLY_RELEASE_BONUS: f64 = 0.45;
 pub const V5_BURST_COOLDOWN_FULL_DEFAULT: f64 = 180.0;
 pub const V5_BURST_COOLDOWN_SHORT_DEFAULT: f64 = 75.0;
 
+pub const WALK_VELOCITY_THRESHOLD: f64 = 3.2;
+pub const RUN_VELOCITY_THRESHOLD: f64 = 3.8;
+pub const EXHAUSTION_LIMP_SPEED: f64 = 1.0;
+pub const MIN_SPEED_MULTIPLIER: f64 = 0.15;
+pub const V5_WALK_SPEED_MS_DEFAULT: f64 = 1.4;
+pub const V5_RUN_SPEED_MS_DEFAULT: f64 = 2.8;
+pub const V5_SPRINT_SPEED_MS_DEFAULT: f64 = 4.0;
+
 pub const MOVEMENT_IDLE: i32 = 0;
 pub const MOVEMENT_WALK: i32 = 1;
 pub const MOVEMENT_RUN: i32 = 2;
@@ -176,6 +184,9 @@ pub struct RssConstants {
     pub w_prime_max_joules: f64,
     pub w_prime_recovery_w_per_s: f64,
     pub sprint_power_cap_watts: f64,
+    pub v5_walk_speed_ms: f64,
+    pub v5_run_speed_ms: f64,
+    pub v5_sprint_speed_ms: f64,
 }
 
 impl Default for RssConstants {
@@ -285,6 +296,9 @@ impl Default for RssConstants {
             w_prime_max_joules: V6_W_PRIME_MAX_JOULES_DEFAULT,
             w_prime_recovery_w_per_s: V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT,
             sprint_power_cap_watts: V6_SPRINT_POWER_CAP_WATTS_DEFAULT,
+            v5_walk_speed_ms: V5_WALK_SPEED_MS_DEFAULT,
+            v5_run_speed_ms: V5_RUN_SPEED_MS_DEFAULT,
+            v5_sprint_speed_ms: V5_SPRINT_SPEED_MS_DEFAULT,
         }
     }
 }
@@ -415,6 +429,9 @@ impl RssConstants {
                 "w_prime_max_joules" => self.w_prime_max_joules = *value,
                 "w_prime_recovery_w_per_s" => self.w_prime_recovery_w_per_s = *value,
                 "sprint_power_cap_watts" => self.sprint_power_cap_watts = *value,
+                "v5_walk_speed_ms" => self.v5_walk_speed_ms = *value,
+                "v5_run_speed_ms" => self.v5_run_speed_ms = *value,
+                "v5_sprint_speed_ms" => self.v5_sprint_speed_ms = *value,
                 _ => {}
             }
         }
@@ -600,6 +617,9 @@ impl RssConstants {
         put!("w_prime_max_joules", self.w_prime_max_joules);
         put!("w_prime_recovery_w_per_s", self.w_prime_recovery_w_per_s);
         put!("sprint_power_cap_watts", self.sprint_power_cap_watts);
+        put!("v5_walk_speed_ms", self.v5_walk_speed_ms);
+        put!("v5_run_speed_ms", self.v5_run_speed_ms);
+        put!("v5_sprint_speed_ms", self.v5_sprint_speed_ms);
         out
     }
 }

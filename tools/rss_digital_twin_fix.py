@@ -28,6 +28,38 @@ STAMINA_TICK_SEC = 0.2
 RSS_PLAYER_TICK_SEC = 0.017
 VELOCITY_HORIZ_CAP_MS = 7.0
 
+# 与 SCR_RSS_Constants.c 一致（v6 速度 / 跛行）
+WALK_VELOCITY_THRESHOLD = 3.2
+RUN_VELOCITY_THRESHOLD = 3.8
+EXHAUSTION_LIMP_SPEED = 1.0
+MIN_SPEED_MULTIPLIER = 0.15
+V5_WALK_SPEED_MS_DEFAULT = 1.4
+V5_RUN_SPEED_MS_DEFAULT = 2.8
+V5_SPRINT_SPEED_MS_DEFAULT = 4.0
+
+
+def calculate_slope_adjusted_target_speed(
+    base_target_speed_ms: float,
+    slope_angle_degrees: float,
+    uphill_boost: float = 1.15,
+    downhill_boost: float = 1.15,
+    downhill_max: float = 1.25,
+) -> float:
+    """与 SCR_RSS_MetabolismMath.CalculateSlopeAdjustedTargetSpeed 一致。"""
+    s = math.tan(math.radians(slope_angle_degrees))
+    s = max(-1.0, min(1.0, s))
+    w_kmh = 6.0 * math.exp(-3.5 * abs(s + 0.05))
+    tobler_mult = w_kmh / TOBLER_W_AT_FLAT_KMH
+    tobler_mult = max(tobler_mult, 0.15)
+    if slope_angle_degrees > 0.0:
+        tobler_mult = tobler_mult * uphill_boost
+    elif slope_angle_degrees < 0.0:
+        tobler_mult = tobler_mult * downhill_boost
+        tobler_mult = min(tobler_mult, downhill_max)
+    tobler_mult = 1.0 + 0.7 * (tobler_mult - 1.0)
+    tobler_mult = max(0.15, min(tobler_mult, downhill_max))
+    return base_target_speed_ms * tobler_mult
+
 
 def tobler_speed_multiplier(angle_deg: float,
                             uphill_boost: float = 1.15,
@@ -193,6 +225,11 @@ class RSSConstants:
     # [DEPRECATED] C 端 CalculateSlopeStaminaDrainMultiplier 未被调用，坡度由 Pandolf grade 承担
     SLOPE_UPHILL_COEFF = 0.08
     SLOPE_DOWNHILL_COEFF = 0.03
+
+    # v5/v6 绝对速度档（与 SCR_RSS_Params / ApplyV6TierCpDefaults 一致）
+    V5_WALK_SPEED_MS = V5_WALK_SPEED_MS_DEFAULT
+    V5_RUN_SPEED_MS = V5_RUN_SPEED_MS_DEFAULT
+    V5_SPRINT_SPEED_MS = V5_SPRINT_SPEED_MS_DEFAULT
 
     def __init__(self, **kwargs):
         # 构建 lowercase -> uppercase 映射（优化器传 lowercase，类属性是 uppercase）
@@ -982,24 +1019,111 @@ class RSSDigitalTwin:
     # 闭环仿真：体力→速度→消耗，与 C 端 UpdateSpeedBasedOnStamina 一致
     # -------------------------------------------------------------------------
 
+    def _v5_walk_speed_ms(self) -> float:
+        return float(getattr(self.constants, 'V5_WALK_SPEED_MS', V5_WALK_SPEED_MS_DEFAULT))
+
+    def _v5_run_speed_ms(self) -> float:
+        return float(getattr(self.constants, 'V5_RUN_SPEED_MS', V5_RUN_SPEED_MS_DEFAULT))
+
+    def _v5_sprint_speed_ms(self) -> float:
+        return float(getattr(self.constants, 'V5_SPRINT_SPEED_MS', V5_SPRINT_SPEED_MS_DEFAULT))
+
+    def get_dynamic_limp_multiplier(self, encumbrance_penalty: float) -> float:
+        """与 SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier 一致。"""
+        max_walk_speed = WALK_VELOCITY_THRESHOLD * (1.0 - encumbrance_penalty)
+        max_walk_speed = float(np.clip(max_walk_speed, EXHAUSTION_LIMP_SPEED, RUN_VELOCITY_THRESHOLD))
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
+        return max_walk_speed / game_max
+
+    def calculate_v6_phase_speed_multiplier(
+        self,
+        stamina_percent: float,
+        movement_phase: int,
+        encumbrance_speed_penalty: float,
+    ) -> float:
+        """与 SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier 一致。"""
+        stamina_percent = float(np.clip(stamina_percent, 0.0, 1.0))
+        enc_mult = 1.0 - encumbrance_speed_penalty
+        if enc_mult < 0.5:
+            enc_mult = 0.5
+        target_ms = self._v5_run_speed_ms()
+        if movement_phase == MovementType.SPRINT:
+            target_ms = self._v5_sprint_speed_ms()
+        elif movement_phase == MovementType.WALK:
+            target_ms = self._v5_walk_speed_ms()
+        target_ms = target_ms * enc_mult
+        game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
+        run_mult = target_ms / game_max
+        limp_threshold = getattr(self.constants, 'SMOOTH_TRANSITION_END', 0.05)
+        if stamina_percent >= limp_threshold:
+            return float(np.clip(run_mult, MIN_SPEED_MULTIPLIER, 1.0))
+        t = float(np.clip(stamina_percent / limp_threshold, 0.0, 1.0))
+        limp_mult = self.get_dynamic_limp_multiplier(encumbrance_speed_penalty)
+        return float(max(limp_mult * t, MIN_SPEED_MULTIPLIER))
+
     def calculate_speed_multiplier_by_stamina(self, stamina_percent: float) -> float:
-        """与 C CalculateSpeedMultiplierByStamina 一致（平台期 = willpower_threshold）。"""
-        stamina_percent = np.clip(float(stamina_percent), 0.0, 1.0)
-        start = getattr(self.constants, 'WILLPOWER_THRESHOLD', 0.35)
-        start = float(np.clip(start, 0.15, 0.5))
-        end = getattr(self.constants, 'SMOOTH_TRANSITION_END', 0.05)
-        target_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
-        min_limp = getattr(self.constants, 'MIN_LIMP_SPEED_MULTIPLIER', 1.0 / 5.5)
-        if stamina_percent >= start:
-            return target_mult
-        if stamina_percent >= end:
-            t = (stamina_percent - end) / (start - end)
-            t = np.clip(t, 0.0, 1.0)
-            smooth_t = t * t * (3.0 - 2.0 * t)
-            return min_limp + (target_mult - min_limp) * smooth_t
-        collapse = stamina_percent / end
-        base = min_limp * collapse
-        return max(base, min_limp * 0.8)
+        """@deprecated v6：转发到 CalculateV6PhaseSpeedMultiplier(run, enc=0)。"""
+        return self.calculate_v6_phase_speed_multiplier(stamina_percent, MovementType.RUN, 0.0)
+
+    def get_v5_absolute_speed_ms(
+        self,
+        movement_phase: int,
+        is_sprinting: bool,
+        scaled_run_speed: float,
+        encumbrance_penalty: float,
+        anaerobic_percent: float = 1.0,
+    ) -> float:
+        """与 SCR_RSS_SpeedCalculator.GetV5AbsoluteSpeedMs 一致。"""
+        target_run_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
+        stamina_scale = scaled_run_speed / target_run_mult
+        stamina_scale = float(np.clip(stamina_scale, 0.15, 1.0))
+        enc_mult = 1.0 - encumbrance_penalty
+        if enc_mult < 0.5:
+            enc_mult = 0.5
+        walk_ms = self._v5_walk_speed_ms() * enc_mult * stamina_scale
+        run_ms = self._v5_run_speed_ms() * enc_mult * stamina_scale
+        sprint_ms = self._v5_sprint_speed_ms() * enc_mult * stamina_scale
+        if anaerobic_percent < 1.0:
+            ana_scale = 0.65 + 0.35 * anaerobic_percent
+            sprint_ms = sprint_ms * ana_scale
+        if is_sprinting or movement_phase == MovementType.SPRINT:
+            return float(np.clip(sprint_ms, walk_ms, self._v5_sprint_speed_ms()))
+        if movement_phase == MovementType.RUN:
+            return float(np.clip(run_ms, walk_ms, self._v5_run_speed_ms()))
+        if movement_phase == MovementType.WALK:
+            return float(np.clip(walk_ms, 0.5, self._v5_walk_speed_ms()))
+        return float(walk_ms)
+
+    def get_v6_sprint_speed_ms(
+        self,
+        encumbrance_penalty: float,
+        total_weight_kg: float,
+        grade_percent: float,
+        terrain_factor: float,
+        time_delta_sec: float,
+        world_time_sec: float,
+    ) -> float:
+        """与 SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs 一致。"""
+        enc_mult = 1.0 - encumbrance_penalty
+        if enc_mult < 0.5:
+            enc_mult = 0.5
+        run_ms = self._v5_run_speed_ms() * enc_mult
+        if self.v6_cp_state.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+            return run_ms
+        available_p = self.v6_cp_state.get_available_power_watts(
+            True, time_delta_sec, world_time_sec
+        )
+        sprint_ms = invert_speed_for_power_watts(
+            available_p,
+            total_weight_kg,
+            grade_percent,
+            terrain_factor,
+            MovementType.SPRINT,
+        )
+        sprint_ms = sprint_ms * enc_mult
+        if sprint_ms < run_ms:
+            sprint_ms = run_ms
+        return float(sprint_ms)
 
     def calculate_actual_speed(
         self,
@@ -1009,68 +1133,99 @@ class RSSDigitalTwin:
         last_speed: float,
         grade_percent: float = 0.0,
         current_time: float = -1.0,
+        terrain_factor: float = 1.0,
     ) -> float:
-        """与 C CalculateFinalSpeedMultiplier + CalculateSlopeAdjustedTargetSpeed 一致，返回 m/s。"""
+        """与 SCR_RSS_UpdateCoordinator.UpdateSpeed v6 路径一致，返回 theoreticalTargetSpeed (m/s)。"""
         c = self.constants
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
-        sprint_boost = getattr(c, 'SPRINT_SPEED_BOOST', 0.30)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
-        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.15)
+        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.25)
 
         phase = movement_phase
+        is_sprinting = phase == MovementType.SPRINT
         if exhausted or not can_sprint:
-            if phase == MovementType.SPRINT:
+            if is_sprinting or phase == MovementType.SPRINT:
                 phase = MovementType.RUN
+                is_sprinting = False
 
-        run_base = self.calculate_speed_multiplier_by_stamina(stamina_percent)
-        angle_deg = math.degrees(math.atan(grade_percent / 100.0)) if abs(grade_percent) > 0.01 else 0.0
-        slope_mult = tobler_speed_multiplier(
+        if phase not in (MovementType.WALK, MovementType.RUN, MovementType.SPRINT) and not is_sprinting:
+            return 0.0
+
+        load_kg = max(current_weight - getattr(c, 'CHARACTER_WEIGHT', 90.0), 0.0)
+        self.v6_cp_state.set_runtime_context(
+            load_kg, grade_percent, 1.0, self.fatigue.get_fatigue_integral_norm()
+        )
+        self.v6_cp_state.set_fatigue_cp_multiplier(self.fatigue.get_cp_fatigue_multiplier())
+
+        base_penalty = self._encumbrance_speed_penalty_base(current_weight)
+        run_base_mult = self.calculate_v6_phase_speed_multiplier(stamina_percent, MovementType.RUN, 0.0)
+
+        angle_deg = 0.0
+        if abs(grade_percent) > 0.01:
+            angle_deg = math.degrees(math.atan(grade_percent / 100.0))
+        slope_run_base_ms = self._v5_run_speed_ms()
+        slope_run_ref_mult = slope_run_base_ms / game_max
+        if slope_run_ref_mult < 0.01:
+            slope_run_ref_mult = 0.01
+        slope_adjusted_ms = calculate_slope_adjusted_target_speed(
+            slope_run_base_ms,
             angle_deg,
             uphill_boost=getattr(c, 'UPHILL_SPEED_BOOST', 1.15),
             downhill_boost=getattr(c, 'DOWNHILL_SPEED_BOOST', 1.15),
             downhill_max=getattr(c, 'DOWNHILL_SPEED_MAX_MULTIPLIER', 1.25),
-            dampening=getattr(c, 'TOBLER_DAMPENING', 0.7),
         )
-        scaled_run = run_base * slope_mult
+        slope_adjusted_mult = slope_adjusted_ms / game_max
+        speed_scale_factor = slope_adjusted_mult / slope_run_ref_mult
+        scaled_run = run_base_mult * speed_scale_factor
 
-        base_penalty = self._encumbrance_speed_penalty_base(current_weight)
-        speed_ratio = np.clip(last_speed / game_max, 0.0, 1.0)
+        speed_ratio = float(np.clip(last_speed / game_max, 0.0, 1.0))
         enc_penalty = base_penalty * (1.0 + speed_ratio)
-        if phase == MovementType.SPRINT:
+        if is_sprinting or phase == MovementType.SPRINT:
             enc_penalty *= 1.5
-        enc_penalty = np.clip(enc_penalty, 0.0, max_pen)
+        enc_penalty = float(np.clip(enc_penalty, 0.0, max_pen))
 
-        # 战术冲刺爆发期：前 N 秒减轻负重惩罚，之后线性过渡 (C: SCR_SpeedCalculation.c:98-116)
-        if phase == MovementType.SPRINT and self._sprint_start_time >= 0.0 and current_time >= 0.0:
-            burst_dur = getattr(c, 'TACTICAL_SPRINT_BURST_DURATION', 8.0)
-            buffer_dur = getattr(c, 'TACTICAL_SPRINT_BURST_BUFFER_DURATION', 5.0)
-            burst_factor = getattr(c, 'TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR', 0.2)
-            elapsed = current_time - self._sprint_start_time
-            if burst_dur > 0.0 and elapsed <= burst_dur:
-                enc_penalty = enc_penalty * burst_factor
-            elif buffer_dur > 0.0 and elapsed > burst_dur and elapsed <= burst_dur + buffer_dur:
-                t = float(np.clip((elapsed - burst_dur) / buffer_dur, 0.0, 1.0))
-                blend = burst_factor + (1.0 - burst_factor) * t
-                enc_penalty = enc_penalty * blend
+        final_abs = self.get_v5_absolute_speed_ms(phase, is_sprinting, scaled_run, enc_penalty, 1.0)
+        if last_speed < 0.5:
+            start_min = self._v5_walk_speed_ms() * (1.0 - enc_penalty)
+            if start_min < 0.8:
+                start_min = 0.8
+            if final_abs < start_min:
+                final_abs = start_min
 
-        if phase == MovementType.SPRINT:
-            mult = (scaled_run * (1.0 + sprint_boost)) * (1.0 - enc_penalty)
-            mult = np.clip(mult, 0.15, 1.0)
-        elif phase == MovementType.RUN:
-            mult = scaled_run * (1.0 - enc_penalty)
-            mult = np.clip(mult, 0.15, 1.0)
-        elif phase == MovementType.WALK:
-            walk_base = self.calculate_speed_multiplier_by_stamina(stamina_percent)
-            mult = (walk_base * 0.8) * (1.0 - enc_penalty)
-            mult = np.clip(mult, 0.2, 0.9)
-        else:
-            return 0.0
+        theoretical_target = final_abs * (1.0 - enc_penalty)
 
-        if phase in (MovementType.WALK, MovementType.RUN, MovementType.SPRINT) and last_speed < 0.5:
-            mult = max(mult, 0.5)
+        tf = terrain_factor
+        if tf < 0.5:
+            tf = 0.5
+        if tf > 3.0:
+            tf = 3.0
 
-        return float(game_max * mult)
+        if is_sprinting or phase == MovementType.SPRINT:
+            dt = RSS_PLAYER_TICK_SEC if current_time >= 0.0 else 0.017
+            theoretical_target = self.get_v6_sprint_speed_ms(
+                enc_penalty,
+                current_weight,
+                grade_percent,
+                tf,
+                dt,
+                current_time,
+            )
+        elif not is_wprime_pool_available_for_overspeed(self.v6_cp_state.pool01):
+            run_phase = phase
+            if run_phase < MovementType.WALK:
+                run_phase = MovementType.RUN
+            cp_cap_ms = invert_speed_for_power_watts(
+                self.v6_cp_state.get_effective_critical_power_watts(),
+                current_weight,
+                grade_percent,
+                tf,
+                run_phase,
+            )
+            if cp_cap_ms > 0.05 and theoretical_target > cp_cap_ms:
+                theoretical_target = cp_cap_ms
+
+        return float(theoretical_target)
 
     @staticmethod
     def estimate_engine_original_max_speed(movement_phase: int, constants) -> float:
@@ -1235,6 +1390,7 @@ class RSSDigitalTwin:
             self._measured_velocity_ms,
             grade_percent=grade_percent,
             current_time=current_time,
+            terrain_factor=terrain_factor,
         )
         if effective_phase == MovementType.SPRINT:
             engine_phase = MovementType.SPRINT
