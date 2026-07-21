@@ -154,14 +154,18 @@ RealisticStaminaSystem/
 │   └── Items/
 │       └── Medicine/
 │           └── CombatStimInjection_01/   # CSB 注射器预制体
-└── tools/                                # v4 优化管道（Python）
+└── tools/                                # v4/v6 优化管道（Python）+ Rust v6 入口
     ├── rss_pipeline_v4.py                # Optuna v4 主入口
+    ├── rss_pipeline_v6.py                # v6 validate/calibrate/optimize 主入口
+    ├── rust_pipeline_v6/                 # Rust CLI 入口（Phase-A 双跑）
     ├── rss_digital_twin_fix.py           # 数字孪生（供管线引用）
     ├── embed_json_to_c.py                # JSON → C 嵌入（可选）
-    ├── test_v4_smoke.py                  # 8 场景烟雾测试（无 Optuna）
+    ├── test_v4_smoke.py                  # v4 烟雾测试（无 Optuna）
+    ├── test_v6_smoke.py                  # v6 合约/生理锚点烟雾测试
     ├── quick_verify.py                   # 少量 trial 快速跑通
     ├── requirements.txt                  # numpy、optuna
-    ├── optimized_rss_config_*_v4.json  # 三份预设
+    ├── optimized_rss_config_*_v4.json    # v4 三份预设
+    ├── optimized_rss_config_*_v6.json    # v6 优化产物
     └── README.md                         # 工具说明
 ```
 

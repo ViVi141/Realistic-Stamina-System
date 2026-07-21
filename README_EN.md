@@ -127,7 +127,7 @@ Key paths (see `README_CN.md` for the full tree):
 - `scripts/Game/RSS/MudSlip/`: mud-slip mechanics
 - `scripts/Game/RSS/Presentation/`: HUD, debug, UI signals, camera inertia
 - `scripts/Game/Components/Gadgets/`: combat stim items & state machine
-- `tools/`: v4 Python optimization pipeline only (`rss_pipeline_v4.py`, twin, smoke tests, embed script, preset JSON)
+- `tools/`: v4/v6 Python optimization pipeline + Rust v6 entrypoint (`rss_pipeline_v6.py`, `rust_pipeline_v6/`, twin, smoke tests, embed script, preset JSON)
 
 ## Installation
 
@@ -136,15 +136,17 @@ Key paths (see `README_CN.md` for the full tree):
 3. Build/compile
 4. Enable the mod in-game
 
-## Tools (Python)
+## Tools (Python + Rust)
 
-The `tools/` directory contains **only** the v4 optimization stack:
+The `tools/` directory contains the v4/v6 optimization stack and a Rust Phase-A entrypoint:
 
 - `rss_pipeline_v4.py` — Optuna NSGA-II pipeline (multi-objective, 8 missions)
+- `rss_pipeline_v6.py` — v6 validate/calibrate/optimize pipeline
+- `rust_pipeline_v6/` — Rust CLI entrypoint (`validate`, `calibrate`, `optimize`, `dual-run`)
 - `rss_digital_twin_fix.py` — digital twin used by the pipeline
 - `embed_json_to_c.py` — optional embed of JSON presets into `SCR_RSS_Settings.c`
-- `test_v4_smoke.py` / `quick_verify.py` — smoke and short-run checks
-- `optimized_rss_config_*_v4.json` — three shipped presets
+- `test_v4_smoke.py` / `test_v6_smoke.py` / `quick_verify.py` — smoke and short-run checks
+- `optimized_rss_config_*_v4.json` / `optimized_rss_config_*_v6.json` — shipped and generated presets
 - `requirements.txt` — `numpy`, `optuna`
 - `README.md` — tool usage (Chinese)
 
