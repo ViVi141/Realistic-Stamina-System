@@ -226,9 +226,16 @@ def evaluate_physio_anchors(
     return ConstraintReport(checks=checks)
 
 
-def evaluate_hard_constraints(params: Optional[Dict] = None) -> ConstraintReport:
-    """硬约束门禁。params 为 trial 合并参数（含 cp0、w_prime_max 等）。"""
+def evaluate_hard_constraints_python(params: Optional[Dict] = None) -> ConstraintReport:
+    """硬约束门禁（纯 Python 参考实现）。"""
     cp0 = 400.0
     if params:
         cp0 = float(params.get("critical_power_watts", cp0))
     return evaluate_physio_anchors(load_kg=35.0, cp0=cp0, params=params)
+
+
+def evaluate_hard_constraints(params: Optional[Dict] = None) -> ConstraintReport:
+    """硬约束门禁。Rust 优先，失败回退 Python。"""
+    from rss_sim_backend import evaluate_hard_constraints as backend_eval
+
+    return backend_eval(params)

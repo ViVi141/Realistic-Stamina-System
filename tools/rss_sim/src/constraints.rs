@@ -209,7 +209,7 @@ pub fn check_sustain_run_observed(
         temperature: 20.0,
         wind_speed: 0.0,
     };
-    let result = simulate_mission(&mut twin, &mission, fast_mode);
+    let result = simulate_mission(&mut twin, &mission, fast_mode, true);
     let obs = result.observed_depletion_pct_per_s;
     let ok = (SUSTAIN_OBS_MIN_PCT_PER_S..=SUSTAIN_OBS_MAX_PCT_PER_S).contains(&obs);
     if !SUSTAIN_OBS_HARD && !ok {

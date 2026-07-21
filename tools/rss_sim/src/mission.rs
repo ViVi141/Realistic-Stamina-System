@@ -1,6 +1,4 @@
-use crate::constants::{
-    MOVEMENT_IDLE, RSS_PLAYER_TICK_SEC, STANCE_STAND,
-};
+use crate::constants::{MOVEMENT_IDLE, RSS_PLAYER_TICK_SEC, STANCE_STAND};
 use crate::twin::RSSDigitalTwin;
 use serde::{Deserialize, Serialize};
 
@@ -75,13 +73,8 @@ pub struct MissionResult {
     pub observed_depletion_pct_per_s: f64,
 }
 
-pub fn simulate_mission(
-    twin: &mut RSSDigitalTwin,
-    mission: &Mission,
-    fast_mode: bool,
-) -> MissionResult {
+fn configure_twin_for_mission(twin: &mut RSSDigitalTwin, mission: &Mission) {
     twin.reset();
-
     twin.scenario_wind_drag = 0.0;
     let mut cold_stress = 0.0;
     let mut cold_static_penalty = 0.0;
@@ -99,6 +92,15 @@ pub fn simulate_mission(
         let wind_drag = (mission.wind_speed * twin.constants.env_wind_resistance_coeff).min(1.0);
         twin.scenario_wind_drag = wind_drag;
     }
+}
+
+pub fn simulate_mission(
+    twin: &mut RSSDigitalTwin,
+    mission: &Mission,
+    fast_mode: bool,
+    summary_only: bool,
+) -> MissionResult {
+    configure_twin_for_mission(twin, mission);
 
     let dt = if fast_mode { 0.05 } else { RSS_PLAYER_TICK_SEC };
 
@@ -110,6 +112,13 @@ pub fn simulate_mission(
     let mut exhaustion_duration_s = 0.0;
     let current_weight = mission.current_weight();
     let wind_drag = twin.scenario_wind_drag;
+
+    let mut min_stamina = f64::INFINITY;
+    let mut active_sum = 0.0;
+    let mut active_count = 0usize;
+    let mut depletion_sum = 0.0;
+    let mut depletion_count = 0usize;
+    let mut prev_stamina_step = 1.0;
 
     for phase in &mission.phases {
         let steps = (phase.duration_s / dt) as usize;
@@ -149,8 +158,24 @@ pub fn simulate_mission(
 
             current_time += dt;
             let now_stamina = twin.stamina;
-            stamina_trace.push(now_stamina);
-            speed_trace.push(drain_speed);
+
+            if summary_only {
+                if now_stamina < min_stamina {
+                    min_stamina = now_stamina;
+                }
+                if !is_idle_phase {
+                    active_sum += now_stamina;
+                    active_count += 1;
+                }
+                if now_stamina < prev_stamina_step - 1e-9 && prev_stamina_step > 0.82 {
+                    depletion_sum += (prev_stamina_step - now_stamina) / dt * 100.0;
+                    depletion_count += 1;
+                }
+                prev_stamina_step = now_stamina;
+            } else {
+                stamina_trace.push(now_stamina);
+                speed_trace.push(drain_speed);
+            }
 
             if now_stamina > prev_stamina {
                 total_recovery_gain += now_stamina - prev_stamina;
@@ -161,44 +186,60 @@ pub fn simulate_mission(
         }
     }
 
-    let mut active_stamina: Vec<f64> = Vec::new();
-    let mut t = 0.0;
-    for phase in &mission.phases {
-        let n_steps = (phase.duration_s / dt) as usize;
-        for j in 0..n_steps {
-            let idx = (t / dt) as usize + j;
-            if idx < stamina_trace.len() && phase.movement != MOVEMENT_IDLE {
-                active_stamina.push(stamina_trace[idx]);
+    let (min_stamina, mean_active, observed_depletion_pct_per_s) = if summary_only {
+        let min_val = if min_stamina.is_finite() { min_stamina } else { 0.0 };
+        let mean = if active_count > 0 {
+            active_sum / active_count as f64
+        } else {
+            min_val
+        };
+        let obs = if depletion_count > 0 {
+            depletion_sum / depletion_count as f64
+        } else {
+            0.0
+        };
+        (min_val, mean, obs)
+    } else {
+        let mut active_stamina: Vec<f64> = Vec::new();
+        let mut t = 0.0;
+        for phase in &mission.phases {
+            let n_steps = (phase.duration_s / dt) as usize;
+            for j in 0..n_steps {
+                let idx = (t / dt) as usize + j;
+                if idx < stamina_trace.len() && phase.movement != MOVEMENT_IDLE {
+                    active_stamina.push(stamina_trace[idx]);
+                }
+            }
+            t += phase.duration_s;
+        }
+
+        let min_val = if stamina_trace.is_empty() {
+            0.0
+        } else {
+            stamina_trace
+                .iter()
+                .fold(f64::INFINITY, |acc, v| if *v < acc { *v } else { acc })
+        };
+        let mean = if active_stamina.is_empty() {
+            min_val
+        } else {
+            active_stamina.iter().sum::<f64>() / active_stamina.len() as f64
+        };
+
+        let mut depletion_samples: Vec<f64> = Vec::new();
+        for k in 1..stamina_trace.len() {
+            let prev_s = stamina_trace[k - 1];
+            let cur_s = stamina_trace[k];
+            if cur_s < prev_s - 1e-9 && prev_s > 0.82 {
+                depletion_samples.push((prev_s - cur_s) / dt * 100.0);
             }
         }
-        t += phase.duration_s;
-    }
-
-    let min_stamina = if stamina_trace.is_empty() {
-        0.0
-    } else {
-        stamina_trace
-            .iter()
-            .fold(f64::INFINITY, |acc, v| if *v < acc { *v } else { acc })
-    };
-    let mean_active = if active_stamina.is_empty() {
-        min_stamina
-    } else {
-        active_stamina.iter().sum::<f64>() / active_stamina.len() as f64
-    };
-
-    let mut depletion_samples: Vec<f64> = Vec::new();
-    for k in 1..stamina_trace.len() {
-        let prev_s = stamina_trace[k - 1];
-        let cur_s = stamina_trace[k];
-        if cur_s < prev_s - 1e-9 && prev_s > 0.82 {
-            depletion_samples.push((prev_s - cur_s) / dt * 100.0);
-        }
-    }
-    let observed_depletion_pct_per_s = if depletion_samples.is_empty() {
-        0.0
-    } else {
-        depletion_samples.iter().sum::<f64>() / depletion_samples.len() as f64
+        let obs = if depletion_samples.is_empty() {
+            0.0
+        } else {
+            depletion_samples.iter().sum::<f64>() / depletion_samples.len() as f64
+        };
+        (min_val, mean, obs)
     };
 
     MissionResult {

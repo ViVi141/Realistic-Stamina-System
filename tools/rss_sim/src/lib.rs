@@ -1,6 +1,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict, PyList, PyModule};
+use pyo3::types::{PyAny, PyDict, PyList};
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 pub mod constants;
@@ -32,12 +33,18 @@ fn py_dict_to_hashmap(params: &Bound<'_, PyDict>) -> PyResult<HashMap<String, f6
 fn mission_result_to_pydict<'py>(
     py: Python<'py>,
     result: &MissionResult,
+    summary_only: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new_bound(py);
     d.set_item("mission_name", &result.mission_name)?;
     d.set_item("total_duration_s", result.total_duration_s)?;
-    d.set_item("stamina_trace", result.stamina_trace.clone())?;
-    d.set_item("speed_trace", result.speed_trace.clone())?;
+    if summary_only {
+        d.set_item("stamina_trace", PyList::empty_bound(py))?;
+        d.set_item("speed_trace", PyList::empty_bound(py))?;
+    } else {
+        d.set_item("stamina_trace", result.stamina_trace.clone())?;
+        d.set_item("speed_trace", result.speed_trace.clone())?;
+    }
     d.set_item("min_stamina", result.min_stamina)?;
     d.set_item("mean_stamina_active", result.mean_stamina_active)?;
     d.set_item("recovery_gain", result.recovery_gain)?;
@@ -76,6 +83,36 @@ fn parse_params_json(params_json: &str) -> PyResult<HashMap<String, f64>> {
         .map_err(|e| PyValueError::new_err(format!("invalid params_json: {}", e)))
 }
 
+fn run_mission_suite_native(
+    constants: RssConstants,
+    missions: Vec<Mission>,
+    fast_mode: bool,
+    summary_only: bool,
+    parallel: bool,
+) -> Vec<MissionResult> {
+    if parallel && missions.len() > 1 {
+        return missions
+            .par_iter()
+            .map(|m| {
+                let mut twin = RSSDigitalTwin::new(constants.clone());
+                simulate_mission_impl(&mut twin, m, fast_mode, summary_only)
+            })
+            .collect();
+    }
+
+    let mut results = Vec::with_capacity(missions.len());
+    for m in missions {
+        let mut twin = RSSDigitalTwin::new(constants.clone());
+        results.push(simulate_mission_impl(
+            &mut twin,
+            &m,
+            fast_mode,
+            summary_only,
+        ));
+    }
+    results
+}
+
 #[pyfunction]
 fn is_available() -> bool {
     true
@@ -87,11 +124,13 @@ fn get_drain_velocity_ms(measured: f64, theoretical: f64) -> f64 {
 }
 
 #[pyfunction]
+#[pyo3(signature = (params, mission_json, fast_mode, summary_only=false))]
 fn simulate_mission(
     py: Python<'_>,
     params: &Bound<'_, PyAny>,
     mission_json: &str,
     fast_mode: bool,
+    summary_only: bool,
 ) -> PyResult<Py<PyAny>> {
     let params_dict = params.downcast::<PyDict>()?;
     let params_map = py_dict_to_hashmap(params_dict)?;
@@ -101,18 +140,23 @@ fn simulate_mission(
         PyValueError::new_err(format!("mission_json must be a single Mission object: {}", e))
     })?;
 
-    let mut twin = RSSDigitalTwin::new(constants);
-    let result = simulate_mission_impl(&mut twin, &mission, fast_mode);
-    let d = mission_result_to_pydict(py, &result)?;
+    let result = py.allow_threads(|| {
+        let mut twin = RSSDigitalTwin::new(constants);
+        simulate_mission_impl(&mut twin, &mission, fast_mode, summary_only)
+    });
+    let d = mission_result_to_pydict(py, &result, summary_only)?;
     Ok(d.into_any().unbind())
 }
 
 #[pyfunction]
+#[pyo3(signature = (params, missions_json, fast_mode, summary_only=true, parallel=true))]
 fn run_mission_suite(
     py: Python<'_>,
     params: &Bound<'_, PyAny>,
     missions_json: &str,
     fast_mode: bool,
+    summary_only: bool,
+    parallel: bool,
 ) -> PyResult<Py<PyAny>> {
     let params_dict = params.downcast::<PyDict>()?;
     let params_map = py_dict_to_hashmap(params_dict)?;
@@ -120,11 +164,13 @@ fn run_mission_suite(
     let constants = RssConstants::from_params(&merged);
     let missions = parse_missions_json(missions_json)?;
 
+    let results = py.allow_threads(|| {
+        run_mission_suite_native(constants, missions, fast_mode, summary_only, parallel)
+    });
+
     let out = PyList::empty_bound(py);
-    for m in missions {
-        let mut twin = RSSDigitalTwin::new(constants.clone());
-        let result = simulate_mission_impl(&mut twin, &m, fast_mode);
-        let d = mission_result_to_pydict(py, &result)?;
+    for result in results {
+        let d = mission_result_to_pydict(py, &result, summary_only)?;
         out.append(d)?;
     }
     Ok(out.into_any().unbind())
@@ -139,12 +185,16 @@ fn simulate_ideal_march_aerobic_end(
     dt_sec: f64,
 ) -> PyResult<f64> {
     let params = parse_params_json(params_json)?;
-    let param_ref = if params.is_empty() { None } else { Some(&params) };
+    let param_ref = if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    };
     Ok(constraints_mod::simulate_ideal_march_aerobic_end(
         hours,
         encumbrance_kg,
         dt_sec,
-        param_ref,
+        param_ref.as_ref(),
     ))
 }
 
@@ -165,7 +215,9 @@ fn evaluate_hard_constraints(
         None
     };
 
-    let report = constraints_mod::evaluate_hard_constraints(parsed_params.as_ref(), false);
+    let report = py.allow_threads(|| {
+        constraints_mod::evaluate_hard_constraints(parsed_params.as_ref(), false)
+    });
     let d = PyDict::new_bound(py);
     d.set_item("all_hard_passed", report.all_hard_passed)?;
     let checks = PyList::empty_bound(py);

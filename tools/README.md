@@ -21,7 +21,7 @@ Rust CLI 入口（Phase-A）：`rust_pipeline_v6/`。
 | `compare_presets.py` | v4 vs v6 关键参数对比 |
 | `embed_json_to_c.py` | JSON → `SCR_RSS_Settings.c`（可选） |
 | `rss_sim/` | **PyO3 仿真核**（`game_player_tick` / `simulate_mission` / 硬约束） |
-| `rss_sim_backend.py` | 优化管线仿真后端：Rust 优先，Python 回退 |
+| `rss_sim_backend.py` | 优化管线仿真后端：Rust 优先（summary_only + 并行），Python 回退 |
 | `test_rss_sim_parity.py` | Rust vs Python 数值 parity 门禁 |
 | `rust_pipeline_v6/` | Rust CLI 入口（`validate/calibrate/optimize/dual-run`），当前代理到 Python v6 管线 |
 

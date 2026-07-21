@@ -168,7 +168,9 @@ def main() -> int:
     py_twin = RSSDigitalTwin(RSSConstants(**merged))
     py_result = _simulate_mission_python(py_twin, mission_dict, False)
 
-    rust_result = rss_sim.simulate_mission(params, json.dumps(mission_dict, ensure_ascii=False), False)
+    rust_result = rss_sim.simulate_mission(
+        params, json.dumps(mission_dict, ensure_ascii=False), False, False
+    )
     _assert_close("simulate_mission.min_stamina", float(rust_result["min_stamina"]), float(py_result["min_stamina"]), 1e-5)
     _assert_close(
         "simulate_mission.mean_stamina_active",
@@ -194,6 +196,8 @@ def main() -> int:
         params,
         json.dumps([mission_dict], ensure_ascii=False),
         True,
+        False,
+        False,
     )
     if len(rust_suite) != 1:
         raise AssertionError(f"run_mission_suite expected 1 result, got {len(rust_suite)}")

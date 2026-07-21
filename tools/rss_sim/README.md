@@ -17,8 +17,8 @@ import rss_sim
 
 rss_sim.is_available()  # True when extension loaded
 rss_sim.get_drain_velocity_ms(5.5, 4.0)
-rss_sim.simulate_mission(params_dict, mission_json, fast_mode=False)
-rss_sim.run_mission_suite(params_dict, missions_json, fast_mode=False)
+rss_sim.simulate_mission(params_dict, mission_json, fast_mode=False, summary_only=True)
+rss_sim.run_mission_suite(params_dict, missions_json, fast_mode=False, summary_only=True, parallel=True)
 rss_sim.simulate_ideal_march_aerobic_end(params_json, hours=4.0, encumbrance_kg=35.0, dt_sec=2.0)
 rss_sim.evaluate_hard_constraints(params_json=None)
 ```
