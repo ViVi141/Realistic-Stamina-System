@@ -41,3 +41,6 @@ desktop.ini
 # Temporary files
 *.tmp
 *.temp
+
+# Rust build artifacts
+tools/rust_pipeline_v6/target/
