@@ -5,7 +5,7 @@ RSS Pipeline v6 — 约束优先 + 分层目标
 =====================================
 相对 v4 的改进：
   1. 硬约束（生理锚点 / 契约测试）→ TrialPruned，不参与 Pareto 污染
-  2. 软目标四维：sustain / combat / recovery / param_drift（均可 minimize）
+  2. 软目标五维：sustain / mobility / combat / recovery / param_drift（均可 minimize）
   3. 搜索空间：v4 恢复维度 + v6 CP–W′ 维度（schema 对齐）
   4. validate 模式：门禁 + 三档 preset 报告（无需 Optuna）
 
@@ -90,6 +90,16 @@ V6_PARAM_REFS = dict(V6_DEFAULTS)
 SUSTAIN_TARGET_DEPLETE_PCT_PER_S = 1.0
 SUSTAIN_DEPLETE_BAND_PCT_PER_S = 0.25
 
+# mobility 软目标：band 内朝目标速度收敛（拟真档偏好更慢）
+MOBILITY_RUN_0KG_TARGET_MS = 2.80
+MOBILITY_RUN_35KG_TARGET_MS = 2.45
+
+TIER_PHILOSOPHY = {
+    "EliteStandard": "低 combat_ease + 低 recovery_ease → 最拟真/最硬核",
+    "StandardMilsim": "战斗/恢复折中 → 拟真与可玩性平衡",
+    "TacticalAction": "高 combat_ease + 高 recovery_ease → 战斗最宽容",
+}
+
 
 @dataclass
 class V6Metrics:
@@ -159,13 +169,38 @@ def _mobility_band_penalty(speed_ms: float, min_ms: float, max_ms: float) -> flo
     return 0.0
 
 
+def _mobility_target_penalty(
+    speed_ms: float,
+    min_ms: float,
+    max_ms: float,
+    target_ms: float,
+) -> float:
+    """band 外硬罚 + band 内朝目标速度软罚（提供 Pareto 梯度）。"""
+    band_pen = _mobility_band_penalty(speed_ms, min_ms, max_ms)
+    if band_pen > 0.0:
+        return band_pen
+    half = max((max_ms - min_ms) * 0.5, 0.01)
+    d = (speed_ms - target_ms) / half
+    return float(d * d * 0.25)
+
+
 def _mobility_ease(params: Dict) -> float:
     merged = merge_game_aligned_params(params)
     constants = RSSConstants(**merged)
     s0 = theoretical_speed_at_weight(constants, 90.0, MovementType.RUN)
     s35 = theoretical_speed_at_weight(constants, 125.0, MovementType.RUN)
-    pen = _mobility_band_penalty(s0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS)
-    pen += _mobility_band_penalty(s35, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS)
+    pen = _mobility_target_penalty(
+        s0,
+        MOBILITY_RUN_0KG_MIN_MS,
+        MOBILITY_RUN_0KG_MAX_MS,
+        MOBILITY_RUN_0KG_TARGET_MS,
+    )
+    pen += _mobility_target_penalty(
+        s35,
+        MOBILITY_RUN_35KG_MIN_MS,
+        MOBILITY_RUN_35KG_MAX_MS,
+        MOBILITY_RUN_35KG_TARGET_MS,
+    )
     return float(min(2.0, pen))
 
 
@@ -430,6 +465,123 @@ class RSSOptimizerV6:
         return study
 
 
+def _select_tier_indices(trials) -> Tuple[int, int, int]:
+    """按拟真轴选三档：combat/recovery + enc（负重速度惩罚）。"""
+    n = len(trials)
+    values = np.array([t.values for t in trials])
+    combat = values[:, 2]
+    recovery = values[:, 3]
+    enc = np.array([
+        float(t.params.get("encumbrance_speed_penalty_coeff", 0.28)) for t in trials
+    ])
+
+    elite_pool_size = max(3, n // 5)
+    elite_pool = np.argsort(combat)[:elite_pool_size]
+    elite_idx = int(min(elite_pool, key=lambda i: (combat[i], recovery[i], -enc[i])))
+
+    tac_pool_size = max(3, n // 5)
+    tac_sorted = np.argsort(-combat)
+    tac_pool = []
+    for c in tac_sorted:
+        ci = int(c)
+        if ci != elite_idx:
+            tac_pool.append(ci)
+        if len(tac_pool) >= tac_pool_size:
+            break
+    if not tac_pool:
+        tac_pool = [i for i in range(n) if i != elite_idx]
+    tac_idx = int(max(tac_pool, key=lambda i: (recovery[i], combat[i], -enc[i])))
+
+    remaining = [i for i in range(n) if i not in (elite_idx, tac_idx)]
+    if not remaining:
+        remaining = [0]
+    target_c = (combat[elite_idx] + combat[tac_idx]) * 0.5
+    target_r = (recovery[elite_idx] + recovery[tac_idx]) * 0.5
+    target_e = (enc[elite_idx] + enc[tac_idx]) * 0.5
+    std_idx = int(
+        min(
+            remaining,
+            key=lambda i: (
+                abs(combat[i] - target_c)
+                + abs(recovery[i] - target_r) * 80.0
+                + abs(enc[i] - target_e) * 4.0
+            ),
+        )
+    )
+
+    return elite_idx, std_idx, tac_idx
+
+
+def _print_v6_tier_order_check(presets: Dict) -> None:
+    if not all(k in presets for k in TIER_PHILOSOPHY):
+        return
+    elite = presets["EliteStandard"]["_metrics_v6"]
+    std = presets["StandardMilsim"]["_metrics_v6"]
+    tac = presets["TacticalAction"]["_metrics_v6"]
+    ok_combat = elite["combat_ease"] <= std["combat_ease"] <= tac["combat_ease"]
+    ok_recovery = elite["recovery_ease"] <= std["recovery_ease"] <= tac["recovery_ease"]
+    ok_enc = (
+        presets["EliteStandard"].get("encumbrance_speed_penalty_coeff", 0.0)
+        >= presets["StandardMilsim"].get("encumbrance_speed_penalty_coeff", 0.0)
+        >= presets["TacticalAction"].get("encumbrance_speed_penalty_coeff", 0.0)
+    )
+    enc_tag = "enc↓" if ok_enc else "enc?"
+    status = "OK" if (ok_combat and ok_recovery and ok_enc) else "WARN"
+    print(
+        f"[V6] 档位排序 [{status}] ({enc_tag}): "
+        f"combat {elite['combat_ease']:.3f} ≤ {std['combat_ease']:.3f} ≤ {tac['combat_ease']:.3f}; "
+        f"recovery {elite['recovery_ease']:.6f} ≤ {std['recovery_ease']:.6f} ≤ {tac['recovery_ease']:.6f}; "
+        f"enc {presets['EliteStandard'].get('encumbrance_speed_penalty_coeff', 0):.3f} / "
+        f"{presets['StandardMilsim'].get('encumbrance_speed_penalty_coeff', 0):.3f} / "
+        f"{presets['TacticalAction'].get('encumbrance_speed_penalty_coeff', 0):.3f}"
+    )
+
+
+def _write_preset_pair(
+    preset_name: str,
+    trial,
+    out_path: Path,
+) -> Dict:
+    params = dict(V6_DEFAULTS)
+    params.update(trial.params)
+    merged = merge_game_aligned_params(params)
+
+    v6_export = {k: merged[k] for k in HARDCORE_PARAM_REFS if k in merged}
+    for k in V6_DEFAULTS:
+        v6_export[k] = params[k]
+    v6_export["_metrics_v6"] = {
+        "sustain_ease": trial.values[0],
+        "mobility_ease": trial.values[1],
+        "combat_ease": trial.values[2],
+        "recovery_ease": trial.values[3],
+        "param_drift": trial.values[4],
+    }
+    v6_export["_philosophy"] = TIER_PHILOSOPHY[preset_name]
+
+    slug = preset_name.lower()
+    v6_path = out_path / f"optimized_rss_config_{slug}_v6.json"
+    with v6_path.open("w", encoding="utf-8") as f:
+        json.dump(v6_export, f, indent=2, ensure_ascii=False)
+
+    v4_export = {k: v6_export[k] for k in HARDCORE_PARAM_REFS if k in v6_export}
+    v4_export["_metrics"] = {
+        "combat_ease": trial.values[2],
+        "recovery_ease": trial.values[3],
+        "parameter_realism": trial.values[4],
+    }
+    v4_export["_philosophy"] = TIER_PHILOSOPHY[preset_name]
+    v4_path = out_path / PRESET_FILES[preset_name]
+    with v4_path.open("w", encoding="utf-8") as f:
+        json.dump(v4_export, f, indent=2, ensure_ascii=False)
+
+    print(
+        f"[V6] {preset_name}: combat={trial.values[2]:.3f} recovery={trial.values[3]:.6f} "
+        f"mobility={trial.values[1]:.4f} enc={params.get('encumbrance_speed_penalty_coeff', 0):.3f}"
+    )
+    print(f"       → {v6_path.name} + {v4_path.name}")
+    return v6_export
+
+
 def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     if not study or not study.best_trials:
         print("[V6] no Pareto trials, skip preset export")
@@ -439,22 +591,14 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     values = np.array([t.values for t in trials])
     n = len(trials)
 
-    elite_idx = int(np.lexsort((values[:, 3], values[:, 2], values[:, 1], values[:, 0]))[0])
-
-    used = {elite_idx}
-    tac_candidates = np.argsort(-values[:, 0])
-    tac_idx = elite_idx
-    for c in tac_candidates:
-        if int(c) not in used:
-            tac_idx = int(c)
-            break
-    used.add(tac_idx)
-
-    mid_pool = [i for i in range(n) if i not in used]
-    if not mid_pool:
-        mid_pool = [0]
-    target = (values[elite_idx] + values[tac_idx]) * 0.5
-    std_idx = int(min(mid_pool, key=lambda i: np.linalg.norm(values[i] - target)))
+    elite_idx, std_idx, tac_idx = _select_tier_indices(trials)
+    unique = len({elite_idx, std_idx, tac_idx})
+    if unique < 3:
+        print(f"[V6] WARN: tier diversity {unique}/3")
+        print(
+            f"       combat [{values[:,2].min():.3f}, {values[:,2].max():.3f}] "
+            f"recovery [{values[:,3].min():.6f}, {values[:,3].max():.6f}]"
+        )
 
     picks = {
         "EliteStandard": elite_idx,
@@ -466,28 +610,13 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
+    preset_exports: Dict = {}
     for preset_name, idx in picks.items():
-        trial = trials[idx]
-        params = dict(V6_DEFAULTS)
-        params.update(trial.params)
-        merged = merge_game_aligned_params(params)
-        export = {k: merged[k] for k in HARDCORE_PARAM_REFS if k in merged}
-        for k in V6_DEFAULTS:
-            export[k] = params[k]
-        export["_metrics_v6"] = {
-            "sustain_ease": trial.values[0],
-            "mobility_ease": trial.values[1],
-            "combat_ease": trial.values[2],
-            "recovery_ease": trial.values[3],
-            "param_drift": trial.values[4],
-        }
-        fname = f"optimized_rss_config_{preset_name.lower()}_v6.json"
-        fpath = out_path / fname
-        with fpath.open("w", encoding="utf-8") as f:
-            json.dump(export, f, indent=2)
-        out[preset_name] = str(fpath)
-        print(f"[V6] wrote {fpath}")
+        export = _write_preset_pair(preset_name, trials[idx], out_path)
+        preset_exports[preset_name] = export
+        out[preset_name] = str(out_path / f"optimized_rss_config_{preset_name.lower()}_v6.json")
 
+    _print_v6_tier_order_check(preset_exports)
     return out
 
 
@@ -500,6 +629,16 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     study = opt.run()
     if args.output:
         extract_presets_v6(study, args.output)
+        print("\n[V6] post-export hard constraint check:")
+        for preset_name in TIER_PHILOSOPHY:
+            params = load_preset_params(preset_name)
+            report = evaluate_hard_constraints(params)
+            status = "PASS" if report.all_hard_passed else "FAIL"
+            print(f"  [{preset_name}] {status}")
+            if not report.all_hard_passed:
+                for c in report.failed_hard:
+                    print(f"    - {c.name}: {c.detail}")
+                return 1
         if args.embed_c:
             import subprocess
             import sys
