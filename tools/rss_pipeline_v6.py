@@ -38,25 +38,25 @@ from rss_constraints_v6 import (
     MARCH_4H_AEROBIC_MIN,
     SUSTAIN_OBS_MAX_PCT_PER_S,
     SUSTAIN_OBS_MIN_PCT_PER_S,
-    evaluate_hard_constraints,
 )
 from rss_digital_twin_fix import (
-    RSSConstants,
-    RSSDigitalTwin,
-    RSS_PLAYER_TICK_SEC,
     Stance,
     MovementType,
     merge_game_aligned_params,
-    simulate_ideal_march_aerobic_end,
 )
 from rss_pipeline_v4 import (
     Mission,
     MissionLibrary,
     Phase,
     compute_metrics,
-    simulate_mission,
     MissionResult,
     HARDCORE_PARAM_REFS,
+)
+from rss_sim_backend import (
+    evaluate_hard_constraints,
+    run_mission_suite as run_mission_suite_backend,
+    simulate_ideal_march_aerobic_end,
+    sustain_run_observed_pct,
 )
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -173,26 +173,12 @@ def load_preset_params(name: str) -> Dict:
 
 
 def run_mission_suite(params: Dict, fast_mode: bool = False) -> List[MissionResult]:
-    merged = merge_game_aligned_params(params)
-    twin = RSSDigitalTwin(RSSConstants(**merged))
-    dt = RSS_PLAYER_TICK_SEC if not fast_mode else 0.05
-    twin._dt = dt
-    results: List[MissionResult] = []
-    for mission in all_missions_v6(fast_mode):
-        results.append(simulate_mission(twin, mission))
-    return results
+    missions = all_missions_v6(fast_mode)
+    return run_mission_suite_backend(params, fast_mode, missions)
 
 
 def _sustain_run_observed_pct(params: Dict, duration_s: float = 90.0) -> float:
-    merged = merge_game_aligned_params(params)
-    twin = RSSDigitalTwin(RSSConstants(**merged))
-    twin._dt = RSS_PLAYER_TICK_SEC
-    mission = Mission(
-        name="35kg稳态跑步",
-        load_kg=SUSTAIN_LOAD_KG,
-        phases=[Phase(duration_s, 0.0, MovementType.RUN, 0, 0.0, 1.0, "稳态Run")],
-    )
-    return float(simulate_mission(twin, mission).observed_depletion_pct_per_s)
+    return sustain_run_observed_pct(params, duration_s=duration_s, fast_mode=False)
 
 
 def calibrate_energy_coeff(

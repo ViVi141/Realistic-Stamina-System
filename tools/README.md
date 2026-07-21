@@ -1,7 +1,8 @@
 # Realistic Stamina System — Tools
 
 Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
-当前已新增 Rust 入口（Phase-A）：`rust_pipeline_v6/`。
+**Phase-B（方案 A）**：仿真核已迁至 Rust（`rss_sim/` PyO3），Python 保留 Optuna NSGA-II 编排；`rss_sim_backend.py` 自动选用 Rust 后端并在不可用时回退 Python。
+Rust CLI 入口（Phase-A）：`rust_pipeline_v6/`。
 
 ## 文件一览
 
@@ -19,6 +20,9 @@ Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
 | `optimized_rss_config_*_v6.json` | v6 优化产出预设（待 embed 到 C 端） |
 | `compare_presets.py` | v4 vs v6 关键参数对比 |
 | `embed_json_to_c.py` | JSON → `SCR_RSS_Settings.c`（可选） |
+| `rss_sim/` | **PyO3 仿真核**（`game_player_tick` / `simulate_mission` / 硬约束） |
+| `rss_sim_backend.py` | 优化管线仿真后端：Rust 优先（summary_only + 并行），Python 回退 |
+| `test_rss_sim_parity.py` | Rust vs Python 数值 parity 门禁 |
 | `rust_pipeline_v6/` | Rust CLI 入口（`validate/calibrate/optimize/dual-run`），当前代理到 Python v6 管线 |
 
 设计说明：`docs/RSS_v6_优化管线设计.md`
@@ -28,13 +32,19 @@ Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
 ```bash
 cd tools
 pip install -r requirements.txt
+pip install maturin
+cd rss_sim
+maturin develop --release
 ```
+
+未构建 `rss_sim` 时，管线自动回退到纯 Python 孪生（功能不变，速度较慢）。
 
 ## 校验（推荐 CI / 提交前）
 
 ```bash
 python rss_pipeline_v6.py validate
 python test_v6_smoke.py
+python test_rss_sim_parity.py
 ```
 
 ## Rust 入口（Phase-A 双跑）
