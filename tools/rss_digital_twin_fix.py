@@ -272,63 +272,71 @@ def encumbrance_speed_penalty_base(constants, current_weight: float) -> float:
     return float(np.clip(raw, 0.0, max_pen))
 
 
-def run_speed_at_weight(constants, current_weight: float) -> float:
-    """
-    返回在给定总重（body+equipment）下、满体力时的 RUN 速度 (m/s)。
-    与 C 端一致：Run 时 enc_penalty = base_pen * (1 + currentSpeed/GAME_MAX_SPEED)，再 clamp 到 max_pen；
-    不动点 v = target_run * (1 - enc_penalty(v)) 解得
-    v = target_run*(1-base_pen)/(1 + target_run*base_pen/game_max)，若 enc>max_pen 则 v = target_run*(1-max_pen)。
-    """
+def stamina_scale_from_run_multiplier(constants, scaled_run_multiplier: float) -> float:
+    """将坡度缩放后的 run 倍率（相对 GAME_MAX）转为 v5 体力缩放因子。"""
     game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
-    target_run = getattr(constants, 'TARGET_RUN_SPEED', 3.8)
-    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
-    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
-    denom = 1.0 + target_run * base_pen / game_max
-    v = target_run * (1.0 - base_pen) / denom
-    enc_at_v = base_pen * (1.0 + v / game_max)
-    if enc_at_v > max_pen:
-        v = target_run * (1.0 - max_pen)
-    return float(np.clip(v, 0.15 * game_max, target_run))
+    v5_run = getattr(constants, 'V5_RUN_SPEED_MS', V5_RUN_SPEED_MS_DEFAULT)
+    run_ref_mult = v5_run / game_max
+    if run_ref_mult < 0.01:
+        run_ref_mult = 0.01
+    return float(np.clip(scaled_run_multiplier / run_ref_mult, 0.15, 1.0))
+
+
+def theoretical_speed_at_weight(
+    constants,
+    current_weight: float,
+    movement_phase: int,
+    grade_percent: float = 0.0,
+    terrain_factor: float = 1.0,
+    stamina_percent: float = 1.0,
+    last_speed_guess: float = 2.5,
+) -> float:
+    """满体力/给定负重下 v6 理论目标速度 (m/s)，不动点迭代至收敛。"""
+    if isinstance(constants, RSSConstants):
+        c_kwargs = {}
+        for attr_name in dir(constants):
+            if not attr_name.startswith('_') and attr_name.isupper():
+                c_kwargs[attr_name.lower()] = getattr(constants, attr_name)
+        twin = RSSDigitalTwin(RSSConstants(**c_kwargs))
+    else:
+        twin = RSSDigitalTwin(RSSConstants(**constants) if isinstance(constants, dict) else constants)
+    last = float(last_speed_guess)
+    out = last
+    for _ in range(24):
+        out = twin.calculate_actual_speed(
+            stamina_percent,
+            current_weight,
+            movement_phase,
+            last,
+            grade_percent=grade_percent,
+            current_time=10.0,
+            terrain_factor=terrain_factor,
+        )
+        if abs(out - last) < 1e-4:
+            break
+        last = out
+    return float(out)
+
+
+def run_speed_at_weight(constants, current_weight: float) -> float:
+    """满体力 Run 理论速度 (m/s)，与 v6 UpdateSpeed 路径一致。"""
+    return theoretical_speed_at_weight(
+        constants, current_weight, 2, grade_percent=0.0
+    )
 
 
 def walk_speed_at_weight(constants, current_weight: float) -> float:
-    """
-    返回在给定总重下、满体力时的 WALK 速度 (m/s)。
-    与 C 端 WALK 逻辑一致：mult = (walk_base*0.8)*(1 - enc_penalty)，speed_ratio 取 0.8。
-    """
-    game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
-    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
-    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
-    speed_ratio = 0.8
-    enc_penalty = base_pen * (1.0 + speed_ratio)
-    enc_penalty = float(np.clip(enc_penalty, 0.0, max_pen))
-    return float(game_max * 0.8 * (1.0 - enc_penalty))
+    """满体力 Walk 理论速度 (m/s)。"""
+    return theoretical_speed_at_weight(
+        constants, current_weight, 1, grade_percent=0.0, last_speed_guess=1.0
+    )
 
 
 def sprint_speed_at_weight(constants, current_weight: float) -> float:
-    """
-    返回在给定总重下、满体力时的 SPRINT 速度 (m/s)。
-    与 C 端 SPRINT 逻辑一致：
-    - 先计算该负重下的 Run 速度（已包含 encumbrance 减速）
-    - 再在 Run 基础上乘以 (1 + sprint_boost)
-    - 然后应用 Sprint 额外的 encumbrance 惩罚（base_pen * 1.5），并 clamp 到 max_pen
-    - 最终速度 clamp 到 GAME_MAX_SPEED（引擎最大 5.5 m/s）
-    """
-    game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
-    sprint_boost = getattr(constants, 'SPRINT_SPEED_BOOST', 0.30)
-    max_pen = getattr(constants, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
-    base_pen = encumbrance_speed_penalty_base(constants, current_weight)
-
-    # 先得到该负重下的 Run 速度（已包含基础 encumbrance 惩罚）
-    run_speed = run_speed_at_weight(constants, current_weight)
-
-    # Sprint 额外 encumbrance 惩罚（C 端：Run 基础 enc_penalty 再乘 1.5）
-    enc_penalty = float(np.clip(base_pen * 1.5, 0.0, max_pen))
-
-    # 在 Run 速度上应用 Sprint 提升与额外惩罚，并限制到引擎最大速度
-    sprint_speed = run_speed * (1.0 + sprint_boost) * (1.0 - enc_penalty)
-    sprint_speed = float(np.clip(sprint_speed, 0.0, game_max))
-    return sprint_speed
+    """满体力 Sprint 理论速度 (m/s)；含 W′ 爆发功率反解。"""
+    return theoretical_speed_at_weight(
+        constants, current_weight, 3, grade_percent=0.0, last_speed_guess=3.5
+    )
 
 
 class EnvironmentFactor:
@@ -1074,9 +1082,7 @@ class RSSDigitalTwin:
         anaerobic_percent: float = 1.0,
     ) -> float:
         """与 SCR_RSS_SpeedCalculator.GetV5AbsoluteSpeedMs 一致。"""
-        target_run_mult = getattr(self.constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
-        stamina_scale = scaled_run_speed / target_run_mult
-        stamina_scale = float(np.clip(stamina_scale, 0.15, 1.0))
+        stamina_scale = stamina_scale_from_run_multiplier(self.constants, scaled_run_speed)
         enc_mult = 1.0 - encumbrance_penalty
         if enc_mult < 0.5:
             enc_mult = 0.5

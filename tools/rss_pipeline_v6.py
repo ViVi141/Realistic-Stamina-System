@@ -36,6 +36,10 @@ except ImportError:
 
 from rss_constraints_v6 import (
     MARCH_4H_AEROBIC_MIN,
+    MOBILITY_RUN_0KG_MAX_MS,
+    MOBILITY_RUN_0KG_MIN_MS,
+    MOBILITY_RUN_35KG_MAX_MS,
+    MOBILITY_RUN_35KG_MIN_MS,
     SUSTAIN_OBS_MAX_PCT_PER_S,
     SUSTAIN_OBS_MIN_PCT_PER_S,
 )
@@ -43,6 +47,8 @@ from rss_digital_twin_fix import (
     Stance,
     MovementType,
     merge_game_aligned_params,
+    theoretical_speed_at_weight,
+    RSSConstants,
 )
 from rss_pipeline_v4 import (
     Mission,
@@ -87,15 +93,17 @@ SUSTAIN_DEPLETE_BAND_PCT_PER_S = 0.25
 
 @dataclass
 class V6Metrics:
-    """四软目标（均 minimize）"""
+    """五软目标（均 minimize）"""
     sustain_ease: float
+    mobility_ease: float
     combat_ease: float
     recovery_ease: float
     param_drift: float
 
-    def as_tuple(self) -> Tuple[float, float, float, float]:
+    def as_tuple(self) -> Tuple[float, float, float, float, float]:
         return (
             self.sustain_ease,
+            self.mobility_ease,
             self.combat_ease,
             self.recovery_ease,
             self.param_drift,
@@ -141,6 +149,26 @@ def _sustain_band_penalty(observed_pct_per_s: float) -> float:
     return float(err * err * 4.0)
 
 
+def _mobility_band_penalty(speed_ms: float, min_ms: float, max_ms: float) -> float:
+    if speed_ms < min_ms:
+        d = (min_ms - speed_ms) / max(min_ms, 0.1)
+        return float(d * d * 4.0)
+    if speed_ms > max_ms:
+        d = (speed_ms - max_ms) / max(max_ms, 0.1)
+        return float(d * d * 4.0)
+    return 0.0
+
+
+def _mobility_ease(params: Dict) -> float:
+    merged = merge_game_aligned_params(params)
+    constants = RSSConstants(**merged)
+    s0 = theoretical_speed_at_weight(constants, 90.0, MovementType.RUN)
+    s35 = theoretical_speed_at_weight(constants, 125.0, MovementType.RUN)
+    pen = _mobility_band_penalty(s0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS)
+    pen += _mobility_band_penalty(s35, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS)
+    return float(min(2.0, pen))
+
+
 def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
     v4 = compute_metrics(results, params)
 
@@ -154,9 +182,11 @@ def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
             break
 
     drift = float(v4.parameter_realism) + _v6_param_drift(params) * 2.0
+    mobility = _mobility_ease(params)
 
     return V6Metrics(
         sustain_ease=sustain_ease,
+        mobility_ease=mobility,
         combat_ease=float(v4.combat_ease),
         recovery_ease=float(v4.recovery_ease),
         param_drift=drift,
@@ -295,8 +325,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
                 break
         print(
             f"\n  [{preset_name}] "
-            f"sustain={m.sustain_ease:.3f} combat={m.combat_ease:.3f} "
-            f"recovery={m.recovery_ease:.6f} drift={m.param_drift:.3f}{extra}"
+            f"sustain={m.sustain_ease:.3f} mobility={m.mobility_ease:.3f} "
+            f"combat={m.combat_ease:.3f} recovery={m.recovery_ease:.6f} "
+            f"drift={m.param_drift:.3f}{extra}"
         )
 
     print("\n[V6] validate: all hard constraints passed")
@@ -304,7 +335,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 class RSSOptimizerV6:
-    """v6 — 硬约束 prune + 四目标 NSGA-II"""
+    """v6 — 硬约束 prune + 五目标 NSGA-II"""
 
     SEARCH_SPACE_V4 = {
         "energy_to_stamina_coeff": (1.0e-7, 2.5e-7, True),
@@ -350,7 +381,7 @@ class RSSOptimizerV6:
                     params[name] = trial.suggest_float(name, low, high)
         return params
 
-    def objective(self, trial) -> Tuple[float, float, float, float]:
+    def objective(self, trial) -> Tuple[float, float, float, float, float]:
         params = self.suggest_params(trial)
 
         report = evaluate_hard_constraints(params)
@@ -371,13 +402,13 @@ class RSSOptimizerV6:
 
         study = optuna.create_study(
             study_name=study_name,
-            directions=["minimize"] * 4,
+            directions=["minimize"] * 5,
             sampler=optuna.samplers.NSGAIISampler(population_size=48),
         )
 
         print(f"[V6] optimize: {self.n_trials} trials × {len(all_missions_v6(self.fast_mode))} missions")
-        print("[V6] hard: physio anchors (prune on fail)")
-        print("[V6] soft minimize: sustain_ease, combat_ease, recovery_ease, param_drift")
+        print("[V6] hard: physio anchors + mobility (prune on fail)")
+        print("[V6] soft minimize: sustain, mobility, combat, recovery, param_drift")
         t0 = time.time()
 
         study.optimize(
@@ -393,8 +424,8 @@ class RSSOptimizerV6:
 
         for i, t in enumerate(study.best_trials[:3]):
             print(
-                f"  #{i + 1}: sustain={t.values[0]:.3f} combat={t.values[1]:.3f} "
-                f"recovery={t.values[2]:.6f} drift={t.values[3]:.3f}"
+                f"  #{i + 1}: sustain={t.values[0]:.3f} mobility={t.values[1]:.3f} "
+                f"combat={t.values[2]:.3f} recovery={t.values[3]:.6f} drift={t.values[4]:.3f}"
             )
         return study
 
@@ -408,7 +439,7 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     values = np.array([t.values for t in trials])
     n = len(trials)
 
-    elite_idx = int(np.lexsort((values[:, 2], values[:, 1], values[:, 0]))[0])
+    elite_idx = int(np.lexsort((values[:, 3], values[:, 2], values[:, 1], values[:, 0]))[0])
 
     used = {elite_idx}
     tac_candidates = np.argsort(-values[:, 0])
@@ -445,9 +476,10 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
             export[k] = params[k]
         export["_metrics_v6"] = {
             "sustain_ease": trial.values[0],
-            "combat_ease": trial.values[1],
-            "recovery_ease": trial.values[2],
-            "param_drift": trial.values[3],
+            "mobility_ease": trial.values[1],
+            "combat_ease": trial.values[2],
+            "recovery_ease": trial.values[3],
+            "param_drift": trial.values[4],
         }
         fname = f"optimized_rss_config_{preset_name.lower()}_v6.json"
         fpath = out_path / fname
@@ -468,6 +500,18 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     study = opt.run()
     if args.output:
         extract_presets_v6(study, args.output)
+        if args.embed_c:
+            import subprocess
+            import sys
+
+            embed_script = TOOLS_DIR / "embed_json_to_c.py"
+            if embed_script.exists():
+                print("[V6] embedding presets into SCR_RSS_Settings.c ...")
+                rc = subprocess.call([sys.executable, str(embed_script)])
+                if rc != 0:
+                    return rc
+            else:
+                print("[V6] embed_json_to_c.py not found, skip --embed-c")
     return 0
 
 
@@ -496,6 +540,11 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--jobs", type=int, default=-1)
     o.add_argument("--output", type=str, default=str(TOOLS_DIR))
     o.add_argument("--fast", action="store_true")
+    o.add_argument(
+        "--embed-c",
+        action="store_true",
+        help="After export, merge v6 JSON into SCR_RSS_Settings.c",
+    )
     o.set_defaults(func=cmd_optimize)
 
     return p

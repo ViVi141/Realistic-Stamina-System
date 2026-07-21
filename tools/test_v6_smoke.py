@@ -127,6 +127,19 @@ def _march_4h_ok() -> bool:
     return check_march_4h_aerobic_end().passed
 
 
+def _mobility_ok() -> bool:
+    from rss_constraints_v6 import (
+        check_mobility_run_speed,
+        MOBILITY_RUN_0KG_MIN_MS,
+        MOBILITY_RUN_0KG_MAX_MS,
+        MOBILITY_RUN_35KG_MIN_MS,
+        MOBILITY_RUN_35KG_MAX_MS,
+    )
+    c0 = check_mobility_run_speed(0.0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS, "0kg")
+    c35 = check_mobility_run_speed(35.0, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS, "35kg")
+    return c0.passed and c35.passed
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
@@ -139,6 +152,7 @@ SCENARIOS = [
     ("elite_sprint_duration", lambda: simulate_v6_sprint_seconds(35.0, 400.0) <= 15.0),
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
+    ("mobility_run_speed", lambda: _mobility_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
 ]
 

@@ -151,7 +151,10 @@ class SCR_RSS_SpeedCalculator
         float encumbrancePenalty,
         float anaerobicPercent = 1.0)
     {
-        float staminaScale = scaledRunSpeed / SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+        float runRefMult = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        if (runRefMult < 0.01)
+            runRefMult = 0.01;
+        float staminaScale = scaledRunSpeed / runRefMult;
         staminaScale = Math.Clamp(staminaScale, 0.15, 1.0);
 
         float encMult = 1.0 - encumbrancePenalty;

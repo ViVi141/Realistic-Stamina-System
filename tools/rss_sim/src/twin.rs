@@ -696,6 +696,12 @@ impl RSSDigitalTwin {
         self.calculate_v6_phase_speed_multiplier(stamina_percent, MOVEMENT_RUN, 0.0)
     }
 
+    fn stamina_scale_from_run_multiplier(&self, scaled_run_multiplier: f64) -> f64 {
+        let run_ref_mult = self.constants.v5_run_speed_ms / self.constants.game_max_speed;
+        let run_ref_mult = if run_ref_mult < 0.01 { 0.01 } else { run_ref_mult };
+        clip_f64(scaled_run_multiplier / run_ref_mult, 0.15, 1.0)
+    }
+
     fn get_v5_absolute_speed_ms(
         &self,
         movement_phase: i32,
@@ -704,8 +710,7 @@ impl RSSDigitalTwin {
         encumbrance_penalty: f64,
         anaerobic_percent: f64,
     ) -> f64 {
-        let mut stamina_scale = scaled_run_speed / self.constants.target_run_speed_multiplier;
-        stamina_scale = clip_f64(stamina_scale, 0.15, 1.0);
+        let stamina_scale = self.stamina_scale_from_run_multiplier(scaled_run_speed);
         let mut enc_mult = 1.0 - encumbrance_penalty;
         if enc_mult < 0.5 {
             enc_mult = 0.5;
@@ -887,6 +892,40 @@ impl RSSDigitalTwin {
         }
 
         theoretical_target
+    }
+
+    pub fn theoretical_speed_at_weight(
+        &mut self,
+        current_weight: f64,
+        movement_phase: i32,
+        grade_percent: f64,
+        terrain_factor: f64,
+        stamina_percent: f64,
+    ) -> f64 {
+        let mut last = if movement_phase == MOVEMENT_WALK {
+            1.0
+        } else if movement_phase == MOVEMENT_SPRINT {
+            3.5
+        } else {
+            2.5
+        };
+        let mut out = last;
+        for _ in 0..24 {
+            out = self.calculate_actual_speed(
+                stamina_percent,
+                current_weight,
+                movement_phase,
+                last,
+                grade_percent,
+                10.0,
+                terrain_factor,
+            );
+            if (out - last).abs() < 1e-4 {
+                break;
+            }
+            last = out;
+        }
+        out
     }
 
     fn estimate_engine_original_max_speed(movement_phase: i32, constants: &RssConstants) -> f64 {
