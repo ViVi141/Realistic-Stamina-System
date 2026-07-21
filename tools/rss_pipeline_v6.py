@@ -58,6 +58,7 @@ from rss_pipeline_v4 import (
     MissionResult,
     HARDCORE_PARAM_REFS,
 )
+from rss_sim_backend import run_mission_suite as run_mission_suite_backend
 
 TOOLS_DIR = Path(__file__).resolve().parent
 PRESET_FILES = {
@@ -173,14 +174,8 @@ def load_preset_params(name: str) -> Dict:
 
 
 def run_mission_suite(params: Dict, fast_mode: bool = False) -> List[MissionResult]:
-    merged = merge_game_aligned_params(params)
-    twin = RSSDigitalTwin(RSSConstants(**merged))
-    dt = RSS_PLAYER_TICK_SEC if not fast_mode else 0.05
-    twin._dt = dt
-    results: List[MissionResult] = []
-    for mission in all_missions_v6(fast_mode):
-        results.append(simulate_mission(twin, mission))
-    return results
+    missions = all_missions_v6(fast_mode)
+    return run_mission_suite_backend(params, fast_mode, missions)
 
 
 def _sustain_run_observed_pct(params: Dict, duration_s: float = 90.0) -> float:

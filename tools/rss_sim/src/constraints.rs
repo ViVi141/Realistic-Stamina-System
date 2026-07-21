@@ -5,7 +5,6 @@ use crate::cp_wprime::{simulate_v6_sprint_seconds, V5AnaerobicState};
 use crate::drain::{get_drain_velocity_ms, get_metabolic_overspeed_factor};
 use crate::mission::{simulate_mission, Mission, Phase};
 use crate::twin::RSSDigitalTwin;
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -138,12 +137,11 @@ pub fn check_v6_cp_sprint_burst(
 }
 
 pub fn simulate_ideal_march_aerobic_end(
-    py: Python<'_>,
     hours: f64,
     encumbrance_kg: f64,
     dt_sec: f64,
     params: Option<&HashMap<String, f64>>,
-) -> PyResult<f64> {
+) -> f64 {
     let constants = if let Some(p) = params {
         let merged = merge_game_aligned_params(p);
         RssConstants::from_params(&merged)
@@ -157,15 +155,14 @@ pub fn simulate_ideal_march_aerobic_end(
         }
     };
 
-    let mut twin = RSSDigitalTwin::new(py, constants.clone())?;
-    twin.reset(py)?;
+    let mut twin = RSSDigitalTwin::new(constants.clone());
+    twin.reset();
 
     let total_weight = constants.character_weight + encumbrance_kg;
     let end_sec = hours * 3600.0;
     let mut t = 0.0;
     while t < end_sec {
-        let _ = twin.game_player_tick(
-            py,
+        twin.game_player_tick(
             MOVEMENT_WALK,
             total_weight,
             0.0,
@@ -175,18 +172,17 @@ pub fn simulate_ideal_march_aerobic_end(
             dt_sec,
             0.0,
             false,
-        )?;
+        );
         t += dt_sec;
     }
-    twin.stamina(py)
+    twin.stamina
 }
 
 pub fn check_sustain_run_observed(
-    py: Python<'_>,
     params: Option<&HashMap<String, f64>>,
     duration_s: f64,
     fast_mode: bool,
-) -> PyResult<ConstraintCheck> {
+) -> ConstraintCheck {
     let mut merged = merge_game_aligned_params(&load_elite_preset_params());
     if let Some(p) = params {
         for (k, v) in p {
@@ -196,7 +192,7 @@ pub fn check_sustain_run_observed(
         }
     }
     let constants = RssConstants::from_params(&merged);
-    let mut twin = RSSDigitalTwin::new(py, constants)?;
+    let mut twin = RSSDigitalTwin::new(constants);
     let mission = Mission {
         name: "35kg稳态跑步".to_string(),
         load_kg: 35.0,
@@ -213,11 +209,11 @@ pub fn check_sustain_run_observed(
         temperature: 20.0,
         wind_speed: 0.0,
     };
-    let result = simulate_mission(py, &mut twin, &mission, fast_mode)?;
+    let result = simulate_mission(&mut twin, &mission, fast_mode);
     let obs = result.observed_depletion_pct_per_s;
     let ok = (SUSTAIN_OBS_MIN_PCT_PER_S..=SUSTAIN_OBS_MAX_PCT_PER_S).contains(&obs);
     if !SUSTAIN_OBS_HARD && !ok {
-        return Ok(ConstraintCheck {
+        return ConstraintCheck {
             name: "sustain_run_observed_35kg".to_string(),
             passed: true,
             detail: format!(
@@ -225,9 +221,9 @@ pub fn check_sustain_run_observed(
                 obs, SUSTAIN_OBS_MIN_PCT_PER_S, SUSTAIN_OBS_MAX_PCT_PER_S
             ),
             hard: false,
-        });
+        };
     }
-    Ok(ConstraintCheck {
+    ConstraintCheck {
         name: "sustain_run_observed_35kg".to_string(),
         passed: ok,
         detail: format!(
@@ -235,19 +231,18 @@ pub fn check_sustain_run_observed(
             obs, SUSTAIN_OBS_MIN_PCT_PER_S, SUSTAIN_OBS_MAX_PCT_PER_S
         ),
         hard: SUSTAIN_OBS_HARD,
-    })
+    }
 }
 
 pub fn check_march_4h_aerobic_end(
-    py: Python<'_>,
     encumbrance_kg: f64,
     hours: f64,
     params: Option<&HashMap<String, f64>>,
-) -> PyResult<ConstraintCheck> {
-    let aerobic_end = simulate_ideal_march_aerobic_end(py, hours, encumbrance_kg, 2.0, params)?;
+) -> ConstraintCheck {
+    let aerobic_end = simulate_ideal_march_aerobic_end(hours, encumbrance_kg, 2.0, params);
     let ok = aerobic_end >= MARCH_4H_AEROBIC_MIN;
     if !MARCH_4H_HARD && !ok {
-        return Ok(ConstraintCheck {
+        return ConstraintCheck {
             name: "march_4h_aerobic_end_35kg".to_string(),
             passed: true,
             detail: format!(
@@ -255,23 +250,22 @@ pub fn check_march_4h_aerobic_end(
                 aerobic_end, MARCH_4H_AEROBIC_MIN
             ),
             hard: false,
-        });
+        };
     }
-    Ok(ConstraintCheck {
+    ConstraintCheck {
         name: "march_4h_aerobic_end_35kg".to_string(),
         passed: ok,
         detail: format!("aerobic_end={:.3} (min {})", aerobic_end, MARCH_4H_AEROBIC_MIN),
         hard: MARCH_4H_HARD,
-    })
+    }
 }
 
 pub fn evaluate_physio_anchors(
-    py: Python<'_>,
     load_kg: f64,
     cp0: f64,
     params: Option<&HashMap<String, f64>>,
     fast_mode: bool,
-) -> PyResult<ConstraintReport> {
+) -> ConstraintReport {
     let mut trial_params: Option<HashMap<String, f64>> = None;
     let mut w_prime_max = 20_000.0;
     let mut sprint_cap_w = 1450.0;
@@ -296,26 +290,25 @@ pub fn evaluate_physio_anchors(
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp, w_prime_max, sprint_cap_w),
-        check_sustain_run_observed(py, trial_ref, 90.0, fast_mode)?,
-        check_march_4h_aerobic_end(py, load_kg, 4.0, trial_ref)?,
+        check_sustain_run_observed(trial_ref, 90.0, fast_mode),
+        check_march_4h_aerobic_end(load_kg, 4.0, trial_ref),
     ];
 
     let all_hard_passed = checks.iter().all(|c| !c.hard || c.passed);
-    Ok(ConstraintReport {
+    ConstraintReport {
         checks,
         all_hard_passed,
-    })
+    }
 }
 
 pub fn evaluate_hard_constraints(
-    py: Python<'_>,
     params: Option<&HashMap<String, f64>>,
     fast_mode: bool,
-) -> PyResult<ConstraintReport> {
+) -> ConstraintReport {
     let cp0 = if let Some(p) = params {
         *p.get("critical_power_watts").unwrap_or(&400.0)
     } else {
         400.0
     };
-    evaluate_physio_anchors(py, 35.0, cp0, params, fast_mode)
+    evaluate_physio_anchors(35.0, cp0, params, fast_mode)
 }

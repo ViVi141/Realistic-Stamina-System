@@ -101,8 +101,8 @@ fn simulate_mission(
         PyValueError::new_err(format!("mission_json must be a single Mission object: {}", e))
     })?;
 
-    let mut twin = RSSDigitalTwin::new(py, constants)?;
-    let result = simulate_mission_impl(py, &mut twin, &mission, fast_mode)?;
+    let mut twin = RSSDigitalTwin::new(constants);
+    let result = simulate_mission_impl(&mut twin, &mission, fast_mode);
     let d = mission_result_to_pydict(py, &result)?;
     Ok(d.into_any().unbind())
 }
@@ -122,8 +122,8 @@ fn run_mission_suite(
 
     let out = PyList::empty_bound(py);
     for m in missions {
-        let mut twin = RSSDigitalTwin::new(py, constants.clone())?;
-        let result = simulate_mission_impl(py, &mut twin, &m, fast_mode)?;
+        let mut twin = RSSDigitalTwin::new(constants.clone());
+        let result = simulate_mission_impl(&mut twin, &m, fast_mode);
         let d = mission_result_to_pydict(py, &result)?;
         out.append(d)?;
     }
@@ -132,7 +132,7 @@ fn run_mission_suite(
 
 #[pyfunction]
 fn simulate_ideal_march_aerobic_end(
-    py: Python<'_>,
+    _py: Python<'_>,
     params_json: &str,
     hours: f64,
     encumbrance_kg: f64,
@@ -140,7 +140,12 @@ fn simulate_ideal_march_aerobic_end(
 ) -> PyResult<f64> {
     let params = parse_params_json(params_json)?;
     let param_ref = if params.is_empty() { None } else { Some(&params) };
-    constraints_mod::simulate_ideal_march_aerobic_end(py, hours, encumbrance_kg, dt_sec, param_ref)
+    Ok(constraints_mod::simulate_ideal_march_aerobic_end(
+        hours,
+        encumbrance_kg,
+        dt_sec,
+        param_ref,
+    ))
 }
 
 #[pyfunction]
@@ -160,7 +165,7 @@ fn evaluate_hard_constraints(
         None
     };
 
-    let report = constraints_mod::evaluate_hard_constraints(py, parsed_params.as_ref(), false)?;
+    let report = constraints_mod::evaluate_hard_constraints(parsed_params.as_ref(), false);
     let d = PyDict::new_bound(py);
     d.set_item("all_hard_passed", report.all_hard_passed)?;
     let checks = PyList::empty_bound(py);

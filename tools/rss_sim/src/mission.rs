@@ -1,8 +1,7 @@
 use crate::constants::{
-    MOVEMENT_IDLE, RSS_PLAYER_TICK_SEC, STAMINA_TICK_SEC, STANCE_STAND,
+    MOVEMENT_IDLE, RSS_PLAYER_TICK_SEC, STANCE_STAND,
 };
 use crate::twin::RSSDigitalTwin;
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 fn default_grade_pct() -> f64 {
@@ -77,14 +76,13 @@ pub struct MissionResult {
 }
 
 pub fn simulate_mission(
-    py: Python<'_>,
     twin: &mut RSSDigitalTwin,
     mission: &Mission,
     fast_mode: bool,
-) -> PyResult<MissionResult> {
-    twin.reset(py)?;
+) -> MissionResult {
+    twin.reset();
 
-    twin.set_scenario_wind_drag(py, 0.0)?;
+    twin.scenario_wind_drag = 0.0;
     let mut cold_stress = 0.0;
     let mut cold_static_penalty = 0.0;
     if mission.temperature < 5.0 {
@@ -92,25 +90,17 @@ pub fn simulate_mission(
         cold_stress = (5.0 - mission.temperature) * c.env_temperature_cold_recovery_penalty_coeff;
         cold_static_penalty = (5.0 - mission.temperature) * c.env_temperature_cold_static_penalty;
     }
-    twin.set_environment(
-        py,
-        mission.temperature,
-        mission.wind_speed,
-        cold_stress,
-        cold_static_penalty,
-    )?;
+    twin.environment_factor.temperature = mission.temperature;
+    twin.environment_factor.wind_speed = mission.wind_speed;
+    twin.environment_factor.cold_stress = cold_stress;
+    twin.environment_factor.cold_static_penalty = cold_static_penalty;
 
     if mission.wind_speed >= 1.0 {
         let wind_drag = (mission.wind_speed * twin.constants.env_wind_resistance_coeff).min(1.0);
-        twin.set_scenario_wind_drag(py, wind_drag)?;
+        twin.scenario_wind_drag = wind_drag;
     }
 
-    let dt = if fast_mode {
-        STAMINA_TICK_SEC
-    } else {
-        RSS_PLAYER_TICK_SEC
-    };
-    twin.set_dt(py, dt)?;
+    let dt = if fast_mode { 0.05 } else { RSS_PLAYER_TICK_SEC };
 
     let mut current_time = 0.0;
     let mut stamina_trace: Vec<f64> = Vec::new();
@@ -119,7 +109,7 @@ pub fn simulate_mission(
     let mut idle_duration_s = 0.0;
     let mut exhaustion_duration_s = 0.0;
     let current_weight = mission.current_weight();
-    let wind_drag = twin.get_scenario_wind_drag(py)?;
+    let wind_drag = twin.scenario_wind_drag;
 
     for phase in &mission.phases {
         let steps = (phase.duration_s / dt) as usize;
@@ -130,10 +120,9 @@ pub fn simulate_mission(
         }
 
         for _ in 0..steps {
-            let prev_stamina = twin.stamina(py)?;
+            let prev_stamina = twin.stamina;
             let drain_speed = if is_idle_phase {
                 twin.game_player_tick(
-                    py,
                     MOVEMENT_IDLE,
                     current_weight,
                     phase.grade_pct,
@@ -143,10 +132,9 @@ pub fn simulate_mission(
                     dt,
                     wind_drag,
                     false,
-                )?
+                )
             } else {
                 twin.game_player_tick(
-                    py,
                     intent_phase,
                     current_weight,
                     phase.grade_pct,
@@ -156,11 +144,11 @@ pub fn simulate_mission(
                     dt,
                     wind_drag,
                     false,
-                )?
+                )
             };
 
             current_time += dt;
-            let now_stamina = twin.stamina(py)?;
+            let now_stamina = twin.stamina;
             stamina_trace.push(now_stamina);
             speed_trace.push(drain_speed);
 
@@ -213,7 +201,7 @@ pub fn simulate_mission(
         depletion_samples.iter().sum::<f64>() / depletion_samples.len() as f64
     };
 
-    Ok(MissionResult {
+    MissionResult {
         mission_name: mission.name.clone(),
         total_duration_s: mission.total_duration_s(),
         stamina_trace,
@@ -225,7 +213,7 @@ pub fn simulate_mission(
         exhaustion_duration_s,
         completion_possible: min_stamina > 0.0,
         observed_depletion_pct_per_s,
-    })
+    }
 }
 
 pub fn ideal_march_mission(hours: f64) -> Mission {
