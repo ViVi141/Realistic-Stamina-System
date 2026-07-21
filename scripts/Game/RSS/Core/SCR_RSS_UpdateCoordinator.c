@@ -295,9 +295,8 @@ class SCR_RSS_UpdateCoordinator
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
         float sprintStartTime = controller.GetSprintStartTime();
         
-        // 计算最终绝对速度（仅在Run和Sprint模式下）
-        // 注意：这个函数现在返回的是不含负重惩罚的理论速度
-        float finalAbsoluteSpeedNoEncumbrance = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
+        // 计算最终绝对速度（Run/Sprint/Walk）；负重已在 GetV5AbsoluteSpeedMs 内施加
+        float finalAbsoluteSpeedWithEnc = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
             encumbranceSpeedPenalty,
             isSprinting,
@@ -311,9 +310,9 @@ class SCR_RSS_UpdateCoordinator
         
         float finalSpeedMultiplier;
         
-        if (finalAbsoluteSpeedNoEncumbrance > 0.0)
+        if (finalAbsoluteSpeedWithEnc > 0.0)
         {
-            // 先计算负重惩罚（与原来的逻辑一致）
+            // 负重惩罚（供 Sprint 功率反解与 Run CP 封顶；勿再乘 (1-enc)，GetV5 已计入）
             float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
@@ -321,7 +320,7 @@ class SCR_RSS_UpdateCoordinator
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
 
-            float theoreticalTargetSpeed = finalAbsoluteSpeedNoEncumbrance * (1.0 - encumbrancePenalty);
+            float theoreticalTargetSpeed = finalAbsoluteSpeedWithEnc;
 
             if (isSprinting || currentMovementPhase == 3)
             {

@@ -842,7 +842,7 @@ impl RSSDigitalTwin {
             }
         }
 
-        let mut theoretical_target = final_abs * (1.0 - enc_penalty);
+        let mut theoretical_target = final_abs;
 
         let mut tf = terrain_factor;
         if tf < 0.5 {

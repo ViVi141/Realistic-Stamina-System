@@ -1193,7 +1193,7 @@ class RSSDigitalTwin:
             if final_abs < start_min:
                 final_abs = start_min
 
-        theoretical_target = final_abs * (1.0 - enc_penalty)
+        theoretical_target = final_abs
 
         tf = terrain_factor
         if tf < 0.5:
