@@ -420,19 +420,23 @@ modded class SCR_CharacterControllerComponent
                 {
                     float loadKg = Math.Max(totalWeightWithWetAndBody - SCR_RSS_MetabolismMath.CHARACTER_WEIGHT, 0.0);
                     float envCpMult = 1.0;
-                    if (m_pEnvironmentFactor)
+                    if (m_pEnvironmentFactor && SCR_RSS_ConfigBridge.IsHeatStressEnabled())
                     {
                         float heatPen = m_pEnvironmentFactor.GetHeatStressPenalty();
                         envCpMult = 1.0 - heatPen * 0.35;
                     }
                     float fatigueNorm = 0.0;
-                    if (m_pFatigueSystem)
+                    if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                         fatigueNorm = m_pFatigueSystem.GetFatigueIntegralNorm();
                     cpModel.SetRuntimeContext(loadKg, gradePercent, envCpMult, fatigueNorm);
-                    if (m_pFatigueSystem)
+                    if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                     {
                         float cpMult = m_pFatigueSystem.GetCpFatigueMultiplier();
                         cpModel.SetFatigueCpMultiplier(cpMult);
+                    }
+                    else
+                    {
+                        cpModel.SetFatigueCpMultiplier(1.0);
                     }
                 }
 
@@ -490,7 +494,8 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (m_pFatigueSystem && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+        if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled()
+            && !useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
             float powerFat = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
                 currentSpeed,
@@ -762,7 +767,7 @@ modded class SCR_CharacterControllerComponent
         debugTick.environmentMult = environmentMultDbg;
         debugTick.targetStaminaCap = 1.0;
         debugTick.capShrinkPerSec = 0.0;
-        if (m_pFatigueSystem)
+        if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
         {
             debugTick.targetStaminaCap = m_pFatigueSystem.GetMaxStaminaCap();
             if (!useSwimmingModel && currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
@@ -935,7 +940,7 @@ modded class SCR_CharacterControllerComponent
         if (needHintOutput)
         {
             float targetStamina = 1.0;
-            if (m_pFatigueSystem)
+            if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
 
             StaminaEtaResult eta = SCR_RSS_UpdateCoordinator.ComputeStaminaEta(

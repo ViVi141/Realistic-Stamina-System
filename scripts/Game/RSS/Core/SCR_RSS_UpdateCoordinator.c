@@ -136,6 +136,8 @@ class SCR_RSS_UpdateCoordinator
             float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
             float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0);
             float staticPerS = SCR_RSS_MetabolismModel.CalculateStaticStandingCost(bodyWeight, loadWeight);
+            if (coldStaticPenalty > 0.0)
+                staticPerS = staticPerS * (1.0 + coldStaticPenalty);
             return staticPerS * SCR_RSS_Constants.RSS_STAMINA_TICK_SEC;
         }
 
@@ -319,6 +321,12 @@ class SCR_RSS_UpdateCoordinator
                 encumbrancePenalty = encumbrancePenalty * 1.5;
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
+            encumbrancePenalty = SCR_RSS_SpeedCalculator.ApplyTacticalSprintBurstEncumbranceRelief(
+                encumbrancePenalty,
+                isSprinting,
+                currentMovementPhase,
+                currentWorldTime,
+                sprintStartTime);
 
             float theoreticalTargetSpeed = finalAbsoluteSpeedWithEnc;
 
@@ -387,6 +395,13 @@ class SCR_RSS_UpdateCoordinator
                             theoreticalTargetSpeed = cpCapMs;
                     }
                 }
+            }
+
+            if ((isSprinting || currentMovementPhase == 3) && environmentFactor)
+            {
+                float mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
+                if (mudSprintPenalty > 0.0)
+                    theoreticalTargetSpeed = theoreticalTargetSpeed * (1.0 - mudSprintPenalty);
             }
             
             // 动态获取引擎当前的原始速度（已被负重降低后的速度）
@@ -695,7 +710,7 @@ class SCR_RSS_UpdateCoordinator
 
         result.swimmingVelocityDebugPrinted = tick.swimmingVelocityDebugPrinted;
 
-        if (tick.fatigueSystem)
+        if (tick.fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
             tick.fatigueSystem.ProcessFatigueDecay(tick.currentTimeSec, tick.currentSpeed);
 
         bool isCurrentlyMoving = (tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS);
@@ -887,7 +902,7 @@ class SCR_RSS_UpdateCoordinator
         
         // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================
         float maxStaminaCap = 1.0;
-        if (fatigueSystem)
+        if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
             maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
         
         // 限制体力值在有效范围内（0.0 - maxStaminaCap）

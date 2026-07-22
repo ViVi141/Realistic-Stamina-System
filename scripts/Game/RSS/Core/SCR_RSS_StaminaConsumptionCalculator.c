@@ -9,6 +9,18 @@
 class SCR_RSS_StaminaConsumptionCalculator
 {
     // ==================== 公共方法 ====================
+
+    static float ApplyRainBreathingDrainMultiplier(float drainRate, SCR_RSS_EnvironmentFactor environmentFactor)
+    {
+        if (!environmentFactor)
+            return drainRate;
+        if (!SCR_RSS_ConfigBridge.IsRainWeightEnabled())
+            return drainRate;
+        float rainBreath = environmentFactor.GetRainBreathingPenalty();
+        if (rainBreath <= 0.0)
+            return drainRate;
+        return drainRate * (1.0 + rainBreath);
+    }
     
     // 计算体力消耗率
     // @param currentSpeed 当前速度 (m/s)
@@ -72,6 +84,8 @@ class SCR_RSS_StaminaConsumptionCalculator
             // 应用轻量级环境乘数（泥泞+风阻+热应激缓存值）
             if (environmentFactor)
                 fastDrain = fastDrain * environmentFactor.GetQuickEnvironmentMultiplier();
+
+            fastDrain = ApplyRainBreathingDrainMultiplier(fastDrain, environmentFactor);
 
             // 应用负重消耗倍数
             fastDrain = fastDrain * encumbranceStaminaDrainMultiplier;
@@ -252,6 +266,8 @@ class SCR_RSS_StaminaConsumptionCalculator
         // Sprint 完整路径：与快路径一致，单层施加轻量环境乘数
         if (environmentFactor && totalDrainRate > 0.0)
             totalDrainRate = totalDrainRate * environmentFactor.GetQuickEnvironmentMultiplier();
+
+        totalDrainRate = ApplyRainBreathingDrainMultiplier(totalDrainRate, environmentFactor);
         
         return totalDrainRate;
     }

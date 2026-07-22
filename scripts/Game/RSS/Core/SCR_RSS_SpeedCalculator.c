@@ -34,6 +34,38 @@ class SCR_RSS_SpeedCalculator
         return true;
     }
 
+    //! 战术冲刺爆发期 + 缓冲区：前段爆发减负，后段线性过渡到平稳负重惩罚
+    static float ApplyTacticalSprintBurstEncumbranceRelief(
+        float encumbrancePenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        float currentWorldTime,
+        float sprintStartTime)
+    {
+        if (!(isSprinting || currentMovementPhase == 3))
+            return encumbrancePenalty;
+        if (currentWorldTime < 0.0 || sprintStartTime < 0.0)
+            return encumbrancePenalty;
+
+        float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
+        float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
+        float elapsed = currentWorldTime - sprintStartTime;
+        if (burstDuration > 0.0 && elapsed <= burstDuration)
+        {
+            float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
+            return encumbrancePenalty * burstFactor;
+        }
+        if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
+        {
+            float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
+            float t = (elapsed - burstDuration) / bufferDuration;
+            t = Math.Clamp(t, 0.0, 1.0);
+            float blendFactor = burstFactor + (1.0 - burstFactor) * t;
+            return encumbrancePenalty * blendFactor;
+        }
+        return encumbrancePenalty;
+    }
+
     //! 状态/HUD：引擎 Idle + 惯性时标注为「Run惯性」等
     static string FormatMovementTypeForDisplay(
         bool isSprinting,
@@ -295,26 +327,12 @@ class SCR_RSS_SpeedCalculator
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
-        // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
-        if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
-        {
-            float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
-            float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
-            float elapsed = currentWorldTime - sprintStartTime;
-            if (burstDuration > 0.0 && elapsed <= burstDuration)
-            {
-                float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
-                encumbrancePenalty = encumbrancePenalty * burstFactor;
-            }
-            else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
-            {
-                float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
-                float t = (elapsed - burstDuration) / bufferDuration;
-                t = Math.Clamp(t, 0.0, 1.0);
-                float blendFactor = burstFactor + (1.0 - burstFactor) * t;
-                encumbrancePenalty = encumbrancePenalty * blendFactor;
-            }
-        }
+        encumbrancePenalty = ApplyTacticalSprintBurstEncumbranceRelief(
+            encumbrancePenalty,
+            isSprinting,
+            currentMovementPhase,
+            currentWorldTime,
+            sprintStartTime);
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
