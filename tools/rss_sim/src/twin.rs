@@ -1,14 +1,22 @@
 use crate::constants::{
-    RssConstants, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK, RSS_IDLE_SPEED_THRESHOLD_MPS,
-    STAMINA_TICK_SEC, V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
-    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS,
+    RssConstants, EXHAUSTION_LIMP_SPEED, MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN,
+    MOVEMENT_SPRINT, MOVEMENT_WALK, RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC,
+    RUN_VELOCITY_THRESHOLD, STAMINA_TICK_SEC, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
+    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
-use crate::drain::{get_drain_velocity_ms, get_metabolic_corrected_speed_multiplier};
+use crate::drain::{
+    get_drain_velocity_ms, get_metabolic_corrected_speed_multiplier,
+    is_wprime_pool_available_for_overspeed,
+};
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
 use crate::math::clip_f64;
-use crate::metabolism::{compute_cp_watts, metabolism_power_watts, tobler_speed_multiplier};
+use crate::metabolism::{
+    calculate_slope_adjusted_target_speed, compute_cp_watts, invert_speed_for_power_watts,
+    metabolism_power_watts,
+};
 
 pub struct RSSDigitalTwin {
     pub constants: RssConstants,
@@ -650,98 +658,274 @@ impl RSSDigitalTwin {
         }
     }
 
-    pub fn calculate_speed_multiplier_by_stamina(&self, stamina_percent: f64) -> f64 {
+    fn get_dynamic_limp_multiplier(&self, encumbrance_penalty: f64) -> f64 {
+        let mut max_walk_speed = WALK_VELOCITY_THRESHOLD * (1.0 - encumbrance_penalty);
+        max_walk_speed = clip_f64(max_walk_speed, EXHAUSTION_LIMP_SPEED, RUN_VELOCITY_THRESHOLD);
+        max_walk_speed / self.constants.game_max_speed
+    }
+
+    fn calculate_v6_phase_speed_multiplier(
+        &self,
+        stamina_percent: f64,
+        movement_phase: i32,
+        encumbrance_speed_penalty: f64,
+    ) -> f64 {
         let stamina_percent = clip_f64(stamina_percent, 0.0, 1.0);
-        let start = clip_f64(self.constants.willpower_threshold, 0.15, 0.5);
-        let end = self.constants.smooth_transition_end;
-        let target_mult = self.constants.target_run_speed_multiplier;
-        let min_limp = self.constants.min_limp_speed_multiplier;
-        if stamina_percent >= start {
-            return target_mult;
+        let mut enc_mult = 1.0 - encumbrance_speed_penalty;
+        if enc_mult < 0.5 {
+            enc_mult = 0.5;
         }
-        if stamina_percent >= end {
-            let t = clip_f64((stamina_percent - end) / (start - end), 0.0, 1.0);
-            let smooth_t = t * t * (3.0 - 2.0 * t);
-            return min_limp + (target_mult - min_limp) * smooth_t;
+        let mut target_ms = self.constants.v5_run_speed_ms;
+        if movement_phase == MOVEMENT_SPRINT {
+            target_ms = self.constants.v5_sprint_speed_ms;
+        } else if movement_phase == MOVEMENT_WALK {
+            target_ms = self.constants.v5_walk_speed_ms;
         }
-        let collapse = stamina_percent / end;
-        let base = min_limp * collapse;
-        base.max(min_limp * 0.8)
+        target_ms *= enc_mult;
+        let run_mult = target_ms / self.constants.game_max_speed;
+        let limp_threshold = self.constants.smooth_transition_end;
+        if stamina_percent >= limp_threshold {
+            return clip_f64(run_mult, MIN_SPEED_MULTIPLIER, 1.0);
+        }
+        let t = clip_f64(stamina_percent / limp_threshold, 0.0, 1.0);
+        let limp_mult = self.get_dynamic_limp_multiplier(encumbrance_speed_penalty);
+        (limp_mult * t).max(MIN_SPEED_MULTIPLIER)
+    }
+
+    pub fn calculate_speed_multiplier_by_stamina(&self, stamina_percent: f64) -> f64 {
+        self.calculate_v6_phase_speed_multiplier(stamina_percent, MOVEMENT_RUN, 0.0)
+    }
+
+    fn stamina_scale_from_run_multiplier(&self, scaled_run_multiplier: f64) -> f64 {
+        let run_ref_mult = self.constants.v5_run_speed_ms / self.constants.game_max_speed;
+        let run_ref_mult = if run_ref_mult < 0.01 { 0.01 } else { run_ref_mult };
+        clip_f64(scaled_run_multiplier / run_ref_mult, 0.15, 1.0)
+    }
+
+    fn get_v5_absolute_speed_ms(
+        &self,
+        movement_phase: i32,
+        is_sprinting: bool,
+        scaled_run_speed: f64,
+        encumbrance_penalty: f64,
+        anaerobic_percent: f64,
+    ) -> f64 {
+        let stamina_scale = self.stamina_scale_from_run_multiplier(scaled_run_speed);
+        let mut enc_mult = 1.0 - encumbrance_penalty;
+        if enc_mult < 0.5 {
+            enc_mult = 0.5;
+        }
+        let walk_ms = self.constants.v5_walk_speed_ms * enc_mult * stamina_scale;
+        let run_ms = self.constants.v5_run_speed_ms * enc_mult * stamina_scale;
+        let mut sprint_ms = self.constants.v5_sprint_speed_ms * enc_mult * stamina_scale;
+        if anaerobic_percent < 1.0 {
+            let ana_scale = 0.65 + 0.35 * anaerobic_percent;
+            sprint_ms *= ana_scale;
+        }
+        if is_sprinting || movement_phase == MOVEMENT_SPRINT {
+            return clip_f64(sprint_ms, walk_ms, self.constants.v5_sprint_speed_ms);
+        }
+        if movement_phase == MOVEMENT_RUN {
+            return clip_f64(run_ms, walk_ms, self.constants.v5_run_speed_ms);
+        }
+        if movement_phase == MOVEMENT_WALK {
+            return clip_f64(walk_ms, 0.5, self.constants.v5_walk_speed_ms);
+        }
+        walk_ms
+    }
+
+    fn get_v6_sprint_speed_ms(
+        &self,
+        encumbrance_penalty: f64,
+        total_weight_kg: f64,
+        grade_percent: f64,
+        terrain_factor: f64,
+        time_delta_sec: f64,
+        world_time_sec: f64,
+    ) -> f64 {
+        let mut enc_mult = 1.0 - encumbrance_penalty;
+        if enc_mult < 0.5 {
+            enc_mult = 0.5;
+        }
+        let run_ms = self.constants.v5_run_speed_ms * enc_mult;
+        if self.v6_cp_state.pool01() <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT {
+            return run_ms;
+        }
+        let available_p = self
+            .v6_cp_state
+            .get_available_power_watts(true, time_delta_sec, world_time_sec);
+        let mut sprint_ms = invert_speed_for_power_watts(
+            available_p,
+            total_weight_kg,
+            grade_percent,
+            terrain_factor,
+            MOVEMENT_SPRINT,
+        );
+        sprint_ms *= enc_mult;
+        if sprint_ms < run_ms {
+            sprint_ms = run_ms;
+        }
+        sprint_ms
     }
 
     fn calculate_actual_speed(
-        &self,
+        &mut self,
         stamina_percent: f64,
         current_weight: f64,
         movement_phase: i32,
         last_speed: f64,
         grade_percent: f64,
         current_time: f64,
+        terrain_factor: f64,
     ) -> f64 {
         let game_max = self.constants.game_max_speed;
         let max_pen = self.constants.encumbrance_speed_penalty_max;
-        let sprint_boost = self.constants.sprint_speed_boost;
         let exhausted = stamina_percent <= self.constants.exhaustion_threshold;
         let can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
 
         let mut phase = movement_phase;
-        if (exhausted || !can_sprint) && phase == MOVEMENT_SPRINT {
+        let mut is_sprinting = phase == MOVEMENT_SPRINT;
+        if (exhausted || !can_sprint) && (is_sprinting || phase == MOVEMENT_SPRINT) {
             phase = MOVEMENT_RUN;
+            is_sprinting = false;
         }
 
-        let run_base = self.calculate_speed_multiplier_by_stamina(stamina_percent);
+        if phase != MOVEMENT_WALK && phase != MOVEMENT_RUN && phase != MOVEMENT_SPRINT && !is_sprinting {
+            return 0.0;
+        }
+
+        let load_kg = (current_weight - self.constants.character_weight).max(0.0);
+        self.v6_cp_state.set_runtime_context(
+            load_kg,
+            grade_percent,
+            1.0,
+            self.fatigue.get_fatigue_integral_norm(),
+        );
+        self.v6_cp_state
+            .set_fatigue_cp_multiplier(self.fatigue.get_cp_fatigue_multiplier());
+
+        let base_penalty = self._encumbrance_speed_penalty_base(current_weight);
+        let run_base_mult =
+            self.calculate_v6_phase_speed_multiplier(stamina_percent, MOVEMENT_RUN, 0.0);
+
         let angle_deg = if grade_percent.abs() > 0.01 {
             (grade_percent / 100.0).atan().to_degrees()
         } else {
             0.0
         };
-        let slope_mult = tobler_speed_multiplier(
+        let slope_run_base_ms = self.constants.v5_run_speed_ms;
+        let mut slope_run_ref_mult = slope_run_base_ms / game_max;
+        if slope_run_ref_mult < 0.01 {
+            slope_run_ref_mult = 0.01;
+        }
+        let slope_adjusted_ms = calculate_slope_adjusted_target_speed(
+            slope_run_base_ms,
             angle_deg,
             self.constants.uphill_speed_boost,
             self.constants.downhill_speed_boost,
             self.constants.downhill_speed_max_multiplier,
-            self.constants.tobler_dampening,
-            0.15,
         );
-        let scaled_run = run_base * slope_mult;
+        let slope_adjusted_mult = slope_adjusted_ms / game_max;
+        let speed_scale_factor = slope_adjusted_mult / slope_run_ref_mult;
+        let scaled_run = run_base_mult * speed_scale_factor;
 
-        let base_penalty = self._encumbrance_speed_penalty_base(current_weight);
         let speed_ratio = clip_f64(last_speed / game_max, 0.0, 1.0);
         let mut enc_penalty = base_penalty * (1.0 + speed_ratio);
-        if phase == MOVEMENT_SPRINT {
+        if is_sprinting || phase == MOVEMENT_SPRINT {
             enc_penalty *= 1.5;
         }
         enc_penalty = clip_f64(enc_penalty, 0.0, max_pen);
 
-        if phase == MOVEMENT_SPRINT && self.sprint_start_time >= 0.0 && current_time >= 0.0 {
-            let elapsed = current_time - self.sprint_start_time;
-            let burst_dur = self.constants.tactical_sprint_burst_duration;
-            let buffer_dur = self.constants.tactical_sprint_burst_buffer_duration;
-            let burst_factor = self.constants.tactical_sprint_burst_encumbrance_factor;
-            if burst_dur > 0.0 && elapsed <= burst_dur {
-                enc_penalty *= burst_factor;
-            } else if buffer_dur > 0.0 && elapsed > burst_dur && elapsed <= burst_dur + buffer_dur {
-                let t = clip_f64((elapsed - burst_dur) / buffer_dur, 0.0, 1.0);
-                let blend = burst_factor + (1.0 - burst_factor) * t;
-                enc_penalty *= blend;
+        let mut final_abs = self.get_v5_absolute_speed_ms(phase, is_sprinting, scaled_run, enc_penalty, 1.0);
+        if last_speed < 0.5 {
+            let mut start_min = self.constants.v5_walk_speed_ms * (1.0 - enc_penalty);
+            if start_min < 0.8 {
+                start_min = 0.8;
+            }
+            if final_abs < start_min {
+                final_abs = start_min;
             }
         }
 
-        let mut mult = if phase == MOVEMENT_SPRINT {
-            clip_f64((scaled_run * (1.0 + sprint_boost)) * (1.0 - enc_penalty), 0.15, 1.0)
-        } else if phase == MOVEMENT_RUN {
-            clip_f64(scaled_run * (1.0 - enc_penalty), 0.15, 1.0)
-        } else if phase == MOVEMENT_WALK {
-            let walk_base = self.calculate_speed_multiplier_by_stamina(stamina_percent);
-            clip_f64((walk_base * 0.8) * (1.0 - enc_penalty), 0.2, 0.9)
-        } else {
-            return 0.0;
-        };
+        let mut theoretical_target = final_abs;
 
-        if (phase == MOVEMENT_WALK || phase == MOVEMENT_RUN || phase == MOVEMENT_SPRINT) && last_speed < 0.5 {
-            mult = mult.max(0.5);
+        let mut tf = terrain_factor;
+        if tf < 0.5 {
+            tf = 0.5;
         }
-        game_max * mult
+        if tf > 3.0 {
+            tf = 3.0;
+        }
+
+        if is_sprinting || phase == MOVEMENT_SPRINT {
+            let dt = if current_time >= 0.0 {
+                RSS_PLAYER_TICK_SEC
+            } else {
+                0.017
+            };
+            theoretical_target = self.get_v6_sprint_speed_ms(
+                enc_penalty,
+                current_weight,
+                grade_percent,
+                tf,
+                dt,
+                current_time,
+            );
+        } else if !is_wprime_pool_available_for_overspeed(
+            self.v6_cp_state.pool01(),
+            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+        ) {
+            let mut run_phase = phase;
+            if run_phase < MOVEMENT_WALK {
+                run_phase = MOVEMENT_RUN;
+            }
+            let cp_cap_ms = invert_speed_for_power_watts(
+                self.v6_cp_state.get_effective_critical_power_watts(),
+                current_weight,
+                grade_percent,
+                tf,
+                run_phase,
+            );
+            if cp_cap_ms > 0.05 && theoretical_target > cp_cap_ms {
+                theoretical_target = cp_cap_ms;
+            }
+        }
+
+        theoretical_target
+    }
+
+    pub fn theoretical_speed_at_weight(
+        &mut self,
+        current_weight: f64,
+        movement_phase: i32,
+        grade_percent: f64,
+        terrain_factor: f64,
+        stamina_percent: f64,
+    ) -> f64 {
+        let mut last = if movement_phase == MOVEMENT_WALK {
+            1.0
+        } else if movement_phase == MOVEMENT_SPRINT {
+            3.5
+        } else {
+            2.5
+        };
+        let mut out = last;
+        for _ in 0..24 {
+            out = self.calculate_actual_speed(
+                stamina_percent,
+                current_weight,
+                movement_phase,
+                last,
+                grade_percent,
+                10.0,
+                terrain_factor,
+            );
+            if (out - last).abs() < 1e-4 {
+                break;
+            }
+            last = out;
+        }
+        out
     }
 
     fn estimate_engine_original_max_speed(movement_phase: i32, constants: &RssConstants) -> f64 {
@@ -882,6 +1066,7 @@ impl RSSDigitalTwin {
             self.measured_velocity_ms,
             grade_percent,
             current_time,
+            terrain_factor,
         );
         let engine_phase = if effective_phase == MOVEMENT_SPRINT {
             MOVEMENT_SPRINT

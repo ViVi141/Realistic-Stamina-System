@@ -20,6 +20,12 @@ pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.60;
 pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 1.40;
 pub const SUSTAIN_OBS_HARD: bool = true;
 
+pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 2.65;
+pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 2.95;
+pub const MOBILITY_RUN_35KG_MIN_MS: f64 = 2.15;
+pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 2.85;
+pub const MOBILITY_HARD: bool = true;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConstraintCheck {
     pub name: String,
@@ -260,6 +266,46 @@ pub fn check_march_4h_aerobic_end(
     }
 }
 
+pub fn check_mobility_run_speed(
+    load_kg: f64,
+    min_ms: f64,
+    max_ms: f64,
+    label: &str,
+    params: Option<&HashMap<String, f64>>,
+) -> ConstraintCheck {
+    let mut merged = merge_game_aligned_params(&load_elite_preset_params());
+    if let Some(p) = params {
+        for (k, v) in p {
+            if !k.starts_with('_') {
+                merged.insert(k.clone(), *v);
+            }
+        }
+    }
+    let constants = RssConstants::from_params(&merged);
+    let mut twin = RSSDigitalTwin::new(constants);
+    let total_weight = 90.0 + load_kg;
+    let speed_ms = twin.theoretical_speed_at_weight(total_weight, MOVEMENT_RUN, 0.0, 1.0, 1.0);
+    let ok = (min_ms..=max_ms).contains(&speed_ms);
+    let name = format!("mobility_run_{}", label);
+    if !MOBILITY_HARD && !ok {
+        return ConstraintCheck {
+            name,
+            passed: true,
+            detail: format!(
+                "speed={:.3} m/s outside [{}, {}] (soft)",
+                speed_ms, min_ms, max_ms
+            ),
+            hard: false,
+        };
+    }
+    ConstraintCheck {
+        name,
+        passed: ok,
+        detail: format!("speed={:.3} m/s (band {}–{})", speed_ms, min_ms, max_ms),
+        hard: MOBILITY_HARD,
+    }
+}
+
 pub fn evaluate_physio_anchors(
     load_kg: f64,
     cp0: f64,
@@ -291,6 +337,20 @@ pub fn evaluate_physio_anchors(
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp, w_prime_max, sprint_cap_w),
         check_sustain_run_observed(trial_ref, 90.0, fast_mode),
+        check_mobility_run_speed(
+            0.0,
+            MOBILITY_RUN_0KG_MIN_MS,
+            MOBILITY_RUN_0KG_MAX_MS,
+            "0kg",
+            trial_ref,
+        ),
+        check_mobility_run_speed(
+            35.0,
+            MOBILITY_RUN_35KG_MIN_MS,
+            MOBILITY_RUN_35KG_MAX_MS,
+            "35kg",
+            trial_ref,
+        ),
         check_march_4h_aerobic_end(load_kg, 4.0, trial_ref),
     ];
 

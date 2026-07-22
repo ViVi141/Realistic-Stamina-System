@@ -30,6 +30,13 @@ SUSTAIN_OBS_MIN_PCT_PER_S = 0.60
 SUSTAIN_OBS_MAX_PCT_PER_S = 1.40
 SUSTAIN_OBS_HARD = True
 
+# v6 满体力 Run 理论速度契约（m/s，theoretical_speed_at_weight 不动点）
+MOBILITY_RUN_0KG_MIN_MS = 2.65
+MOBILITY_RUN_0KG_MAX_MS = 2.95
+MOBILITY_RUN_35KG_MIN_MS = 2.15
+MOBILITY_RUN_35KG_MAX_MS = 2.85
+MOBILITY_HARD = True
+
 TOOLS_DIR = Path(__file__).resolve().parent
 ELITE_PRESET_JSON = TOOLS_DIR / "optimized_rss_config_elitestandard_v4.json"
 
@@ -175,6 +182,43 @@ def check_sustain_run_observed(
     )
 
 
+def check_mobility_run_speed(
+    load_kg: float,
+    min_ms: float,
+    max_ms: float,
+    label: str,
+    params: Optional[Dict] = None,
+) -> ConstraintCheck:
+    """满体力 Run 理论速度落在 mobility band 内（与 v6 UpdateSpeed 一致）。"""
+    from rss_digital_twin_fix import (
+        RSSConstants,
+        merge_game_aligned_params,
+        theoretical_speed_at_weight,
+    )
+
+    merged = merge_game_aligned_params(_load_elite_preset_params())
+    if params:
+        merged.update({k: float(v) for k, v in params.items() if not str(k).startswith("_")})
+    constants = RSSConstants(**merged)
+    total_weight = 90.0 + float(load_kg)
+    speed_ms = theoretical_speed_at_weight(constants, total_weight, 2)
+    ok = min_ms <= speed_ms <= max_ms
+    name = f"mobility_run_{label}"
+    if not MOBILITY_HARD and not ok:
+        return ConstraintCheck(
+            name,
+            True,
+            f"speed={speed_ms:.3f} m/s outside [{min_ms}, {max_ms}] (soft)",
+            hard=False,
+        )
+    return ConstraintCheck(
+        name,
+        ok,
+        f"speed={speed_ms:.3f} m/s (band {min_ms}–{max_ms})",
+        hard=MOBILITY_HARD,
+    )
+
+
 def check_march_4h_aerobic_end(
     encumbrance_kg: float = 35.0,
     hours: float = 4.0,
@@ -221,6 +265,12 @@ def evaluate_physio_anchors(
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp0, w_prime_max, sprint_cap_w),
         check_sustain_run_observed(trial_params, duration_s=90.0),
+        check_mobility_run_speed(
+            0.0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS, "0kg", trial_params
+        ),
+        check_mobility_run_speed(
+            35.0, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS, "35kg", trial_params
+        ),
         check_march_4h_aerobic_end(load_kg, params=trial_params),
     ]
     return ConstraintReport(checks=checks)

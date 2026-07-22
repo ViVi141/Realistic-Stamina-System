@@ -13,7 +13,8 @@ class RSS_PlayerInfo
     bool isExhausted;          // 是否精疲力尽
     bool isSwimming;           // 是否在游泳
     float currentWeight;      // 当前负重 (kg)
-    float anaerobicPercent;   // v5 无氧池 (0-1)
+    float anaerobicPercent;   // @deprecated 请读 wPrimePool01；保留兼容
+    float wPrimePool01;       // W′ 池归一化储量 (0-1)
     float sprintCooldownRemainingSec; // v5 冲刺冷却剩余秒
     bool sprintAllowed;       // v5 是否允许冲刺
     bool isValid;              // 数据是否有效（实体有 RSS 组件且已初始化）
@@ -68,6 +69,7 @@ class SCR_RSS_API
         s_pPlayerInfoCache.isSwimming = false;
         s_pPlayerInfoCache.currentWeight = 0.0;
         s_pPlayerInfoCache.anaerobicPercent = 0.0;
+        s_pPlayerInfoCache.wPrimePool01 = 0.0;
         s_pPlayerInfoCache.sprintCooldownRemainingSec = 0.0;
         s_pPlayerInfoCache.sprintAllowed = false;
         s_pPlayerInfoCache.isValid = false;
@@ -87,7 +89,8 @@ class SCR_RSS_API
         s_pPlayerInfoCache.isExhausted = ctrl.GetRssIsExhausted();
         s_pPlayerInfoCache.isSwimming = ctrl.GetRssIsSwimming();
         s_pPlayerInfoCache.currentWeight = ctrl.GetRssCurrentWeight();
-        s_pPlayerInfoCache.anaerobicPercent = ctrl.GetRssAnaerobicPercent();
+        s_pPlayerInfoCache.wPrimePool01 = ctrl.GetRssWPrimePool01();
+        s_pPlayerInfoCache.anaerobicPercent = s_pPlayerInfoCache.wPrimePool01;
         s_pPlayerInfoCache.sprintCooldownRemainingSec = ctrl.GetRssSprintCooldownRemainingSec();
         s_pPlayerInfoCache.sprintAllowed = ctrl.GetRssSprintAllowed();
         s_pPlayerInfoCache.isValid = true;

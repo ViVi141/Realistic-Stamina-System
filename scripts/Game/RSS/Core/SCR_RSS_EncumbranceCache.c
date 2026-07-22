@@ -207,6 +207,12 @@ class SCR_RSS_EncumbranceCache
     // @return 速度惩罚值（0.0-0.5），如果缓存无效则返回0.0
     float GetSpeedPenalty()
     {
+        return GetSpeedPenaltyFraction();
+    }
+
+    //! 负重速度惩罚比例（0.0–0.5）；与 GetSpeedPenalty 同义
+    float GetSpeedPenaltyFraction()
+    {
         if (m_bEncumbranceCacheValid)
             return m_fCachedEncumbranceSpeedPenalty;
         return 0.0;

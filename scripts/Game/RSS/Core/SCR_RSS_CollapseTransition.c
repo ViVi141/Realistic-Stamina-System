@@ -1,5 +1,5 @@
 // "撞墙"阻尼过渡模块
-// 负责处理体力降至25%临界点时的5秒阻尼过渡逻辑
+// 负责处理体力降至 v6 跛行阈值（SMOOTH_TRANSITION_END=5%）时的 5 秒阻尼过渡逻辑
 // 解决"撞墙"瞬间的陡峭度问题，让玩家感觉到角色是"腿越来越重"，而不是"引擎突然断油"
 // 模块化拆分：从 PlayerBase.c 提取的独立功能模块
 
@@ -12,7 +12,7 @@ class SCR_RSS_CollapseTransition
     
     // ==================== 常量 ====================
     protected const float COLLAPSE_TRANSITION_DURATION = 5.0; // "撞墙"过渡持续时间（秒）
-    protected const float COLLAPSE_THRESHOLD = 0.25; // "撞墙"临界点（25%体力）
+    protected const float COLLAPSE_THRESHOLD = SCR_RSS_Constants.SMOOTH_TRANSITION_END; // v6 跛行阈值（5%）
     
     // ==================== 公共方法 ====================
     
@@ -29,10 +29,10 @@ class SCR_RSS_CollapseTransition
     // @param currentStaminaPercent 当前体力百分比（0.0-1.0）
     void Update(float currentTime, float currentStaminaPercent)
     {
-        // 检测体力是否刚从25%以上降下来
+        // 检测体力是否刚从跛行阈值以上降下来
         if (m_fLastStaminaPercent >= COLLAPSE_THRESHOLD && currentStaminaPercent < COLLAPSE_THRESHOLD)
         {
-            // 体力刚从25%以上降下来，启动5秒阻尼过渡
+            // 体力刚从跛行阈值以上降下来，启动 5 秒阻尼过渡
             m_bInCollapseTransition = true;
             m_fCollapseTransitionStartTime = currentTime;
         }
@@ -48,7 +48,7 @@ class SCR_RSS_CollapseTransition
             }
         }
         
-        // 如果体力恢复到25%以上，取消阻尼过渡
+        // 如果体力恢复到跛行阈值以上，取消阻尼过渡
         if (currentStaminaPercent >= COLLAPSE_THRESHOLD)
         {
             m_bInCollapseTransition = false;
@@ -77,11 +77,11 @@ class SCR_RSS_CollapseTransition
         // smoothstep函数：t²(3-2t)
         float smoothProgress = transitionProgress * transitionProgress * (3.0 - 2.0 * transitionProgress);
         
-        // 计算目标速度（阻尼过渡开始时的速度）和结束速度（5%体力时的速度）
-        // 开始速度：25%体力时的速度（TARGET_RUN_SPEED_MULTIPLIER = 3.8 m/s 对应倍数）
+        // 计算目标速度（阻尼过渡开始时的速度）和结束速度（跛行下限）
+        // 开始速度：跛行阈值处的 Run 基准倍率
         float startSpeedMultiplier = SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
         
-        // 结束速度：5%体力时的速度（大约80%过渡位置）
+        // 结束速度：跛行下限（大约 80% 过渡位置）
         // 使用 MIN_LIMP_SPEED_MULTIPLIER 作为下限，计算一个中间值
         float minSpeedMultiplier = SCR_RSS_MetabolismMath.MIN_LIMP_SPEED_MULTIPLIER;
         float endSpeedMultiplier = minSpeedMultiplier + (startSpeedMultiplier - minSpeedMultiplier) * 0.8;
@@ -119,10 +119,10 @@ class SCR_RSS_CollapseTransition
     }
     
     // 获取临界点阈值
-    // @return 临界点体力百分比（25%）
+    // @return 临界点体力百分比（v6 跛行阈值，默认 5%）
     static float GetCollapseThreshold()
     {
-        return 0.25; // COLLAPSE_THRESHOLD
+        return SCR_RSS_Constants.SMOOTH_TRANSITION_END;
     }
     
     // 获取过渡持续时间

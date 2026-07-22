@@ -127,6 +127,36 @@ def _march_4h_ok() -> bool:
     return check_march_4h_aerobic_end().passed
 
 
+def _mobility_ok() -> bool:
+    from rss_constraints_v6 import (
+        check_mobility_run_speed,
+        MOBILITY_RUN_0KG_MIN_MS,
+        MOBILITY_RUN_0KG_MAX_MS,
+        MOBILITY_RUN_35KG_MIN_MS,
+        MOBILITY_RUN_35KG_MAX_MS,
+    )
+    c0 = check_mobility_run_speed(0.0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS, "0kg")
+    c35 = check_mobility_run_speed(35.0, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS, "35kg")
+    return c0.passed and c35.passed
+
+
+def _tier_scalar_gradients_ok() -> bool:
+    from rss_pipeline_v6 import V6Metrics, scalarize_tier_metrics, make_mo_sampler
+
+    hard = V6Metrics(0.30, 0.05, 0.690, 0.0010, 1.5)
+    easy = V6Metrics(0.30, 0.02, 0.700, 0.0020, 1.5)
+    elite_hard = scalarize_tier_metrics(hard, 0.36, "EliteStandard")
+    elite_easy = scalarize_tier_metrics(easy, 0.20, "EliteStandard")
+    tac_hard = scalarize_tier_metrics(hard, 0.36, "TacticalAction")
+    tac_easy = scalarize_tier_metrics(easy, 0.20, "TacticalAction")
+    if elite_hard >= elite_easy:
+        return False
+    if tac_easy >= tac_hard:
+        return False
+    sampler = make_mo_sampler("nsga3", 92)
+    return sampler is not None
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
@@ -139,7 +169,9 @@ SCENARIOS = [
     ("elite_sprint_duration", lambda: simulate_v6_sprint_seconds(35.0, 400.0) <= 15.0),
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
+    ("mobility_run_speed", lambda: _mobility_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
+    ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
 ]
 
 

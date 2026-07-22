@@ -135,7 +135,7 @@ modded class CharacterCamera1stPerson
         if (!rssController.IsSprinting())
             return 0.0;
 
-        float ana = rssController.GetRssAnaerobicPercent();
+        float ana = rssController.GetRssWPrimePool01();
         float burstDeg = SCR_RSS_Constants.GetCamSprintFovBurstDeg();
         float cruiseDeg = SCR_RSS_Constants.GetCamSprintFovCruiseDeg();
         if (ana >= 0.55)

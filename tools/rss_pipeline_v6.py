@@ -5,7 +5,7 @@ RSS Pipeline v6 — 约束优先 + 分层目标
 =====================================
 相对 v4 的改进：
   1. 硬约束（生理锚点 / 契约测试）→ TrialPruned，不参与 Pareto 污染
-  2. 软目标四维：sustain / combat / recovery / param_drift（均可 minimize）
+  2. 软目标五维：sustain / mobility / combat / recovery / param_drift（均可 minimize）
   3. 搜索空间：v4 恢复维度 + v6 CP–W′ 维度（schema 对齐）
   4. validate 模式：门禁 + 三档 preset 报告（无需 Optuna）
 
@@ -36,6 +36,10 @@ except ImportError:
 
 from rss_constraints_v6 import (
     MARCH_4H_AEROBIC_MIN,
+    MOBILITY_RUN_0KG_MAX_MS,
+    MOBILITY_RUN_0KG_MIN_MS,
+    MOBILITY_RUN_35KG_MAX_MS,
+    MOBILITY_RUN_35KG_MIN_MS,
     SUSTAIN_OBS_MAX_PCT_PER_S,
     SUSTAIN_OBS_MIN_PCT_PER_S,
 )
@@ -43,6 +47,8 @@ from rss_digital_twin_fix import (
     Stance,
     MovementType,
     merge_game_aligned_params,
+    theoretical_speed_at_weight,
+    RSSConstants,
 )
 from rss_pipeline_v4 import (
     Mission,
@@ -84,18 +90,43 @@ V6_PARAM_REFS = dict(V6_DEFAULTS)
 SUSTAIN_TARGET_DEPLETE_PCT_PER_S = 1.0
 SUSTAIN_DEPLETE_BAND_PCT_PER_S = 0.25
 
+# mobility 软目标：band 内朝目标速度收敛（拟真档偏好更慢）
+MOBILITY_RUN_0KG_TARGET_MS = 2.80
+MOBILITY_RUN_35KG_TARGET_MS = 2.45
+
+TIER_PHILOSOPHY = {
+    "EliteStandard": "低 combat_ease + 低 recovery_ease → 最拟真/最硬核",
+    "StandardMilsim": "战斗/恢复折中 → 拟真与可玩性平衡",
+    "TacticalAction": "高 combat_ease + 高 recovery_ease → 战斗最宽容",
+}
+
+NUM_MO_OBJECTIVES = 5
+DEFAULT_MO_POPULATION = 92
+DEFAULT_MO_TRIALS = 1000
+DEFAULT_TIER_TRIALS = 300
+DEFAULT_FEASIBILITY_TRIALS = 150
+
+# Standard 档标量化理想点（归一化 combat/recovery + enc 中位）
+STANDARD_TIER_IDEAL = {
+    "combat_ease": 0.692,
+    "recovery_ease": 0.00125,
+    "encumbrance_speed_penalty_coeff": 0.28,
+}
+
 
 @dataclass
 class V6Metrics:
-    """四软目标（均 minimize）"""
+    """五软目标（均 minimize）"""
     sustain_ease: float
+    mobility_ease: float
     combat_ease: float
     recovery_ease: float
     param_drift: float
 
-    def as_tuple(self) -> Tuple[float, float, float, float]:
+    def as_tuple(self) -> Tuple[float, float, float, float, float]:
         return (
             self.sustain_ease,
+            self.mobility_ease,
             self.combat_ease,
             self.recovery_ease,
             self.param_drift,
@@ -141,6 +172,184 @@ def _sustain_band_penalty(observed_pct_per_s: float) -> float:
     return float(err * err * 4.0)
 
 
+def _mobility_band_penalty(speed_ms: float, min_ms: float, max_ms: float) -> float:
+    if speed_ms < min_ms:
+        d = (min_ms - speed_ms) / max(min_ms, 0.1)
+        return float(d * d * 4.0)
+    if speed_ms > max_ms:
+        d = (speed_ms - max_ms) / max(max_ms, 0.1)
+        return float(d * d * 4.0)
+    return 0.0
+
+
+def _mobility_target_penalty(
+    speed_ms: float,
+    min_ms: float,
+    max_ms: float,
+    target_ms: float,
+) -> float:
+    """band 外硬罚 + band 内朝目标速度软罚（提供 Pareto 梯度）。"""
+    band_pen = _mobility_band_penalty(speed_ms, min_ms, max_ms)
+    if band_pen > 0.0:
+        return band_pen
+    half = max((max_ms - min_ms) * 0.5, 0.01)
+    d = (speed_ms - target_ms) / half
+    return float(d * d * 0.25)
+
+
+def _mobility_ease(params: Dict) -> float:
+    merged = merge_game_aligned_params(params)
+    constants = RSSConstants(**merged)
+    s0 = theoretical_speed_at_weight(constants, 90.0, MovementType.RUN)
+    s35 = theoretical_speed_at_weight(constants, 125.0, MovementType.RUN)
+    pen = _mobility_target_penalty(
+        s0,
+        MOBILITY_RUN_0KG_MIN_MS,
+        MOBILITY_RUN_0KG_MAX_MS,
+        MOBILITY_RUN_0KG_TARGET_MS,
+    )
+    pen += _mobility_target_penalty(
+        s35,
+        MOBILITY_RUN_35KG_MIN_MS,
+        MOBILITY_RUN_35KG_MAX_MS,
+        MOBILITY_RUN_35KG_TARGET_MS,
+    )
+    return float(min(2.0, pen))
+
+
+def constraint_violation_score(params: Dict) -> float:
+    """硬约束违反量（0 = 可行）。用于两阶段可行性搜索。"""
+    report = evaluate_hard_constraints(params)
+    if report.all_hard_passed:
+        return 0.0
+    return float(len(report.failed_hard))
+
+
+def scalarize_tier_metrics(metrics: V6Metrics, enc_coeff: float, tier: str) -> float:
+    """按拟真档位将五目标标量化为单目标（minimize）。"""
+    if tier == "EliteStandard":
+        return float(
+            metrics.combat_ease * 2.5
+            + metrics.recovery_ease * 120.0
+            + metrics.mobility_ease * 2.0
+            + metrics.sustain_ease * 0.4
+            + metrics.param_drift * 0.12
+            - enc_coeff * 4.0
+        )
+    if tier == "TacticalAction":
+        return float(
+            (1.0 - metrics.combat_ease) * 2.5
+            - metrics.recovery_ease * 120.0
+            + metrics.mobility_ease * 0.3
+            + metrics.sustain_ease * 0.3
+            + metrics.param_drift * 0.10
+            + enc_coeff * 2.0
+        )
+    if tier == "StandardMilsim":
+        ideal = STANDARD_TIER_IDEAL
+        return float(
+            abs(metrics.combat_ease - ideal["combat_ease"]) * 8.0
+            + abs(metrics.recovery_ease - ideal["recovery_ease"]) * 80000.0
+            + abs(enc_coeff - ideal["encumbrance_speed_penalty_coeff"]) * 6.0
+            + metrics.sustain_ease * 0.3
+            + metrics.mobility_ease * 0.5
+            + metrics.param_drift * 0.10
+        )
+    raise ValueError(f"unknown tier: {tier}")
+
+
+def _trial_metrics_tuple(trial, params: Dict, fast_mode: bool) -> Tuple[float, float, float, float, float]:
+    user = trial.user_attrs.get("metrics_v6")
+    if user is not None and len(user) == NUM_MO_OBJECTIVES:
+        return tuple(float(v) for v in user)
+    if trial.values is not None and len(trial.values) == NUM_MO_OBJECTIVES:
+        return tuple(float(v) for v in trial.values)
+    results = run_mission_suite(params, fast_mode=fast_mode)
+    return compute_v6_metrics(results, params).as_tuple()
+
+
+def make_mo_sampler(sampler_name: str, population_size: int):
+    if not HAS_OPTUNA:
+        raise RuntimeError("optuna not installed")
+    name = sampler_name.lower()
+    if name in ("nsga3", "nsgaiii"):
+        return optuna.samplers.NSGAIIISampler(population_size=population_size)
+    if name in ("nsga2", "nsgaii", ""):
+        return optuna.samplers.NSGAIISampler(population_size=population_size)
+    raise ValueError(f"unknown sampler: {sampler_name} (use nsga2 or nsga3)")
+
+
+def suggest_search_params(trial, defaults: Dict = None) -> Dict:
+    params = dict(defaults or V6_DEFAULTS)
+    for space in (RSSOptimizerV6.SEARCH_SPACE_V4, RSSOptimizerV6.SEARCH_SPACE_V6):
+        for name, (low, high, log_scale) in space.items():
+            if log_scale and low > 0 and high > 0:
+                params[name] = trial.suggest_float(name, low, high, log=True)
+            else:
+                params[name] = trial.suggest_float(name, low, high)
+    return params
+
+
+@dataclass
+class OptimizeStats:
+    total: int = 0
+    pruned: int = 0
+    complete: int = 0
+    prune_reasons: Dict[str, int] = None
+
+    def __post_init__(self):
+        if self.prune_reasons is None:
+            self.prune_reasons = {}
+
+    def record_prune(self, reason: str) -> None:
+        self.pruned += 1
+        key = reason or "unknown"
+        self.prune_reasons[key] = self.prune_reasons.get(key, 0) + 1
+
+    def summary_lines(self) -> List[str]:
+        lines = [
+            f"  trials: total={self.total} complete={self.complete} pruned={self.pruned}",
+        ]
+        if self.total > 0:
+            rate = 100.0 * self.pruned / self.total
+            lines.append(f"  prune_rate: {rate:.1f}%")
+        if self.prune_reasons:
+            top = sorted(self.prune_reasons.items(), key=lambda x: -x[1])[:5]
+            lines.append("  top_prune_reasons: " + ", ".join(f"{k}={v}" for k, v in top))
+        return lines
+
+
+def search_feasible_seeds(
+    n_trials: int,
+    fast_mode: bool,
+    target_count: int = 12,
+) -> List[Dict]:
+    """阶段 A：最小化硬约束违反量，收集可行种子。"""
+    if not HAS_OPTUNA:
+        raise RuntimeError("optuna not installed")
+
+    print(f"[V6] feasibility phase: {n_trials} trials (target seeds={target_count})")
+    study = optuna.create_study(
+        study_name="rss_v6_feasibility",
+        direction="minimize",
+        sampler=optuna.samplers.TPESampler(seed=42),
+    )
+
+    def objective(trial) -> float:
+        params = suggest_search_params(trial)
+        return constraint_violation_score(params)
+
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+
+    seeds: List[Dict] = []
+    for trial in study.trials:
+        if trial.value is not None and trial.value <= 0.0:
+            seeds.append(dict(trial.params))
+    seeds = seeds[:target_count]
+    print(f"[V6] feasibility phase: found {len(seeds)} feasible seeds")
+    return seeds
+
+
 def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
     v4 = compute_metrics(results, params)
 
@@ -154,9 +363,11 @@ def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
             break
 
     drift = float(v4.parameter_realism) + _v6_param_drift(params) * 2.0
+    mobility = _mobility_ease(params)
 
     return V6Metrics(
         sustain_ease=sustain_ease,
+        mobility_ease=mobility,
         combat_ease=float(v4.combat_ease),
         recovery_ease=float(v4.recovery_ease),
         param_drift=drift,
@@ -164,11 +375,18 @@ def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
 
 
 def load_preset_params(name: str) -> Dict:
-    path = TOOLS_DIR / PRESET_FILES[name]
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
-    params = {k: float(v) for k, v in data.items() if not k.startswith("_")}
-    params.update(V6_DEFAULTS)
+    slug = name.lower()
+    v4_path = TOOLS_DIR / PRESET_FILES[name]
+    v6_path = TOOLS_DIR / f"optimized_rss_config_{slug}_v6.json"
+    params = dict(V6_DEFAULTS)
+    if v4_path.is_file():
+        with v4_path.open(encoding="utf-8") as f:
+            data = json.load(f)
+        params.update({k: float(v) for k, v in data.items() if not str(k).startswith("_")})
+    if v6_path.is_file():
+        with v6_path.open(encoding="utf-8") as f:
+            data = json.load(f)
+        params.update({k: float(v) for k, v in data.items() if not str(k).startswith("_")})
     return params
 
 
@@ -295,8 +513,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
                 break
         print(
             f"\n  [{preset_name}] "
-            f"sustain={m.sustain_ease:.3f} combat={m.combat_ease:.3f} "
-            f"recovery={m.recovery_ease:.6f} drift={m.param_drift:.3f}{extra}"
+            f"sustain={m.sustain_ease:.3f} mobility={m.mobility_ease:.3f} "
+            f"combat={m.combat_ease:.3f} recovery={m.recovery_ease:.6f} "
+            f"drift={m.param_drift:.3f}{extra}"
         )
 
     print("\n[V6] validate: all hard constraints passed")
@@ -304,7 +523,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 class RSSOptimizerV6:
-    """v6 — 硬约束 prune + 四目标 NSGA-II"""
+    """v6 — 硬约束 prune + 五目标 MOEA（NSGA-II / NSGA-III）"""
 
     SEARCH_SPACE_V4 = {
         "energy_to_stamina_coeff": (1.0e-7, 2.5e-7, True),
@@ -334,50 +553,75 @@ class RSSOptimizerV6:
         "sprint_power_cap_watts": (1300.0, 1550.0, False),
     }
 
-    def __init__(self, n_trials: int = 400, n_jobs: int = -1, fast_mode: bool = False):
+    def __init__(
+        self,
+        n_trials: int = DEFAULT_MO_TRIALS,
+        n_jobs: int = -1,
+        fast_mode: bool = False,
+        sampler: str = "nsga3",
+        population_size: int = DEFAULT_MO_POPULATION,
+        feasibility_trials: int = 0,
+    ):
         self.n_trials = n_trials
         self.n_jobs = n_jobs if n_jobs > 0 else max(1, (os.cpu_count() or 2) - 1)
         self.fast_mode = fast_mode
+        self.sampler = sampler
+        self.population_size = population_size
+        self.feasibility_trials = feasibility_trials
         self.study = None
+        self.stats = OptimizeStats()
 
     def suggest_params(self, trial) -> Dict:
-        params = dict(V6_DEFAULTS)
-        for space in (self.SEARCH_SPACE_V4, self.SEARCH_SPACE_V6):
-            for name, (low, high, log_scale) in space.items():
-                if log_scale and low > 0 and high > 0:
-                    params[name] = trial.suggest_float(name, low, high, log=True)
-                else:
-                    params[name] = trial.suggest_float(name, low, high)
-        return params
+        return suggest_search_params(trial)
 
-    def objective(self, trial) -> Tuple[float, float, float, float]:
+    def objective(self, trial) -> Tuple[float, float, float, float, float]:
+        self.stats.total += 1
         params = self.suggest_params(trial)
 
         report = evaluate_hard_constraints(params)
         if not report.all_hard_passed:
             failed = ", ".join(c.name for c in report.failed_hard)
             trial.set_user_attr("pruned_reason", failed)
+            self.stats.record_prune(failed)
             raise optuna.TrialPruned()
 
         results = run_mission_suite(params, fast_mode=self.fast_mode)
         metrics = compute_v6_metrics(results, params)
-
+        trial.set_user_attr("metrics_v6", metrics.as_tuple())
         trial.set_user_attr("min_stamina", min(r.min_stamina for r in results))
+        self.stats.complete += 1
         return metrics.as_tuple()
 
-    def run(self, study_name: str = "rss_v6"):
+    def run(self, study_name: str = "rss_v6") -> "optuna.Study":
         if not HAS_OPTUNA:
             raise RuntimeError("optuna not installed. Run: pip install optuna")
 
+        seeds: List[Dict] = []
+        if self.feasibility_trials > 0:
+            seeds = search_feasible_seeds(
+                self.feasibility_trials,
+                self.fast_mode,
+                target_count=min(self.population_size, 24),
+            )
+
         study = optuna.create_study(
             study_name=study_name,
-            directions=["minimize"] * 4,
-            sampler=optuna.samplers.NSGAIISampler(population_size=48),
+            directions=["minimize"] * NUM_MO_OBJECTIVES,
+            sampler=make_mo_sampler(self.sampler, self.population_size),
         )
+        for seed in seeds:
+            study.enqueue_trial(seed)
 
-        print(f"[V6] optimize: {self.n_trials} trials × {len(all_missions_v6(self.fast_mode))} missions")
-        print("[V6] hard: physio anchors (prune on fail)")
-        print("[V6] soft minimize: sustain_ease, combat_ease, recovery_ease, param_drift")
+        print(
+            f"[V6] optimize (MO): {self.n_trials} trials × "
+            f"{len(all_missions_v6(self.fast_mode))} missions"
+        )
+        print(
+            f"[V6] sampler={self.sampler} population={self.population_size} "
+            f"feasibility_seeds={len(seeds)}"
+        )
+        print("[V6] hard: physio anchors + mobility (prune on fail)")
+        print("[V6] soft minimize: sustain, mobility, combat, recovery, param_drift")
         t0 = time.time()
 
         study.optimize(
@@ -390,13 +634,221 @@ class RSSOptimizerV6:
         elapsed = time.time() - t0
         self.study = study
         print(f"\n[V6] done ({elapsed:.0f}s), Pareto size={len(study.best_trials)}")
+        for line in self.stats.summary_lines():
+            print(line)
 
         for i, t in enumerate(study.best_trials[:3]):
             print(
-                f"  #{i + 1}: sustain={t.values[0]:.3f} combat={t.values[1]:.3f} "
-                f"recovery={t.values[2]:.6f} drift={t.values[3]:.3f}"
+                f"  #{i + 1}: sustain={t.values[0]:.3f} mobility={t.values[1]:.3f} "
+                f"combat={t.values[2]:.3f} recovery={t.values[3]:.6f} drift={t.values[4]:.3f}"
             )
         return study
+
+
+class TierOptimizerV6:
+    """分档标量化单目标优化（TPE）— 推荐用于三档 preset 导出。"""
+
+    def __init__(
+        self,
+        tier: str,
+        n_trials: int = DEFAULT_TIER_TRIALS,
+        n_jobs: int = 1,
+        fast_mode: bool = False,
+        feasibility_trials: int = 0,
+    ):
+        if tier not in TIER_PHILOSOPHY:
+            raise ValueError(f"unknown tier: {tier}")
+        self.tier = tier
+        self.n_trials = n_trials
+        self.n_jobs = n_jobs if n_jobs > 0 else 1
+        self.fast_mode = fast_mode
+        self.feasibility_trials = feasibility_trials
+        self.study = None
+        self.stats = OptimizeStats()
+
+    def objective(self, trial) -> float:
+        self.stats.total += 1
+        params = suggest_search_params(trial)
+
+        report = evaluate_hard_constraints(params)
+        if not report.all_hard_passed:
+            failed = ", ".join(c.name for c in report.failed_hard)
+            trial.set_user_attr("pruned_reason", failed)
+            self.stats.record_prune(failed)
+            raise optuna.TrialPruned()
+
+        results = run_mission_suite(params, fast_mode=self.fast_mode)
+        metrics = compute_v6_metrics(results, params)
+        enc = float(params.get("encumbrance_speed_penalty_coeff", 0.28))
+        score = scalarize_tier_metrics(metrics, enc, self.tier)
+        trial.set_user_attr("metrics_v6", metrics.as_tuple())
+        trial.set_user_attr("enc_coeff", enc)
+        self.stats.complete += 1
+        return score
+
+    def run(self, study_name: str = "rss_v6_tier") -> "optuna.Study":
+        if not HAS_OPTUNA:
+            raise RuntimeError("optuna not installed. Run: pip install optuna")
+
+        seeds: List[Dict] = []
+        if self.feasibility_trials > 0:
+            seeds = search_feasible_seeds(
+                self.feasibility_trials,
+                self.fast_mode,
+                target_count=8,
+            )
+
+        study = optuna.create_study(
+            study_name=f"{study_name}_{self.tier}",
+            direction="minimize",
+            sampler=optuna.samplers.TPESampler(seed=42),
+        )
+        for seed in seeds:
+            study.enqueue_trial(seed)
+
+        print(
+            f"[V6] optimize-tier {self.tier}: {self.n_trials} trials "
+            f"(TPE scalarized, seeds={len(seeds)})"
+        )
+        t0 = time.time()
+        study.optimize(
+            self.objective,
+            n_trials=self.n_trials,
+            n_jobs=self.n_jobs,
+            show_progress_bar=True,
+        )
+        elapsed = time.time() - t0
+        self.study = study
+        best = study.best_trial
+        m = best.user_attrs.get("metrics_v6", ())
+        print(f"[V6] tier done ({elapsed:.0f}s) score={best.value:.4f}")
+        if m:
+            print(
+                f"       combat={m[2]:.3f} recovery={m[3]:.6f} "
+                f"mobility={m[1]:.4f} enc={best.user_attrs.get('enc_coeff', 0):.3f}"
+            )
+        for line in self.stats.summary_lines():
+            print(line)
+        return study
+
+
+def _select_tier_indices(trials) -> Tuple[int, int, int]:
+    """按拟真轴选三档：combat/recovery + enc（负重速度惩罚）。"""
+    n = len(trials)
+    values = np.array([t.values for t in trials])
+    combat = values[:, 2]
+    recovery = values[:, 3]
+    enc = np.array([
+        float(t.params.get("encumbrance_speed_penalty_coeff", 0.28)) for t in trials
+    ])
+
+    elite_pool_size = max(3, n // 5)
+    elite_pool = np.argsort(combat)[:elite_pool_size]
+    elite_idx = int(min(elite_pool, key=lambda i: (combat[i], recovery[i], -enc[i])))
+
+    tac_pool_size = max(3, n // 5)
+    tac_sorted = np.argsort(-combat)
+    tac_pool = []
+    for c in tac_sorted:
+        ci = int(c)
+        if ci != elite_idx:
+            tac_pool.append(ci)
+        if len(tac_pool) >= tac_pool_size:
+            break
+    if not tac_pool:
+        tac_pool = [i for i in range(n) if i != elite_idx]
+    tac_idx = int(max(tac_pool, key=lambda i: (recovery[i], combat[i], -enc[i])))
+
+    remaining = [i for i in range(n) if i not in (elite_idx, tac_idx)]
+    if not remaining:
+        remaining = [0]
+    target_c = (combat[elite_idx] + combat[tac_idx]) * 0.5
+    target_r = (recovery[elite_idx] + recovery[tac_idx]) * 0.5
+    target_e = (enc[elite_idx] + enc[tac_idx]) * 0.5
+    std_idx = int(
+        min(
+            remaining,
+            key=lambda i: (
+                abs(combat[i] - target_c)
+                + abs(recovery[i] - target_r) * 80.0
+                + abs(enc[i] - target_e) * 4.0
+            ),
+        )
+    )
+
+    return elite_idx, std_idx, tac_idx
+
+
+def _print_v6_tier_order_check(presets: Dict) -> None:
+    if not all(k in presets for k in TIER_PHILOSOPHY):
+        return
+    elite = presets["EliteStandard"]["_metrics_v6"]
+    std = presets["StandardMilsim"]["_metrics_v6"]
+    tac = presets["TacticalAction"]["_metrics_v6"]
+    ok_combat = elite["combat_ease"] <= std["combat_ease"] <= tac["combat_ease"]
+    ok_recovery = elite["recovery_ease"] <= std["recovery_ease"] <= tac["recovery_ease"]
+    ok_enc = (
+        presets["EliteStandard"].get("encumbrance_speed_penalty_coeff", 0.0)
+        >= presets["StandardMilsim"].get("encumbrance_speed_penalty_coeff", 0.0)
+        >= presets["TacticalAction"].get("encumbrance_speed_penalty_coeff", 0.0)
+    )
+    enc_tag = "enc↓" if ok_enc else "enc?"
+    status = "OK" if (ok_combat and ok_recovery and ok_enc) else "WARN"
+    print(
+        f"[V6] 档位排序 [{status}] ({enc_tag}): "
+        f"combat {elite['combat_ease']:.3f} ≤ {std['combat_ease']:.3f} ≤ {tac['combat_ease']:.3f}; "
+        f"recovery {elite['recovery_ease']:.6f} ≤ {std['recovery_ease']:.6f} ≤ {tac['recovery_ease']:.6f}; "
+        f"enc {presets['EliteStandard'].get('encumbrance_speed_penalty_coeff', 0):.3f} / "
+        f"{presets['StandardMilsim'].get('encumbrance_speed_penalty_coeff', 0):.3f} / "
+        f"{presets['TacticalAction'].get('encumbrance_speed_penalty_coeff', 0):.3f}"
+    )
+
+
+def _write_preset_pair(
+    preset_name: str,
+    trial,
+    out_path: Path,
+    fast_mode: bool = False,
+) -> Dict:
+    params = dict(V6_DEFAULTS)
+    params.update(trial.params)
+    merged = merge_game_aligned_params(params)
+    metrics = _trial_metrics_tuple(trial, params, fast_mode)
+
+    v6_export = {k: merged[k] for k in HARDCORE_PARAM_REFS if k in merged}
+    for k in V6_DEFAULTS:
+        v6_export[k] = params[k]
+    v6_export["_metrics_v6"] = {
+        "sustain_ease": metrics[0],
+        "mobility_ease": metrics[1],
+        "combat_ease": metrics[2],
+        "recovery_ease": metrics[3],
+        "param_drift": metrics[4],
+    }
+    v6_export["_philosophy"] = TIER_PHILOSOPHY[preset_name]
+
+    slug = preset_name.lower()
+    v6_path = out_path / f"optimized_rss_config_{slug}_v6.json"
+    with v6_path.open("w", encoding="utf-8") as f:
+        json.dump(v6_export, f, indent=2, ensure_ascii=False)
+
+    v4_export = {k: v6_export[k] for k in HARDCORE_PARAM_REFS if k in v6_export}
+    v4_export["_metrics"] = {
+        "combat_ease": metrics[2],
+        "recovery_ease": metrics[3],
+        "parameter_realism": metrics[4],
+    }
+    v4_export["_philosophy"] = TIER_PHILOSOPHY[preset_name]
+    v4_path = out_path / PRESET_FILES[preset_name]
+    with v4_path.open("w", encoding="utf-8") as f:
+        json.dump(v4_export, f, indent=2, ensure_ascii=False)
+
+    print(
+        f"[V6] {preset_name}: combat={metrics[2]:.3f} recovery={metrics[3]:.6f} "
+        f"mobility={metrics[1]:.4f} enc={params.get('encumbrance_speed_penalty_coeff', 0):.3f}"
+    )
+    print(f"       → {v6_path.name} + {v4_path.name}")
+    return v6_export
 
 
 def extract_presets_v6(study, output_dir: str = ".") -> Dict:
@@ -408,22 +860,14 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     values = np.array([t.values for t in trials])
     n = len(trials)
 
-    elite_idx = int(np.lexsort((values[:, 2], values[:, 1], values[:, 0]))[0])
-
-    used = {elite_idx}
-    tac_candidates = np.argsort(-values[:, 0])
-    tac_idx = elite_idx
-    for c in tac_candidates:
-        if int(c) not in used:
-            tac_idx = int(c)
-            break
-    used.add(tac_idx)
-
-    mid_pool = [i for i in range(n) if i not in used]
-    if not mid_pool:
-        mid_pool = [0]
-    target = (values[elite_idx] + values[tac_idx]) * 0.5
-    std_idx = int(min(mid_pool, key=lambda i: np.linalg.norm(values[i] - target)))
+    elite_idx, std_idx, tac_idx = _select_tier_indices(trials)
+    unique = len({elite_idx, std_idx, tac_idx})
+    if unique < 3:
+        print(f"[V6] WARN: tier diversity {unique}/3")
+        print(
+            f"       combat [{values[:,2].min():.3f}, {values[:,2].max():.3f}] "
+            f"recovery [{values[:,3].min():.6f}, {values[:,3].max():.6f}]"
+        )
 
     picks = {
         "EliteStandard": elite_idx,
@@ -435,39 +879,115 @@ def extract_presets_v6(study, output_dir: str = ".") -> Dict:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
+    preset_exports: Dict = {}
     for preset_name, idx in picks.items():
-        trial = trials[idx]
-        params = dict(V6_DEFAULTS)
-        params.update(trial.params)
-        merged = merge_game_aligned_params(params)
-        export = {k: merged[k] for k in HARDCORE_PARAM_REFS if k in merged}
-        for k in V6_DEFAULTS:
-            export[k] = params[k]
-        export["_metrics_v6"] = {
-            "sustain_ease": trial.values[0],
-            "combat_ease": trial.values[1],
-            "recovery_ease": trial.values[2],
-            "param_drift": trial.values[3],
-        }
-        fname = f"optimized_rss_config_{preset_name.lower()}_v6.json"
-        fpath = out_path / fname
-        with fpath.open("w", encoding="utf-8") as f:
-            json.dump(export, f, indent=2)
-        out[preset_name] = str(fpath)
-        print(f"[V6] wrote {fpath}")
+        export = _write_preset_pair(preset_name, trials[idx], out_path, fast_mode=False)
+        preset_exports[preset_name] = export
+        out[preset_name] = str(out_path / f"optimized_rss_config_{preset_name.lower()}_v6.json")
 
+    _print_v6_tier_order_check(preset_exports)
     return out
 
 
+def _post_export_hard_check() -> int:
+    print("\n[V6] post-export hard constraint check:")
+    for preset_name in TIER_PHILOSOPHY:
+        params = load_preset_params(preset_name)
+        report = evaluate_hard_constraints(params)
+        status = "PASS" if report.all_hard_passed else "FAIL"
+        print(f"  [{preset_name}] {status}")
+        if not report.all_hard_passed:
+            for c in report.failed_hard:
+                print(f"    - {c.name}: {c.detail}")
+            return 1
+    return 0
+
+
+def _maybe_embed_c(embed: bool) -> int:
+    if not embed:
+        return 0
+    import subprocess
+    import sys
+
+    embed_script = TOOLS_DIR / "embed_json_to_c.py"
+    if not embed_script.exists():
+        print("[V6] embed_json_to_c.py not found, skip --embed-c")
+        return 0
+    print("[V6] embedding presets into SCR_RSS_Settings.c ...")
+    return int(subprocess.call([sys.executable, str(embed_script)]))
+
+
+def _resolve_feasibility_trials(args: argparse.Namespace) -> int:
+    if getattr(args, "feasibility_trials", None) is not None and args.feasibility_trials >= 0:
+        if args.feasibility_trials > 0:
+            return int(args.feasibility_trials)
+        if getattr(args, "two_phase", False):
+            return DEFAULT_FEASIBILITY_TRIALS
+        return 0
+    if getattr(args, "two_phase", False):
+        return DEFAULT_FEASIBILITY_TRIALS
+    return 0
+
+
 def cmd_optimize(args: argparse.Namespace) -> int:
+    feas = _resolve_feasibility_trials(args)
     opt = RSSOptimizerV6(
         n_trials=args.trials,
         n_jobs=args.jobs,
         fast_mode=args.fast,
+        sampler=args.sampler,
+        population_size=args.population,
+        feasibility_trials=feas,
     )
     study = opt.run()
     if args.output:
         extract_presets_v6(study, args.output)
+        rc = _post_export_hard_check()
+        if rc != 0:
+            return rc
+        rc = _maybe_embed_c(args.embed_c)
+        if rc != 0:
+            return rc
+    return 0
+
+
+def cmd_optimize_tiers(args: argparse.Namespace) -> int:
+    feas = _resolve_feasibility_trials(args)
+    out_path = Path(args.output)
+    out_path.mkdir(parents=True, exist_ok=True)
+    preset_exports: Dict = {}
+
+    tiers = list(TIER_PHILOSOPHY.keys())
+    if args.tier:
+        if args.tier not in TIER_PHILOSOPHY:
+            print(f"[V6] unknown tier: {args.tier}")
+            return 1
+        tiers = [args.tier]
+
+    print("[V6] optimize-tiers — 分档标量化 TPE（推荐 preset 工作流）")
+    for tier in tiers:
+        opt = TierOptimizerV6(
+            tier=tier,
+            n_trials=args.trials,
+            n_jobs=args.jobs,
+            fast_mode=args.fast,
+            feasibility_trials=feas,
+        )
+        study = opt.run()
+        export = _write_preset_pair(
+            tier, study.best_trial, out_path, fast_mode=args.fast
+        )
+        preset_exports[tier] = export
+
+    if len(preset_exports) == len(TIER_PHILOSOPHY):
+        _print_v6_tier_order_check(preset_exports)
+
+    rc = _post_export_hard_check()
+    if rc != 0:
+        return rc
+    rc = _maybe_embed_c(args.embed_c)
+    if rc != 0:
+        return rc
     return 0
 
 
@@ -491,12 +1011,65 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--write", action="store_true", help="Write coeff to preset JSON")
     c.set_defaults(func=cmd_calibrate)
 
-    o = sub.add_parser("optimize", help="NSGA-II with hard-constraint pruning")
-    o.add_argument("--trials", type=int, default=400)
+    o = sub.add_parser("optimize", help="MOEA (NSGA-II/III) + Pareto tier extraction")
+    o.add_argument("--trials", type=int, default=DEFAULT_MO_TRIALS)
     o.add_argument("--jobs", type=int, default=-1)
     o.add_argument("--output", type=str, default=str(TOOLS_DIR))
     o.add_argument("--fast", action="store_true")
+    o.add_argument(
+        "--sampler",
+        choices=["nsga2", "nsga3"],
+        default="nsga3",
+        help="Multi-objective sampler (default: nsga3)",
+    )
+    o.add_argument(
+        "--population",
+        type=int,
+        default=DEFAULT_MO_POPULATION,
+        help="MOEA population size",
+    )
+    o.add_argument(
+        "--feasibility-trials",
+        type=int,
+        default=-1,
+        dest="feasibility_trials",
+        help="Phase-A feasibility search trials (-1=auto: 0, or 150 with --two-phase)",
+    )
+    o.add_argument(
+        "--two-phase",
+        action="store_true",
+        help="Run feasibility search before MOEA (seeds feasible region)",
+    )
+    o.add_argument(
+        "--embed-c",
+        action="store_true",
+        help="After export, merge v6 JSON into SCR_RSS_Settings.c",
+    )
     o.set_defaults(func=cmd_optimize)
+
+    t = sub.add_parser(
+        "optimize-tiers",
+        help="Per-tier scalarized TPE (recommended for preset export)",
+    )
+    t.add_argument("--trials", type=int, default=DEFAULT_TIER_TRIALS)
+    t.add_argument("--jobs", type=int, default=1)
+    t.add_argument("--output", type=str, default=str(TOOLS_DIR))
+    t.add_argument("--fast", action="store_true")
+    t.add_argument(
+        "--tier",
+        choices=list(TIER_PHILOSOPHY.keys()),
+        default=None,
+        help="Optimize a single tier only",
+    )
+    t.add_argument(
+        "--feasibility-trials",
+        type=int,
+        default=-1,
+        dest="feasibility_trials",
+    )
+    t.add_argument("--two-phase", action="store_true")
+    t.add_argument("--embed-c", action="store_true")
+    t.set_defaults(func=cmd_optimize_tiers)
 
     return p
 

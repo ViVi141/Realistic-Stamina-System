@@ -28,6 +28,29 @@ pub fn tobler_speed_multiplier(
     clip_f64(mult, min_mult, downhill_max)
 }
 
+pub fn calculate_slope_adjusted_target_speed(
+    base_target_speed_ms: f64,
+    slope_angle_degrees: f64,
+    uphill_boost: f64,
+    downhill_boost: f64,
+    downhill_max: f64,
+) -> f64 {
+    let mut s = slope_angle_degrees.to_radians().tan();
+    s = clip_f64(s, -1.0, 1.0);
+    let w_kmh = 6.0 * (-3.5 * (s + 0.05).abs()).exp();
+    let mut tobler_mult = w_kmh / TOBLER_W_AT_FLAT_KMH;
+    tobler_mult = tobler_mult.max(0.15);
+    if slope_angle_degrees > 0.0 {
+        tobler_mult *= uphill_boost;
+    } else if slope_angle_degrees < 0.0 {
+        tobler_mult *= downhill_boost;
+        tobler_mult = tobler_mult.min(downhill_max);
+    }
+    tobler_mult = 1.0 + 0.7 * (tobler_mult - 1.0);
+    tobler_mult = clip_f64(tobler_mult, 0.15, downhill_max);
+    base_target_speed_ms * tobler_mult
+}
+
 pub fn calculate_pandolf_power_watts(
     velocity_ms: f64,
     total_weight_kg: f64,

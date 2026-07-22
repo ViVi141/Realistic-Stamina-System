@@ -106,7 +106,7 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_NetworkSyncManager.ApplyAnaerobicReplication(m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
         if (m_pStaminaState)
         {
-            m_pStaminaState.SetAnaerobic(m_fReplAnaerobicPool);
+            m_pStaminaState.SetWPrimePool01(m_fReplAnaerobicPool);
             m_pStaminaState.SetAerobic(GetRssAerobicPercent());
         }
     }
@@ -830,6 +830,12 @@ modded class SCR_CharacterControllerComponent
 
     float GetRssAnaerobicPercent()
     {
+        return GetRssWPrimePool01();
+    }
+
+    //! W′ 池归一化储量（0–1）；权威读数来自 AnaerobicBurst
+    float GetRssWPrimePool01()
+    {
         if (m_pAnaerobicBurst)
             return m_pAnaerobicBurst.GetPool();
         return 1.0;
@@ -879,14 +885,14 @@ modded class SCR_CharacterControllerComponent
         }
 
         bool isSprintActive = IsSprinting() || (GetCurrentMovementPhase() == 3);
-        float anaDrain = SCR_RSS_ConfigBridge.GetAnaerobicDrainPerSec();
+        float anaDrain = SCR_RSS_ConfigBridge.GetWPrimeDrainPerSec();
         float powerW = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
         if (isSprintActive)
             powerW = powerW + anaDrain * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
         m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, intervalSec);
         if (m_pStaminaState)
         {
-            m_pStaminaState.SetAnaerobic(m_pAnaerobicBurst.GetPool());
+            m_pStaminaState.SetWPrimePool01(m_pAnaerobicBurst.GetPool());
             m_pStaminaState.SetAerobic(GetRssAerobicPercent());
         }
         SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
@@ -896,6 +902,12 @@ modded class SCR_CharacterControllerComponent
     }
 
     SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
+    {
+        return RSS_GetWPrimeBurst();
+    }
+
+    //! W′ 爆发控制器；与 RSS_GetAnaerobicBurst 同义
+    SCR_RSS_AnaerobicBurst RSS_GetWPrimeBurst()
     {
         return m_pAnaerobicBurst;
     }
@@ -917,7 +929,7 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pAnaerobicBurst)
         {
-            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
+            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
                 return false;
         }
 
@@ -1239,7 +1251,7 @@ modded class SCR_CharacterControllerComponent
         float serverWeight = SCR_PlayerBaseNetworkHelper.GetServerWeight(GetOwner(), m_pEncumbranceCache);
         float encPenalty = SCR_PlayerBaseNetworkHelper.CalculateEncumbrancePenaltyFallback(serverWeight);
         if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-            encPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+            encPenalty = m_pEncumbranceCache.GetSpeedPenaltyFraction();
 
         IEntity ownerEnt = GetOwner();
         bool shouldSuppressSlopeServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt));

@@ -60,10 +60,10 @@ class SCR_PlayerBaseVehicleHelper
             float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
 
             float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (fatigueSystem)
+            if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 fatigueSystem.ProcessFatigueDecay(currentWorldTime, 0.0);
             float maxStaminaCap = 1.0;
-            if (fatigueSystem)
+            if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
             float timeDeltaSec;
             if (lastStaminaUpdateTime >= 0.0)
