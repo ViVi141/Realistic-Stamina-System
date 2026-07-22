@@ -7,17 +7,11 @@ class WetWeightUpdateResult
 {
     float wetWeightStartTime;
     float currentWetWeight;
+    float swimStartTimeSec;
 }
 
 class SCR_RSS_SwimmingStateManager
 {
-    protected static ref WetWeightUpdateResult s_pResultWetWeight;
-
-    // ==================== 游泳状态追踪 ====================
-    
-    protected static float m_fSwimStartTime = -1.0; // 游泳开始时间（秒）
-    protected static float m_fSwimDuration = 0.0; // 游泳持续时间（秒）
-    
     // ==================== 游泳状态检测 ====================
     
     // 检测角色是否在游泳（通过动画组件）
@@ -47,6 +41,7 @@ class SCR_RSS_SwimmingStateManager
     // @param currentTime 当前世界时间
     // @param wetWeightStartTime 湿重开始时间（输入）
     // @param currentWetWeight 当前湿重（输入）
+    // @param swimStartTimeSec 本实体游泳开始时间（-1 表示未在游泳）
     // @param owner 角色实体（用于调试输出）
     // @return 更新后的湿重结果（包含湿重开始时间和当前湿重）
     static WetWeightUpdateResult UpdateWetWeight(
@@ -55,6 +50,7 @@ class SCR_RSS_SwimmingStateManager
         float currentTime,
         float wetWeightStartTime,
         float currentWetWeight,
+        float swimStartTimeSec,
         IEntity owner)
     {
         // 如果状态变化，输出调试信息
@@ -76,63 +72,54 @@ class SCR_RSS_SwimmingStateManager
             Print(stateChange);
         }
         
-        // 更新湿重
-        if (!s_pResultWetWeight)
-            s_pResultWetWeight = new WetWeightUpdateResult();
-        s_pResultWetWeight.wetWeightStartTime = wetWeightStartTime;
-        s_pResultWetWeight.currentWetWeight = currentWetWeight;
+        WetWeightUpdateResult result = new WetWeightUpdateResult();
+        result.wetWeightStartTime = wetWeightStartTime;
+        result.currentWetWeight = currentWetWeight;
+        result.swimStartTimeSec = swimStartTimeSec;
         
         if (isSwimming)
         {
             // 正在游泳：湿重非线性增长
-            if (m_fSwimStartTime < 0.0)
+            if (result.swimStartTimeSec < 0.0)
             {
-                // 首次进入游泳：记录开始时间
-                m_fSwimStartTime = currentTime;
-                m_fSwimDuration = 0.0;
+                result.swimStartTimeSec = currentTime;
             }
             
-            // 计算游泳持续时间
-            m_fSwimDuration = currentTime - m_fSwimStartTime;
+            float swimDuration = currentTime - result.swimStartTimeSec;
             
             // 非线性增长：使用平方根函数，让湿重增长逐渐变慢
             // 最大湿重：WET_WEIGHT_MAX（10kg，与降雨湿重共用组合池）
             // 增长公式：wetWeight = WET_WEIGHT_MAX * sqrt(duration / 60.0)
             // 60秒时达到最大值 WET_WEIGHT_MAX kg
-            float swimProgress = Math.Clamp(m_fSwimDuration / 60.0, 0.0, 1.0);
+            float swimProgress = Math.Clamp(swimDuration / 60.0, 0.0, 1.0);
             float swimWetWeight = SCR_RSS_Constants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
             
-            s_pResultWetWeight.wetWeightStartTime = -1.0;
-            s_pResultWetWeight.currentWetWeight = swimWetWeight;
+            result.wetWeightStartTime = -1.0;
+            result.currentWetWeight = swimWetWeight;
         }
         else if (wasSwimming && !isSwimming)
         {
             // 刚从水中上岸：启动湿重计时器
-            s_pResultWetWeight.wetWeightStartTime = currentTime;
-            // 湿重保持不变（已经在游泳时设置了）
-            // 重置游泳时间
-            m_fSwimStartTime = -1.0;
-            m_fSwimDuration = 0.0;
+            result.wetWeightStartTime = currentTime;
+            result.swimStartTimeSec = -1.0;
         }
-        else if (s_pResultWetWeight.wetWeightStartTime > 0.0)
+        else if (result.wetWeightStartTime > 0.0)
         {
             // 检查湿重是否过期（30秒）
-            float wetWeightElapsed = currentTime - s_pResultWetWeight.wetWeightStartTime;
+            float wetWeightElapsed = currentTime - result.wetWeightStartTime;
             if (wetWeightElapsed >= SCR_RSS_Constants.WET_WEIGHT_DURATION)
             {
-                // 湿重过期：清除湿重
-                s_pResultWetWeight.wetWeightStartTime = -1.0;
-                s_pResultWetWeight.currentWetWeight = 0.0;
+                result.wetWeightStartTime = -1.0;
+                result.currentWetWeight = 0.0;
             }
             else
             {
-                // 湿重逐渐减少（线性衰减）
                 float wetWeightRatio = 1.0 - (wetWeightElapsed / SCR_RSS_Constants.WET_WEIGHT_DURATION);
-                s_pResultWetWeight.currentWetWeight = SCR_RSS_Constants.WET_WEIGHT_MAX * wetWeightRatio;
+                result.currentWetWeight = SCR_RSS_Constants.WET_WEIGHT_MAX * wetWeightRatio;
             }
         }
         
-        return s_pResultWetWeight;
+        return result;
     }
     
     // ==================== 总湿重计算 ====================
@@ -143,12 +130,8 @@ class SCR_RSS_SwimmingStateManager
     // @return 总湿重（kg），已应用饱和上限
     static float CalculateTotalWetWeight(float swimmingWetWeight, float rainWeight)
     {
-        // 游泳湿重和降雨湿重共用一个负重池，最大10KG
         float totalWetWeight = swimmingWetWeight + rainWeight;
-        
-        // 应用饱和上限（防止数值爆炸）
         totalWetWeight = Math.Min(totalWetWeight, SCR_RSS_Constants.ENV_MAX_TOTAL_WET_WEIGHT);
-        
         return totalWetWeight;
     }
 }

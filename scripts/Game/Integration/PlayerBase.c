@@ -68,6 +68,7 @@ modded class SCR_CharacterControllerComponent
     
     protected bool m_bWasSwimming = false;
     protected float m_fWetWeightStartTime = -1.0;
+    protected float m_fSwimStartTimeSec = -1.0;
     protected float m_fCurrentWetWeight = 0.0;
     protected bool m_bSwimmingVelocityDebugPrinted = false;
 
@@ -97,6 +98,7 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected float m_fLastRssEngineBaseForLimit = 0.0;
     protected float m_fAppliedSpeedLimitMs = -1.0;
+    protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
     
@@ -117,14 +119,14 @@ modded class SCR_CharacterControllerComponent
         SCR_RSS_NetworkSyncManager.ApplyAnaerobicReplication(m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
         if (m_pStaminaState)
         {
-            m_pStaminaState.SetAnaerobic(m_fReplAnaerobicPool);
+            m_pStaminaState.SetWPrimePool01(m_fReplAnaerobicPool);
             m_pStaminaState.SetAerobic(GetRssAerobicPercent());
         }
     }
 
     //! 析构函数：在实体删除时同步调用，标记组件已删除，防止 CallLater/ActionListener
     //! 等异步回调在已释放的内存上执行读写操作（Access Violation）。
-    //! 参考 SCR_StaminaOverride.c 中 StopStaminaMonitor() 的 Callqueue.Remove() 模式。
+    //! CallLater 清理：EnforceScript Remove 无带参重载，依赖 m_bIsDeleted 停循环（见 RSS_RemoveScheduledCallbacks）。
     void ~SCR_CharacterControllerComponent()
     {
         m_bIsDeleted = true;
@@ -153,22 +155,17 @@ modded class SCR_CharacterControllerComponent
             return;
         }
 
-        SCR_RSS_StaminaHUDComponent.Destroy();
+        IEntity ownerForHud = GetOwner();
+        if (ownerForHud && ownerForHud == SCR_PlayerController.GetLocalControlledEntity())
+            SCR_RSS_StaminaHUDComponent.Destroy();
+
+        IEntity ownerForSpeed = GetOwner();
+        if (ownerForSpeed)
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
 
         m_bRssStaminaLoopActive = false;
 
-        if (GetGame() && GetGame().GetCallqueue())
-        {
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.Tick);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedStart);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedEnsureClient);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedEnsureAiServer);
-            GetGame().GetCallqueue().Remove(RSS_WaitForGameModeConfig);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.CollectSpeedSampleBridge);
-            GetGame().GetCallqueue().Remove(CollectSpeedSample);
-            GetGame().GetCallqueue().Remove(InitStaminaHUD);
-            GetGame().GetCallqueue().Remove(RSS_MudSlip_FinishRagdoll);
-        }
+        RSS_RemoveScheduledCallbacks();
 
         if (GetGame())
         {
@@ -433,7 +430,7 @@ modded class SCR_CharacterControllerComponent
         m_fCurrentSecondSpeed = speedHorizontal;
         m_bHasPreviousSpeed = true;
         
-        if (IsRssDebugEnabled())
+        if (IsRssDebugEnabled() && GetGame() && GetGame().GetCallqueue())
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.CollectSpeedSampleBridge, SPEED_SAMPLE_INTERVAL_MS, false, this);
     }
 
@@ -474,11 +471,15 @@ modded class SCR_CharacterControllerComponent
         Ragdoll();
         RefreshRagdoll(SCR_RSS_Constants.ENV_MUD_SLIP_RAGDOLL_WARMUP_SEC);
         if (GetGame() && GetGame().GetCallqueue())
-            GetGame().GetCallqueue().CallLater(RSS_MudSlip_FinishRagdoll, SCR_RSS_Constants.ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS, false);
+            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.MudSlipFinishRagdollBridge, SCR_RSS_Constants.ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS, false, this);
     }
 
-    protected void RSS_MudSlip_FinishRagdoll()
+    void RSS_MudSlip_FinishRagdoll()
     {
+        if (m_bIsDeleted)
+            return;
+        if (!GetOwner())
+            return;
         RefreshRagdoll(0.0);
     }
 
@@ -571,7 +572,8 @@ modded class SCR_CharacterControllerComponent
                     Print("[RSS] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
             
-            GetGame().GetCallqueue().CallLater(InitStaminaHUD, 1000, false);
+            if (GetGame() && GetGame().GetCallqueue())
+                GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.InitStaminaHudBridge, 1000, false, this);
         }
         else
         {
@@ -662,6 +664,13 @@ modded class SCR_CharacterControllerComponent
         return false;
     }
 
+    //! 停止本实体 RSS CallLater 循环（仅标志位；EnforceScript Remove 不支持带参，全局 Remove 会误伤其他实体）
+    void RSS_RemoveScheduledCallbacks()
+    {
+        // m_bIsDeleted / m_bRssStaminaLoopActive 已在调用方置位；
+        // pending 桥接回调入口 guard 后 return 且不再 CallLater。
+    }
+
     //! 实体即将被删除时调用：清理所有引用、停止 CallLater 循环、注销静态注册表
     void RSS_NotifyEntityDeleting()
     {
@@ -669,19 +678,12 @@ modded class SCR_CharacterControllerComponent
             return;
         m_bIsDeleted = true;
         m_bRssStaminaLoopActive = false;
-        
-        if (GetGame() && GetGame().GetCallqueue())
-        {
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.Tick);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedStart);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedEnsureClient);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.DelayedEnsureAiServer);
-            GetGame().GetCallqueue().Remove(RSS_WaitForGameModeConfig);
-            GetGame().GetCallqueue().Remove(SCR_PlayerBaseLoop.CollectSpeedSampleBridge);
-            GetGame().GetCallqueue().Remove(CollectSpeedSample);
-            GetGame().GetCallqueue().Remove(InitStaminaHUD);
-            GetGame().GetCallqueue().Remove(RSS_MudSlip_FinishRagdoll);
-        }
+
+        IEntity ownerForSpeed = GetOwner();
+        if (ownerForSpeed)
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+
+        RSS_RemoveScheduledCallbacks();
 
         if (m_pUISignalBridge)
             m_pUISignalBridge.Cleanup();
@@ -841,18 +843,22 @@ modded class SCR_CharacterControllerComponent
         if (m_pNetworkSyncManager)
             m_pNetworkSyncManager.Initialize();
         
-        GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedStart, 500, false, this);
-        if (!Replication.IsServer())
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureClient, 2000, false, this);
-        if (Replication.IsServer() && !IsPlayerControlled())
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
+        if (GetGame() && GetGame().GetCallqueue())
+        {
+            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedStart, 500, false, this);
+            if (!Replication.IsServer())
+                GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureClient, 2000, false, this);
+            if (Replication.IsServer() && !IsPlayerControlled())
+                GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
+        }
         
         if (!Replication.IsServer())
         {
             m_bRssWaitingGameModeConfig = true;
             if (GetGame() && GetGame().GetWorld())
                 m_fRssConfigWaitStartTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, false);
+            if (GetGame() && GetGame().GetCallqueue())
+                GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.WaitForGameModeConfigBridge, 1000, false, this);
         }
     }
 
@@ -872,8 +878,6 @@ modded class SCR_CharacterControllerComponent
         if (SCR_RSS_ConfigManager.IsServerConfigApplied())
         {
             m_bRssWaitingGameModeConfig = false;
-            if (GetGame().GetCallqueue())
-                GetGame().GetCallqueue().Remove(RSS_WaitForGameModeConfig);
             return;
         }
 
@@ -887,12 +891,18 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
-        if (m_bRssWaitingGameModeConfig)
-            GetGame().GetCallqueue().CallLater(RSS_WaitForGameModeConfig, 1000, false);
+        if (m_bRssWaitingGameModeConfig && GetGame() && GetGame().GetCallqueue())
+            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.WaitForGameModeConfigBridge, 1000, false, this);
     }
 
 
     float GetRssAnaerobicPercent()
+    {
+        return GetRssWPrimePool01();
+    }
+
+    //! W′ 池归一化储量（0–1）；权威读数来自 AnaerobicBurst
+    float GetRssWPrimePool01()
     {
         if (m_pAnaerobicBurst)
             return m_pAnaerobicBurst.GetPool();
@@ -943,14 +953,14 @@ modded class SCR_CharacterControllerComponent
         }
 
         bool isSprintActive = IsSprinting() || (GetCurrentMovementPhase() == 3);
-        float anaDrain = SCR_RSS_ConfigBridge.GetAnaerobicDrainPerSec();
+        float anaDrain = SCR_RSS_ConfigBridge.GetWPrimeDrainPerSec();
         float powerW = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
         if (isSprintActive)
             powerW = powerW + anaDrain * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
         m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, intervalSec);
         if (m_pStaminaState)
         {
-            m_pStaminaState.SetAnaerobic(m_pAnaerobicBurst.GetPool());
+            m_pStaminaState.SetWPrimePool01(m_pAnaerobicBurst.GetPool());
             m_pStaminaState.SetAerobic(GetRssAerobicPercent());
         }
         SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
@@ -960,6 +970,12 @@ modded class SCR_CharacterControllerComponent
     }
 
     SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
+    {
+        return RSS_GetWPrimeBurst();
+    }
+
+    //! W′ 爆发控制器；与 RSS_GetAnaerobicBurst 同义
+    SCR_RSS_AnaerobicBurst RSS_GetWPrimeBurst()
     {
         return m_pAnaerobicBurst;
     }
@@ -981,7 +997,7 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pAnaerobicBurst)
         {
-            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
+            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
                 return false;
         }
 
@@ -1295,7 +1311,7 @@ modded class SCR_CharacterControllerComponent
 
         bool shouldIgnore = false;
         float clampedStamina = SCR_PlayerBaseRpcHandler.ProcessClientReport_ValidateStamina(
-            staminaPercent, weight, currentTime, clientTimestamp,
+            staminaPercent, weight, currentTime, clientTimestamp, isCriticalData,
             m_pNetworkSyncManager, IsRssDebugEnabled(), shouldIgnore);
         if (shouldIgnore)
             return;
@@ -1303,7 +1319,7 @@ modded class SCR_CharacterControllerComponent
         float serverWeight = SCR_PlayerBaseNetworkHelper.GetServerWeight(GetOwner(), m_pEncumbranceCache);
         float encPenalty = SCR_PlayerBaseNetworkHelper.CalculateEncumbrancePenaltyFallback(serverWeight);
         if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
-            encPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+            encPenalty = m_pEncumbranceCache.GetSpeedPenaltyFraction();
 
         IEntity ownerEnt = GetOwner();
         bool shouldSuppressSlopeServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt));

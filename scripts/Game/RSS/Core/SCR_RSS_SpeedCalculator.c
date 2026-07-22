@@ -11,8 +11,6 @@ class GradeCalculationResult
 
 class SCR_RSS_SpeedCalculator
 {
-    protected static ref GradeCalculationResult s_pResultGrade;
-
     // ==================== 公共方法 ====================
     
     //! 引擎 phase=Idle 但仍有水平惯性速度时，沿用上一非 Idle 相位（限速/代谢/调试）
@@ -50,6 +48,38 @@ class SCR_RSS_SpeedCalculator
         return "Unknown";
     }
 
+    //! 战术冲刺爆发期 + 缓冲区：前段爆发减负，后段线性过渡到平稳负重惩罚
+    static float ApplyTacticalSprintBurstEncumbranceRelief(
+        float encumbrancePenalty,
+        bool isSprinting,
+        int currentMovementPhase,
+        float currentWorldTime,
+        float sprintStartTime)
+    {
+        if (!(isSprinting || currentMovementPhase == 3))
+            return encumbrancePenalty;
+        if (currentWorldTime < 0.0 || sprintStartTime < 0.0)
+            return encumbrancePenalty;
+
+        float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
+        float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
+        float elapsed = currentWorldTime - sprintStartTime;
+        if (burstDuration > 0.0 && elapsed <= burstDuration)
+        {
+            float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
+            return encumbrancePenalty * burstFactor;
+        }
+        if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
+        {
+            float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
+            float t = (elapsed - burstDuration) / bufferDuration;
+            t = Math.Clamp(t, 0.0, 1.0);
+            float blendFactor = burstFactor + (1.0 - burstFactor) * t;
+            return encumbrancePenalty * blendFactor;
+        }
+        return encumbrancePenalty;
+    }
+
     //! 状态/HUD：引擎 Idle + 惯性时标注为「Run惯性」等
     static string FormatMovementTypeForDisplay(
         bool isSprinting,
@@ -76,9 +106,9 @@ class SCR_RSS_SpeedCalculator
     {
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
 
-        float walkMs = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs();
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
-        float sprintMs = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs();
+        float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
         float encMult = 1.0 - encumbranceSpeedPenalty;
         if (encMult < 0.5)
             encMult = 0.5;
@@ -133,11 +163,11 @@ class SCR_RSS_SpeedCalculator
         if (encMult < 0.5)
             encMult = 0.5;
 
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() * encMult;
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult;
         if (!cpModel)
-            return SCR_RSS_ConfigBridge.GetV5SprintSpeedMs() * encMult;
+            return SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult;
 
-        float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         if (cpModel.GetPool01() <= threshold)
             return runMs;
 
@@ -159,24 +189,27 @@ class SCR_RSS_SpeedCalculator
         return SCR_RSS_MetabolismMath.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
     }
 
-    //! v5 行军档绝对速度（m/s），与 DrainCalculator 理论上限一致
-    static float GetV5AbsoluteSpeedMs(
+    //! 行军档绝对速度（m/s），与 DrainCalculator 理论上限一致
+    static float GetMarchAbsoluteSpeedMs(
         int currentMovementPhase,
         bool isSprinting,
         float scaledRunSpeed,
         float encumbrancePenalty,
         float anaerobicPercent = 1.0)
     {
-        float staminaScale = scaledRunSpeed / SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+        float runRefMult = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        if (runRefMult < 0.01)
+            runRefMult = 0.01;
+        float staminaScale = scaledRunSpeed / runRefMult;
         staminaScale = Math.Clamp(staminaScale, 0.15, 1.0);
 
         float encMult = 1.0 - encumbrancePenalty;
         if (encMult < 0.5)
             encMult = 0.5;
 
-        float walkMs = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs() * encMult * staminaScale;
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() * encMult * staminaScale;
-        float sprintMs = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs() * encMult * staminaScale;
+        float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * encMult * staminaScale;
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult * staminaScale;
+        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult * staminaScale;
 
         if (anaerobicPercent < 1.0)
         {
@@ -185,13 +218,25 @@ class SCR_RSS_SpeedCalculator
         }
 
         if (isSprinting || currentMovementPhase == 3)
-            return Math.Clamp(sprintMs, walkMs, SCR_RSS_ConfigBridge.GetV5SprintSpeedMs());
+            return Math.Clamp(sprintMs, walkMs, SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs());
         if (currentMovementPhase == 2)
-            return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetV5RunSpeedMs());
+            return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetMarchRunSpeedMs());
         if (currentMovementPhase == 1)
-            return Math.Clamp(walkMs, 0.5, SCR_RSS_ConfigBridge.GetV5WalkSpeedMs());
+            return Math.Clamp(walkMs, 0.5, SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs());
 
         return walkMs;
+    }
+
+    //! @deprecated 兼容别名，请用 GetMarchAbsoluteSpeedMs
+    static float GetV5AbsoluteSpeedMs(
+        int currentMovementPhase,
+        bool isSprinting,
+        float scaledRunSpeed,
+        float encumbrancePenalty,
+        float anaerobicPercent = 1.0)
+    {
+        return GetMarchAbsoluteSpeedMs(
+            currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, anaerobicPercent);
     }
     
     // 计算最终绝对速度（米/秒）- 仅在Run和Sprint模式下
@@ -247,11 +292,11 @@ class SCR_RSS_SpeedCalculator
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
-        finalAbsoluteSpeed = GetV5AbsoluteSpeedMs(
+        finalAbsoluteSpeed = GetMarchAbsoluteSpeedMs(
             currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, 1.0);
         if (currentSpeed < 0.5)
         {
-            float startMin = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs() * (1.0 - encumbrancePenalty);
+            float startMin = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * (1.0 - encumbrancePenalty);
             if (startMin < 0.8)
                 startMin = 0.8;
             if (finalAbsoluteSpeed < startMin)
@@ -308,26 +353,12 @@ class SCR_RSS_SpeedCalculator
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
-        // 战术冲刺爆发期 + 缓冲区：前 8s 爆发，8s 后 5s 内线性过渡到平稳期
-        if ((isSprinting || currentMovementPhase == 3) && currentWorldTime >= 0.0 && sprintStartTime >= 0.0)
-        {
-            float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
-            float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
-            float elapsed = currentWorldTime - sprintStartTime;
-            if (burstDuration > 0.0 && elapsed <= burstDuration)
-            {
-                float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
-                encumbrancePenalty = encumbrancePenalty * burstFactor;
-            }
-            else if (bufferDuration > 0.0 && elapsed > burstDuration && elapsed <= burstDuration + bufferDuration)
-            {
-                float burstFactor = SCR_RSS_Constants.GetTacticalSprintBurstEncumbranceFactor();
-                float t = (elapsed - burstDuration) / bufferDuration;
-                t = Math.Clamp(t, 0.0, 1.0);
-                float blendFactor = burstFactor + (1.0 - burstFactor) * t;
-                encumbrancePenalty = encumbrancePenalty * blendFactor;
-            }
-        }
+        encumbrancePenalty = ApplyTacticalSprintBurstEncumbranceRelief(
+            encumbrancePenalty,
+            isSprinting,
+            currentMovementPhase,
+            currentWorldTime,
+            sprintStartTime);
         
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
@@ -489,10 +520,9 @@ class SCR_RSS_SpeedCalculator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         vector velocity = vector.Zero)
     {
-        if (!s_pResultGrade)
-            s_pResultGrade = new GradeCalculationResult();
-        s_pResultGrade.gradePercent = 0.0;
-        s_pResultGrade.slopeAngleDegrees = slopeAngleDegrees;
+        GradeCalculationResult result = new GradeCalculationResult();
+        result.gradePercent = 0.0;
+        result.slopeAngleDegrees = slopeAngleDegrees;
         
         // 完整室内或建筑物内有顶体积：返回零坡度（与 GetSlopeAngle 一致）
         if (environmentFactor && controller)
@@ -500,8 +530,8 @@ class SCR_RSS_SpeedCalculator
             IEntity ownerForCheck = controller.GetOwner();
             if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
             {
-                s_pResultGrade.slopeAngleDegrees = 0.0;
-                return s_pResultGrade;
+                result.slopeAngleDegrees = 0.0;
+                return result;
             }
         }
         
@@ -516,7 +546,7 @@ class SCR_RSS_SpeedCalculator
         {
             // 获取坡度角度并转换为坡度百分比（传入 velocity 用于判断上下坡）
             float rawAngleDeg = GetSlopeAngle(controller, environmentFactor, velocity);
-            s_pResultGrade.slopeAngleDegrees = rawAngleDeg;
+            result.slopeAngleDegrees = rawAngleDeg;
             // 将角度转换为斜率比：tan(angle_rad)
             float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
             // Clamp ratio to reasonable range (-100%..100%) to avoid terrain/measurement glitches
@@ -526,12 +556,12 @@ class SCR_RSS_SpeedCalculator
                 if (SCR_RSS_ConfigBridge.IsDebugEnabled())
                 slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             }
-            s_pResultGrade.gradePercent = slopeRatio * 100.0;
+            result.gradePercent = slopeRatio * 100.0;
             if (SCR_RSS_ConfigBridge.IsDebugEnabled())
             {
             }
         }
         
-        return s_pResultGrade;
+        return result;
     }
 }

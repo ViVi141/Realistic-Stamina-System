@@ -121,7 +121,13 @@ class SCR_RSS_StaminaHUDComponent
     //! v5 无氧池 / 冲刺 CD（单独调用）
     static void UpdateV5AnaerobicHud(float anaerobicPercent, float sprintCooldownSec, float burstCooldownFullSec)
     {
-        s_fCachedAnaerobicPercent = anaerobicPercent;
+        UpdateWPrimeHud(anaerobicPercent, sprintCooldownSec, burstCooldownFullSec);
+    }
+
+    //! W′ 池 / 冲刺 CD HUD 更新（canonical）
+    static void UpdateWPrimeHud(float wPrimePool01, float sprintCooldownSec, float burstCooldownFullSec)
+    {
+        s_fCachedAnaerobicPercent = wPrimePool01;
         s_fCachedSprintCooldownSec = sprintCooldownSec;
         if (burstCooldownFullSec > 1.0)
             s_fCachedBurstCooldownFullSec = burstCooldownFullSec;

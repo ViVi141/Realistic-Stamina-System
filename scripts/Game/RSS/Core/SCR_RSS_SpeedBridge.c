@@ -19,7 +19,7 @@ class SCR_RSS_SpeedBridge
     }
 
     //! 将 RSS 体力速度倍率写入角色限速图（与灌木/铁丝网等取全局最小值）。
-    //! limit=1.0 时移除 RSS 来源（不再由 RSS 限速）。
+    //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source（见 docs/灌木丛移动减速机制.md）。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)
     {
         if (!owner)
@@ -45,5 +45,19 @@ class SCR_RSS_SpeedBridge
         if (!ctrl)
             return;
         ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit);
+    }
+
+    //! W′ 耗尽等硬 metabolic 钳制：SetSpeedLimit + OverrideMaxSpeed（仅强钳制路径，避免覆盖灌木减速）
+    static void ApplyHardStaminaSpeedClamp(IEntity owner, float limit)
+    {
+        ApplyStaminaSpeedLimit(owner, limit);
+
+        if (!owner)
+            return;
+
+        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
+            owner.FindComponent(SCR_CharacterControllerComponent));
+        if (ctrl)
+            ctrl.OverrideMaxSpeed(Math.Clamp(limit, 0.01, 1.0));
     }
 }

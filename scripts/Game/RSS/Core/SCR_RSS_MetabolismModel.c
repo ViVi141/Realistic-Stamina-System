@@ -83,8 +83,22 @@ class SCR_RSS_MetabolismModel
         return (velocityMs - startMs) / (endMs - startMs);
     }
 
-    //! 综合代谢功率（W）
+    //! 综合代谢功率（W），含负重代谢阻尼（与 Rust twin 对齐）
     static float MetabolismPowerWatts(
+        float velocityMs,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        bool useSanteeCorrection,
+        int movementPhase)
+    {
+        float blended = MetabolismPowerWattsBlended(
+            velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection, movementPhase);
+        return ApplyLoadMetabolicDampeningToPower(
+            blended, velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection, movementPhase);
+    }
+
+    static float MetabolismPowerWattsBlended(
         float velocityMs,
         float totalWeightKg,
         float gradePercent,
@@ -110,6 +124,31 @@ class SCR_RSS_MetabolismModel
             blend = Math.Max(blend, 0.85);
 
         return pandolfW * (1.0 - blend) + acsmW * blend;
+    }
+
+    static float ApplyLoadMetabolicDampeningToPower(
+        float loadedPowerW,
+        float velocityMs,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        bool useSanteeCorrection,
+        int movementPhase)
+    {
+        float bodyWeight = SCR_RSS_Constants.CHARACTER_WEIGHT;
+        if (totalWeightKg <= bodyWeight + 0.5)
+            return loadedPowerW;
+
+        float dampening = SCR_RSS_ConfigBridge.GetLoadMetabolicDampening();
+        if (dampening >= 1.0)
+            return loadedPowerW;
+
+        float unloadedPowerW = MetabolismPowerWattsBlended(
+            velocityMs, bodyWeight, gradePercent, terrainFactor, useSanteeCorrection, movementPhase);
+        float loadExtra = loadedPowerW - unloadedPowerW;
+        if (loadExtra < 0.0)
+            loadExtra = 0.0;
+        return unloadedPowerW + loadExtra * dampening;
     }
 
     //! 反解：给定目标功率，求最大可持续速度（m/s）

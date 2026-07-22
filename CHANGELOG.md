@@ -1,5 +1,15 @@
 # 更新日志
 
+## [Unreleased]
+
+### 命名语义与接线（PR #5 / #6）
+
+- **环境因子** — Custom 开关守卫雨/风/泥/热/疲劳；接入 `coldStaticPenalty` / `rainBreathing` / `mudSprintPenalty`；跛行阈值统一为 5%
+- **配置接线** — preset/custom 字段（`load_metabolic_dampening`、`anaerobic_*`、`sprint_stamina_drain_multiplier` 等）接入实际消耗/恢复/Sprint 路径
+- **行军档 API** — canonical `GetMarch*SpeedMs`；`GetV5*` 保留兼容别名
+- **W′ 语义** — `GetWPrimePool01` / `GetRssWPrimePool01` / `RSS_GetWPrimeBurst` / `UpdateWPrimeHud`；外部 API 新增 `wPrimePool01` 字段
+- **常量** — `*_PER_TICK` 后缀；删除死代码 `CalculateBaseDrainRateByVelocity`
+
 ## [6.0.0] - 2026-06-04
 
 ### v6 CP–W′ 学术拟真重构

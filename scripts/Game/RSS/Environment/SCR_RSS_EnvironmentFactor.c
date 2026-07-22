@@ -750,12 +750,15 @@ class SCR_RSS_EnvironmentFactor
     // 快路径系数与 ENV_MUD_PENALTY_MAX / ENV_WIND_RESISTANCE_COEFF 对齐
     float GetQuickEnvironmentMultiplier()
     {
-        float mult = 1.0 + m_fCachedMudFactor * SCR_RSS_Constants.ENV_MUD_PENALTY_MAX;
+        float mult = 1.0;
 
-        if (m_fCachedWindDrag > 0.0)
+        if (SCR_RSS_ConfigBridge.IsMudPenaltyEnabled())
+            mult = 1.0 + m_fCachedMudFactor * SCR_RSS_Constants.ENV_MUD_PENALTY_MAX;
+
+        if (SCR_RSS_ConfigBridge.IsWindResistanceEnabled() && m_fCachedWindDrag > 0.0)
             mult = mult * (1.0 + m_fCachedWindDrag);
 
-        if (m_fHeatStressPenalty > 0.05)
+        if (SCR_RSS_ConfigBridge.IsHeatStressEnabled() && m_fHeatStressPenalty > 0.05)
             mult = mult * (1.0 + m_fHeatStressPenalty * 0.5);
 
         return mult;
@@ -1098,9 +1101,13 @@ class SCR_RSS_EnvironmentFactor
         
         // 3. 计算风阻系数（基于玩家移动方向）
         m_fCachedWindDrag = CalculateWindDrag(playerVelocity);
+        if (!SCR_RSS_ConfigBridge.IsWindResistanceEnabled())
+            m_fCachedWindDrag = 0.0;
         
         // 4. 获取泥泞度系数
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
+        if (!SCR_RSS_ConfigBridge.IsMudPenaltyEnabled())
+            m_fCachedMudFactor = 0.0;
         
         // 5. 获取当前气温：通用经验模型（纬度+季节+海拔+昼夜+天气），不依赖物理求解，兼容各模组地图
         // perf: 仅首帧无条件初始化，之后严格按时间/位置触发，避免每5s双重计算
@@ -1263,6 +1270,14 @@ class SCR_RSS_EnvironmentFactor
     // @param currentTime 当前世界时间（秒，绝对值）
     protected void CalculateRainWetWeight(float currentTime)
     {
+        if (!SCR_RSS_ConfigBridge.IsRainWeightEnabled())
+        {
+            m_fCachedRainWeight = 0.0;
+            m_fRainStopTime = -1.0;
+            m_fRainPeakWeight = 0.0;
+            return;
+        }
+
         float deltaTime = currentTime - m_fLastUpdateTime;
         if (deltaTime <= 0)
             return;
@@ -1324,6 +1339,11 @@ class SCR_RSS_EnvironmentFactor
     // 计算暴雨呼吸阻力
     protected void CalculateRainBreathingPenalty()
     {
+        if (!SCR_RSS_ConfigBridge.IsRainWeightEnabled())
+        {
+            m_fRainBreathingPenalty = 0.0;
+            return;
+        }
         m_fRainBreathingPenalty = SCR_RSS_PenaltyMath.CalculateRainBreathingPenalty(m_fCachedRainIntensity);
     }
     
@@ -1348,6 +1368,11 @@ class SCR_RSS_EnvironmentFactor
     // 计算热应激惩罚
     protected void CalculateHeatStressPenalty()
     {
+        if (!SCR_RSS_ConfigBridge.IsHeatStressEnabled())
+        {
+            m_fHeatStressPenalty = 0.0;
+            return;
+        }
         m_fHeatStressPenalty = SCR_RSS_PenaltyMath.CalculateHeatStressPenalty(m_fCachedTemperature);
     }
 

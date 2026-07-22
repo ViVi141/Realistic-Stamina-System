@@ -137,4 +137,56 @@ class SCR_RSS_FatigueSystem
     {
         return MAX_FATIGUE_PENALTY;
     }
+
+    //! 估算疲劳上限收缩速率（/秒，正值表示 cap 下降），与 ProcessFatigueIntegral 同形、只读。
+    float EstimateCapShrinkPerSecond(
+        float powerWatts,
+        float loadKg,
+        float gradePercent,
+        float terrainFactor,
+        float currentSpeedMs)
+    {
+        if (m_fFatigueAccumulation >= MAX_FATIGUE_PENALTY - 0.000001)
+            return 0.0;
+
+        if (SCR_RSS_Constants.V6_FATIGUE_I_MAX <= 0.0)
+            return 0.0;
+        if (m_fFatigueIntegral >= SCR_RSS_Constants.V6_FATIGUE_I_MAX - 0.000001)
+            return 0.0;
+
+        float bodyW = SCR_RSS_Constants.CHARACTER_WEIGHT;
+        float loadRatio = 0.0;
+        if (bodyW > 0.0)
+            loadRatio = loadKg / bodyW;
+
+        float g = gradePercent * 0.01;
+        float w = 1.0
+            + SCR_RSS_Constants.V6_FATIGUE_K_LOAD * loadRatio
+            + SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g
+            + SCR_RSS_Constants.V6_FATIGUE_K_TERRAIN * (terrainFactor - 1.0);
+        if (w < 0.5)
+            w = 0.5;
+
+        float iNorm = GetFatigueIntegralNorm();
+        float r = 0.0;
+        if (currentSpeedMs < 0.05 || powerWatts < SCR_RSS_ConfigBridge.GetCriticalPowerWatts() * 0.5)
+        {
+            float oneMinus = 1.0 - iNorm;
+            r = SCR_RSS_Constants.V6_FATIGUE_K_RECOVERY * oneMinus * oneMinus * powerWatts;
+        }
+
+        float dIPerSec = (w * powerWatts - r) * 0.0001;
+        if (dIPerSec <= 0.0)
+            return 0.0;
+
+        float legacyFromI = m_fFatigueIntegral * MAX_FATIGUE_PENALTY;
+        float legacyRate = dIPerSec * MAX_FATIGUE_PENALTY;
+        if (legacyFromI + legacyRate <= m_fFatigueAccumulation + 0.000001)
+            return 0.0;
+
+        float headroom = MAX_FATIGUE_PENALTY - m_fFatigueAccumulation;
+        if (legacyRate > headroom)
+            return headroom;
+        return legacyRate;
+    }
 }

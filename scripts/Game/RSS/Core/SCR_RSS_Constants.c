@@ -42,9 +42,11 @@ class SCR_RSS_Constants
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // @fallback m/s（跛行速度）
     static const float SPRINT_ENABLE_THRESHOLD = 0.25; // @fallback 体力≥25%时才能Sprint；疲劳时肌肉无法爆发冲刺（原0.18）
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
-    static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
+    static const float WALK_RECOVERY_ZONE_PER_TICK = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
+    static const float WALK_RECOVERY_ZONE_RATE = WALK_RECOVERY_ZONE_PER_TICK; // @deprecated 请用 WALK_RECOVERY_ZONE_PER_TICK
     
     // 坡度修正系数
+    // @deprecated v4 Pandolf 坡度系数；v6 坡度由 MetabolismModel/Tobler 处理，零引用保留兼容
     static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
     static const float GRADE_DOWNHILL_COEFF = 0.05; // 每1%下坡减少5%消耗（假设）
     static const float HIGH_GRADE_THRESHOLD = 15.0; // 15%（高坡度阈值）
@@ -228,8 +230,8 @@ class SCR_RSS_Constants
     // 最大负重（kg）- 角色可以携带的最大重量（包含基准负重）
     static const float MAX_ENCUMBRANCE_WEIGHT = 40.5; // kg
     
-    // 战斗负重（kg）- 战斗状态下的推荐负重阈值（包含基准负重）
-    static const float COMBAT_ENCUMBRANCE_WEIGHT = 30.0; // kg
+    // 战斗负重（kg）— 与 COMBAT_LOAD_WEIGHT 同义，保留别名供 HUD/百分比计算
+    static const float COMBAT_ENCUMBRANCE_WEIGHT = COMBAT_LOAD_WEIGHT;
     
     // 基于医学研究：跳跃和翻越动作的能量消耗远高于普通移动
     //
@@ -392,7 +394,8 @@ class SCR_RSS_Constants
     // 参考：Brooks et al., 2000; LaForgia et al., 2006
     // 拟真向延长至 2 秒；若影响手感可再降低（现实为分钟级）
     static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
-    static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
+    static const float EPOC_DRAIN_PER_TICK = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
+    static const float EPOC_DRAIN_RATE = EPOC_DRAIN_PER_TICK; // @deprecated 请用 EPOC_DRAIN_PER_TICK
 
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
@@ -667,7 +670,7 @@ class SCR_RSS_Constants
     // 获取低体力步行恢复速率（每 0.2s tick，默认 0.002 = 1%/s）
     static float GetWalkRecoveryZoneRate()
     {
-        return WALK_RECOVERY_ZONE_RATE;
+        return WALK_RECOVERY_ZONE_PER_TICK;
     }
 
     static float GetCamInertiaStartLagDuration() { return CAM_INERTIA_START_LAG_DURATION; }
@@ -806,6 +809,8 @@ class SCR_RSS_Constants
 
     //! 陆地静止/运动分界（m/s）：ExerciseTracker、ResolveMovementDrain、EPOC 取消、恢复对齐
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
+    //! 超限速代谢记账：v_meas 超出 v_limit 超过此值则 W′ 按实测速度（疲劳仍 v_drain）
+    static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
     //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
     static const float RSS_STAMINA_TICK_SEC = 0.2;
 }

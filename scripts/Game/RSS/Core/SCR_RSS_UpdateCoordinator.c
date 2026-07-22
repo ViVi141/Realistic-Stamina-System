@@ -45,9 +45,9 @@ class StaminaDrainTickParams
 {
     bool useSwimmingModel;
     float currentSpeed;
-    float currentWeight;
+    float gearWeightKg;              // 仅装备（游泳/完整消耗路径）
     float encumbranceSpeedPenalty;
-    float totalWeight;
+    float bodyPlusGearWeightKg;      // 装备 + 身体（Pandolf 主链）
     float totalWeightWithWetAndBody;
     float gradePercent;
     float terrainFactor;
@@ -71,6 +71,7 @@ class StaminaDrainTickParams
     float currentTimeForExerciseMs;
     float appliedSpeedLimitMs;
     float effectiveCriticalPowerWatts;
+    float wPrimePool01;
 }
 
 //! HUD 耗尽/回满 ETA 结果
@@ -107,11 +108,14 @@ class SCR_RSS_UpdateCoordinator
         float coldStaticPenalty,
         int currentMovementPhase = -1,
         float encumbranceSpeedPenalty = 0.0,
-        float effectiveCriticalPowerWatts = -1.0)
+        float effectiveCriticalPowerWatts = -1.0,
+        float wPrimePool01 = 1.0)
     {
         float idleThreshold = SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS;
 
-        if (currentMovementPhase >= 1 && currentSpeed > 0.05)
+        float measuredSpeedMs = currentSpeed;
+        float speedForPowerMs = measuredSpeedMs;
+        if (currentMovementPhase >= 1 && measuredSpeedMs > 0.05)
         {
             float capMs = appliedSpeedLimitMs;
             if (capMs <= 0.05)
@@ -119,23 +123,26 @@ class SCR_RSS_UpdateCoordinator
                 capMs = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
                     currentMovementPhase, encumbranceSpeedPenalty);
             }
-            currentSpeed = SCR_RSS_DrainCalculator.GetDrainVelocityMs(currentSpeed, capMs);
+            speedForPowerMs = SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs(
+                measuredSpeedMs, capMs, wPrimePool01);
         }
 
         int phase = currentMovementPhase;
         if (phase < 0)
             phase = 2;
 
-        if (currentSpeed < idleThreshold)
+        if (measuredSpeedMs < idleThreshold)
         {
             float bodyWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
             float loadWeight = Math.Max(currentWeightWithWet - bodyWeight, 0.0);
             float staticPerS = SCR_RSS_MetabolismModel.CalculateStaticStandingCost(bodyWeight, loadWeight);
+            if (coldStaticPenalty > 0.0)
+                staticPerS = staticPerS * (1.0 + coldStaticPenalty);
             return staticPerS * SCR_RSS_Constants.RSS_STAMINA_TICK_SEC;
         }
 
         float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            currentSpeed,
+            speedForPowerMs,
             currentWeightWithWet,
             gradePercent,
             terrainFactor,
@@ -280,7 +287,7 @@ class SCR_RSS_UpdateCoordinator
         float speedScaleFactor = 1.0;
         if (!shouldSuppressSlope)
         {
-            float slopeRunBaseMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
+            float slopeRunBaseMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
             float slopeRunRefMult = slopeRunBaseMs / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
             if (slopeRunRefMult < 0.01)
                 slopeRunRefMult = 0.01;
@@ -297,9 +304,8 @@ class SCR_RSS_UpdateCoordinator
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
         float sprintStartTime = controller.GetSprintStartTime();
         
-        // 计算最终绝对速度（仅在Run和Sprint模式下）
-        // 注意：这个函数现在返回的是不含负重惩罚的理论速度
-        float finalAbsoluteSpeedNoEncumbrance = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
+        // 计算最终绝对速度（Run/Sprint/Walk）；负重已在 GetMarchAbsoluteSpeedMs 内施加
+        float finalAbsoluteSpeedWithEnc = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
             encumbranceSpeedPenalty,
             isSprinting,
@@ -313,21 +319,27 @@ class SCR_RSS_UpdateCoordinator
         
         float finalSpeedMultiplier;
         
-        if (finalAbsoluteSpeedNoEncumbrance > 0.0)
+        if (finalAbsoluteSpeedWithEnc > 0.0)
         {
-            // 先计算负重惩罚（与原来的逻辑一致）
+            // 负重惩罚（供 Sprint 功率反解与 Run CP 封顶；勿再乘 (1-enc)，GetMarch 已计入）
             float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
                 encumbrancePenalty = encumbrancePenalty * 1.5;
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
+            encumbrancePenalty = SCR_RSS_SpeedCalculator.ApplyTacticalSprintBurstEncumbranceRelief(
+                encumbrancePenalty,
+                isSprinting,
+                currentMovementPhase,
+                currentWorldTime,
+                sprintStartTime);
 
-            float theoreticalTargetSpeed = finalAbsoluteSpeedNoEncumbrance * (1.0 - encumbrancePenalty);
+            float theoreticalTargetSpeed = finalAbsoluteSpeedWithEnc;
 
             if (isSprinting || currentMovementPhase == 3)
             {
-                SCR_RSS_AnaerobicBurst anaBurst = controller.RSS_GetAnaerobicBurst();
+                SCR_RSS_AnaerobicBurst anaBurst = controller.RSS_GetWPrimeBurst();
                 if (anaBurst && anaBurst.GetCpModel())
                 {
                     float totalWeightKg = controller.GetRssCurrentWeight()
@@ -353,6 +365,50 @@ class SCR_RSS_UpdateCoordinator
                         currentWorldTime,
                         0.017);
                 }
+            }
+
+            if (!(isSprinting || currentMovementPhase == 3))
+            {
+                SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
+                if (anaRun && anaRun.GetCpModel())
+                {
+                    SCR_RSS_CriticalPowerModel cpRun = anaRun.GetCpModel();
+                    if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpRun.GetPool01()))
+                    {
+                        float totalWeightKg = controller.GetRssCurrentWeight()
+                            + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+                        float gradePct = 0.0;
+                        if (!shouldSuppressSlope)
+                        {
+                            GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                                controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
+                            gradePct = gradeRes.gradePercent;
+                        }
+                        float runTerrain = terrainFactor;
+                        if (runTerrain < 0.5)
+                            runTerrain = 0.5;
+                        if (runTerrain > 3.0)
+                            runTerrain = 3.0;
+                        int runPhase = currentMovementPhase;
+                        if (runPhase < 1)
+                            runPhase = 2;
+                        float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                            cpRun.GetEffectiveCriticalPowerWatts(),
+                            totalWeightKg,
+                            gradePct,
+                            runTerrain,
+                            runPhase);
+                        if (cpCapMs > 0.05 && theoreticalTargetSpeed > cpCapMs)
+                            theoreticalTargetSpeed = cpCapMs;
+                    }
+                }
+            }
+
+            if ((isSprinting || currentMovementPhase == 3) && environmentFactor)
+            {
+                float mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
+                if (mudSprintPenalty > 0.0)
+                    theoreticalTargetSpeed = theoreticalTargetSpeed * (1.0 - mudSprintPenalty);
             }
             
             // 动态获取引擎当前的原始速度（已被负重降低后的速度）
@@ -504,7 +560,8 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         int currentMovementPhase = -1,
         float appliedSpeedLimitMs = -1.0,
-        float effectiveCriticalPowerWatts = -1.0)
+        float effectiveCriticalPowerWatts = -1.0,
+        float wPrimePool01 = 1.0)
     {
         float baseDrainRate = 0.0;
         
@@ -570,7 +627,8 @@ class SCR_RSS_UpdateCoordinator
                 coldStaticPenalty,
                 currentMovementPhase,
                 encumbranceSpeedPenalty,
-                effectiveCriticalPowerWatts);
+                effectiveCriticalPowerWatts,
+                wPrimePool01);
 
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
             // 因此不再需要对固定 Sprint 基线做特殊处理。
@@ -659,7 +717,7 @@ class SCR_RSS_UpdateCoordinator
 
         result.swimmingVelocityDebugPrinted = tick.swimmingVelocityDebugPrinted;
 
-        if (tick.fatigueSystem)
+        if (tick.fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
             tick.fatigueSystem.ProcessFatigueDecay(tick.currentTimeSec, tick.currentSpeed);
 
         bool isCurrentlyMoving = (tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS);
@@ -684,7 +742,7 @@ class SCR_RSS_UpdateCoordinator
             tick.useSwimmingModel,
             tick.currentSpeed,
             tick.encumbranceSpeedPenalty,
-            tick.totalWeight,
+            tick.bodyPlusGearWeightKg,
             tick.totalWeightWithWetAndBody,
             tick.gradePercent,
             tick.terrainFactor,
@@ -694,7 +752,8 @@ class SCR_RSS_UpdateCoordinator
             tick.environmentFactor,
             tick.currentMovementPhase,
             tick.appliedSpeedLimitMs,
-            tick.effectiveCriticalPowerWatts);
+            tick.effectiveCriticalPowerWatts,
+            tick.wPrimePool01);
         result.baseDrainRateByVelocity = drainRateResult.baseDrainRate;
         result.swimmingVelocityDebugPrinted = drainRateResult.swimmingVelocityDebugPrinted;
 
@@ -726,7 +785,7 @@ class SCR_RSS_UpdateCoordinator
         {
             result.totalDrainRate = SCR_RSS_StaminaConsumptionCalculator.CalculateStaminaConsumption(
                 tick.currentSpeed,
-                tick.currentWeight,
+                tick.gearWeightKg,
                 gradePercentForConsumption,
                 terrainFactorForConsumption,
                 postureMultiplier,
@@ -744,6 +803,11 @@ class SCR_RSS_UpdateCoordinator
 
         if (tick.combatStimActive)
             result.totalDrainRate = result.totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
+
+        if (tick.isSprintActive)
+            result.totalDrainRate = result.totalDrainRate * SCR_RSS_ConfigBridge.GetSprintStaminaDrainMultiplierEffective();
+
+        result.totalDrainRate = result.totalDrainRate * SCR_RSS_ConfigBridge.GetCustomStaminaDrainMultiplier();
 
         float walkRecoveryThreshold = SCR_RSS_Constants.GetWalkRecoveryZoneThreshold();
         float walkRecoveryRatePerTick = SCR_RSS_Constants.GetWalkRecoveryZoneRate();
@@ -850,7 +914,7 @@ class SCR_RSS_UpdateCoordinator
         
         // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================
         float maxStaminaCap = 1.0;
-        if (fatigueSystem)
+        if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
             maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
         
         // 限制体力值在有效范围内（0.0 - maxStaminaCap）
@@ -1000,7 +1064,7 @@ class SCR_RSS_UpdateCoordinator
             0,
             controller);
 
-        return recoveryRate * ctx.heatPenalty;
+        return recoveryRate * ctx.heatPenalty * SCR_RSS_ConfigBridge.GetCustomStaminaRecoveryMultiplier();
     }
 
     //! 每 0.2s 设计的总消耗率（移动 + EPOC）
@@ -1044,7 +1108,8 @@ class SCR_RSS_UpdateCoordinator
         SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_RSS_ExerciseTracker exerciseTracker,
         SCR_CharacterControllerComponent controller,
-        SCR_RSS_EnvironmentFactor environmentFactor)
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        float capShrinkPerSec)
     {
         StaminaEtaResult result = new StaminaEtaResult();
         result.timeToDepleteSec = -1.0;
@@ -1070,12 +1135,19 @@ class SCR_RSS_UpdateCoordinator
             epocState,
             false) * 5.0;
 
-        // HUD ETA：与 UpdateStaminaValue / GetNetStaminaRatePerSecond 同形（净恢复 - 总消耗）
+        // HUD ETA：有氧净消耗 + 疲劳上限收缩（体力贴近 cap 时）
         if (drainPerSec > recoveryPerSec)
         {
             float netLossPerSec = drainPerSec - recoveryPerSec;
-            if (netLossPerSec > 0.0)
-                result.timeToDepleteSec = Math.Min(staminaPercent / netLossPerSec, 7200.0);
+            float effectiveLossPerSec = netLossPerSec;
+            if (capShrinkPerSec > 0.0)
+            {
+                float capGap = staminaPercent - targetStaminaCap;
+                if (Math.AbsFloat(capGap) < 0.02 || staminaPercent > targetStaminaCap)
+                    effectiveLossPerSec = netLossPerSec + capShrinkPerSec;
+            }
+            if (effectiveLossPerSec > 0.0)
+                result.timeToDepleteSec = Math.Min(staminaPercent / effectiveLossPerSec, 7200.0);
         }
         else if (recoveryPerSec > drainPerSec && staminaPercent < targetStaminaCap - 0.001)
         {
