@@ -314,7 +314,7 @@ class SCR_RSS_UpdateCoordinator
         
         if (finalAbsoluteSpeedWithEnc > 0.0)
         {
-            // 负重惩罚（供 Sprint 功率反解与 Run CP 封顶；勿再乘 (1-enc)，GetV5 已计入）
+            // 负重惩罚（供 Sprint 功率反解与 Run CP 封顶；勿再乘 (1-enc)，GetMarch 已计入）
             float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
@@ -332,7 +332,7 @@ class SCR_RSS_UpdateCoordinator
 
             if (isSprinting || currentMovementPhase == 3)
             {
-                SCR_RSS_AnaerobicBurst anaBurst = controller.RSS_GetAnaerobicBurst();
+                SCR_RSS_AnaerobicBurst anaBurst = controller.RSS_GetWPrimeBurst();
                 if (anaBurst && anaBurst.GetCpModel())
                 {
                     float totalWeightKg = controller.GetRssCurrentWeight()
@@ -362,7 +362,7 @@ class SCR_RSS_UpdateCoordinator
 
             if (!(isSprinting || currentMovementPhase == 3))
             {
-                SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetAnaerobicBurst();
+                SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
                 if (anaRun && anaRun.GetCpModel())
                 {
                     SCR_RSS_CriticalPowerModel cpRun = anaRun.GetCpModel();

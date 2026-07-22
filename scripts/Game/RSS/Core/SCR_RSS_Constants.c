@@ -46,6 +46,7 @@ class SCR_RSS_Constants
     static const float WALK_RECOVERY_ZONE_RATE = WALK_RECOVERY_ZONE_PER_TICK; // @deprecated 请用 WALK_RECOVERY_ZONE_PER_TICK
     
     // 坡度修正系数
+    // @deprecated v4 Pandolf 坡度系数；v6 坡度由 MetabolismModel/Tobler 处理，零引用保留兼容
     static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
     static const float GRADE_DOWNHILL_COEFF = 0.05; // 每1%下坡减少5%消耗（假设）
     static const float HIGH_GRADE_THRESHOLD = 15.0; // 15%（高坡度阈值）

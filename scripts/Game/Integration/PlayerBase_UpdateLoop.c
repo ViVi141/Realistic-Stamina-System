@@ -118,7 +118,7 @@ modded class SCR_CharacterControllerComponent
         if (m_pEncumbranceCache)
         {
             m_pEncumbranceCache.CheckAndUpdate();
-            encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+            encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenaltyFraction();
             encumbranceSpeedPenalty = encumbranceSpeedPenalty * SCR_RSS_ConfigBridge.GetCustomEncumbranceSpeedPenaltyMultiplier();
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbranceSpeedPenalty = Math.Clamp(encumbranceSpeedPenalty, 0.0, maxPenalty);
@@ -452,7 +452,7 @@ modded class SCR_CharacterControllerComponent
                     m_pEpocState.UpdateExercisePowerSample(powerW, currentSpeed);
                 if (m_pStaminaState)
                 {
-                    m_pStaminaState.SetAnaerobicFromCpModel(m_pAnaerobicBurst.GetCpModel());
+                    m_pStaminaState.SetWPrimePoolFromCpModel(m_pAnaerobicBurst.GetCpModel());
                     m_pStaminaState.SetAerobic(staminaPercent);
                 }
                 if (Replication.IsServer())
@@ -1017,7 +1017,7 @@ modded class SCR_CharacterControllerComponent
         debugParams.timeToDepleteSec = timeToDepleteSec;
         debugParams.timeToFullSec = timeToFullSec;
         debugParams.speedSource = m_sLastSpeedSource;
-        debugParams.anaerobicPercent = GetRssAnaerobicPercent();
+        debugParams.anaerobicPercent = GetRssWPrimePool01();
         debugParams.sprintCooldownSec = GetRssSprintCooldownRemainingSec();
         debugParams.burstCooldownFullSec = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
         if (needDebugOutput)

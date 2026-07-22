@@ -805,7 +805,7 @@ class SCR_RSS_ConfigBridge
     }
 
     //! 专服无氧池补 tick 的功率估算回退（非主路径 W′ 放电）
-    static float GetAnaerobicDrainPerSec()
+    static float GetWPrimeDrainPerSec()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -815,6 +815,12 @@ class SCR_RSS_ConfigBridge
                 return params.anaerobic_drain_per_sec;
         }
         return 0.12;
+    }
+
+    //! @deprecated 兼容别名，请用 GetWPrimeDrainPerSec
+    static float GetAnaerobicDrainPerSec()
+    {
+        return GetWPrimeDrainPerSec();
     }
 
     static float GetAerobicEfficiencyFactor()
@@ -829,7 +835,7 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.AEROBIC_EFFICIENCY_FACTOR;
     }
 
-    static float GetAnaerobicEfficiencyFactor()
+    static float GetWPrimeEfficiencyFactor()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -839,6 +845,12 @@ class SCR_RSS_ConfigBridge
                 return Math.Clamp(params.anaerobic_efficiency_factor, 0.5, 2.5);
         }
         return SCR_RSS_Constants.ANAEROBIC_EFFICIENCY_FACTOR;
+    }
+
+    //! @deprecated 兼容别名，请用 GetWPrimeEfficiencyFactor
+    static float GetAnaerobicEfficiencyFactor()
+    {
+        return GetWPrimeEfficiencyFactor();
     }
 
     //! v6：预设锚点 3.5 表示「相对 P(v) 中性」；低于锚点 Sprint 更省力，高于更费力

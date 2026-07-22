@@ -312,12 +312,12 @@ class SCR_RSS_StaminaConsumptionCalculator
             float t = (speedRatio - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD) / 
                       (SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD);
             float aerobicEff = SCR_RSS_ConfigBridge.GetAerobicEfficiencyFactor();
-            float anaerobicEff = SCR_RSS_ConfigBridge.GetAnaerobicEfficiencyFactor();
+            float anaerobicEff = SCR_RSS_ConfigBridge.GetWPrimeEfficiencyFactor();
             metabolicEfficiencyFactor = aerobicEff + t * (anaerobicEff - aerobicEff);
         }
         else
         {
-            metabolicEfficiencyFactor = SCR_RSS_ConfigBridge.GetAnaerobicEfficiencyFactor();
+            metabolicEfficiencyFactor = SCR_RSS_ConfigBridge.GetWPrimeEfficiencyFactor();
         }
         return metabolicEfficiencyFactor;
     }

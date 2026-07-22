@@ -56,6 +56,12 @@ class SCR_RSS_StaminaState
 
     void SetAnaerobicFromCpModel(SCR_RSS_CriticalPowerModel cpModel)
     {
+        SetWPrimePoolFromCpModel(cpModel);
+    }
+
+    //! 从 CP 模型同步 W′ 池归一化储量
+    void SetWPrimePoolFromCpModel(SCR_RSS_CriticalPowerModel cpModel)
+    {
         if (cpModel)
             m_fAnaerobicBurst = cpModel.GetPool01();
     }
