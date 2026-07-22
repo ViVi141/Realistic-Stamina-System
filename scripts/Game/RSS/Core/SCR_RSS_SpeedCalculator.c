@@ -92,9 +92,9 @@ class SCR_RSS_SpeedCalculator
     {
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
 
-        float walkMs = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs();
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
-        float sprintMs = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs();
+        float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
         float encMult = 1.0 - encumbranceSpeedPenalty;
         if (encMult < 0.5)
             encMult = 0.5;
@@ -149,11 +149,11 @@ class SCR_RSS_SpeedCalculator
         if (encMult < 0.5)
             encMult = 0.5;
 
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() * encMult;
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult;
         if (!cpModel)
-            return SCR_RSS_ConfigBridge.GetV5SprintSpeedMs() * encMult;
+            return SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult;
 
-        float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         if (cpModel.GetPool01() <= threshold)
             return runMs;
 
@@ -175,15 +175,15 @@ class SCR_RSS_SpeedCalculator
         return SCR_RSS_MetabolismMath.CalculateSlopeAdjustedTargetSpeed(baseTargetSpeed, slopeAngleDegrees);
     }
 
-    //! v5 行军档绝对速度（m/s），与 DrainCalculator 理论上限一致
-    static float GetV5AbsoluteSpeedMs(
+    //! 行军档绝对速度（m/s），与 DrainCalculator 理论上限一致
+    static float GetMarchAbsoluteSpeedMs(
         int currentMovementPhase,
         bool isSprinting,
         float scaledRunSpeed,
         float encumbrancePenalty,
         float anaerobicPercent = 1.0)
     {
-        float runRefMult = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        float runRefMult = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
         if (runRefMult < 0.01)
             runRefMult = 0.01;
         float staminaScale = scaledRunSpeed / runRefMult;
@@ -193,9 +193,9 @@ class SCR_RSS_SpeedCalculator
         if (encMult < 0.5)
             encMult = 0.5;
 
-        float walkMs = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs() * encMult * staminaScale;
-        float runMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs() * encMult * staminaScale;
-        float sprintMs = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs() * encMult * staminaScale;
+        float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * encMult * staminaScale;
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult * staminaScale;
+        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult * staminaScale;
 
         if (anaerobicPercent < 1.0)
         {
@@ -204,13 +204,25 @@ class SCR_RSS_SpeedCalculator
         }
 
         if (isSprinting || currentMovementPhase == 3)
-            return Math.Clamp(sprintMs, walkMs, SCR_RSS_ConfigBridge.GetV5SprintSpeedMs());
+            return Math.Clamp(sprintMs, walkMs, SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs());
         if (currentMovementPhase == 2)
-            return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetV5RunSpeedMs());
+            return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetMarchRunSpeedMs());
         if (currentMovementPhase == 1)
-            return Math.Clamp(walkMs, 0.5, SCR_RSS_ConfigBridge.GetV5WalkSpeedMs());
+            return Math.Clamp(walkMs, 0.5, SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs());
 
         return walkMs;
+    }
+
+    //! @deprecated 兼容别名，请用 GetMarchAbsoluteSpeedMs
+    static float GetV5AbsoluteSpeedMs(
+        int currentMovementPhase,
+        bool isSprinting,
+        float scaledRunSpeed,
+        float encumbrancePenalty,
+        float anaerobicPercent = 1.0)
+    {
+        return GetMarchAbsoluteSpeedMs(
+            currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, anaerobicPercent);
     }
     
     // 计算最终绝对速度（米/秒）- 仅在Run和Sprint模式下
@@ -266,11 +278,11 @@ class SCR_RSS_SpeedCalculator
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
-        finalAbsoluteSpeed = GetV5AbsoluteSpeedMs(
+        finalAbsoluteSpeed = GetMarchAbsoluteSpeedMs(
             currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, 1.0);
         if (currentSpeed < 0.5)
         {
-            float startMin = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs() * (1.0 - encumbrancePenalty);
+            float startMin = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * (1.0 - encumbrancePenalty);
             if (startMin < 0.8)
                 startMin = 0.8;
             if (finalAbsoluteSpeed < startMin)

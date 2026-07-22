@@ -199,7 +199,7 @@ class SCR_RSS_CriticalPowerModel
         if (aerobicStamina < SCR_RSS_ConfigBridge.GetSprintEnableThreshold())
             return false;
 
-        float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         if (GetPool01() <= threshold)
             return false;
 
@@ -233,7 +233,7 @@ class SCR_RSS_CriticalPowerModel
             if (!m_bWasSprinting)
                 m_fSprintStartSec = worldTimeSec;
 
-            float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+            float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
             if (GetPool01() <= threshold)
             {
                 if (!m_bDepletionCooldownApplied)
@@ -270,7 +270,7 @@ class SCR_RSS_CriticalPowerModel
         float fullCd = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
         float shortCd = SCR_RSS_ConfigBridge.GetBurstCooldownShortSeconds();
 
-        if (reserveAtEnd01 <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
+        if (reserveAtEnd01 <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
         {
             m_fCooldownUntilSec = worldTimeSec + fullCd;
             return;

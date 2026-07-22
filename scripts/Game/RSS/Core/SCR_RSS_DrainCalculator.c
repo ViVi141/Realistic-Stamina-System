@@ -77,7 +77,7 @@ class SCR_RSS_DrainCalculator
     //! W′ 池是否仍可支撑「超限速按 v_meas 记账」
     static bool IsWPrimePoolAvailableForOverspeed(float wPrimePool01)
     {
-        float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();
+        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         return wPrimePool01 > threshold;
     }
 
@@ -122,9 +122,9 @@ class SCR_RSS_DrainCalculator
     //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
     static float GetTheoreticalMaxSpeedMs(int movementPhase, float encumbranceSpeedPenalty)
     {
-        float walk = SCR_RSS_ConfigBridge.GetV5WalkSpeedMs();
-        float run = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
-        float sprint = SCR_RSS_ConfigBridge.GetV5SprintSpeedMs();
+        float walk = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        float run = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        float sprint = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
 
         float encMult = 1.0 - encumbranceSpeedPenalty;
         if (encMult < 0.5)

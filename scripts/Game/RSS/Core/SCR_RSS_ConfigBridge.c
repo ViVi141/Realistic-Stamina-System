@@ -699,7 +699,8 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_SUSTAINABLE_WATTS_DEFAULT;
     }
 
-    static float GetV5WalkSpeedMs()
+    //! 行军档 Walk 绝对速度（m/s）；Params 字段仍为 v5_walk_speed_ms（网络同步不可改）
+    static float GetMarchWalkSpeedMs()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -711,7 +712,8 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_WALK_SPEED_MS_DEFAULT;
     }
 
-    static float GetV5RunSpeedMs()
+    //! 行军档 Run 绝对速度（m/s）
+    static float GetMarchRunSpeedMs()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -723,7 +725,8 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_RUN_SPEED_MS_DEFAULT;
     }
 
-    static float GetV5SprintSpeedMs()
+    //! 行军档 Sprint 绝对速度（m/s）
+    static float GetMarchSprintSpeedMs()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -735,7 +738,26 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_SPRINT_SPEED_MS_DEFAULT;
     }
 
-    static float GetAnaerobicSprintEnableThreshold()
+    //! @deprecated 兼容别名，请用 GetMarchWalkSpeedMs
+    static float GetV5WalkSpeedMs()
+    {
+        return GetMarchWalkSpeedMs();
+    }
+
+    //! @deprecated 兼容别名，请用 GetMarchRunSpeedMs
+    static float GetV5RunSpeedMs()
+    {
+        return GetMarchRunSpeedMs();
+    }
+
+    //! @deprecated 兼容别名，请用 GetMarchSprintSpeedMs
+    static float GetV5SprintSpeedMs()
+    {
+        return GetMarchSprintSpeedMs();
+    }
+
+    //! W′ 池耗尽后禁止 Sprint 的阈值（0–1）
+    static float GetWPrimeSprintEnableThreshold()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
@@ -745,6 +767,12 @@ class SCR_RSS_ConfigBridge
                 return params.anaerobic_sprint_enable_threshold;
         }
         return SCR_RSS_Constants.V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT;
+    }
+
+    //! @deprecated 兼容别名，请用 GetWPrimeSprintEnableThreshold
+    static float GetAnaerobicSprintEnableThreshold()
+    {
+        return GetWPrimeSprintEnableThreshold();
     }
 
     static float GetBurstCooldownFullSeconds()

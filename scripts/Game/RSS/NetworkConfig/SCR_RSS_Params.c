@@ -25,13 +25,10 @@ class SCR_RSS_Params
     [Attribute(defvalue: "0.0003", desc: "Base recovery rate per tick (0.2 seconds).\nDetermines stamina recovery speed when stationary.\nOptimized range: 0.0003 - 0.0007.\nHigher value = faster stamina recovery.\n基础恢复率（每0.2秒）。\n决定玩家在静止时的体力恢复速度。\nOptuna 优化范围：0.0003 - 0.0007。\n值越大，体力恢复越快。")]
     float base_recovery_rate;
 
-    // 站姿恢复倍数
-    // 站立时的体力恢复加成（相对于基础恢复率）
-    // Optuna 优化范围：1.0 - 2.5
-    // EliteStandard: 1.765（精英拟真）
-    // TacticalAction: 1.382（战术动作）
-    // 说明：值越大，站立时体力恢复越快
-    [Attribute(defvalue: "2.0", desc: "Standing posture recovery multiplier.\nStamina recovery bonus when standing (relative to base recovery rate).\nOptimized range: 1.0 - 2.5.\nHigher value = faster recovery while standing.\n站姿恢复倍数。\n站立时的体力恢复加成（相对于基础恢复率）。\nOptuna 优化范围：1.0 - 2.5。\n值越大，站立时体力恢复越快。")]
+    // 站姿恢复缩放因子（相对 base_recovery_rate）
+    // Optuna 拟真档常为 0.70–0.95（<1.0 表示比蹲/趴姿恢复更慢，属设计意图而非错误）
+    // EliteStandard: ~0.80 | TacticalAction: ~0.76
+    [Attribute(defvalue: "2.0", desc: "Standing posture recovery scale factor (relative to base_recovery_rate).\nValues below 1.0 are valid: standing recovers slower than crouch/prone in tuned presets.\nOptimized range: 0.65 - 0.98.\n站姿恢复缩放因子（相对 base_recovery_rate）。\n小于 1.0 为合法取值：拟真预设中站姿可慢于蹲/趴。\nOptuna 优化范围：0.65 - 0.98。")]
     float standing_recovery_multiplier;
 
     // 蹲姿恢复倍数

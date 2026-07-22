@@ -42,7 +42,8 @@ class SCR_RSS_Constants
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // @fallback m/s（跛行速度）
     static const float SPRINT_ENABLE_THRESHOLD = 0.25; // @fallback 体力≥25%时才能Sprint；疲劳时肌肉无法爆发冲刺（原0.18）
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
-    static const float WALK_RECOVERY_ZONE_RATE = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
+    static const float WALK_RECOVERY_ZONE_PER_TICK = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
+    static const float WALK_RECOVERY_ZONE_RATE = WALK_RECOVERY_ZONE_PER_TICK; // @deprecated 请用 WALK_RECOVERY_ZONE_PER_TICK
     
     // 坡度修正系数
     static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
@@ -392,7 +393,8 @@ class SCR_RSS_Constants
     // 参考：Brooks et al., 2000; LaForgia et al., 2006
     // 拟真向延长至 2 秒；若影响手感可再降低（现实为分钟级）
     static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
-    static const float EPOC_DRAIN_RATE = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
+    static const float EPOC_DRAIN_PER_TICK = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
+    static const float EPOC_DRAIN_RATE = EPOC_DRAIN_PER_TICK; // @deprecated 请用 EPOC_DRAIN_PER_TICK
 
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
@@ -667,7 +669,7 @@ class SCR_RSS_Constants
     // 获取低体力步行恢复速率（每 0.2s tick，默认 0.002 = 1%/s）
     static float GetWalkRecoveryZoneRate()
     {
-        return WALK_RECOVERY_ZONE_RATE;
+        return WALK_RECOVERY_ZONE_PER_TICK;
     }
 
     static float GetCamInertiaStartLagDuration() { return CAM_INERTIA_START_LAG_DURATION; }

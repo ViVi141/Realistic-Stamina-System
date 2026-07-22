@@ -280,7 +280,7 @@ class SCR_RSS_UpdateCoordinator
         float speedScaleFactor = 1.0;
         if (!shouldSuppressSlope)
         {
-            float slopeRunBaseMs = SCR_RSS_ConfigBridge.GetV5RunSpeedMs();
+            float slopeRunBaseMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
             float slopeRunRefMult = slopeRunBaseMs / SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
             if (slopeRunRefMult < 0.01)
                 slopeRunRefMult = 0.01;
@@ -297,7 +297,7 @@ class SCR_RSS_UpdateCoordinator
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
         float sprintStartTime = controller.GetSprintStartTime();
         
-        // 计算最终绝对速度（Run/Sprint/Walk）；负重已在 GetV5AbsoluteSpeedMs 内施加
+        // 计算最终绝对速度（Run/Sprint/Walk）；负重已在 GetMarchAbsoluteSpeedMs 内施加
         float finalAbsoluteSpeedWithEnc = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
             encumbranceSpeedPenalty,

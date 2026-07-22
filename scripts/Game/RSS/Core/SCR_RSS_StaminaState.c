@@ -23,6 +23,12 @@ class SCR_RSS_StaminaState
         return m_fAnaerobicBurst;
     }
 
+    //! W′ 池归一化储量（0–1）；与 GetAnaerobic 同义
+    float GetWPrimePool01()
+    {
+        return m_fAnaerobicBurst;
+    }
+
     bool GetCollapse()
     {
         return m_bCollapseState;
@@ -42,6 +48,12 @@ class SCR_RSS_StaminaState
         m_fAnaerobicBurst = Math.Clamp(value, 0.0, 1.0);
     }
 
+    //! W′ 池归一化储量写入；与 SetAnaerobic 同义
+    void SetWPrimePool01(float value)
+    {
+        SetAnaerobic(value);
+    }
+
     void SetAnaerobicFromCpModel(SCR_RSS_CriticalPowerModel cpModel)
     {
         if (cpModel)
@@ -52,7 +64,7 @@ class SCR_RSS_StaminaState
     {
         if (m_bCollapseState)
             return false;
-        if (m_fAnaerobicBurst <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
+        if (m_fAnaerobicBurst <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
             return false;
         if (m_fAerobicStamina < SCR_RSS_ConfigBridge.GetSprintEnableThreshold())
             return false;

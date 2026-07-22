@@ -62,7 +62,7 @@ class SCR_RSS_RecoveryCalculator
     // 计算EPOC延迟期间的消耗（v6：与峰值功率成正比）
     static float CalculateEpocDrainRate(float speedBeforeStop, float peakPowerWatts = -1.0)
     {
-        float epocDrainRate = SCR_RSS_Constants.EPOC_DRAIN_RATE;
+        float epocDrainRate = SCR_RSS_Constants.EPOC_DRAIN_PER_TICK;
         if (peakPowerWatts > 1.0)
         {
             float cp = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();

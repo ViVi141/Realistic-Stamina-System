@@ -830,6 +830,12 @@ modded class SCR_CharacterControllerComponent
 
     float GetRssAnaerobicPercent()
     {
+        return GetRssWPrimePool01();
+    }
+
+    //! W′ 池归一化储量（0–1）；权威读数来自 AnaerobicBurst
+    float GetRssWPrimePool01()
+    {
         if (m_pAnaerobicBurst)
             return m_pAnaerobicBurst.GetPool();
         return 1.0;
@@ -897,6 +903,12 @@ modded class SCR_CharacterControllerComponent
 
     SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
     {
+        return RSS_GetWPrimeBurst();
+    }
+
+    //! W′ 爆发控制器；与 RSS_GetAnaerobicBurst 同义
+    SCR_RSS_AnaerobicBurst RSS_GetWPrimeBurst()
+    {
         return m_pAnaerobicBurst;
     }
 
@@ -917,7 +929,7 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pAnaerobicBurst)
         {
-            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
+            if (m_pAnaerobicBurst.GetPool() <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
                 return false;
         }
 

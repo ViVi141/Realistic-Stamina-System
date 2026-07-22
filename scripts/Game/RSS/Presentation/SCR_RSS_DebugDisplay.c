@@ -652,7 +652,7 @@ class SCR_RSS_DebugDisplay
             totalWetWeight,
             params.isSwimming);
         SCR_RSS_StaminaHUDComponent.UpdateTimeEtaHud(params.timeToDepleteSec, params.timeToFullSec);
-        SCR_RSS_StaminaHUDComponent.UpdateV5AnaerobicHud(
+        SCR_RSS_StaminaHUDComponent.UpdateWPrimeHud(
             params.anaerobicPercent,
             params.sprintCooldownSec,
             params.burstCooldownFullSec);

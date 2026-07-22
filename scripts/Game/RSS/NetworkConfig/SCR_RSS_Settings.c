@@ -411,6 +411,12 @@ protected void InitTacticalActionDefaults(bool shouldInit)
     //! v5 双池参数字段默认值（三档预设 + Custom 共用）
     protected void ApplyV5ParamsDefaults(SCR_RSS_Params p)
     {
+        ApplyMetabolicAnchorDefaults(p);
+    }
+
+    //! 行军档 / 双池代谢锚点默认值（canonical）
+    protected void ApplyMetabolicAnchorDefaults(SCR_RSS_Params p)
+    {
         if (!p)
             return;
         p.sustainable_watts = SCR_RSS_Constants.V5_SUSTAINABLE_WATTS_DEFAULT;
