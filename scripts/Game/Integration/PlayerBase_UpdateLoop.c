@@ -119,6 +119,9 @@ modded class SCR_CharacterControllerComponent
         {
             m_pEncumbranceCache.CheckAndUpdate();
             encumbranceSpeedPenalty = m_pEncumbranceCache.GetSpeedPenalty();
+            encumbranceSpeedPenalty = encumbranceSpeedPenalty * SCR_RSS_ConfigBridge.GetCustomEncumbranceSpeedPenaltyMultiplier();
+            float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
+            encumbranceSpeedPenalty = Math.Clamp(encumbranceSpeedPenalty, 0.0, maxPenalty);
         }
 
         bool isExhausted = SCR_RSS_MetabolismMath.IsExhausted(staminaPercent);
@@ -207,6 +210,10 @@ modded class SCR_CharacterControllerComponent
             velocity,
             terrainFactor,
             effectivePhase);
+
+        float customSprintSpeedMult = SCR_RSS_ConfigBridge.GetCustomSprintSpeedMultiplier();
+        if (customSprintSpeedMult != 1.0)
+            finalSpeedMultiplier = finalSpeedMultiplier * customSprintSpeedMult;
 
         if (m_pSprintBlockSpeedTransition)
         {
@@ -566,9 +573,9 @@ modded class SCR_CharacterControllerComponent
         StaminaDrainTickParams drainParams = new StaminaDrainTickParams();
         drainParams.useSwimmingModel = useSwimmingModel;
         drainParams.currentSpeed = currentSpeed;
-        drainParams.currentWeight = currentWeight;
+        drainParams.gearWeightKg = currentWeight;
         drainParams.encumbranceSpeedPenalty = encumbranceSpeedPenalty;
-        drainParams.totalWeight = totalWeight;
+        drainParams.bodyPlusGearWeightKg = totalWeight;
         drainParams.totalWeightWithWetAndBody = totalWeightWithWetAndBody;
         drainParams.gradePercent = gradePercent;
         drainParams.terrainFactor = terrainFactor;

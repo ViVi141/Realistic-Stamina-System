@@ -1,6 +1,6 @@
 // RSS Parameter Model - serializable configuration parameters
 // Extracted from SCR_RSS_Settings.c (v3.22.6 split)
-// Contains all 47 tunable float parameters used by the stamina system.
+// Contains all tunable float parameters (PARAMS_ARRAY_SIZE) used by the stamina system.
 //
 
 [BaseContainerProps()]
@@ -234,6 +234,8 @@ class SCR_RSS_Params
     // Hardcore 默认 0.25，原 0.18
     // 说明：值越大，冲刺越早被限制
     [Attribute(defvalue: "0.25", desc: "Sprint enable threshold.\nMinimum stamina required to sprint.\nHigher = sprint restricted earlier.\n范围: 0.10-0.40，Hardcore默认0.25（原0.18）。\n冲刺最小体力阈值。\n体力低于此值时禁止冲刺。\n值越大，冲刺越早被限制。")]
+    // 有氧 Sprint 最低体力（0–1）。与 anaerobic_sprint_enable_threshold（W′ 池）分工不同。
+    [Attribute(defvalue: "0.25", desc: "Aerobic sprint min stamina (0-1). Separate from W' gate anaerobic_sprint_enable_threshold. | 有氧冲刺最低体力")]
     float sprint_enable_threshold;
 
     // 蹲姿消耗倍数
@@ -380,7 +382,7 @@ class SCR_RSS_Params
     [Attribute(defvalue: "4.0", desc: "v5 sprint peak m/s. | v5 冲刺峰值")]
     float v5_sprint_speed_ms;
 
-    [Attribute(defvalue: "0.20", desc: "Anaerobic pool threshold for sprint. | 无氧池冲刺门槛")]
+    [Attribute(defvalue: "0.20", desc: "W' pool min reserve (0-1) for sprint. Separate from aerobic sprint_enable_threshold. | W′ 池冲刺门槛")]
     float anaerobic_sprint_enable_threshold;
 
     [Attribute(defvalue: "180.0", desc: "Full burst cooldown seconds. | 无氧抽干冷却")]
@@ -389,10 +391,10 @@ class SCR_RSS_Params
     [Attribute(defvalue: "75.0", desc: "Short burst cooldown seconds. | 战术短冲冷却")]
     float burst_cooldown_short_seconds;
 
-    [Attribute(defvalue: "0.12", desc: "Anaerobic drain per second while sprinting. | 冲刺无氧消耗/s")]
+    [Attribute(defvalue: "0.12", desc: "Legacy anaerobic drain fallback (server anaerobic tick). Main path uses CP-W'. | 专服无氧补 tick 回退")]
     float anaerobic_drain_per_sec;
 
-    [Attribute(defvalue: "0.08", desc: "Anaerobic recovery per second. | 无氧恢复/s")]
+    [Attribute(defvalue: "0.08", desc: "W' linear refill W/s (non-Skiba). Alias of w_prime_recovery_w_per_s when set. | W′ 线性回充 W/s")]
     float anaerobic_recovery_per_sec;
 
     // --- v6 CP-W' 学术拟真 ---

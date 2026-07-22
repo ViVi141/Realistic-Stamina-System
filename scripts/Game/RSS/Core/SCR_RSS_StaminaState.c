@@ -54,7 +54,7 @@ class SCR_RSS_StaminaState
             return false;
         if (m_fAnaerobicBurst <= SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold())
             return false;
-        if (m_fAerobicStamina < SCR_RSS_Constants.SPRINT_ENABLE_THRESHOLD)
+        if (m_fAerobicStamina < SCR_RSS_ConfigBridge.GetSprintEnableThreshold())
             return false;
         return true;
     }

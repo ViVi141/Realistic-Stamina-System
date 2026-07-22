@@ -45,9 +45,9 @@ class StaminaDrainTickParams
 {
     bool useSwimmingModel;
     float currentSpeed;
-    float currentWeight;
+    float gearWeightKg;              // 仅装备（游泳/完整消耗路径）
     float encumbranceSpeedPenalty;
-    float totalWeight;
+    float bodyPlusGearWeightKg;      // 装备 + 身体（Pandolf 主链）
     float totalWeightWithWetAndBody;
     float gradePercent;
     float terrainFactor;
@@ -735,7 +735,7 @@ class SCR_RSS_UpdateCoordinator
             tick.useSwimmingModel,
             tick.currentSpeed,
             tick.encumbranceSpeedPenalty,
-            tick.totalWeight,
+            tick.bodyPlusGearWeightKg,
             tick.totalWeightWithWetAndBody,
             tick.gradePercent,
             tick.terrainFactor,
@@ -778,7 +778,7 @@ class SCR_RSS_UpdateCoordinator
         {
             result.totalDrainRate = SCR_RSS_StaminaConsumptionCalculator.CalculateStaminaConsumption(
                 tick.currentSpeed,
-                tick.currentWeight,
+                tick.gearWeightKg,
                 gradePercentForConsumption,
                 terrainFactorForConsumption,
                 postureMultiplier,
@@ -796,6 +796,11 @@ class SCR_RSS_UpdateCoordinator
 
         if (tick.combatStimActive)
             result.totalDrainRate = result.totalDrainRate * SCR_CombatStimConstants.STAMINA_DRAIN_MULTIPLIER;
+
+        if (tick.isSprintActive)
+            result.totalDrainRate = result.totalDrainRate * SCR_RSS_ConfigBridge.GetSprintStaminaDrainMultiplierEffective();
+
+        result.totalDrainRate = result.totalDrainRate * SCR_RSS_ConfigBridge.GetCustomStaminaDrainMultiplier();
 
         float walkRecoveryThreshold = SCR_RSS_Constants.GetWalkRecoveryZoneThreshold();
         float walkRecoveryRatePerTick = SCR_RSS_Constants.GetWalkRecoveryZoneRate();
@@ -1052,7 +1057,7 @@ class SCR_RSS_UpdateCoordinator
             0,
             controller);
 
-        return recoveryRate * ctx.heatPenalty;
+        return recoveryRate * ctx.heatPenalty * SCR_RSS_ConfigBridge.GetCustomStaminaRecoveryMultiplier();
     }
 
     //! 每 0.2s 设计的总消耗率（移动 + EPOC）

@@ -196,7 +196,7 @@ class SCR_RSS_CriticalPowerModel
     {
         if (collapseState)
             return false;
-        if (aerobicStamina < SCR_RSS_Constants.SPRINT_ENABLE_THRESHOLD)
+        if (aerobicStamina < SCR_RSS_ConfigBridge.GetSprintEnableThreshold())
             return false;
 
         float threshold = SCR_RSS_ConfigBridge.GetAnaerobicSprintEnableThreshold();

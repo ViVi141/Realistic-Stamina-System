@@ -305,18 +305,19 @@ class SCR_RSS_StaminaConsumptionCalculator
         float metabolicEfficiencyFactor = 1.0;
         if (speedRatio < SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD)
         {
-            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR; // 0.9
+            metabolicEfficiencyFactor = SCR_RSS_ConfigBridge.GetAerobicEfficiencyFactor();
         }
         else if (speedRatio < SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD)
         {
             float t = (speedRatio - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD) / 
                       (SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD);
-            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR + 
-                                       t * (SCR_RSS_MetabolismMath.ANAEROBIC_EFFICIENCY_FACTOR - SCR_RSS_MetabolismMath.AEROBIC_EFFICIENCY_FACTOR);
+            float aerobicEff = SCR_RSS_ConfigBridge.GetAerobicEfficiencyFactor();
+            float anaerobicEff = SCR_RSS_ConfigBridge.GetAnaerobicEfficiencyFactor();
+            metabolicEfficiencyFactor = aerobicEff + t * (anaerobicEff - aerobicEff);
         }
         else
         {
-            metabolicEfficiencyFactor = SCR_RSS_MetabolismMath.ANAEROBIC_EFFICIENCY_FACTOR; // 1.2
+            metabolicEfficiencyFactor = SCR_RSS_ConfigBridge.GetAnaerobicEfficiencyFactor();
         }
         return metabolicEfficiencyFactor;
     }

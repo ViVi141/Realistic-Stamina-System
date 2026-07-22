@@ -228,8 +228,8 @@ class SCR_RSS_Constants
     // 最大负重（kg）- 角色可以携带的最大重量（包含基准负重）
     static const float MAX_ENCUMBRANCE_WEIGHT = 40.5; // kg
     
-    // 战斗负重（kg）- 战斗状态下的推荐负重阈值（包含基准负重）
-    static const float COMBAT_ENCUMBRANCE_WEIGHT = 30.0; // kg
+    // 战斗负重（kg）— 与 COMBAT_LOAD_WEIGHT 同义，保留别名供 HUD/百分比计算
+    static const float COMBAT_ENCUMBRANCE_WEIGHT = COMBAT_LOAD_WEIGHT;
     
     // 基于医学研究：跳跃和翻越动作的能量消耗远高于普通移动
     //

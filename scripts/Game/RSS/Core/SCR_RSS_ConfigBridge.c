@@ -132,10 +132,17 @@ class SCR_RSS_ConfigBridge
         return 2.8; // Hardcore fallback (2026-05，原1.963)
     }
 
-    // 获取负重代谢阻尼（与 Python 优化器同步，避免测试与游戏表现差异）
+    // 获取负重代谢阻尼（与 Python/Rust 数字孪生同步：仅超额负重部分的代谢成本）
     static float GetLoadMetabolicDampening()
     {
-        return 1.0;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.load_metabolic_dampening > 0.0)
+                return Math.Clamp(params.load_metabolic_dampening, 0.1, 1.0);
+        }
+        return 0.70;
     }
 
     // 获取每 tick 恢复率上限（与 Python 优化器同步）
@@ -334,7 +341,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.sprint_speed_boost;
         }
-        return 0.22; // Hardcore fallback (2026-05，原0.256)
+        return SCR_RSS_Constants.SPRINT_SPEED_BOOST;
     }
     
     // ==================== 速度模型阈值配置方法（Hardcore 新增暴露）====================
@@ -353,17 +360,10 @@ class SCR_RSS_ConfigBridge
         return 0.35; // Hardcore fallback（原0.25）
     }
     
-    // 获取平滑过渡起点（从配置管理器，等同于 willpower_threshold）
+    // 获取平滑过渡起点（别名：等同于 GetWillpowerThreshold）
     static float GetSmoothTransitionStart()
     {
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings)
-        {
-            SCR_RSS_Params params = settings.GetActiveParams();
-            if (params && params.willpower_threshold > 0.0)
-                return Math.Clamp(params.willpower_threshold, 0.15, 0.5);
-        }
-        return 0.35; // Hardcore fallback（原0.25）
+        return GetWillpowerThreshold();
     }
     
     // 获取冲刺最小体力阈值（从配置管理器）
@@ -773,19 +773,111 @@ class SCR_RSS_ConfigBridge
 
     static float GetAnaerobicRecoveryPerSec()
     {
+        return GetWPrimeRecoveryWPerSec();
+    }
+
+    //! 专服无氧池补 tick 的功率估算回退（非主路径 W′ 放电）
+    static float GetAnaerobicDrainPerSec()
+    {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
             SCR_RSS_Params params = settings.GetActiveParams();
-            if (params && params.anaerobic_recovery_per_sec > 0.0)
-                return params.anaerobic_recovery_per_sec;
+            if (params && params.anaerobic_drain_per_sec > 0.0)
+                return params.anaerobic_drain_per_sec;
         }
-        return SCR_RSS_Constants.V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT;
+        return 0.12;
     }
 
-    static float GetAnaerobicDrainPerSec()
+    static float GetAerobicEfficiencyFactor()
     {
-        return 0.12;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.aerobic_efficiency_factor > 0.0)
+                return Math.Clamp(params.aerobic_efficiency_factor, 0.5, 2.0);
+        }
+        return SCR_RSS_Constants.AEROBIC_EFFICIENCY_FACTOR;
+    }
+
+    static float GetAnaerobicEfficiencyFactor()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.anaerobic_efficiency_factor > 0.0)
+                return Math.Clamp(params.anaerobic_efficiency_factor, 0.5, 2.5);
+        }
+        return SCR_RSS_Constants.ANAEROBIC_EFFICIENCY_FACTOR;
+    }
+
+    //! v6：预设锚点 3.5 表示「相对 P(v) 中性」；低于锚点 Sprint 更省力，高于更费力
+    static float GetSprintStaminaDrainMultiplierEffective()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        float mult = 3.5;
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params && params.sprint_stamina_drain_multiplier > 0.0)
+                mult = params.sprint_stamina_drain_multiplier;
+            if (settings.m_sSelectedPreset == "Custom" && settings.m_fSprintStaminaDrainMultiplier > 0.0)
+                mult = mult * settings.m_fSprintStaminaDrainMultiplier;
+        }
+        float anchor = 3.5;
+        if (anchor < 0.01)
+            return 1.0;
+        return Math.Clamp(mult / anchor, 0.25, 4.0);
+    }
+
+    static bool IsCustomPresetSelected()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        return settings.m_sSelectedPreset == "Custom";
+    }
+
+    static float GetCustomStaminaDrainMultiplier()
+    {
+        if (!IsCustomPresetSelected())
+            return 1.0;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return 1.0;
+        return Math.Clamp(settings.m_fStaminaDrainMultiplier, 0.1, 5.0);
+    }
+
+    static float GetCustomStaminaRecoveryMultiplier()
+    {
+        if (!IsCustomPresetSelected())
+            return 1.0;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return 1.0;
+        return Math.Clamp(settings.m_fStaminaRecoveryMultiplier, 0.1, 5.0);
+    }
+
+    static float GetCustomEncumbranceSpeedPenaltyMultiplier()
+    {
+        if (!IsCustomPresetSelected())
+            return 1.0;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return 1.0;
+        return Math.Clamp(settings.m_fEncumbranceSpeedPenaltyMultiplier, 0.1, 5.0);
+    }
+
+    static float GetCustomSprintSpeedMultiplier()
+    {
+        if (!IsCustomPresetSelected())
+            return 1.0;
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return 1.0;
+        return Math.Clamp(settings.m_fSprintSpeedMultiplier, 0.5, 2.0);
     }
 
     static float GetCriticalPowerWatts()
@@ -822,6 +914,8 @@ class SCR_RSS_ConfigBridge
             SCR_RSS_Params params = settings.GetActiveParams();
             if (params && params.w_prime_recovery_w_per_s > 0.0)
                 return params.w_prime_recovery_w_per_s;
+            if (params && params.anaerobic_recovery_per_sec > 0.0)
+                return params.anaerobic_recovery_per_sec;
         }
         return SCR_RSS_Constants.V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT;
     }

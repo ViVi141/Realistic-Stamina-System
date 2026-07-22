@@ -28,7 +28,7 @@ class SCR_RSS_MetabolismMath
     static const float STAMINA_EXPONENT = SCR_RSS_Constants.STAMINA_EXPONENT;
     static const float CHARACTER_WEIGHT = SCR_RSS_Constants.CHARACTER_WEIGHT;
     static const float MAX_ENCUMBRANCE_WEIGHT = SCR_RSS_Constants.MAX_ENCUMBRANCE_WEIGHT;
-    static const float COMBAT_ENCUMBRANCE_WEIGHT = SCR_RSS_Constants.COMBAT_ENCUMBRANCE_WEIGHT;
+    static const float COMBAT_LOAD_WEIGHT = SCR_RSS_Constants.COMBAT_LOAD_WEIGHT;
     static const float SMOOTH_TRANSITION_START = SCR_RSS_Constants.SMOOTH_TRANSITION_START;
     static const float SMOOTH_TRANSITION_END = SCR_RSS_Constants.SMOOTH_TRANSITION_END;
     static const float MIN_SPEED_MULTIPLIER = SCR_RSS_Constants.MIN_SPEED_MULTIPLIER;
@@ -236,7 +236,7 @@ class SCR_RSS_MetabolismMath
         // 计算战斗负重百分比（基于战斗负重阈值）
         // 战斗负重百分比 = 当前重量 / 战斗负重阈值
         // 如果返回值 > 1.0，表示超过战斗负重阈值
-        float combatEncumbrancePercent = currentWeight / COMBAT_ENCUMBRANCE_WEIGHT;
+        float combatEncumbrancePercent = currentWeight / COMBAT_LOAD_WEIGHT;
         
         return combatEncumbrancePercent;
     }
