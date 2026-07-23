@@ -1065,13 +1065,14 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
-        CharacterStaminaComponent staminaComp = GetStaminaComponent();
-        m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(staminaComp);
-        
+        m_pStaminaComponent = SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
+            owner,
+            GetStaminaComponent());
+
         if (m_pStaminaComponent)
         {
             m_pStaminaComponent.SetAllowNativeStaminaSystem(false);
-            
+
             m_pStaminaComponent.SetTargetStamina(SCR_RSS_MetabolismMath.INITIAL_STAMINA_AFTER_ACFT);
         }
         
