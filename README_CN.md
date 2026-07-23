@@ -98,6 +98,89 @@ v_meas -> metabolic power -> effective CP / W' -> speed limit -> SetSpeedLimit
 - 降雨湿重按强度连续累积，不是“小雨 / 中雨 / 暴雨”三档固定值。
 - 总湿重 = 游泳湿重 + 降雨湿重，再钳到上限 `10kg`。
 
+### 气温数学模型
+
+当前气温缓存由 `SCR_RSS_AstronomyMath.CalculateUniversalTemperature()` 生成，`SCR_RSS_TemperatureSampler` 按**时间间隔**或**位移阈值**触发重算：
+
+- 默认温度步进间隔：`5s`
+- 角色位移超过约 `100m` 也会提前重算
+
+基础通用气温模型是一个轻量级数学拟合：
+
+```text
+T = T_base_lat + T_season + T_daily - T_altitude - T_rain
+```
+
+其中：
+
+```text
+latRad      = latitude * π / 180
+T_base_lat  = 27.0 - 42.0 * sin(latRad)^2
+seasonRange = 2.0 + 20.0 * abs(sin(latRad))
+yearPhase   = ((dayOfYear - 15) / 365) * 2π
+hemisphere  = -1 (北半球) / +1 (南半球)
+T_season    = hemisphere * seasonRange * cos(yearPhase)
+
+damping     = 1.0 - 0.5 * overcast - 0.3 * fogDensity
+currentRange= 10.0 * max(0.2, damping)
+hourPhase   = ((hourOfDay - 9.5) / 24) * 2π
+T_daily     = (currentRange / 2) * sin(hourPhase)
+
+T_altitude  = (altitudeMeters / 1000) * 6.5
+```
+
+降雨冷却项：
+
+```text
+if currentBase > 10°C and rainIntensity > 0:
+    T_rain = rainIntensity * 5.0 * ((currentBase - 10.0) / 20.0)
+    T_rain = min(T_rain, 5.0)
+else:
+    T_rain = 0
+```
+
+也就是说，当前气温模型会综合：
+
+- **纬度**：纬度越高，基准气温越低
+- **季节**：按年相位余弦修正
+- **昼夜周期**：按小时正弦波变化
+- **海拔**：每升高 `1000m` 约降低 `6.5°C`
+- **云量 / 雾**：压缩昼夜温差
+- **降雨**：在较暖条件下额外降温
+
+气温缓存生成后，会进入两条实际玩法链路：
+
+1. **热应激倍率**（面向环境因子）
+
+```text
+if T >= 26°C:
+    heatMultiplier = 1.0 + (T - 26.0) * 0.02
+else:
+    heatMultiplier = 1.0
+
+if indoor:
+    heatMultiplier = heatMultiplier * 0.5
+
+heatMultiplier = clamp(heatMultiplier, 1.0, 1.5)
+```
+
+2. **温度 / 风速能耗补偿**（面向体力消耗）
+
+```text
+T_eff = T - 1.35 * sqrt(windSpeed)
+
+if T_eff < 18:
+    extraWatts = 0.15 * (18 - T_eff)^2
+else if T_eff > 27:
+    extraWatts = 2.0 * (T_eff - 27)^2
+else:
+    extraWatts = 0
+
+basePower = basePower + extraWatts * energy_to_stamina_coeff * 0.2
+```
+
+此外，恢复链路还有单独的**高温恢复惩罚**：当 `T > 30°C` 时，恢复率会按 `SCR_RSS_PenaltyMath.CalculateHeatStressPenalty()` 进一步下降。
+
 ### 游泳
 
 游泳使用独立能量模型，不套用陆地坡度 / 步态逻辑。
