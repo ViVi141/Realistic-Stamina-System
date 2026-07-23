@@ -1,48 +1,29 @@
-//! v6 消耗测速与代谢限速：v_drain = min(v_meas, v_limit_applied)；超限速时记账用 v_meas
+//! v6 消耗测速：v_drain / v_acct 一律用 v_meas（不再 min 到 v_limit）。
+//! 限速只影响 SetSpeedLimit；代谢由实测速度 + 坡度/负重模型承担，数值靠孪生标定。
 
 class SCR_RSS_DrainCalculator
 {
     //! @param measuredSpeedMs GetVelocity 水平模长（m/s）
-    //! @param appliedSpeedLimitMs 当前 RSS 已应用的绝对速度上限（m/s）；<=0 时回退相位理论档
-    //! @return 用于代谢模型的速度（m/s）
+    //! @param appliedSpeedLimitMs 保留参数（调试/超速判定仍用）；记账不再钳到此值
+    //! @return 用于代谢模型的速度（m/s）= v_meas
     static float GetDrainVelocityMs(float measuredSpeedMs, float appliedSpeedLimitMs)
     {
         if (measuredSpeedMs < 0.0)
-            measuredSpeedMs = 0.0;
-
-        float capMs = appliedSpeedLimitMs;
-        if (capMs <= 0.05)
-            return measuredSpeedMs;
-
-        if (measuredSpeedMs > capMs)
-            return capMs;
+            return 0.0;
         return measuredSpeedMs;
     }
 
-    //! 代谢记账速度：未超 v_limit 同 GetDrainVelocityMs；
-    //! 超限且正在 Sprint 且 W′ 可用时才用 v_meas（Run 下坡滑行不得烧 W′）
+    //! 代谢记账速度：与 GetDrainVelocityMs 相同，始终 v_meas
     static float GetMetabolicAccountingVelocityMs(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
         float wPrimePool01 = 1.0,
         bool isSprinting = false)
     {
-        if (measuredSpeedMs < 0.0)
-            measuredSpeedMs = 0.0;
-
-        if (appliedSpeedLimitMs > 0.05 && measuredSpeedMs > appliedSpeedLimitMs + SCR_RSS_Constants.V6_OVERSPEED_ACCOUNTING_EPS_MPS)
-        {
-            if (!isSprinting)
-                return GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
-            if (!IsWPrimePoolAvailableForOverspeed(wPrimePool01))
-                return GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
-            return measuredSpeedMs;
-        }
-
         return GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
     }
 
-    //! 代谢记账功率（W）：超限速时用实测速度（W′ / 调试）；有氧仍 min(P,CP)
+    //! 代谢记账功率（W）：按实测速度；有氧侧仍可 min(P, CP)
     static float GetMetabolicAccountingPowerWatts(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
@@ -59,7 +40,7 @@ class SCR_RSS_DrainCalculator
             vAcct, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
     }
 
-    //! 疲劳积分功率（W）：始终 v_drain；超限速超额由 W′ 承担，避免 kW 级功率灌入 I(t)
+    //! 疲劳积分功率（W）：与记账同用 v_meas
     static float GetMetabolicFatiguePowerWatts(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
@@ -272,7 +253,7 @@ class SCR_RSS_DrainCalculator
         return Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
     }
 
-    //! W′ 耗尽且 client 仍超 v_limit：超出 v_drain 功率对应的有氧消耗（%/s，可突破疲劳 cap）
+    //! 已废弃双速差惩罚：记账与实测同用 v_meas 后差额恒为 0；保留入口以免调用方改签名。
     static float GetClientOverspeedExcessDrainPerSecond(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
@@ -283,21 +264,6 @@ class SCR_RSS_DrainCalculator
         int movementPhase,
         float effectiveCriticalPowerWatts = -1.0)
     {
-        if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
-            return 0.0;
-        if (IsWPrimePoolAvailableForOverspeed(wPrimePool01))
-            return 0.0;
-
-        float pMeas = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            measuredSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
-        float vDrain = GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
-        float pDrain = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            vDrain, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
-        float excessW = pMeas - pDrain;
-        if (excessW <= 1.0)
-            return 0.0;
-
-        return SCR_RSS_MetabolismModel.StaminaDrainRatePerSecondFromPowerWatts(
-            excessW, -1.0);
+        return 0.0;
     }
 }

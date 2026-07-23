@@ -1247,10 +1247,8 @@ impl RSSDigitalTwin {
         );
 
         if drain_speed >= 0.1 {
-            let mut new_meas = (engine_original_ms * speed_limit_mult).min(VELOCITY_HORIZ_CAP_MS);
-            if self.applied_speed_limit_ms > 0.05 {
-                new_meas = new_meas.min(self.applied_speed_limit_ms);
-            }
+            // 与游戏关水平硬钳一致：测速不强行钳到 applied limit
+            let new_meas = (engine_original_ms * speed_limit_mult).min(VELOCITY_HORIZ_CAP_MS);
             self.measured_velocity_ms = new_meas;
         } else {
             self.measured_velocity_ms = 0.0;

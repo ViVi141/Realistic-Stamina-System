@@ -662,7 +662,7 @@ modded class SCR_CharacterControllerComponent
                 m_pAnaerobicBurst.TickPower(powerW, loc.isSprintActive, loc.currentTime, loc.timeDeltaSec, loc.currentSpeed);
                 if (m_pEpocState)
                 {
-                    // EPOC 峰值只用 v_drain 功率，避免缓降速期间 v_meas 超速把停步罚抬爆
+                    // EPOC 峰值采代谢功率；超额倍率仍有 EPOC_MAX_POWER_EXCESS_RATIO 封顶
                     float powerForEpoc = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
                         loc.currentSpeed,
                         m_fAppliedSpeedLimitMs,

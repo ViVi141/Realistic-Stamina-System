@@ -89,13 +89,13 @@ pub fn load_elite_preset_params() -> HashMap<String, f64> {
 
 pub fn check_drain_velocity_contract() -> ConstraintCheck {
     let v = get_drain_velocity_ms(5.5, 4.0);
-    let ok = (v - 4.0).abs() <= DRAIN_VEL_TOLERANCE;
+    let ok = (v - 5.5).abs() <= DRAIN_VEL_TOLERANCE;
     ConstraintCheck {
-        name: "drain_velocity_clamp".to_string(),
+        name: "drain_velocity_meas".to_string(),
         passed: ok,
-        detail: format!("expected 4.0 m/s, got {:.4}", v),
+        detail: format!("expected 5.5 m/s (v_meas), got {:.4}", v),
         hard: true,
-        margin: 4.0 - (v - 4.0).abs(),
+        margin: 5.5 - (v - 5.5).abs(),
         hint: String::new(),
     }
 }

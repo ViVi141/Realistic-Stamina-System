@@ -14,7 +14,7 @@ from rss_digital_twin_fix import get_drain_velocity_ms, get_metabolic_overspeed_
 
 SCENARIOS = [
     ("drain_velocity_walk", lambda: get_drain_velocity_ms(1.4, 1.4) == 1.4),
-    ("drain_velocity_sprint_cap", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
+    ("drain_velocity_sprint_cap", lambda: get_drain_velocity_ms(5.5, 4.0) == 5.5),
     ("metabolic_at_sustainable", lambda: get_metabolic_overspeed_factor(400.0) == 1.0),
     ("metabolic_over_limit", lambda: get_metabolic_overspeed_factor(800.0) == 0.5),
     ("anaerobic_drain", lambda: _anaerobic_drain_ok()),

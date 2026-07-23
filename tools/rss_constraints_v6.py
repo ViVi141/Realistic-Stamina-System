@@ -114,11 +114,11 @@ class ConstraintReport:
 
 def check_drain_velocity_contract() -> ConstraintCheck:
     v = get_drain_velocity_ms(5.5, 4.0)
-    ok = abs(v - 4.0) <= DRAIN_VEL_TOLERANCE
+    ok = abs(v - 5.5) <= DRAIN_VEL_TOLERANCE
     return ConstraintCheck(
-        "drain_velocity_clamp",
+        "drain_velocity_meas",
         ok,
-        f"expected 4.0 m/s, got {v:.4f}",
+        f"expected 5.5 m/s (v_meas), got {v:.4f}",
     )
 
 

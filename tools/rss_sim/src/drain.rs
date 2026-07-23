@@ -7,14 +7,8 @@ use crate::metabolism::{
     invert_speed_for_power_watts, metabolism_power_watts,
 };
 
-pub fn get_drain_velocity_ms(measured_ms: f64, theoretical_max_ms: f64) -> f64 {
-    let measured_ms = measured_ms.max(0.0);
-    let theoretical_max_ms = theoretical_max_ms.max(0.05);
-    if measured_ms > theoretical_max_ms {
-        theoretical_max_ms
-    } else {
-        measured_ms
-    }
+pub fn get_drain_velocity_ms(measured_ms: f64, _applied_limit_ms: f64) -> f64 {
+    measured_ms.max(0.0)
 }
 
 pub fn refresh_wprime_overspeed_armed(
@@ -49,22 +43,9 @@ pub fn is_wprime_pool_available_for_overspeed(
 pub fn get_metabolic_accounting_velocity_ms(
     measured_ms: f64,
     applied_limit_ms: f64,
-    w_prime_pool01: f64,
-    is_sprinting: bool,
+    _w_prime_pool01: f64,
+    _is_sprinting: bool,
 ) -> f64 {
-    let measured_ms = measured_ms.max(0.0);
-    if applied_limit_ms > 0.05 && measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS {
-        if !is_sprinting {
-            return get_drain_velocity_ms(measured_ms, applied_limit_ms);
-        }
-        if !is_wprime_pool_available_for_overspeed(
-            w_prime_pool01,
-            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
-        ) {
-            return get_drain_velocity_ms(measured_ms, applied_limit_ms);
-        }
-        return measured_ms;
-    }
     get_drain_velocity_ms(measured_ms, applied_limit_ms)
 }
 
@@ -108,40 +89,16 @@ pub fn is_metabolic_overspeed_accounting(measured_ms: f64, applied_limit_ms: f64
 }
 
 pub fn get_client_overspeed_excess_drain_per_second(
-    measured_ms: f64,
-    applied_limit_ms: f64,
-    w_prime_pool01: f64,
-    total_weight_kg: f64,
-    grade_percent: f64,
-    terrain_factor: f64,
-    movement_phase: i32,
+    _measured_ms: f64,
+    _applied_limit_ms: f64,
+    _w_prime_pool01: f64,
+    _total_weight_kg: f64,
+    _grade_percent: f64,
+    _terrain_factor: f64,
+    _movement_phase: i32,
 ) -> f64 {
-    if !is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
-        return 0.0;
-    }
-    if is_wprime_pool_available_for_overspeed(w_prime_pool01, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT) {
-        return 0.0;
-    }
-    let p_meas = metabolism_power_watts(
-        measured_ms,
-        total_weight_kg,
-        grade_percent,
-        terrain_factor,
-        movement_phase,
-    );
-    let v_drain = get_drain_velocity_ms(measured_ms, applied_limit_ms);
-    let p_drain = metabolism_power_watts(
-        v_drain,
-        total_weight_kg,
-        grade_percent,
-        terrain_factor,
-        movement_phase,
-    );
-    let excess_w = p_meas - p_drain;
-    if excess_w <= 1.0 {
-        return 0.0;
-    }
-    stamina_drain_rate_per_second_from_power_watts(excess_w, -1.0, 1.55e-07)
+    // 记账已与 v_meas 对齐，双速差惩罚废弃
+    0.0
 }
 
 pub fn get_metabolic_overspeed_factor(

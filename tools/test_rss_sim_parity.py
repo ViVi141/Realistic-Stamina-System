@@ -160,7 +160,7 @@ def main() -> int:
     merged = merge_game_aligned_params(params)
 
     rust_drain = float(rss_sim.get_drain_velocity_ms(5.5, 4.0))
-    py_drain = 4.0
+    py_drain = 5.5
     _assert_close("get_drain_velocity_ms(5.5,4.0)", rust_drain, py_drain, 1e-12)
     print(f"[PASS] drain velocity parity rust={rust_drain:.6f} python={py_drain:.6f}")
 

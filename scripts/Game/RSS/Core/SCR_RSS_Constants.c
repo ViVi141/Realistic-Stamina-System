@@ -626,7 +626,7 @@ class SCR_RSS_Constants
 
     //! 陆地静止/运动分界（m/s）：ExerciseTracker、ResolveMovementDrain、EPOC 取消、恢复对齐
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
-    //! 超限速代谢记账：v_meas 超出 v_limit 超过此值则 W′ 按实测速度（疲劳仍 v_drain）
+    //! 超速判定阈值（调试 / CP 压速纠偏）；记账已不再 min 到 v_limit
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
     //! 超速关闭阈值：池 ≤ 冲刺阈值 + 此值时解除超速武装（CP 巡航）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;

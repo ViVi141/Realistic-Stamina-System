@@ -90,15 +90,14 @@ def _sustain_run_observed_ok() -> bool:
 
 
 def _overspeed_accounting_ok() -> bool:
-    # Run 超速不得按 v_meas 记账
-    if get_metabolic_accounting_velocity_ms(3.55, 1.15) != 1.15:
+    # 记账一律 v_meas；超速标志仍可用于调试 / CP 压速
+    if get_metabolic_accounting_velocity_ms(3.55, 1.15) != 3.55:
         return False
     if get_metabolic_accounting_velocity_ms(1.0, 1.15) != 1.0:
         return False
-    # Sprint + W′ 可用才按 v_meas
     if get_metabolic_accounting_velocity_ms(3.55, 1.15, is_sprinting=True) != 3.55:
         return False
-    if get_metabolic_accounting_velocity_ms(3.55, 1.15, w_prime_pool01=0.1, is_sprinting=True) != 1.15:
+    if get_metabolic_accounting_velocity_ms(3.55, 1.15, w_prime_pool01=0.1, is_sprinting=True) != 3.55:
         return False
     if not is_metabolic_overspeed_accounting(3.55, 1.15):
         return False
@@ -109,26 +108,21 @@ def _overspeed_accounting_ok() -> bool:
         3.55, 1.15, 125.0, 9.1, 2.24, 2, is_sprinting=True
     )
     p_acct_run = get_metabolic_accounting_power_watts(3.55, 1.15, 125.0, 9.1, 2.24, 2)
-    p_acct_empty = get_metabolic_accounting_power_watts(
-        3.55, 1.15, 125.0, 9.1, 2.24, 2, w_prime_pool01=0.1, is_sprinting=True
-    )
-    if abs(p_acct_empty - p_drain) > 1.0:
+    if abs(p_acct - p_drain) > 1.0:
         return False
     if abs(p_acct_run - p_drain) > 1.0:
         return False
-    return p_acct > p_drain * 1.5
+    return True
 
 
 def _overspeed_excess_drain_ok() -> bool:
+    # 双速差惩罚已废弃，恒为 0
     if get_client_overspeed_excess_drain_per_second(3.55, 1.15, 1.0, 125.0, 9.1, 2.24, 2) != 0.0:
         return False
     extra = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0
     )
-    if extra <= 0.00001:
-        return False
-    base = get_client_overspeed_excess_drain_per_second(1.0, 1.15, 0.1, 125.0, 9.1, 2.24, 2)
-    return base == 0.0
+    return extra == 0.0
 
 
 def _march_4h_ok() -> bool:
@@ -267,7 +261,7 @@ def _anchors_and_batch_ok() -> bool:
 
 
 SCENARIOS = [
-    ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
+    ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 5.5),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),

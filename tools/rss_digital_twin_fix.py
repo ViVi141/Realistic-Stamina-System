@@ -1313,7 +1313,7 @@ class RSSDigitalTwin:
         engine_original_ms: float,
         theoretical_limited_ms: float,
     ) -> float:
-        """v6：消耗测速 = min(v_meas, v_limit)；与 CalculateLandBaseDrainRate 一致。"""
+        """v6：消耗测速 = v_meas（不再钳到 v_limit）。"""
         if movement_phase == MovementType.IDLE:
             return 0.0
 
@@ -1321,13 +1321,7 @@ class RSSDigitalTwin:
         if measured < 0.05:
             measured = max(0.0, theoretical_limited_ms)
 
-        cap_ms = self._applied_speed_limit_ms
-        if cap_ms <= 0.05:
-            cap_ms = theoretical_limited_ms
-        if cap_ms <= 0.05:
-            cap_ms = engine_original_ms
-
-        return get_drain_velocity_ms(measured, cap_ms)
+        return get_drain_velocity_ms(measured, theoretical_limited_ms)
 
     def get_metabolic_accounting_velocity_ms(
         self,
@@ -1337,7 +1331,7 @@ class RSSDigitalTwin:
         engine_original_ms: float,
         theoretical_limited_ms: float,
     ) -> float:
-        """超限速时按 v_meas 记账；否则同 get_drain_velocity_ms。"""
+        """与 get_drain_velocity_ms 相同：始终 v_meas。"""
         if movement_phase == MovementType.IDLE:
             return 0.0
 
@@ -1345,14 +1339,8 @@ class RSSDigitalTwin:
         if measured < 0.05:
             measured = max(0.0, theoretical_limited_ms)
 
-        cap_ms = self._applied_speed_limit_ms
-        if cap_ms <= 0.05:
-            cap_ms = theoretical_limited_ms
-        if cap_ms <= 0.05:
-            cap_ms = engine_original_ms
-
         return get_metabolic_accounting_velocity_ms(
-            measured, cap_ms, self.v6_cp_state.pool01, is_sprinting
+            measured, theoretical_limited_ms, self.v6_cp_state.pool01, is_sprinting
         )
 
     def _resolve_current_speed_ms(self, theoretical_ms: float) -> float:
@@ -1559,9 +1547,7 @@ class RSSDigitalTwin:
             new_meas = min(
                 VELOCITY_HORIZ_CAP_MS, engine_original_ms * speed_limit_mult
             )
-            # 闭环孪生：测速跟随 RSS 限速（避免 limit 抖动造成伪超速）
-            if self._applied_speed_limit_ms > 0.05:
-                new_meas = min(new_meas, self._applied_speed_limit_ms)
+            # 与游戏关水平硬钳一致：测速不强行钳到 applied limit
             self._measured_velocity_ms = new_meas
         else:
             self._measured_velocity_ms = 0.0
@@ -1788,12 +1774,8 @@ class RSSDigitalTwin:
 # =============================================================================
 
 def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> float:
-    """与 SCR_RSS_DrainCalculator.GetDrainVelocityMs 一致。"""
-    measured_ms = max(0.0, measured_ms)
-    theoretical_max_ms = max(0.05, theoretical_max_ms)
-    if measured_ms > theoretical_max_ms:
-        return theoretical_max_ms
-    return measured_ms
+    """与 SCR_RSS_DrainCalculator.GetDrainVelocityMs 一致：始终 v_meas。"""
+    return max(0.0, measured_ms)
 
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
@@ -1838,14 +1820,7 @@ def get_metabolic_accounting_velocity_ms(
     w_prime_pool01: float = 1.0,
     is_sprinting: bool = False,
 ) -> float:
-    """与 SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs 一致。"""
-    measured_ms = max(0.0, measured_ms)
-    if applied_limit_ms > 0.05 and measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS:
-        if not is_sprinting:
-            return get_drain_velocity_ms(measured_ms, applied_limit_ms)
-        if not is_wprime_pool_available_for_overspeed(w_prime_pool01):
-            return get_drain_velocity_ms(measured_ms, applied_limit_ms)
-        return measured_ms
+    """与 SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs 一致：始终 v_meas。"""
     return get_drain_velocity_ms(measured_ms, applied_limit_ms)
 
 
@@ -1877,21 +1852,8 @@ def get_client_overspeed_excess_drain_per_second(
     movement_phase: int,
     effective_critical_power_watts: float = -1.0,
 ) -> float:
-    if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
-        return 0.0
-    if is_wprime_pool_available_for_overspeed(w_prime_pool01):
-        return 0.0
-    p_meas = metabolism_power_watts(
-        measured_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
-    )
-    v_drain = get_drain_velocity_ms(measured_ms, applied_limit_ms)
-    p_drain = metabolism_power_watts(
-        v_drain, total_weight_kg, grade_percent, terrain_factor, movement_phase
-    )
-    excess_w = p_meas - p_drain
-    if excess_w <= 1.0:
-        return 0.0
-    return stamina_drain_rate_per_second_from_power_watts(excess_w, -1.0)
+    """已废弃：记账与 v_meas 对齐后差额恒为 0。"""
+    return 0.0
 
 
 def stamina_drain_rate_per_second_from_power_watts(
