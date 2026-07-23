@@ -1065,7 +1065,7 @@ modded class SCR_CharacterControllerComponent
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
 
-        // 每帧重申限速并硬钳：下坡/控制器回灌会把 v_meas 冲到引擎 Run 顶（~3.8）
+        // 每帧重申限速；水平硬钳由 V6_APPLY_HORIZONTAL_SPEED_CLAMP 控制
         if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled()
             && m_fAppliedSpeedLimitMs > 0.05
             && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))

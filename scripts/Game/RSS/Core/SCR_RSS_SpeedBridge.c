@@ -22,10 +22,16 @@ class SCR_RSS_SpeedBridge
         return s_StaminaSpeedSource;
     }
 
-    //! 是否写入体力限速并做水平硬钳（负重/坡度等；见 V6_APPLY_STAMINA_SPEED_LIMIT）。
+    //! 是否写入体力限速（见 V6_APPLY_STAMINA_SPEED_LIMIT）。
     static bool IsStaminaSpeedPressEnabled()
     {
         return SCR_RSS_Constants.V6_APPLY_STAMINA_SPEED_LIMIT;
+    }
+
+    //! 是否对物理水平速度硬/软钳（见 V6_APPLY_HORIZONTAL_SPEED_CLAMP）。
+    static bool IsHorizontalSpeedClampEnabled()
+    {
+        return SCR_RSS_Constants.V6_APPLY_HORIZONTAL_SPEED_CLAMP;
     }
 
     //! 是否用 CP/有氧巡航再压 Run 速度（见 V6_APPLY_CP_METABOLIC_SPEED_CAP）。
@@ -123,6 +129,8 @@ class SCR_RSS_SpeedBridge
 
     static void ClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs)
     {
+        if (!IsHorizontalSpeedClampEnabled())
+            return;
         if (!owner)
             return;
         if (maxHorizMs < 0.1)
@@ -151,6 +159,8 @@ class SCR_RSS_SpeedBridge
     //! 软钳；超额大时硬钳（控制器每帧回灌时软钳不够）
     static void SoftClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs, float dtSec)
     {
+        if (!IsHorizontalSpeedClampEnabled())
+            return;
         if (!owner)
             return;
         if (maxHorizMs < 0.1)

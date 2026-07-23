@@ -547,12 +547,13 @@ class SCR_RSS_Constants
     static const float V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT = 0.08;
 
     // ==================== v6 学术拟真：ACSM + CP-W' ====================
-    //! true：写入 SetSpeedLimit + 水平硬钳（负重/坡度/档位目标）。
-    //! false：完全不压速（仅代谢记账）。耗尽跛行仍限速。
+    //! true：写入 SetSpeedLimit（负重/坡度/档位目标）。false：不写限速源（仅代谢记账）。耗尽跛行仍限速。
     static const bool V6_APPLY_STAMINA_SPEED_LIMIT = true;
+    //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
+    static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! false：只保留负重+坡度等机械限速；超代谢功率只烧 W′/体力，不压速。
-    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = false;
+    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
     //! true：步态目标用 March 档（Walk/Run/Sprint ≈ 1.4/2.8/4.5，可经预设改）。
     //! false：步态目标用引擎空载顶（Walk/Run/Sprint ≈ 1.45/3.8/5.5），仍乘负重与坡度。
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
