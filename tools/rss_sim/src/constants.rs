@@ -16,6 +16,8 @@ pub const V6_ACSM_LINEAR_W_PER_MS: f64 = 200.0;
 pub const V6_ACSM_QUAD_W_PER_MS2: f64 = 80.0;
 pub const V6_ACSM_BLEND_START_MS: f64 = 2.0;
 pub const V6_ACSM_BLEND_END_MS: f64 = 2.4;
+// Aerobic cruise hard cap (m/s): when W' unavailable, Run cannot exceed this. Walk exempt.
+pub const V6_AEROBIC_CRUISE_MAX_MS: f64 = 2.4;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;
 pub const LCDA_SPEED_FRAC_COEFF: f64 = 1.78;

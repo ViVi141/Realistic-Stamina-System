@@ -532,6 +532,7 @@ class SCR_RSS_Constants
     static const float V5_COLLAPSE_AEROBIC_ENTER = 0.05;
     static const float V5_COLLAPSE_AEROBIC_EXIT = 0.12;
     static const float V5_WALK_SPEED_MS_DEFAULT = 1.4;
+    //! March Run 意图顶（可略高于有氧巡航）；持续超过 V6_AEROBIC_CRUISE_MAX_MS 需烧 W′
     static const float V5_RUN_SPEED_MS_DEFAULT = 2.8;
     //! 步态基准：Sprint 相对 Run 至少拉开 ~60%（实机再经负重/功率软顶）
     static const float V5_SPRINT_SPEED_MS_DEFAULT = 4.5;
@@ -546,6 +547,8 @@ class SCR_RSS_Constants
     static const float V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT = 0.08;
 
     // ==================== v6 学术拟真：ACSM + CP-W' ====================
+    //! 有氧巡航硬顶（m/s）：W′ 不可用时 Run 不得超过；超过必须吃 W′。Walk 不套此帽。
+    static const float V6_AEROBIC_CRUISE_MAX_MS = 2.4;
     //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
     static const float V6_ACSM_REST_W = 50.0;
     static const float V6_ACSM_LINEAR_W_PER_MS = 200.0;

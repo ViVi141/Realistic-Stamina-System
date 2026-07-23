@@ -295,7 +295,9 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
 
-            if (!(isSprinting || currentMovementPhase == 3))
+            // Run：W′ 不足时套 CP∩有氧巡航顶；Walk 不套（本身应在有氧带内）
+            bool isWalkPhase = (currentMovementPhase == 1);
+            if (!(isSprinting || currentMovementPhase == 3) && !isWalkPhase)
             {
                 SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
                 if (anaRun && anaRun.GetCpModel())
@@ -318,16 +320,19 @@ class SCR_RSS_UpdateCoordinator
                         if (runTerrain > 3.0)
                             runTerrain = 3.0;
                         int runPhase = currentMovementPhase;
-                        if (runPhase < 1)
+                        if (runPhase < 2)
                             runPhase = 2;
+                        float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
                         float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
                             cpRun.GetEffectiveCriticalPowerWatts(),
                             totalWeightKg,
                             gradePct,
                             runTerrain,
                             runPhase);
-                        if (cpCapMs > 0.05 && theoreticalTargetSpeed > cpCapMs)
-                            theoreticalTargetSpeed = cpCapMs;
+                        if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
+                            cruiseCapMs = cpCapMs;
+                        if (theoreticalTargetSpeed > cruiseCapMs)
+                            theoreticalTargetSpeed = cruiseCapMs;
                     }
                 }
             }

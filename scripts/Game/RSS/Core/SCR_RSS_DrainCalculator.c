@@ -124,15 +124,21 @@ class SCR_RSS_DrainCalculator
             false,
             0.0,
             cpModel);
+        if (capMs <= 0.05)
+        {
+            float cp = cpModel.GetEffectiveCriticalPowerWatts();
+            if (cp <= 1.0)
+                return -1.0;
+            capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                cp, totalWeightKg, gradePercent, terrainFactor, movementPhase);
+        }
+
+        // Walk 不套有氧巡航硬顶；Run 在 W′ 耗尽时不得超过 2.4
+        if (movementPhase != 1 && capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
+            capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
         if (capMs > 0.05)
             return capMs;
-
-        float cp = cpModel.GetEffectiveCriticalPowerWatts();
-        if (cp <= 1.0)
-            return -1.0;
-
-        return SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
-            cp, totalWeightKg, gradePercent, terrainFactor, movementPhase);
+        return -1.0;
     }
 
     //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
@@ -222,8 +228,15 @@ class SCR_RSS_DrainCalculator
         if (powerW > cp && !isSprintPhase)
             targetP = cp;
 
-        return SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+        float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             targetP, totalWeightKg, gradePercent, terrainFactor, movementPhase);
+        // Walk 不套有氧巡航硬顶；Run 在 W′ 不可用时不得超过 2.4
+        if (!isSprintPhase && movementPhase != 1)
+        {
+            if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
+                capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+        }
+        return capMs;
     }
 
     //! 代谢限速 → 速度倍率（相对 engine base）

@@ -4,9 +4,9 @@ use crate::constants::{
     MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
     RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
     SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_CRITICAL_POWER_WATTS_DEFAULT,
-    V6_STAMINA_DRAIN_CALIBRATION, V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS,
-    WALK_VELOCITY_THRESHOLD,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS,
+    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
+    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
@@ -951,11 +951,13 @@ impl RSSDigitalTwin {
                 dt,
                 current_time,
             );
-        } else if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+        } else if phase != MOVEMENT_WALK && !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+            // Run only: CP ∩ aerobic cruise max; Walk exempt
             let mut run_phase = phase;
-            if run_phase < MOVEMENT_WALK {
+            if run_phase < MOVEMENT_RUN {
                 run_phase = MOVEMENT_RUN;
             }
+            let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
             let cp_cap_ms = invert_speed_for_power_watts(
                 self.v6_cp_state.get_effective_critical_power_watts(),
                 current_weight,
@@ -963,8 +965,11 @@ impl RSSDigitalTwin {
                 tf,
                 run_phase,
             );
-            if cp_cap_ms > 0.05 && theoretical_target > cp_cap_ms {
-                theoretical_target = cp_cap_ms;
+            if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
+                cruise_cap = cp_cap_ms;
+            }
+            if theoretical_target > cruise_cap {
+                theoretical_target = cruise_cap;
             }
         }
 

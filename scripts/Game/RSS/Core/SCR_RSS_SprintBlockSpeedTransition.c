@@ -1,5 +1,5 @@
-//! 无氧池/冷却禁 Sprint 时的速度降低阻尼（Sprint → Run 平滑过渡）
-//! 在绝对速度 (m/s) 空间 smoothstep，避免引擎 Sprint→Run 切换时分母变化导致阻尼失效
+//! 绝对速度空间的限速过渡（Sprint→Run、冲刺中代谢压速、禁 Sprint 等）
+//! 在 m/s 上 smoothstep 下行，避免引擎 Sprint/Run 分母切换或目标骤降导致的速度突变
 
 class SCR_RSS_SprintBlockSpeedTransition
 {
@@ -10,10 +10,14 @@ class SCR_RSS_SprintBlockSpeedTransition
     protected bool m_bWasSprintAllowed = true;
     protected bool m_bSnapUpActive = false;
 
-    protected const float TRANSITION_DURATION = 5.0;
+    //! 下行过渡略短于坡度 5s：冲刺被切时要能感到减速，但不能瞬切
+    protected const float TRANSITION_DURATION = 3.2;
     protected const float CHANGE_THRESHOLD_MS = 0.08;
-    protected const float SNAP_UP_THRESHOLD_MS = 0.35;
-    protected const float SNAP_UP_HYST_MS = 0.12;
+    //! 仍允许 Sprint 时，目标突降超过此值也走缓降（代谢/W′/负重压速）
+    protected const float DROP_SMOOTH_THRESHOLD_MS = 0.22;
+    //! 提速瞬切阈值：须大于有氧顶(2.4)↔March Run(2.8) 差值，避免 W′ 武装抖跳
+    protected const float SNAP_UP_THRESHOLD_MS = 0.55;
+    protected const float SNAP_UP_HYST_MS = 0.20;
 
     void Initialize()
     {
@@ -45,13 +49,12 @@ class SCR_RSS_SprintBlockSpeedTransition
         if (m_fCurrentSmoothedAbsMs <= 0.01)
             m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
 
+        // 禁 Sprint 边沿：从上一帧绝对速度起步缓降到 Run 目标
         if (m_bWasSprintAllowed && !sprintAllowed)
         {
             float startAbsMs = lastAppliedMultiplier * lastEngineBaseMs;
             if (startAbsMs < m_fCurrentSmoothedAbsMs)
                 startAbsMs = m_fCurrentSmoothedAbsMs;
-            if (startAbsMs < targetAbsoluteSpeedMs)
-                startAbsMs = targetAbsoluteSpeedMs;
             m_fTransitionStartAbsMs = startAbsMs;
             m_fTransitionTargetAbsMs = targetAbsoluteSpeedMs;
             m_fTransitionStartTime = currentTime;
@@ -68,12 +71,15 @@ class SCR_RSS_SprintBlockSpeedTransition
 
         m_bWasSprintAllowed = sprintAllowed;
 
-        if (sprintAllowed)
+        float dropMs = m_fCurrentSmoothedAbsMs - targetAbsoluteSpeedMs;
+        float gainMs = targetAbsoluteSpeedMs - m_fCurrentSmoothedAbsMs;
+
+        // 提速：保持即时响应（带滞回）
+        if (gainMs >= SNAP_UP_THRESHOLD_MS)
         {
-            float gainMs = targetAbsoluteSpeedMs - m_fCurrentSmoothedAbsMs;
             if (m_bSnapUpActive)
                 m_bSnapUpActive = (gainMs >= SNAP_UP_HYST_MS);
-            if (!m_bSnapUpActive && gainMs >= SNAP_UP_THRESHOLD_MS)
+            if (!m_bSnapUpActive)
             {
                 m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
                 m_fTransitionTargetAbsMs = targetAbsoluteSpeedMs;
@@ -81,17 +87,27 @@ class SCR_RSS_SprintBlockSpeedTransition
                 m_bSnapUpActive = true;
                 return m_fCurrentSmoothedAbsMs / currentEngineBaseMs;
             }
-            if (m_fTransitionStartTime < 0.0)
-            {
-                m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
-                return m_fCurrentSmoothedAbsMs / currentEngineBaseMs;
-            }
+        }
+        else
+        {
+            if (m_bSnapUpActive && gainMs < SNAP_UP_HYST_MS)
+                m_bSnapUpActive = false;
         }
 
-        bool targetChanged = Math.AbsFloat(targetAbsoluteSpeedMs - m_fTransitionTargetAbsMs) >= CHANGE_THRESHOLD_MS;
-        bool needTransition = Math.AbsFloat(targetAbsoluteSpeedMs - m_fCurrentSmoothedAbsMs) >= CHANGE_THRESHOLD_MS;
+        // 显著掉速或中等提速（含冲刺中代谢限速、W′ 巡航帽 2.4↔2.8）：绝对速度空间缓变
+        // 大提速仍走上方 SNAP_UP；此处覆盖「不够瞬切、但瞬时跳会抖」的区间
+        bool significantDrop = false;
+        if (dropMs >= DROP_SMOOTH_THRESHOLD_MS)
+            significantDrop = true;
+        if (!sprintAllowed && dropMs >= CHANGE_THRESHOLD_MS)
+            significantDrop = true;
 
-        if (!sprintAllowed && needTransition && (targetChanged || m_fTransitionStartTime < 0.0))
+        bool significantGainSmooth = false;
+        if (gainMs >= DROP_SMOOTH_THRESHOLD_MS && gainMs < SNAP_UP_THRESHOLD_MS)
+            significantGainSmooth = true;
+
+        bool targetChanged = Math.AbsFloat(targetAbsoluteSpeedMs - m_fTransitionTargetAbsMs) >= CHANGE_THRESHOLD_MS;
+        if ((significantDrop || significantGainSmooth) && (targetChanged || m_fTransitionStartTime < 0.0))
         {
             m_fTransitionStartAbsMs = m_fCurrentSmoothedAbsMs;
             m_fTransitionTargetAbsMs = targetAbsoluteSpeedMs;
@@ -104,11 +120,12 @@ class SCR_RSS_SprintBlockSpeedTransition
             float progress = elapsed / TRANSITION_DURATION;
             progress = Math.Clamp(progress, 0.0, 1.0);
             float smoothProgress = progress * progress * (3.0 - 2.0 * progress);
-            m_fCurrentSmoothedAbsMs = m_fTransitionStartAbsMs + (m_fTransitionTargetAbsMs - m_fTransitionStartAbsMs) * smoothProgress;
+            m_fCurrentSmoothedAbsMs = m_fTransitionStartAbsMs
+                + (m_fTransitionTargetAbsMs - m_fTransitionStartAbsMs) * smoothProgress;
             if (progress >= 1.0)
                 m_fTransitionStartTime = -1.0;
         }
-        else if (!sprintAllowed)
+        else
         {
             m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
         }

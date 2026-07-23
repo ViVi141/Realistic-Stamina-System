@@ -1276,10 +1276,12 @@ class RSSDigitalTwin:
                 dt,
                 current_time,
             )
-        elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
+        elif phase != MovementType.WALK and not self.v6_cp_state.refresh_and_get_overspeed_armed():
+            # Run only: CP intersect aerobic cruise max; Walk exempt
             run_phase = phase
-            if run_phase < MovementType.WALK:
+            if run_phase < MovementType.RUN:
                 run_phase = MovementType.RUN
+            cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
             cp_cap_ms = invert_speed_for_power_watts(
                 self.v6_cp_state.get_effective_critical_power_watts(),
                 current_weight,
@@ -1287,8 +1289,10 @@ class RSSDigitalTwin:
                 tf,
                 run_phase,
             )
-            if cp_cap_ms > 0.05 and theoretical_target > cp_cap_ms:
-                theoretical_target = cp_cap_ms
+            if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
+                cruise_cap = cp_cap_ms
+            if theoretical_target > cruise_cap:
+                theoretical_target = cruise_cap
 
         return float(theoretical_target)
 
@@ -2023,6 +2027,7 @@ V6_ACSM_LINEAR_W_PER_MS = 200.0
 V6_ACSM_QUAD_W_PER_MS2 = 80.0
 V6_ACSM_BLEND_START_MS = 2.0
 V6_ACSM_BLEND_END_MS = 2.4
+V6_AEROBIC_CRUISE_MAX_MS = 2.4
 LCDA_REST_W_PER_KG = 1.05
 LCDA_STAND_NET_W_PER_KG = 0.19
 LCDA_SPEED_FRAC_COEFF = 1.78

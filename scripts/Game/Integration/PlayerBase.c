@@ -448,6 +448,9 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssEngineBaseForLimit = 0.0;
     protected float m_fAppliedSpeedLimitMs = -1.0;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
+    //! 目标绝对速落入 Walk 带时 RSS 强制 DynamicSpeed=0.5（真切 Walk）
+    protected bool m_bRssGaitWalkActive = false;
+    protected float m_fRssSavedDynamicSpeed = 1.0;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
     
@@ -510,7 +513,11 @@ modded class SCR_CharacterControllerComponent
 
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
+        {
+            SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
+            m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+        }
 
         m_bRssStaminaLoopActive = false;
 
@@ -628,40 +635,106 @@ modded class SCR_CharacterControllerComponent
         return GetDynamicOriginalEngineMaxSpeed(2);
     }
 
+    float GetOriginalEngineMaxSpeed_Walk()
+    {
+        return GetDynamicOriginalEngineMaxSpeed(1);
+    }
+
     float GetOriginalEngineMaxSpeed_Sprint()
     {
         return GetDynamicOriginalEngineMaxSpeed(3);
     }
 
-    //! 与 UpdateCoordinator 一致：当前 RSS 限速倍率所乘的引擎原始最大速度
+    //! 与 UpdateCoordinator 一致：当前 RSS 限速倍率所乘的引擎原始最大速度（按当前相位）
     float GetRssSpeedLimitEngineBaseMs()
     {
         bool engineStillSprinting = IsSprinting() || (GetCurrentMovementPhase() == 3);
         if (engineStillSprinting)
             return GetOriginalEngineMaxSpeed_Sprint();
+
+        // 仅玩家按住 Walk 时用 Walk 顶；卡相位时仍按 Run，避免 Run 管线失效
+        bool walkKeyHeld = false;
+        if (IsPlayerControlled() && GetGame())
+        {
+            InputManager im = GetGame().GetInputManager();
+            if (im && im.GetActionValue("CharacterWalk") > 0.5)
+                walkKeyHeld = true;
+        }
+        if (walkKeyHeld)
+            return GetOriginalEngineMaxSpeed_Walk();
         return GetOriginalEngineMaxSpeed_Run();
     }
 
+    //! 缓存各相位顶速；禁止每 tick 临时 SetSpeedLimit(1.0)，否则控制器会趁机加速成滑步
+    protected float m_fCachedEngineMaxWalkMs = -1.0;
+    protected float m_fCachedEngineMaxRunMs = -1.0;
+    protected float m_fCachedEngineMaxSprintMs = -1.0;
+    protected float m_fEngineMaxCacheTimeSec = -1.0;
+    protected static const float ENGINE_MAX_CACHE_TTL_SEC = 2.0;
+
     protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
     {
+        float fallback = SCR_RSS_MetabolismMath.GAME_MAX_SPEED * SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+        if (movementPhase == 3)
+            fallback = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        else if (movementPhase == 1)
+            fallback = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+
         if (!m_pAnimComponent)
+            return fallback;
+
+        float nowSec = -1.0;
+        if (GetGame() && GetGame().GetWorld())
+            nowSec = GetGame().GetWorld().GetWorldTime() * 0.001;
+
+        bool cacheFresh = false;
+        if (m_fEngineMaxCacheTimeSec >= 0.0 && nowSec >= 0.0)
         {
-            if (movementPhase == 3)
-                return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-            else
-                return SCR_RSS_MetabolismMath.GAME_MAX_SPEED * SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+            if ((nowSec - m_fEngineMaxCacheTimeSec) <= ENGINE_MAX_CACHE_TTL_SEC)
+                cacheFresh = true;
         }
-        
-        float currentMultiplier = m_fLastSpeedMultiplier;
+
+        if (cacheFresh)
+        {
+            if (movementPhase == 3 && m_fCachedEngineMaxSprintMs > 0.5)
+                return m_fCachedEngineMaxSprintMs;
+            if (movementPhase == 1 && m_fCachedEngineMaxWalkMs > 0.5)
+                return m_fCachedEngineMaxWalkMs;
+            if (movementPhase == 2 && m_fCachedEngineMaxRunMs > 0.5)
+                return m_fCachedEngineMaxRunMs;
+        }
+
         IEntity ownerEnt = GetOwner();
+        float restoreMult = m_fLastRssSpeedMultiplierApplied;
+        if (restoreMult < 0.01)
+            restoreMult = m_fLastSpeedMultiplier;
+        if (restoreMult < 0.01)
+            restoreMult = 1.0;
+        if (restoreMult > 1.0)
+            restoreMult = 1.0;
 
         SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, 1.0);
+        m_fCachedEngineMaxWalkMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 1);
+        m_fCachedEngineMaxRunMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
+        m_fCachedEngineMaxSprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
+        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, restoreMult);
+        m_fEngineMaxCacheTimeSec = nowSec;
 
-        float realOriginalSpeed = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, movementPhase);
-
-        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, currentMultiplier);
-        
-        return realOriginalSpeed;
+        if (movementPhase == 3)
+        {
+            if (m_fCachedEngineMaxSprintMs > 0.5)
+                return m_fCachedEngineMaxSprintMs;
+            return fallback;
+        }
+        if (movementPhase == 1)
+        {
+            if (m_fCachedEngineMaxWalkMs > 0.5)
+                return m_fCachedEngineMaxWalkMs;
+            return fallback;
+        }
+        if (m_fCachedEngineMaxRunMs > 0.5)
+            return m_fCachedEngineMaxRunMs;
+        return fallback;
     }
 
     void RSS_UpdateStatusLogSnapshot(
@@ -987,6 +1060,18 @@ modded class SCR_CharacterControllerComponent
         
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
+
+        // 每帧重申限速并硬钳：下坡/控制器回灌会把 v_meas 冲到引擎 Run 顶（~3.8）
+        if (m_fAppliedSpeedLimitMs > 0.05 && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+        {
+            float limitFrac = m_fLastRssSpeedMultiplierApplied;
+            if (limitFrac < 0.01)
+                limitFrac = 0.01;
+            if (limitFrac > 1.0)
+                limitFrac = 1.0;
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, limitFrac);
+            SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(owner, m_fAppliedSpeedLimitMs);
+        }
         
         bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
         
@@ -1042,7 +1127,11 @@ modded class SCR_CharacterControllerComponent
 
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
+        {
+            SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
+            m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+        }
 
         RSS_RemoveScheduledCallbacks();
 

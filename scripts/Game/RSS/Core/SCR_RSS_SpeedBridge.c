@@ -3,6 +3,8 @@
 //! 再经 SCR_CharacterSlowdownEasingSystem 合并后调用 OverrideMaxSpeed。
 //! RSS 必须只写入独立 source 参与 min 合并；禁止再单独 OverrideMaxSpeed，
 //! 否则会盖掉 Foliage/铁丝网等已合并的限速。
+//!
+//! 禁止用 SetDynamicSpeed(0.5) 假按 Walk：会把相位锁死，Run 进不去。
 
 class RSS_StaminaSpeedLimitToken : Managed
 {
@@ -11,6 +13,7 @@ class RSS_StaminaSpeedLimitToken : Managed
 class SCR_RSS_SpeedBridge
 {
     protected static ref RSS_StaminaSpeedLimitToken s_StaminaSpeedSource;
+    protected static const float HORIZ_SOFT_DECEL_MS2 = 9.0;
 
     protected static RSS_StaminaSpeedLimitToken GetStaminaSpeedSource()
     {
@@ -20,8 +23,7 @@ class SCR_RSS_SpeedBridge
     }
 
     //! 将 RSS 体力速度倍率写入角色限速图（与灌木/铁丝网等取全局最小值）。
-    //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source（见 docs/灌木丛移动减速机制.md）。
-    //! Chimera 路径只走 SetSpeedLimit：原生会即时升速或登记缓降，并自行 OverrideMaxSpeed。
+    //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)
     {
         if (!owner)
@@ -36,7 +38,6 @@ class SCR_RSS_SpeedBridge
             return;
         }
 
-        // 无 ChimeraCharacter（极旧回退）：无法与灌木合并
         SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
             owner.FindComponent(SCR_CharacterControllerComponent));
         if (ctrl)
@@ -50,14 +51,58 @@ class SCR_RSS_SpeedBridge
         ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit);
     }
 
-    //! W′ 耗尽等硬 metabolic 钳制：同样只写入 SetSpeedLimit 参与合并。
-    //! 需要立刻压住惯性时由调用方另用 ClampOwnerHorizontalSpeed（水平速度物理钳）。
     static void ApplyHardStaminaSpeedClamp(IEntity owner, float limit)
     {
         ApplyStaminaSpeedLimit(owner, limit);
     }
 
-    //! 下坡重力/惯性仍高于限速时，钳水平速度（保留竖直分量）
+    //! 绝对速度 → 相对当前相位顶速的 SetSpeedLimit 倍率
+    static float FractionForAbsoluteSpeed(float desiredAbsMs, float phaseTopMs)
+    {
+        if (phaseTopMs < 0.1)
+            return 1.0;
+        float frac = desiredAbsMs / phaseTopMs;
+        if (frac > 1.0)
+            frac = 1.0;
+        if (frac < 0.01)
+            frac = 0.01;
+        return frac;
+    }
+
+    //! 清除残留 DynamicSpeed=0.5（非玩家按 Walk）；不主动切入 Walk。
+    static void ClearStuckWalkDynamicSpeed(CharacterControllerComponent ctrl, bool walkKeyHeld)
+    {
+        if (!ctrl || walkKeyHeld)
+            return;
+
+        float dyn = ctrl.GetDynamicSpeed();
+        if (dyn > 0.52)
+            return;
+
+        ctrl.SetDynamicSpeed(1.0);
+        ctrl.SetShouldApplyDynamicSpeedOverride(false);
+    }
+
+    //! 当前相位下「不滑步」的物理上限：不能超过该相位动画顶速。
+    static float GetPhaseSafePhysicsCapMs(
+        float appliedAbsMs,
+        float phaseTopMs,
+        bool isSprinting,
+        int movementPhase)
+    {
+        float cap = appliedAbsMs;
+        if (cap < 0.1)
+            return cap;
+
+        bool sprintPhase = false;
+        if (isSprinting || movementPhase == 3)
+            sprintPhase = true;
+
+        if (!sprintPhase && phaseTopMs > 0.1 && cap > phaseTopMs)
+            cap = phaseTopMs;
+        return cap;
+    }
+
     static void ClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs)
     {
         if (!owner)
@@ -71,7 +116,7 @@ class SCR_RSS_SpeedBridge
 
         vector velocity = physics.GetVelocity();
         float horizSq = velocity[0] * velocity[0] + velocity[2] * velocity[2];
-        float slackMs = 0.08;
+        float slackMs = 0.04;
         float slackSq = (maxHorizMs + slackMs) * (maxHorizMs + slackMs);
         if (horizSq <= slackSq)
             return;
@@ -80,6 +125,47 @@ class SCR_RSS_SpeedBridge
 
         float speed = Math.Sqrt(horizSq);
         float scale = maxHorizMs / speed;
+        velocity[0] = velocity[0] * scale;
+        velocity[2] = velocity[2] * scale;
+        physics.SetVelocity(velocity);
+    }
+
+    //! 软钳；超额大时硬钳（控制器每帧回灌时软钳不够）
+    static void SoftClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs, float dtSec)
+    {
+        if (!owner)
+            return;
+        if (maxHorizMs < 0.1)
+            return;
+        if (dtSec < 0.01)
+            dtSec = 0.01;
+        if (dtSec > 0.5)
+            dtSec = 0.5;
+
+        Physics physics = owner.GetPhysics();
+        if (!physics)
+            return;
+
+        vector velocity = physics.GetVelocity();
+        float horizSq = velocity[0] * velocity[0] + velocity[2] * velocity[2];
+        if (horizSq <= 0.0001)
+            return;
+
+        float speed = Math.Sqrt(horizSq);
+        float slackMs = 0.06;
+        if (speed <= maxHorizMs + slackMs)
+            return;
+
+        if (speed > maxHorizMs + 0.35)
+        {
+            ClampOwnerHorizontalSpeed(owner, maxHorizMs);
+            return;
+        }
+
+        float newSpeed = speed - HORIZ_SOFT_DECEL_MS2 * dtSec;
+        if (newSpeed < maxHorizMs)
+            newSpeed = maxHorizMs;
+        float scale = newSpeed / speed;
         velocity[0] = velocity[0] * scale;
         velocity[2] = velocity[2] * scale;
         physics.SetVelocity(velocity);
