@@ -425,9 +425,11 @@ modded class SCR_CharacterControllerComponent
         {
             float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
                 desiredAbsMs, loc.storedEngineBase);
+            desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, desiredFrac);
+            float slewedAbsMs = desiredFrac * loc.storedEngineBase;
             float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
-                desiredAbsMs,
+                slewedAbsMs,
                 loc.storedEngineBase,
                 loc.isSprintingNow,
                 loc.phaseNow);
@@ -576,24 +578,26 @@ modded class SCR_CharacterControllerComponent
             if (m_pAnaerobicBurst)
                 cpModel = m_pAnaerobicBurst.GetCpModel();
 
+            float gradeForCap = RSS_SmoothGradePercentForSpeed(loc.gradePercent, loc.currentTime);
             float correctedSpeed = SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier(
                 m_fLastRssSpeedMultiplierApplied,
                 loc.currentSpeed,
                 loc.phaseNow,
                 loc.encumbranceSpeedPenalty,
                 loc.totalWeightWithWetAndBody,
-                loc.gradePercent,
+                gradeForCap,
                 loc.terrainFactor,
                 loc.isExhausted,
                 engineBase,
                 loc.currentTime,
-                cpModel);
+                cpModel,
+                m_fAppliedSpeedLimitMs);
             if (correctedSpeed != m_fLastRssSpeedMultiplierApplied
                 && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
             {
                 if (IsPlayerControlled())
                 {
-                    float hardFrac = correctedSpeed;
+                    float hardFrac = RSS_SlewSpeedLimitFraction(correctedSpeed, loc.currentTime);
                     if (hardFrac > 1.0)
                         hardFrac = 1.0;
                     SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, hardFrac);

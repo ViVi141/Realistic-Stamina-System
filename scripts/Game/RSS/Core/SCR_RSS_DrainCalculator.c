@@ -205,6 +205,7 @@ class SCR_RSS_DrainCalculator
     //! v6：代谢功率超可用功率时压速。
     //! Walk/Run：W′ 仍可用时不硬压到 CP（步态速度优先，超额由 W′/有氧承担）；
     //! W′ 耗尽后才反解到 CP。Sprint 仍用 availableP（含 W′ 预算）。
+    //! @param speedForPowerEvalMs 用于判断是否超功率的速度；应优先用意图限速，避免 v_meas 噪声追着压速
     static float GetMetabolicSpeedCapMs(
         float currentSpeedMs,
         int movementPhase,
@@ -213,7 +214,8 @@ class SCR_RSS_DrainCalculator
         float terrainFactor,
         bool isExhausted,
         float worldTimeSec,
-        SCR_RSS_CriticalPowerModel cpModel)
+        SCR_RSS_CriticalPowerModel cpModel,
+        float speedForPowerEvalMs = -1.0)
     {
         if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
             return -1.0;
@@ -226,8 +228,12 @@ class SCR_RSS_DrainCalculator
         else
             cp = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
 
+        float evalSpeed = currentSpeedMs;
+        if (speedForPowerEvalMs >= 0.0)
+            evalSpeed = speedForPowerEvalMs;
+
         float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            currentSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+            evalSpeed, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
 
         bool isSprintPhase = false;
         if (movementPhase == 3)
@@ -273,13 +279,29 @@ class SCR_RSS_DrainCalculator
         bool isExhausted,
         float engineBaseMs,
         float worldTimeSec,
-        SCR_RSS_CriticalPowerModel cpModel)
+        SCR_RSS_CriticalPowerModel cpModel,
+        float appliedSpeedLimitMs = -1.0)
     {
         if (engineBaseMs <= 0.05)
             engineBaseMs = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
+        float speedForEval = currentSpeedMs;
+        if (appliedSpeedLimitMs > 0.05)
+        {
+            if (currentSpeedMs > appliedSpeedLimitMs)
+                speedForEval = appliedSpeedLimitMs;
+        }
+
         float capMs = GetMetabolicSpeedCapMs(
-            currentSpeedMs, movementPhase, totalWeightKg, gradePercent, terrainFactor, isExhausted, worldTimeSec, cpModel);
+            currentSpeedMs,
+            movementPhase,
+            totalWeightKg,
+            gradePercent,
+            terrainFactor,
+            isExhausted,
+            worldTimeSec,
+            cpModel,
+            speedForEval);
         if (capMs < 0.0)
             return appliedSpeedMultiplier;
 
@@ -287,7 +309,11 @@ class SCR_RSS_DrainCalculator
         if (appliedMs <= capMs + 0.01)
             return appliedSpeedMultiplier;
 
-        return Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
+        float nextFrac = Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
+        float deadband = SCR_RSS_Constants.V6_SPEED_LIMIT_DEADBAND_FRAC;
+        if (Math.AbsFloat(nextFrac - appliedSpeedMultiplier) <= deadband)
+            return appliedSpeedMultiplier;
+        return nextFrac;
     }
 
     //! 已废弃双速差惩罚：记账与实测同用 v_meas 后差额恒为 0；保留入口以免调用方改签名。

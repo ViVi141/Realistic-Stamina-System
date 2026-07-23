@@ -648,6 +648,10 @@ class SCR_RSS_Constants
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
     //! 超速再武装：池须回到 冲刺阈值 + 此值，避免 W′≈关闭带附近抖动把均速抬到精英级
     static const float V6_WPRIME_OVERSPEED_REARM = 0.40;
+    //! 限速倍率斜率（1/s）：W′ 耗尽后 CP/坡度反解噪声不致每 tick 拧 SetSpeedLimit
+    static const float V6_SPEED_LIMIT_SLEW_FRAC_PER_SEC = 1.25;
+    //! 限速倍率死区：变化小于此值不重写限速源
+    static const float V6_SPEED_LIMIT_DEADBAND_FRAC = 0.012;
     //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
     static const float RSS_STAMINA_TICK_SEC = 0.2;
 

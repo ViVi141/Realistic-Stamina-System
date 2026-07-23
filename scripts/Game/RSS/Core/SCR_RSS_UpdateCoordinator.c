@@ -314,6 +314,15 @@ class SCR_RSS_UpdateCoordinator
                             GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
                                 controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                             gradePct = gradeRes.gradePercent;
+                            PlayerBase rssPb = PlayerBase.Cast(controller);
+                            if (!rssPb)
+                            {
+                                IEntity gradeOwner = controller.GetOwner();
+                                if (gradeOwner)
+                                    rssPb = PlayerBase.Cast(gradeOwner);
+                            }
+                            if (rssPb)
+                                gradePct = rssPb.RSS_SmoothGradePercentForSpeed(gradePct, currentWorldTime);
                         }
                         float runTerrain = terrainFactor;
                         if (runTerrain < 0.5)

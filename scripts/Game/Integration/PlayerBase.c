@@ -448,6 +448,10 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssEngineBaseForLimit = 0.0;
     protected float m_fAppliedSpeedLimitMs = -1.0;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
+    protected float m_fLastSpeedSlewTimeSec = -1.0;
+    protected float m_fSmoothedGradePercentForSpeed = 0.0;
+    protected float m_fLastGradeSmoothTimeSec = -1.0;
+    protected bool m_bGradeSmoothInitialized = false;
     //! 目标绝对速落入 Walk 带时 RSS 强制 DynamicSpeed=0.5（真切 Walk）
     protected bool m_bRssGaitWalkActive = false;
     protected float m_fRssSavedDynamicSpeed = 1.0;
@@ -919,6 +923,74 @@ modded class SCR_CharacterControllerComponent
     float RSS_GetLastAppliedSpeedMultiplier()
     {
         return m_fLastRssSpeedMultiplierApplied;
+    }
+
+    //! 限速倍率斜率限制：压住后期 CP/坡度反解引起的 SetSpeedLimit 抖动
+    float RSS_SlewSpeedLimitFraction(float targetFrac, float currentTimeSec)
+    {
+        float target = targetFrac;
+        if (target > 1.0)
+            target = 1.0;
+        if (target < 0.01)
+            target = 0.01;
+
+        float prev = m_fLastRssSpeedMultiplierApplied;
+        if (prev < 0.01)
+            prev = target;
+
+        float dt = 0.05;
+        if (m_fLastSpeedSlewTimeSec >= 0.0)
+            dt = currentTimeSec - m_fLastSpeedSlewTimeSec;
+        if (dt < 0.01)
+            dt = 0.01;
+        if (dt > 0.5)
+            dt = 0.5;
+        m_fLastSpeedSlewTimeSec = currentTimeSec;
+
+        float maxStep = SCR_RSS_Constants.V6_SPEED_LIMIT_SLEW_FRAC_PER_SEC * dt;
+        float delta = target - prev;
+        float deadband = SCR_RSS_Constants.V6_SPEED_LIMIT_DEADBAND_FRAC;
+        if (Math.AbsFloat(delta) <= deadband)
+            return prev;
+
+        float slewed = target;
+        if (delta > maxStep)
+            slewed = prev + maxStep;
+        else if (delta < -maxStep)
+            slewed = prev - maxStep;
+
+        if (slewed > 1.0)
+            slewed = 1.0;
+        if (slewed < 0.01)
+            slewed = 0.01;
+        return slewed;
+    }
+
+    //! 坡度 EMA：供 CP 反解限速，避免下坡法线噪声拧速度
+    float RSS_SmoothGradePercentForSpeed(float rawGradePercent, float currentTimeSec)
+    {
+        if (!m_bGradeSmoothInitialized)
+        {
+            m_fSmoothedGradePercentForSpeed = rawGradePercent;
+            m_bGradeSmoothInitialized = true;
+            m_fLastGradeSmoothTimeSec = currentTimeSec;
+            return m_fSmoothedGradePercentForSpeed;
+        }
+
+        float dt = 0.05;
+        if (m_fLastGradeSmoothTimeSec >= 0.0)
+            dt = currentTimeSec - m_fLastGradeSmoothTimeSec;
+        if (dt < 0.01)
+            dt = 0.01;
+        if (dt > 0.5)
+            dt = 0.5;
+        m_fLastGradeSmoothTimeSec = currentTimeSec;
+
+        float tau = 0.45;
+        float alpha = dt / (tau + dt);
+        m_fSmoothedGradePercentForSpeed = m_fSmoothedGradePercentForSpeed
+            + (rawGradePercent - m_fSmoothedGradePercentForSpeed) * alpha;
+        return m_fSmoothedGradePercentForSpeed;
     }
 
     ERSS_AIStaminaState RSS_GetAIStaminaState()
