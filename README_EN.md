@@ -34,7 +34,7 @@ That means:
 
 ### Movement
 
-- Player speed is driven by `SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier()`.
+- Player speed is driven by `SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier()`; above the limp threshold, stamina itself does not apply the old plateau/decay curve, but Run can still be pushed down by CP/W′ metabolic limits.
 - Limp starts below `SMOOTH_TRANSITION_END = 0.05`.
 - `SCR_RSS_CollapseTransition` adds a 5-second damping phase after crossing the limp threshold.
 - Current runtime gait tops fall back to engine-aligned values because `V6_USE_MARCH_GAIT_SPEEDS = false`:
@@ -62,9 +62,9 @@ That means:
 ### Recovery and fatigue
 
 - Recovery is computed as a net metabolic result.
-- Moving characters do not receive normal aerobic recovery.
+- Moving characters normally do not receive aerobic recovery, except for the low-stamina walk-recovery zone used on land below about `15%` STA when not sprinting.
 - EPOC delay lasts `2 seconds` after stopping.
-- Low-stamina rest gate fallback: `5 seconds`.
+- Low-stamina rest gate fallback: `5 seconds`; the shipped preset defaults are typically `3 seconds`.
 - Key fallbacks:
   - `BASE_RECOVERY_RATE = 0.00010`
   - `LOAD_RECOVERY_PENALTY_COEFF = 0.0002`
@@ -161,6 +161,7 @@ tools/
 ├── rss_sim/
 ├── rust_pipeline_v6/
 ├── test_v6_smoke.py
+├── test_acft_2mile.py
 └── embed_json_to_c.py
 ```
 

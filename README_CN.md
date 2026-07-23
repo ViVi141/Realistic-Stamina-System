@@ -43,7 +43,7 @@ v_meas -> metabolic power -> effective CP / W' -> speed limit -> SetSpeedLimit
 ### 速度与步态
 
 - 玩家主速度曲线由 `SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier()` 驱动。
-- 当体力高于跛行阈值时，维持当前步态目标速度。
+- 当体力高于跛行阈值时，速度不会因“体力百分比本身”进入旧式平台期/衰减；但 **Run 仍可能被 CP/W′ 代谢限速压低**。
 - 当体力低于 `SMOOTH_TRANSITION_END = 0.05` 时，进入跛行区，并叠加 `SCR_RSS_CollapseTransition` 的 5 秒阻尼过渡。
 - 当前代码中 `V6_USE_MARCH_GAIT_SPEEDS = false`，所以运行时默认顶速回退为：
   - Walk：约 `1.45 m/s`
@@ -71,9 +71,9 @@ v_meas -> metabolic power -> effective CP / W' -> speed limit -> SetSpeedLimit
 ### 恢复、疲劳与 EPOC
 
 - 恢复按“代谢净值”思路计算，不是简单静止就持续回血。
-- 只要角色处于移动状态，正常有氧恢复会被压到 0。
+- 一般移动状态下，正常有氧恢复会被压到 0；但在 **非 Sprint、陆地移动、体力低于 15%** 时，会进入低体力行走恢复区（约 `0.002 / tick`）。
 - 停止运动后会进入 `2 秒` EPOC 延迟期。
-- 低体力恢复静止门槛回退值是 `5 秒`。
+- 低体力恢复静止门槛的**无预设回退值**是 `5 秒`；当前内置三档默认预设运行时一般为 `3 秒`。
 - 当前回退常量：
   - `BASE_RECOVERY_RATE = 0.00010`
   - `LOAD_RECOVERY_PENALTY_COEFF = 0.0002`
@@ -321,7 +321,9 @@ if (info.isValid)
 - 主循环：`scripts/Game/Integration/PlayerBase.c`、`PlayerBase_UpdateLoop.c`
 - 体力条拦截：`scripts/Game/Integration/SCR_StaminaOverride.c`
 - 速度 / 代谢 / CP–W′：`scripts/Game/RSS/Core/`
-- 环境 / 游泳 / 跳跃：`scripts/Game/RSS/Environment/`
+- 环境 / 跳跃：`scripts/Game/RSS/Environment/`
+- 游泳状态 / 湿重：`scripts/Game/RSS/Environment/SCR_RSS_SwimmingState.c`
+- 游泳消耗模型：`scripts/Game/RSS/Core/SCR_RSS_SwimmingStaminaModel.c`
 - AI：`scripts/Game/RSS/AI/`
 - 配置 / 同步 / API：`scripts/Game/RSS/NetworkConfig/`
 - HUD / 表现 / 设置：`scripts/Game/RSS/Presentation/`
