@@ -396,6 +396,8 @@ class SCR_RSS_Constants
     static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
     static const float EPOC_DRAIN_PER_TICK = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
     static const float EPOC_DRAIN_RATE = EPOC_DRAIN_PER_TICK; // @deprecated 请用 EPOC_DRAIN_PER_TICK
+    //! EPOC 相对 CP 的超额倍率上限：1.0 → 最多 2× 基础 EPOC（避免超速 P_raw 把停步罚打爆）
+    static const float EPOC_MAX_POWER_EXCESS_RATIO = 1.0;
 
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977
@@ -517,7 +519,7 @@ class SCR_RSS_Constants
     static const float STANCE_TRANSITION_MIN_STAMINA_THRESHOLD = 0.10; // 10% 体力阈值
 
     // ==================== v5 双池 / 代谢锚点 ====================
-    static const float V5_SUSTAINABLE_WATTS_DEFAULT = 400.0;
+    static const float V5_SUSTAINABLE_WATTS_DEFAULT = 780.0;
     static const float V5_MIN_METABOLIC_SPEED_FACTOR = 0.35;
     static const float V5_TACTICAL_SHORT_BURST_SEC = 3.0;
     static const float V5_BURST_EARLY_RELEASE_BONUS = 0.45;
@@ -525,7 +527,13 @@ class SCR_RSS_Constants
     static const float V5_COLLAPSE_AEROBIC_EXIT = 0.12;
     static const float V5_WALK_SPEED_MS_DEFAULT = 1.4;
     static const float V5_RUN_SPEED_MS_DEFAULT = 2.8;
-    static const float V5_SPRINT_SPEED_MS_DEFAULT = 4.0;
+    //! 步态基准：Sprint 相对 Run 至少拉开 ~60%（实机再经负重/功率软顶）
+    static const float V5_SPRINT_SPEED_MS_DEFAULT = 4.5;
+
+    //! 允许冲刺时，Sprint 相对（已负重缩放的）Run 的最低倍率——保档位身份
+    static const float SPRINT_GAIT_MIN_OVER_RUN_RATIO = 1.25;
+    //! 冲刺负重惩罚放大（相对 Run）。1.0=与 Run 同罚，避免抹平步态差
+    static const float SPRINT_ENCUMBRANCE_PENALTY_MULT = 1.0;
     static const float V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.20;
     static const float V5_BURST_COOLDOWN_FULL_DEFAULT = 180.0;
     static const float V5_BURST_COOLDOWN_SHORT_DEFAULT = 75.0;
@@ -541,11 +549,11 @@ class SCR_RSS_Constants
     static const float V6_INVERT_SPEED_MAX_MS = 6.0;
     static const float V6_STANDING_REST_WATTS = 100.0;
 
-    //! CP-W' 默认（Elite；Standard/Tactical 在 Settings 中覆盖）
-    static const float V6_CRITICAL_POWER_WATTS_DEFAULT = 400.0;
+    //! CP-W' 默认：与 Pandolf 代谢瓦同尺度（约支撑 38kg@1.7m/s 巡航不扣 W′）
+    static const float V6_CRITICAL_POWER_WATTS_DEFAULT = 780.0;
     static const float V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0;
     static const float V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0;
-    static const float V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0;
+    static const float V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 2400.0;
 
     //! v6 ACSM 功率→STA 标定：联合 energy_to_stamina_coeff，使 38kg@3.2m/s 约 8–10s/1%
     static const float V6_STAMINA_DRAIN_CALIBRATION = 0.72;
@@ -557,8 +565,8 @@ class SCR_RSS_Constants
     static const float V6_CP_FATIGUE_K = 0.18;
     static const float V6_CP_ENV_FLOOR = 0.55;
 
-    // Skiba W′ 双指数再填充（Elite：CP ≤ 此阈值时启用）
-    static const float V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0;
+    // Skiba W′ 双指数再填充（CP ≤ 此阈值启用；代谢尺度 CP≈700–850 仍走 Skiba）
+    static const float V6_SKIBA_ELITE_CP_THRESHOLD_W = 2000.0;
     static const float V6_W_PRIME_K_FAST = 0.15;
     static const float V6_W_PRIME_K_SLOW = 0.008;
     static const float V6_W_PRIME_LIM_RATIO = 0.5;
@@ -583,6 +591,8 @@ class SCR_RSS_Constants
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
     //! 超限速代谢记账：v_meas 超出 v_limit 超过此值则 W′ 按实测速度（疲劳仍 v_drain）
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
+    //! 超速记账启用迟滞：池须高于冲刺阈值 + 此值，避免 W'≈20% 边界闪烁开关
+    static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
     //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
     static const float RSS_STAMINA_TICK_SEC = 0.2;
 }

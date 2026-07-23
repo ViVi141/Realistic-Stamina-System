@@ -555,7 +555,17 @@ modded class SCR_CharacterControllerComponent
 
                 m_pAnaerobicBurst.TickPower(powerW, loc.isSprintActive, loc.currentTime, loc.timeDeltaSec, loc.currentSpeed);
                 if (m_pEpocState)
-                    m_pEpocState.UpdateExercisePowerSample(powerW, loc.currentSpeed);
+                {
+                    // EPOC 峰值只用 v_drain 功率，避免缓降速期间 v_meas 超速把停步罚抬爆
+                    float powerForEpoc = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+                        loc.currentSpeed,
+                        m_fAppliedSpeedLimitMs,
+                        loc.totalWeightWithWetAndBody,
+                        loc.gradePercent,
+                        loc.terrainFactor,
+                        loc.phaseNow);
+                    m_pEpocState.UpdateExercisePowerSample(powerForEpoc, loc.currentSpeed);
+                }
                 if (m_pStaminaState)
                 {
                     m_pStaminaState.SetWPrimePoolFromCpModel(m_pAnaerobicBurst.GetCpModel());
@@ -580,30 +590,43 @@ modded class SCR_CharacterControllerComponent
             if (cpPostTick)
                 pool01AfterTick = cpPostTick.GetPool01();
 
-            float wPrimeCapMs = SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs(
-                loc.currentSpeed,
-                m_fAppliedSpeedLimitMs,
-                pool01AfterTick,
-                loc.phaseNow,
-                loc.totalWeightWithWetAndBody,
-                loc.gradePercent,
-                loc.terrainFactor,
-                cpPostTick);
+            bool overspeeding = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+                loc.currentSpeed, m_fAppliedSpeedLimitMs);
+            bool wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                pool01AfterTick);
 
-            if (wPrimeCapMs > 0.05)
+            // 客户端实测仍高于 RSS 限速（缓降残留/惯性）：每帧硬钳重申；
+            // W′ 不可用时再与代谢 CP 反解上限取更严者
+            if (overspeeding)
             {
                 float engineBase = GetRssSpeedLimitEngineBaseMs();
                 if (engineBase <= 0.05)
                     engineBase = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
-                float forcedMult = Math.Clamp(wPrimeCapMs / engineBase, 0.01, 3.0);
-                if (forcedMult < m_fLastRssSpeedMultiplierApplied - 0.001)
+                float hardMult = m_fLastRssSpeedMultiplierApplied;
+                if (!wPrimeAllowsOverspeed)
                 {
-                    SCR_RSS_SpeedBridge.ApplyHardStaminaSpeedClamp(loc.owner, forcedMult);
-                    m_fLastRssSpeedMultiplierApplied = forcedMult;
-                    loc.finalSpeedMultiplier = forcedMult;
-                    m_fAppliedSpeedLimitMs = forcedMult * engineBase;
+                    float wPrimeCapMs = SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs(
+                        loc.currentSpeed,
+                        m_fAppliedSpeedLimitMs,
+                        pool01AfterTick,
+                        loc.phaseNow,
+                        loc.totalWeightWithWetAndBody,
+                        loc.gradePercent,
+                        loc.terrainFactor,
+                        cpPostTick);
+                    if (wPrimeCapMs > 0.05)
+                    {
+                        float metabMult = Math.Clamp(wPrimeCapMs / engineBase, 0.01, 3.0);
+                        if (metabMult < hardMult)
+                            hardMult = metabMult;
+                    }
                 }
+
+                SCR_RSS_SpeedBridge.ApplyHardStaminaSpeedClamp(loc.owner, hardMult);
+                m_fLastRssSpeedMultiplierApplied = hardMult;
+                loc.finalSpeedMultiplier = hardMult;
+                m_fAppliedSpeedLimitMs = hardMult * engineBase;
             }
         }
 

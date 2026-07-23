@@ -60,6 +60,7 @@ class SCR_RSS_EpocState
     }
 
     //! 运动 tick 调用：记录会话峰值功率（供 EPOC ∝ P_peak）
+    //! 必须传入「限速内」功率（v_drain / FatiguePower），禁止用超速记账功率，否则停步 EPOC 会被 P_raw 打爆。
     void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs)
     {
         m_fLastPowerWatts = Math.Max(powerWatts, 0.0);

@@ -1,9 +1,10 @@
 use crate::constants::{
-    RssConstants, EXHAUSTION_LIMP_SPEED, MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN,
-    MOVEMENT_SPRINT, MOVEMENT_WALK, RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC,
-    RUN_VELOCITY_THRESHOLD, STAMINA_TICK_SEC, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
-    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
-    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
+    RssConstants, EPOC_MAX_POWER_EXCESS_RATIO, EXHAUSTION_LIMP_SPEED, MIN_SPEED_MULTIPLIER,
+    MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK, RSS_IDLE_SPEED_THRESHOLD_MPS,
+    RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD, SPRINT_ENCUMBRANCE_PENALTY_MULT,
+    SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION, V6_SPRINT_POWER_CAP_WATTS_DEFAULT,
+    VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
@@ -15,7 +16,7 @@ use crate::fatigue::TwinFatigueSystem;
 use crate::math::clip_f64;
 use crate::metabolism::{
     calculate_slope_adjusted_target_speed, compute_cp_watts, invert_speed_for_power_watts,
-    metabolism_power_watts,
+    metabolism_power_watts_damped,
 };
 
 pub struct RSSDigitalTwin {
@@ -322,7 +323,14 @@ impl RSSDigitalTwin {
         effective_cp_watts: f64,
     ) -> f64 {
         let phase = self._movement_phase_from_type(movement_type);
-        let power_w = metabolism_power_watts(speed, current_weight, grade_percent, terrain_factor, phase);
+        let power_w = metabolism_power_watts_damped(
+            speed,
+            current_weight,
+            grade_percent,
+            terrain_factor,
+            phase,
+            self.constants.load_metabolic_dampening,
+        );
         let mut aerobic_w = power_w;
         if effective_cp_watts > 1.0 && power_w > effective_cp_watts {
             aerobic_w = effective_cp_watts;
@@ -603,8 +611,12 @@ impl RSSDigitalTwin {
             total_drain = total_drain.min(0.1);
         }
         if self.is_in_epoc_delay {
-            let epoc_rate = self.constants.epoc_drain_rate
-                * (1.0 + clip_f64(self.speed_before_stop / 5.5, 0.0, 1.0) * 0.5);
+            let speed_ratio = clip_f64(self.speed_before_stop / 5.5, 0.0, 1.0);
+            let mut excess_ratio = speed_ratio * 0.5;
+            if excess_ratio > EPOC_MAX_POWER_EXCESS_RATIO {
+                excess_ratio = EPOC_MAX_POWER_EXCESS_RATIO;
+            }
+            let epoc_rate = self.constants.epoc_drain_rate * (1.0 + excess_ratio);
             total_drain += epoc_rate;
         }
 
@@ -634,8 +646,14 @@ impl RSSDigitalTwin {
         );
         self.v6_cp_state
             .set_fatigue_cp_multiplier(self.fatigue.get_cp_fatigue_multiplier());
-        let metabolic_power =
-            metabolism_power_watts(speed, current_weight, grade_percent, terrain_factor, phase);
+        let metabolic_power = metabolism_power_watts_damped(
+            speed,
+            current_weight,
+            grade_percent,
+            terrain_factor,
+            phase,
+            self.constants.load_metabolic_dampening,
+        );
         self.v6_cp_state
             .tick(metabolic_power, is_sprinting, current_time, time_delta, speed);
 
@@ -717,13 +735,17 @@ impl RSSDigitalTwin {
         }
         let walk_ms = self.constants.v5_walk_speed_ms * enc_mult * stamina_scale;
         let run_ms = self.constants.v5_run_speed_ms * enc_mult * stamina_scale;
-        let mut sprint_ms = self.constants.v5_sprint_speed_ms * enc_mult * stamina_scale;
+        let mut sprint_ms = self.ensured_march_sprint_speed_ms() * enc_mult * stamina_scale;
         if anaerobic_percent < 1.0 {
             let ana_scale = 0.65 + 0.35 * anaerobic_percent;
             sprint_ms *= ana_scale;
+            let min_sprint = run_ms * SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+            if sprint_ms < min_sprint {
+                sprint_ms = min_sprint;
+            }
         }
         if is_sprinting || movement_phase == MOVEMENT_SPRINT {
-            return clip_f64(sprint_ms, walk_ms, self.constants.v5_sprint_speed_ms);
+            return clip_f64(sprint_ms, walk_ms, self.ensured_march_sprint_speed_ms());
         }
         if movement_phase == MOVEMENT_RUN {
             return clip_f64(run_ms, walk_ms, self.constants.v5_run_speed_ms);
@@ -732,6 +754,34 @@ impl RSSDigitalTwin {
             return clip_f64(walk_ms, 0.5, self.constants.v5_walk_speed_ms);
         }
         walk_ms
+    }
+
+    fn ensured_march_sprint_speed_ms(&self) -> f64 {
+        let run_ms = self.constants.v5_run_speed_ms;
+        let mut sprint_ms = self.constants.v5_sprint_speed_ms;
+        let min_sprint = run_ms * SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+        if sprint_ms < min_sprint {
+            sprint_ms = min_sprint;
+        }
+        if sprint_ms > self.constants.game_max_speed {
+            sprint_ms = self.constants.game_max_speed;
+        }
+        sprint_ms
+    }
+
+    fn apply_sprint_gait_min_separation(&self, mut sprint_ms: f64, run_ms: f64) -> f64 {
+        let mut min_sprint = run_ms * SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+        let gait_sprint = self.ensured_march_sprint_speed_ms();
+        if min_sprint > gait_sprint {
+            min_sprint = gait_sprint;
+        }
+        if sprint_ms < min_sprint {
+            sprint_ms = min_sprint;
+        }
+        if sprint_ms > gait_sprint {
+            sprint_ms = gait_sprint;
+        }
+        sprint_ms
     }
 
     fn get_v6_sprint_speed_ms(
@@ -748,24 +798,26 @@ impl RSSDigitalTwin {
             enc_mult = 0.5;
         }
         let run_ms = self.constants.v5_run_speed_ms * enc_mult;
+        let gait_sprint_ms = self.ensured_march_sprint_speed_ms() * enc_mult;
         if self.v6_cp_state.pool01() <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT {
             return run_ms;
         }
         let available_p = self
             .v6_cp_state
             .get_available_power_watts(true, time_delta_sec, world_time_sec);
-        let mut sprint_ms = invert_speed_for_power_watts(
+        let mut power_ms = invert_speed_for_power_watts(
             available_p,
             total_weight_kg,
             grade_percent,
             terrain_factor,
             MOVEMENT_SPRINT,
         );
-        sprint_ms *= enc_mult;
-        if sprint_ms < run_ms {
-            sprint_ms = run_ms;
+        power_ms *= enc_mult;
+        let mut sprint_ms = gait_sprint_ms;
+        if power_ms < sprint_ms {
+            sprint_ms = power_ms;
         }
-        sprint_ms
+        self.apply_sprint_gait_min_separation(sprint_ms, run_ms)
     }
 
     fn calculate_actual_speed(
@@ -832,7 +884,7 @@ impl RSSDigitalTwin {
         let speed_ratio = clip_f64(last_speed / game_max, 0.0, 1.0);
         let mut enc_penalty = base_penalty * (1.0 + speed_ratio);
         if is_sprinting || phase == MOVEMENT_SPRINT {
-            enc_penalty *= 1.5;
+            enc_penalty *= SPRINT_ENCUMBRANCE_PENALTY_MULT;
         }
         enc_penalty = clip_f64(enc_penalty, 0.0, max_pen);
 
@@ -1131,8 +1183,14 @@ impl RSSDigitalTwin {
             let load_kg = (current_weight - self.constants.character_weight).max(0.0);
             let mov_phase = self._movement_phase_from_type(engine_movement_phase);
             let fatigue_v = get_drain_velocity_ms(current_speed_ms, limit_for_power_ms);
-            let power_fat =
-                metabolism_power_watts(fatigue_v, current_weight, grade_percent, terrain_factor, mov_phase);
+            let power_fat = metabolism_power_watts_damped(
+                fatigue_v,
+                current_weight,
+                grade_percent,
+                terrain_factor,
+                mov_phase,
+                self.constants.load_metabolic_dampening,
+            );
             self.fatigue.process_integral(
                 power_fat,
                 load_kg,

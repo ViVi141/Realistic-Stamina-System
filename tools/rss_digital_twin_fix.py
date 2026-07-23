@@ -35,7 +35,7 @@ EXHAUSTION_LIMP_SPEED = 1.0
 MIN_SPEED_MULTIPLIER = 0.15
 V5_WALK_SPEED_MS_DEFAULT = 1.4
 V5_RUN_SPEED_MS_DEFAULT = 2.8
-V5_SPRINT_SPEED_MS_DEFAULT = 4.0
+V5_SPRINT_SPEED_MS_DEFAULT = 4.5
 
 
 def calculate_slope_adjusted_target_speed(
@@ -186,6 +186,7 @@ class RSSConstants:
 
     EPOC_DELAY_SECONDS = 2.0
     EPOC_DRAIN_RATE = 0.001
+    EPOC_MAX_POWER_EXCESS_RATIO = 1.0
 
     ENERGY_TO_STAMINA_COEFF = 9.5e-07  # Hardcore：原7.17e-07
 
@@ -230,6 +231,11 @@ class RSSConstants:
     V5_WALK_SPEED_MS = V5_WALK_SPEED_MS_DEFAULT
     V5_RUN_SPEED_MS = V5_RUN_SPEED_MS_DEFAULT
     V5_SPRINT_SPEED_MS = V5_SPRINT_SPEED_MS_DEFAULT
+    # CP-W' / 冲刺功率帽（与 preset JSON 键名经 lowercase→UPPER 映射）
+    CRITICAL_POWER_WATTS = 780.0
+    W_PRIME_MAX_JOULES = 20000.0
+    W_PRIME_RECOVERY_W_PER_S = 12.0
+    SPRINT_POWER_CAP_WATTS = 2400.0
 
     def __init__(self, **kwargs):
         # 构建 lowercase -> uppercase 映射（优化器传 lowercase，类属性是 uppercase）
@@ -442,6 +448,8 @@ class Stance:
 # =============================================================================
 class RSSDigitalTwin:
     def __init__(self, constants):
+        if isinstance(constants, dict):
+            constants = RSSConstants(**constants)
         self.constants = constants
         self.environment_factor = EnvironmentFactor(constants)
         self.reset()
@@ -473,10 +481,14 @@ class RSSDigitalTwin:
         self.environment_factor.cold_static_penalty = 0.0
         self.fatigue = TwinFatigueSystem()
         self.fatigue.initialize(0.0)
+        w_prime_max = getattr(
+            self.constants, 'W_PRIME_MAX_JOULES', V6_W_PRIME_MAX_JOULES_DEFAULT)
+        sprint_cap = getattr(
+            self.constants, 'SPRINT_POWER_CAP_WATTS', V6_SPRINT_POWER_CAP_WATTS_DEFAULT)
         self.v6_cp_state = V6CriticalPowerState(
             cp0=self._critical_power_watts(),
-            sprint_power_cap=getattr(self.constants, 'SPRINT_POWER_CAP_WATTS',
-                                     V6_SPRINT_POWER_CAP_WATTS_DEFAULT))
+            w_prime_max=float(w_prime_max),
+            sprint_power_cap=float(sprint_cap))
 
     def _critical_power_watts(self) -> float:
         cp0 = getattr(self.constants, 'CRITICAL_POWER_WATTS', 0.0)
@@ -666,8 +678,9 @@ class RSSDigitalTwin:
         phase = self._movement_phase_from_type(movement_type)
         coeff = getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 7.17e-7)
         cal = getattr(self.constants, 'V6_STAMINA_DRAIN_CALIBRATION', V6_STAMINA_DRAIN_CALIBRATION)
+        damp = float(getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70))
         power_w = metabolism_power_watts(
-            speed, current_weight, grade_percent, terrain_factor, phase)
+            speed, current_weight, grade_percent, terrain_factor, phase, damp)
         aerobic_w = power_w
         if effective_cp_watts > 1.0 and power_w > effective_cp_watts:
             aerobic_w = effective_cp_watts
@@ -964,8 +977,13 @@ class RSSDigitalTwin:
                 total_drain = min(total_drain, 0.1)
 
             if self.is_in_epoc_delay:
-                epoc_rate = self.constants.EPOC_DRAIN_RATE * (
-                    1.0 + np.clip(self.speed_before_stop / 5.5, 0.0, 1.0) * 0.5)
+                speed_ratio = float(np.clip(self.speed_before_stop / 5.5, 0.0, 1.0))
+                excess_ratio = speed_ratio * 0.5
+                max_ratio = float(getattr(
+                    self.constants, 'EPOC_MAX_POWER_EXCESS_RATIO', 1.0))
+                if excess_ratio > max_ratio:
+                    excess_ratio = max_ratio
+                epoc_rate = self.constants.EPOC_DRAIN_RATE * (1.0 + excess_ratio)
                 total_drain = total_drain + epoc_rate
 
             recovery_rate = self._calculate_recovery_rate(
@@ -987,7 +1005,13 @@ class RSSDigitalTwin:
             self.v6_cp_state.set_fatigue_cp_multiplier(
                 self.fatigue.get_cp_fatigue_multiplier())
             metabolic_power = metabolism_power_watts(
-                speed, current_weight, grade_percent, terrain_factor, phase)
+                speed,
+                current_weight,
+                grade_percent,
+                terrain_factor,
+                phase,
+                float(getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70)),
+            )
             self.v6_cp_state.tick(
                 metabolic_power, is_sprinting, current_time, time_delta, speed)
             # ──
@@ -1113,26 +1137,51 @@ class RSSDigitalTwin:
         time_delta_sec: float,
         world_time_sec: float,
     ) -> float:
-        """与 SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs 一致。"""
+        """与 SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs 一致（步态优先 + 功率软顶）。"""
         enc_mult = 1.0 - encumbrance_penalty
         if enc_mult < 0.5:
             enc_mult = 0.5
         run_ms = self._v5_run_speed_ms() * enc_mult
+        gait_sprint = self._ensured_march_sprint_speed_ms() * enc_mult
         if self.v6_cp_state.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
-            return run_ms
+            return float(run_ms)
         available_p = self.v6_cp_state.get_available_power_watts(
             True, time_delta_sec, world_time_sec
         )
-        sprint_ms = invert_speed_for_power_watts(
+        power_ms = invert_speed_for_power_watts(
             available_p,
             total_weight_kg,
             grade_percent,
             terrain_factor,
             MovementType.SPRINT,
         )
-        sprint_ms = sprint_ms * enc_mult
-        if sprint_ms < run_ms:
-            sprint_ms = run_ms
+        power_ms = power_ms * enc_mult
+        sprint_ms = gait_sprint
+        if power_ms < sprint_ms:
+            sprint_ms = power_ms
+        sprint_ms = self._apply_sprint_gait_min_separation(sprint_ms, run_ms)
+        return float(sprint_ms)
+
+    def _ensured_march_sprint_speed_ms(self) -> float:
+        run_ms = self._v5_run_speed_ms()
+        sprint_ms = self._v5_sprint_speed_ms()
+        min_sprint = run_ms * SPRINT_GAIT_MIN_OVER_RUN_RATIO
+        if sprint_ms < min_sprint:
+            sprint_ms = min_sprint
+        game_max = getattr(self.constants, "GAME_MAX_SPEED", 5.5)
+        if sprint_ms > game_max:
+            sprint_ms = game_max
+        return float(sprint_ms)
+
+    def _apply_sprint_gait_min_separation(self, sprint_ms: float, run_ms: float) -> float:
+        min_sprint = run_ms * SPRINT_GAIT_MIN_OVER_RUN_RATIO
+        gait_sprint = self._ensured_march_sprint_speed_ms()
+        if min_sprint > gait_sprint:
+            min_sprint = gait_sprint
+        if sprint_ms < min_sprint:
+            sprint_ms = min_sprint
+        if sprint_ms > gait_sprint:
+            sprint_ms = gait_sprint
         return float(sprint_ms)
 
     def calculate_actual_speed(
@@ -1192,7 +1241,7 @@ class RSSDigitalTwin:
         speed_ratio = float(np.clip(last_speed / game_max, 0.0, 1.0))
         enc_penalty = base_penalty * (1.0 + speed_ratio)
         if is_sprinting or phase == MovementType.SPRINT:
-            enc_penalty *= 1.5
+            enc_penalty *= SPRINT_ENCUMBRANCE_PENALTY_MULT
         enc_penalty = float(np.clip(enc_penalty, 0.0, max_pen))
 
         final_abs = self.get_v5_absolute_speed_ms(phase, is_sprinting, scaled_run, enc_penalty, 1.0)
@@ -1671,7 +1720,7 @@ class RSSDigitalTwin:
                     speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
                     speed_penalty = base_pen * (1.0 + speed_ratio)
                     if phase_movement_type == MovementType.SPRINT:
-                        speed_penalty = speed_penalty * 1.5
+                        speed_penalty = speed_penalty * SPRINT_ENCUMBRANCE_PENALTY_MULT
                     speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
                     effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
                     total_distance += effective_speed * dt
@@ -1699,7 +1748,7 @@ class RSSDigitalTwin:
                     speed_ratio = float(np.clip(speed / game_max, 0.0, 1.0))
                     speed_penalty = base_pen * (1.0 + speed_ratio)
                     if movement_type == MovementType.SPRINT:
-                        speed_penalty = speed_penalty * 1.5
+                        speed_penalty = speed_penalty * SPRINT_ENCUMBRANCE_PENALTY_MULT
                     speed_penalty = float(np.clip(speed_penalty, 0.0, max_pen))
                     effective_speed = speed * posture_speed_mult * (1.0 - speed_penalty)
                     total_distance += effective_speed * dt
@@ -1742,7 +1791,8 @@ def is_wprime_pool_available_for_overspeed(
     w_prime_pool01: float,
     threshold: float = V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
 ) -> bool:
-    return w_prime_pool01 > threshold
+    enable_at = threshold + V6_WPRIME_OVERSPEED_HYSTERESIS
+    return w_prime_pool01 > enable_at
 
 
 def get_metabolic_accounting_velocity_ms(
@@ -1928,16 +1978,18 @@ V6_ACSM_QUAD_W_PER_MS2 = 80.0
 V6_ACSM_BLEND_START_MS = 2.0
 V6_ACSM_BLEND_END_MS = 2.4
 V6_INVERT_SPEED_MAX_MS = 6.0
-V6_CRITICAL_POWER_WATTS_DEFAULT = 400.0
+V6_CRITICAL_POWER_WATTS_DEFAULT = 780.0
 V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0
 V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0
-V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 1200.0
+V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 2400.0
+SPRINT_GAIT_MIN_OVER_RUN_RATIO = 1.25
+SPRINT_ENCUMBRANCE_PENALTY_MULT = 1.0
 V6_STAMINA_DRAIN_CALIBRATION = 0.72
 V6_CP_LOAD_REF_KG = 10.0
 V6_CP_LOAD_DECAY_PER_KG = 0.002
 V6_CP_SLOPE_K_UP = 0.015
 V6_CP_FATIGUE_K = 0.18
-V6_SKIBA_ELITE_CP_THRESHOLD_W = 410.0
+V6_SKIBA_ELITE_CP_THRESHOLD_W = 2000.0
 V6_W_PRIME_K_FAST = 0.15
 V6_W_PRIME_K_SLOW = 0.008
 V6_W_PRIME_LIM_RATIO = 0.5
@@ -2129,18 +2181,38 @@ def metabolism_power_watts(
     grade_percent: float = 0.0,
     terrain_factor: float = 1.0,
     movement_phase: int = 2,
+    load_metabolic_dampening: float = 0.70,
 ) -> float:
     """Pandolf + ACSM 混合（与 SCR_RSS_MetabolismModel.MetabolismPowerWatts 同形）。"""
     pandolf_w = calculate_pandolf_power_watts(
         velocity_ms, total_weight_kg, grade_percent, terrain_factor)
     prefer_acsm = movement_phase in (2, 3) or velocity_ms >= V6_ACSM_BLEND_END_MS
     if not prefer_acsm and velocity_ms < V6_ACSM_BLEND_START_MS:
-        return pandolf_w
-    acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
-    blend = get_acsm_blend_weight(velocity_ms)
-    if movement_phase == 3:
-        blend = max(blend, 0.85)
-    return pandolf_w * (1.0 - blend) + acsm_w * blend
+        blended = pandolf_w
+    else:
+        acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
+        blend = get_acsm_blend_weight(velocity_ms)
+        if movement_phase == 3:
+            blend = max(blend, 0.85)
+        blended = pandolf_w * (1.0 - blend) + acsm_w * blend
+
+    body_weight = 90.0
+    if total_weight_kg <= body_weight + 0.5:
+        return blended
+    if load_metabolic_dampening >= 1.0:
+        return blended
+    unloaded = metabolism_power_watts(
+        velocity_ms,
+        body_weight,
+        grade_percent,
+        terrain_factor,
+        movement_phase,
+        load_metabolic_dampening=1.0,
+    )
+    load_extra = blended - unloaded
+    if load_extra < 0.0:
+        load_extra = 0.0
+    return unloaded + load_extra * load_metabolic_dampening
 
 
 def invert_speed_for_power_watts(

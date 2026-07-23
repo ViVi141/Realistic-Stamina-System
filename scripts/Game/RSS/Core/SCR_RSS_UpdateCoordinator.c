@@ -245,7 +245,7 @@ class SCR_RSS_UpdateCoordinator
             float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
-                encumbrancePenalty = encumbrancePenalty * 1.5;
+                encumbrancePenalty = SCR_RSS_SpeedCalculator.ScaleSprintEncumbrancePenalty(encumbrancePenalty);
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
             encumbrancePenalty = SCR_RSS_SpeedCalculator.ApplyTacticalSprintBurstEncumbranceRelief(
@@ -329,6 +329,17 @@ class SCR_RSS_UpdateCoordinator
                 float mudSprintPenalty = environmentFactor.GetMudSprintPenalty();
                 if (mudSprintPenalty > 0.0)
                     theoreticalTargetSpeed = theoreticalTargetSpeed * (1.0 - mudSprintPenalty);
+            }
+
+            // 泥地等后处理仍须保住 Sprint 相对 Run 的最低拉开（禁冲刺时不保）
+            if ((isSprinting || currentMovementPhase == 3) && canSprint)
+            {
+                float encMultFloor = 1.0 - encumbrancePenalty;
+                if (encMultFloor < 0.5)
+                    encMultFloor = 0.5;
+                float runFloorMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMultFloor;
+                theoreticalTargetSpeed = SCR_RSS_SpeedCalculator.ApplySprintGaitMinSeparation(
+                    theoreticalTargetSpeed, runFloorMs);
             }
             
             // 动态获取引擎当前的原始速度（已被负重降低后的速度）

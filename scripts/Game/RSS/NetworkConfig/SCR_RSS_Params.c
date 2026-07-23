@@ -312,13 +312,13 @@ class SCR_RSS_Params
     float env_surface_wetness_prone_penalty = 0.15;
 
     // --- v5 双池 / 代谢锚点 ---
-    float sustainable_watts = 400.0;
+    float sustainable_watts = 780.0;
 
     float v5_walk_speed_ms = 1.4;
 
     float v5_run_speed_ms = 2.8;
 
-    float v5_sprint_speed_ms = 4.0;
+    float v5_sprint_speed_ms = 4.5;
 
     float anaerobic_sprint_enable_threshold = 0.20;
 
@@ -331,7 +331,7 @@ class SCR_RSS_Params
     float anaerobic_recovery_per_sec = 0.08;
 
     // --- v6 CP-W' 学术拟真 ---
-    float critical_power_watts = 400.0;
+    float critical_power_watts = 780.0;
 
     float w_prime_max_joules = 20000.0;
 

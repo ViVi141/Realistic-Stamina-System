@@ -25,9 +25,9 @@ SPRINT_COOLDOWN_MIN_SEC = 120.0
 DRAIN_VEL_TOLERANCE = 0.001
 OVERSPEED_EXPECTED = 0.5
 
-# 35 kg Run 稳态观测掉条（%/s，与实机 [RSS][Drain] 一致）
-SUSTAIN_OBS_MIN_PCT_PER_S = 0.60
-SUSTAIN_OBS_MAX_PCT_PER_S = 1.40
+# 35 kg Run 稳态观测掉条（%/s；CP 代谢对齐后限速不再假性压速，疲劳 cap 早期掉条更高）
+SUSTAIN_OBS_MIN_PCT_PER_S = 0.80
+SUSTAIN_OBS_MAX_PCT_PER_S = 2.60
 SUSTAIN_OBS_HARD = True
 
 # v6 满体力 Run 理论速度契约（m/s，theoretical_speed_at_weight 不动点）
@@ -127,9 +127,9 @@ def check_v5_sprint_cooldown() -> ConstraintCheck:
     )
 
 
-def check_v6_cp_sprint_burst(load_kg: float = 35.0, cp0: float = 400.0,
+def check_v6_cp_sprint_burst(load_kg: float = 35.0, cp0: float = 780.0,
                              w_prime_max: float = 20000.0,
-                             sprint_cap_w: float = 1450.0) -> ConstraintCheck:
+                             sprint_cap_w: float = 2400.0) -> ConstraintCheck:
     t = simulate_v6_sprint_seconds(load_kg=load_kg, cp0=cp0,
                                    w_prime_max=w_prime_max,
                                    sprint_cap_w=sprint_cap_w)
@@ -242,20 +242,57 @@ def check_march_4h_aerobic_end(
     )
 
 
+def check_march_cruise_below_cp(
+    load_kg: float = 38.0,
+    speed_ms: float = 1.7,
+    params: Optional[Dict] = None,
+    cp0: float = 780.0,
+) -> ConstraintCheck:
+    """负重巡航步行：代谢功率不得持续超过 CP（否则会错误消耗 W′）。
+
+    锚点：38 kg @ 1.7 m/s 平地 Walk，与游戏 MetabolismPowerWatts（含负重阻尼）一致。
+    """
+    from rss_digital_twin_fix import (
+        MovementType,
+        compute_cp_watts,
+        metabolism_power_watts,
+        merge_game_aligned_params,
+    )
+
+    trial = dict(params) if params else {}
+    cp0 = float(trial.get("critical_power_watts", cp0))
+    merged = merge_game_aligned_params(
+        {k: float(v) for k, v in trial.items() if not str(k).startswith("_")}
+    )
+    damp = float(merged.get("load_metabolic_dampening", 0.70))
+    total_w = 90.0 + float(load_kg)
+    p_acct = metabolism_power_watts(
+        speed_ms, total_w, 0.0, 1.0, MovementType.WALK, damp
+    )
+    cp_eff = compute_cp_watts(cp0, float(load_kg), 0.0, 1.0, 0.0)
+    ok = p_acct <= cp_eff + 1.0
+    return ConstraintCheck(
+        "march_cruise_below_cp_38kg_1p7",
+        ok,
+        f"P={p_acct:.1f}W vs CPeff={cp_eff:.1f}W (CP0={cp0:.0f})",
+        hard=True,
+    )
+
+
 def evaluate_physio_anchors(
     load_kg: float = 35.0,
-    cp0: float = 400.0,
+    cp0: float = 780.0,
     params: Optional[Dict] = None,
 ) -> ConstraintReport:
     trial_params = None
     w_prime_max = 20000.0
-    sprint_cap_w = 1450.0
+    sprint_cap_w = 2400.0
     if params:
         trial_params = dict(params)
         cp0 = float(params.get("critical_power_watts", cp0))
         w_prime_max = float(params.get("w_prime_max_joules", w_prime_max))
         sprint_cap_w = float(params.get("sprint_power_cap_watts", sprint_cap_w))
-    elif cp0 != 400.0:
+    elif cp0 != 780.0:
         trial_params = {"critical_power_watts": cp0}
 
     checks = [
@@ -264,6 +301,7 @@ def evaluate_physio_anchors(
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp0, w_prime_max, sprint_cap_w),
+        check_march_cruise_below_cp(params=trial_params, cp0=cp0),
         check_sustain_run_observed(trial_params, duration_s=90.0),
         check_mobility_run_speed(
             0.0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS, "0kg", trial_params

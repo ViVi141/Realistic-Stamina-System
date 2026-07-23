@@ -1,0 +1,149 @@
+{
+  "metrics": {
+    "sustain_ease": 0.3061860470627311,
+    "mobility_ease": 0.001969538877453747,
+    "combat_ease": 0.6908130971144747,
+    "recovery_ease": 0.0011400600799393022,
+    "param_drift": 2.5257913508831855
+  },
+  "hard_passed": true,
+  "hard": [
+    {
+      "name": "drain_velocity_clamp",
+      "ok": true,
+      "detail": "expected 4.0 m/s, got 4.0000"
+    },
+    {
+      "name": "metabolic_overspeed_factor",
+      "ok": true,
+      "detail": "expected 0.5, got 0.5000 (v5 legacy API)"
+    },
+    {
+      "name": "v5_sprint_burst_duration",
+      "ok": true,
+      "detail": "empty pool in 8.4s (max 15s)"
+    },
+    {
+      "name": "v5_sprint_cooldown",
+      "ok": true,
+      "detail": "cooldown remaining 180s (min 120s)"
+    },
+    {
+      "name": "v6_cp_sprint_burst_35kg",
+      "ok": true,
+      "detail": "W' burst 11.90s (max 15s)"
+    },
+    {
+      "name": "sustain_run_observed_35kg",
+      "ok": true,
+      "detail": "obs=1.089%/s (band 0.6–1.4)"
+    },
+    {
+      "name": "mobility_run_0kg",
+      "ok": true,
+      "detail": "speed=2.799 m/s (band 2.65–2.95)"
+    },
+    {
+      "name": "mobility_run_35kg",
+      "ok": true,
+      "detail": "speed=2.481 m/s (band 2.15–2.85)"
+    },
+    {
+      "name": "march_4h_aerobic_end_35kg",
+      "ok": true,
+      "detail": "aerobic_end=0.238 (min 0.2)"
+    }
+  ],
+  "missions": [
+    {
+      "name": "巡逻接敌",
+      "min_stamina": 0.6583,
+      "mean_active": 0.6863,
+      "recovery_gain": 0.0,
+      "idle_s": 0.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.092,
+      "duration_s": 1020.0
+    },
+    {
+      "name": "沙漠巡逻",
+      "min_stamina": 0.6472,
+      "mean_active": 0.6847,
+      "recovery_gain": 0.0,
+      "idle_s": 0.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.092,
+      "duration_s": 720.0
+    },
+    {
+      "name": "地狱沙漠突围",
+      "min_stamina": 0.6602,
+      "mean_active": 0.6913,
+      "recovery_gain": 0.0997,
+      "idle_s": 90.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.144,
+      "duration_s": 910.0
+    },
+    {
+      "name": "两栖登陆",
+      "min_stamina": 0.6604,
+      "mean_active": 0.6977,
+      "recovery_gain": 0.1368,
+      "idle_s": 120.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.095,
+      "duration_s": 500.0
+    },
+    {
+      "name": "城镇清扫",
+      "min_stamina": 0.6532,
+      "mean_active": 0.6894,
+      "recovery_gain": 0.276,
+      "idle_s": 240.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.095,
+      "duration_s": 730.0
+    },
+    {
+      "name": "山地接近",
+      "min_stamina": 0.6681,
+      "mean_active": 0.6907,
+      "recovery_gain": 0.2736,
+      "idle_s": 240.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 2.568,
+      "duration_s": 1320.0
+    },
+    {
+      "name": "载具下车突击",
+      "min_stamina": 0.6821,
+      "mean_active": 0.7232,
+      "recovery_gain": 0.2412,
+      "idle_s": 210.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.097,
+      "duration_s": 360.0
+    },
+    {
+      "name": "重载撤离",
+      "min_stamina": 0.6716,
+      "mean_active": 0.6982,
+      "recovery_gain": 0.0672,
+      "idle_s": 60.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.083,
+      "duration_s": 595.0
+    },
+    {
+      "name": "35kg稳态跑步",
+      "min_stamina": 0.6624,
+      "mean_active": 0.6851,
+      "recovery_gain": 0.0,
+      "idle_s": 0.0,
+      "exhaust_s": 0.0,
+      "obs_pct_s": 1.089,
+      "duration_s": 1200.0
+    }
+  ]
+}

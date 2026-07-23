@@ -16,8 +16,8 @@ pub const SPRINT_BURST_MAX_SEC: f64 = 15.0;
 pub const SPRINT_COOLDOWN_MIN_SEC: f64 = 120.0;
 pub const DRAIN_VEL_TOLERANCE: f64 = 0.001;
 pub const OVERSPEED_EXPECTED: f64 = 0.5;
-pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.60;
-pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 1.40;
+pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.80;
+pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 2.60;
 pub const SUSTAIN_OBS_HARD: bool = true;
 
 pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 2.65;
@@ -306,6 +306,42 @@ pub fn check_mobility_run_speed(
     }
 }
 
+pub fn check_march_cruise_below_cp(
+    load_kg: f64,
+    speed_ms: f64,
+    params: Option<&HashMap<String, f64>>,
+    cp0_default: f64,
+) -> ConstraintCheck {
+    use crate::metabolism::{compute_cp_watts, metabolism_power_watts_damped};
+
+    let mut cp0 = cp0_default;
+    let mut damp = 0.70;
+    if let Some(p) = params {
+        cp0 = *p.get("critical_power_watts").unwrap_or(&cp0);
+        damp = *p.get("load_metabolic_dampening").unwrap_or(&damp);
+    }
+    let total_w = 90.0 + load_kg;
+    let p_acct = metabolism_power_watts_damped(
+        speed_ms,
+        total_w,
+        0.0,
+        1.0,
+        MOVEMENT_WALK,
+        damp,
+    );
+    let cp_eff = compute_cp_watts(cp0, load_kg, 0.0, 1.0, 0.0);
+    let ok = p_acct <= cp_eff + 1.0;
+    ConstraintCheck {
+        name: "march_cruise_below_cp_38kg_1p7".to_string(),
+        passed: ok,
+        detail: format!(
+            "P={:.1}W vs CPeff={:.1}W (CP0={:.0})",
+            p_acct, cp_eff, cp0
+        ),
+        hard: true,
+    }
+}
+
 pub fn evaluate_physio_anchors(
     load_kg: f64,
     cp0: f64,
@@ -314,7 +350,7 @@ pub fn evaluate_physio_anchors(
 ) -> ConstraintReport {
     let mut trial_params: Option<HashMap<String, f64>> = None;
     let mut w_prime_max = 20_000.0;
-    let mut sprint_cap_w = 1450.0;
+    let mut sprint_cap_w = 2400.0;
     let mut cp = cp0;
 
     if let Some(p) = params {
@@ -323,7 +359,7 @@ pub fn evaluate_physio_anchors(
         w_prime_max = *p.get("w_prime_max_joules").unwrap_or(&w_prime_max);
         sprint_cap_w = *p.get("sprint_power_cap_watts").unwrap_or(&sprint_cap_w);
         trial_params = Some(std::mem::take(&mut t));
-    } else if (cp0 - 400.0).abs() > f64::EPSILON {
+    } else if (cp0 - 780.0).abs() > f64::EPSILON {
         let mut t = HashMap::new();
         t.insert("critical_power_watts".to_string(), cp0);
         trial_params = Some(t);
@@ -336,6 +372,7 @@ pub fn evaluate_physio_anchors(
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp, w_prime_max, sprint_cap_w),
+        check_march_cruise_below_cp(38.0, 1.7, trial_ref, cp),
         check_sustain_run_observed(trial_ref, 90.0, fast_mode),
         check_mobility_run_speed(
             0.0,
@@ -366,9 +403,9 @@ pub fn evaluate_hard_constraints(
     fast_mode: bool,
 ) -> ConstraintReport {
     let cp0 = if let Some(p) = params {
-        *p.get("critical_power_watts").unwrap_or(&400.0)
+        *p.get("critical_power_watts").unwrap_or(&780.0)
     } else {
-        400.0
+        780.0
     };
     evaluate_physio_anchors(35.0, cp0, params, fast_mode)
 }

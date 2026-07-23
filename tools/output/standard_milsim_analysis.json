@@ -1,0 +1,634 @@
+{
+  "presets": {
+    "EliteStandard": {
+      "params": {
+        "critical_power_watts": 375.7708626073544,
+        "w_prime_max_joules": 16393.700634598787,
+        "w_prime_recovery_w_per_s": 13.361339097738242,
+        "sprint_power_cap_watts": 1545.2847010051746,
+        "v5_walk_speed_ms": 1.4,
+        "v5_run_speed_ms": 2.8,
+        "v5_sprint_speed_ms": 4.0,
+        "energy_to_stamina_coeff": 1.6372614753792225e-07,
+        "base_recovery_rate": 0.00011623115581289253,
+        "standing_recovery_multiplier": 0.859685030191945,
+        "crouching_recovery_multiplier": 1.8731680511939905,
+        "prone_recovery_multiplier": 1.617525874448799,
+        "fast_recovery_multiplier": 1.3091525487127307,
+        "medium_recovery_multiplier": 0.8300050815284541,
+        "slow_recovery_multiplier": 0.3658207404166996,
+        "encumbrance_speed_penalty_coeff": 0.2682670771955744,
+        "encumbrance_stamina_drain_coeff": 2.5617575231405687,
+        "load_recovery_penalty_coeff": 0.0001814544420979576,
+        "posture_crouch_multiplier": 2.6738698823121316,
+        "posture_prone_multiplier": 3.4213771051262545,
+        "sprint_speed_boost": 0.21937938796700995,
+        "recovery_nonlinear_coeff": 0.28720791583560873,
+        "max_recovery_per_tick": 0.0003705489643943735,
+        "willpower_threshold": 0.2931830650696796,
+        "sprint_enable_threshold": 0.2981364423011251
+      },
+      "metrics": {
+        "sustain_ease": 0.3047993005209455,
+        "mobility_ease": 0.008511747226834161,
+        "combat_ease": 0.6898072814763907,
+        "recovery_ease": 0.0016515130389919822,
+        "param_drift": 6.522877567026761,
+        "scalar_score": 1.7713199822929746
+      },
+      "derived": {
+        "run_speed_0kg_ms": 2.7991217630970193,
+        "run_speed_35kg_ms": 2.514548871723945,
+        "approx_wprime_burst_at_cap_s": 14.01753454842176,
+        "cp_watts": 375.7708626073544,
+        "w_prime_j": 16393.700634598787,
+        "sprint_cap_w": 1545.2847010051746,
+        "w_prime_recovery_w_s": 13.361339097738242,
+        "enc_coeff": 0.2682670771955744,
+        "willpower_threshold": 0.2931830650696796,
+        "sprint_enable_threshold": 0.2981364423011251,
+        "energy_to_stamina_coeff": 1.6372614753792225e-07,
+        "base_recovery_rate": 0.00011623115581289253
+      },
+      "hard_all_passed": true,
+      "hard_checks": [
+        {
+          "name": "drain_velocity_clamp",
+          "ok": true,
+          "hard": true,
+          "detail": "expected 4.0 m/s, got 4.0000"
+        },
+        {
+          "name": "metabolic_overspeed_factor",
+          "ok": true,
+          "hard": false,
+          "detail": "expected 0.5, got 0.5000 (v5 legacy API)"
+        },
+        {
+          "name": "v5_sprint_burst_duration",
+          "ok": true,
+          "hard": true,
+          "detail": "empty pool in 8.4s (max 15s)"
+        },
+        {
+          "name": "v5_sprint_cooldown",
+          "ok": true,
+          "hard": true,
+          "detail": "cooldown remaining 180s (min 120s)"
+        },
+        {
+          "name": "v6_cp_sprint_burst_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "W' burst 11.05s (max 15s)"
+        },
+        {
+          "name": "sustain_run_observed_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "obs=1.071%/s (band 0.6\u20131.4)"
+        },
+        {
+          "name": "mobility_run_0kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.799 m/s (band 2.65\u20132.95)"
+        },
+        {
+          "name": "mobility_run_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.515 m/s (band 2.15\u20132.85)"
+        },
+        {
+          "name": "march_4h_aerobic_end_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "aerobic_end=0.204 (min 0.2)"
+        }
+      ],
+      "missions": [
+        {
+          "name": "\u5de1\u903b\u63a5\u654c",
+          "final_stamina": null,
+          "min_stamina": 0.6556373224147256,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0739213200227007,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u6c99\u6f20\u5de1\u903b",
+          "final_stamina": null,
+          "min_stamina": 0.6439457202209136,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0739213200227007,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5730\u72f1\u6c99\u6f20\u7a81\u56f4",
+          "final_stamina": null,
+          "min_stamina": 0.658599301578345,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1250114691006992,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u4e24\u6816\u767b\u9646",
+          "final_stamina": null,
+          "min_stamina": 0.6606500983645112,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0764743336229161,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u57ce\u9547\u6e05\u626b",
+          "final_stamina": null,
+          "min_stamina": 0.6537194146719976,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0764743336229161,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5c71\u5730\u63a5\u8fd1",
+          "final_stamina": null,
+          "min_stamina": 0.6672510515198329,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 4.648335447232566,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u8f7d\u5177\u4e0b\u8f66\u7a81\u51fb",
+          "final_stamina": null,
+          "min_stamina": 0.6833023037770692,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0788602216021261,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u91cd\u8f7d\u64a4\u79bb",
+          "final_stamina": null,
+          "min_stamina": 0.6710994623864095,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0650789163051377,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "35kg\u7a33\u6001\u8dd1\u6b65",
+          "final_stamina": null,
+          "min_stamina": 0.659598601041891,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0711403418893326,
+          "recovery_gained": null,
+          "idle_seconds": null
+        }
+      ]
+    },
+    "StandardMilsim": {
+      "params": {
+        "critical_power_watts": 382.1078099628693,
+        "w_prime_max_joules": 17199.45903383015,
+        "w_prime_recovery_w_per_s": 10.81149948651355,
+        "sprint_power_cap_watts": 1519.4203633650366,
+        "v5_walk_speed_ms": 1.4,
+        "v5_run_speed_ms": 2.8,
+        "v5_sprint_speed_ms": 4.0,
+        "energy_to_stamina_coeff": 1.4989461817584443e-07,
+        "base_recovery_rate": 0.00011808637353215549,
+        "standing_recovery_multiplier": 0.7092967662469325,
+        "crouching_recovery_multiplier": 1.5075686877570584,
+        "prone_recovery_multiplier": 1.5361570776816418,
+        "fast_recovery_multiplier": 1.4304856962013361,
+        "medium_recovery_multiplier": 0.935441739770724,
+        "slow_recovery_multiplier": 0.39730234802833236,
+        "encumbrance_speed_penalty_coeff": 0.3011543446848675,
+        "encumbrance_stamina_drain_coeff": 2.379776572400105,
+        "load_recovery_penalty_coeff": 0.0001685451549653114,
+        "posture_crouch_multiplier": 2.814762472742022,
+        "posture_prone_multiplier": 3.564933866867508,
+        "sprint_speed_boost": 0.23233992425868955,
+        "recovery_nonlinear_coeff": 0.38844237293283396,
+        "max_recovery_per_tick": 0.00023191175712876827,
+        "willpower_threshold": 0.3839035619834488,
+        "sprint_enable_threshold": 0.2451886250969123
+      },
+      "metrics": {
+        "sustain_ease": 0.3061860470627311,
+        "mobility_ease": 0.001969538877453747,
+        "combat_ease": 0.6908130971144747,
+        "recovery_ease": 0.0011400600799393022,
+        "param_drift": 2.5257913508831855,
+        "scalar_score": 9.277034614695099
+      },
+      "derived": {
+        "run_speed_0kg_ms": 2.7991217630970193,
+        "run_speed_35kg_ms": 2.480997979767041,
+        "approx_wprime_burst_at_cap_s": 15.122895621242838,
+        "cp_watts": 382.1078099628693,
+        "w_prime_j": 17199.45903383015,
+        "sprint_cap_w": 1519.4203633650366,
+        "w_prime_recovery_w_s": 10.81149948651355,
+        "enc_coeff": 0.3011543446848675,
+        "willpower_threshold": 0.3839035619834488,
+        "sprint_enable_threshold": 0.2451886250969123,
+        "energy_to_stamina_coeff": 1.4989461817584443e-07,
+        "base_recovery_rate": 0.00011808637353215549
+      },
+      "hard_all_passed": true,
+      "hard_checks": [
+        {
+          "name": "drain_velocity_clamp",
+          "ok": true,
+          "hard": true,
+          "detail": "expected 4.0 m/s, got 4.0000"
+        },
+        {
+          "name": "metabolic_overspeed_factor",
+          "ok": true,
+          "hard": false,
+          "detail": "expected 0.5, got 0.5000 (v5 legacy API)"
+        },
+        {
+          "name": "v5_sprint_burst_duration",
+          "ok": true,
+          "hard": true,
+          "detail": "empty pool in 8.4s (max 15s)"
+        },
+        {
+          "name": "v5_sprint_cooldown",
+          "ok": true,
+          "hard": true,
+          "detail": "cooldown remaining 180s (min 120s)"
+        },
+        {
+          "name": "v6_cp_sprint_burst_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "W' burst 11.90s (max 15s)"
+        },
+        {
+          "name": "sustain_run_observed_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "obs=1.089%/s (band 0.6\u20131.4)"
+        },
+        {
+          "name": "mobility_run_0kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.799 m/s (band 2.65\u20132.95)"
+        },
+        {
+          "name": "mobility_run_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.481 m/s (band 2.15\u20132.85)"
+        },
+        {
+          "name": "march_4h_aerobic_end_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "aerobic_end=0.238 (min 0.2)"
+        }
+      ],
+      "missions": [
+        {
+          "name": "\u5de1\u903b\u63a5\u654c",
+          "final_stamina": null,
+          "min_stamina": 0.6583246027889299,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0920115668408465,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u6c99\u6f20\u5de1\u903b",
+          "final_stamina": null,
+          "min_stamina": 0.6471785672017122,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0920115668408465,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5730\u72f1\u6c99\u6f20\u7a81\u56f4",
+          "final_stamina": null,
+          "min_stamina": 0.6601811006075289,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1440118884416082,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u4e24\u6816\u767b\u9646",
+          "final_stamina": null,
+          "min_stamina": 0.6604478508547978,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0946096525951257,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u57ce\u9547\u6e05\u626b",
+          "final_stamina": null,
+          "min_stamina": 0.6531781455668149,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0946096525951257,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5c71\u5730\u63a5\u8fd1",
+          "final_stamina": null,
+          "min_stamina": 0.6680860839928735,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 2.5678883630892755,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u8f7d\u5177\u4e0b\u8f66\u7a81\u51fb",
+          "final_stamina": null,
+          "min_stamina": 0.6821294982603301,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0970377940678628,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u91cd\u8f7d\u64a4\u79bb",
+          "final_stamina": null,
+          "min_stamina": 0.6715688058407981,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.0830732737033928,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "35kg\u7a33\u6001\u8dd1\u6b65",
+          "final_stamina": null,
+          "min_stamina": 0.6623720941254623,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.089180667234947,
+          "recovery_gained": null,
+          "idle_seconds": null
+        }
+      ]
+    },
+    "TacticalAction": {
+      "params": {
+        "critical_power_watts": 393.89572712038523,
+        "w_prime_max_joules": 17990.579564370368,
+        "w_prime_recovery_w_per_s": 13.631201163332449,
+        "sprint_power_cap_watts": 1350.284589376701,
+        "v5_walk_speed_ms": 1.4,
+        "v5_run_speed_ms": 2.8,
+        "v5_sprint_speed_ms": 4.0,
+        "energy_to_stamina_coeff": 1.0512253782247613e-07,
+        "base_recovery_rate": 8.342208995184712e-05,
+        "standing_recovery_multiplier": 0.7226743765084626,
+        "crouching_recovery_multiplier": 1.5085910167197074,
+        "prone_recovery_multiplier": 2.1701734560736248,
+        "fast_recovery_multiplier": 1.5037991425128798,
+        "medium_recovery_multiplier": 0.8572201211606953,
+        "slow_recovery_multiplier": 0.287916199707553,
+        "encumbrance_speed_penalty_coeff": 0.3252874963213357,
+        "encumbrance_stamina_drain_coeff": 2.7104692530845558,
+        "load_recovery_penalty_coeff": 0.00010497107079037845,
+        "posture_crouch_multiplier": 3.4728305076729886,
+        "posture_prone_multiplier": 3.3851541168631947,
+        "sprint_speed_boost": 0.21503681308455513,
+        "recovery_nonlinear_coeff": 0.3161788019577119,
+        "max_recovery_per_tick": 0.00041251948834924903,
+        "willpower_threshold": 0.326267900329946,
+        "sprint_enable_threshold": 0.2612719044457492
+      },
+      "metrics": {
+        "sustain_ease": 0.3113886811277108,
+        "mobility_ease": 9.626194928306983e-05,
+        "combat_ease": 0.6946783742965427,
+        "recovery_ease": 0.001726917177607722,
+        "param_drift": 2.689193409966851,
+        "scalar_score": 1.5690138195081713
+      },
+      "derived": {
+        "run_speed_0kg_ms": 2.7991217630970193,
+        "run_speed_35kg_ms": 2.4565550785528667,
+        "approx_wprime_burst_at_cap_s": 18.81094633612413,
+        "cp_watts": 393.89572712038523,
+        "w_prime_j": 17990.579564370368,
+        "sprint_cap_w": 1350.284589376701,
+        "w_prime_recovery_w_s": 13.631201163332449,
+        "enc_coeff": 0.3252874963213357,
+        "willpower_threshold": 0.326267900329946,
+        "sprint_enable_threshold": 0.2612719044457492,
+        "energy_to_stamina_coeff": 1.0512253782247613e-07,
+        "base_recovery_rate": 8.342208995184712e-05
+      },
+      "hard_all_passed": true,
+      "hard_checks": [
+        {
+          "name": "drain_velocity_clamp",
+          "ok": true,
+          "hard": true,
+          "detail": "expected 4.0 m/s, got 4.0000"
+        },
+        {
+          "name": "metabolic_overspeed_factor",
+          "ok": true,
+          "hard": false,
+          "detail": "expected 0.5, got 0.5000 (v5 legacy API)"
+        },
+        {
+          "name": "v5_sprint_burst_duration",
+          "ok": true,
+          "hard": true,
+          "detail": "empty pool in 8.4s (max 15s)"
+        },
+        {
+          "name": "v5_sprint_cooldown",
+          "ok": true,
+          "hard": true,
+          "detail": "cooldown remaining 180s (min 120s)"
+        },
+        {
+          "name": "v6_cp_sprint_burst_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "W' burst 14.76s (max 15s)"
+        },
+        {
+          "name": "sustain_run_observed_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "obs=1.123%/s (band 0.6\u20131.4)"
+        },
+        {
+          "name": "mobility_run_0kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.799 m/s (band 2.65\u20132.95)"
+        },
+        {
+          "name": "mobility_run_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "speed=2.457 m/s (band 2.15\u20132.85)"
+        },
+        {
+          "name": "march_4h_aerobic_end_35kg",
+          "ok": true,
+          "hard": true,
+          "detail": "aerobic_end=0.366 (min 0.2)"
+        }
+      ],
+      "missions": [
+        {
+          "name": "\u5de1\u903b\u63a5\u654c",
+          "final_stamina": null,
+          "min_stamina": 0.6682400093755991,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1257016898918442,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u6c99\u6f20\u5de1\u903b",
+          "final_stamina": null,
+          "min_stamina": 0.6590359238018153,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1257016898918442,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5730\u72f1\u6c99\u6f20\u7a81\u56f4",
+          "final_stamina": null,
+          "min_stamina": 0.6715725277469927,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1793297744655034,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u4e24\u6816\u767b\u9646",
+          "final_stamina": null,
+          "min_stamina": 0.6671815482060786,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.127798433901268,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u57ce\u9547\u6e05\u626b",
+          "final_stamina": null,
+          "min_stamina": 0.6594357986874173,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.127798433901268,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u5c71\u5730\u63a5\u8fd1",
+          "final_stamina": null,
+          "min_stamina": 0.677101635758038,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 5.083803146499535,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u8f7d\u5177\u4e0b\u8f66\u7a81\u51fb",
+          "final_stamina": null,
+          "min_stamina": 0.6850923021710267,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1308910915291233,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "\u91cd\u8f7d\u64a4\u79bb",
+          "final_stamina": null,
+          "min_stamina": 0.6808359819307798,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1164718175386705,
+          "recovery_gained": null,
+          "idle_seconds": null
+        },
+        {
+          "name": "35kg\u7a33\u6001\u8dd1\u6b65",
+          "final_stamina": null,
+          "min_stamina": 0.6727773622554216,
+          "mean_stamina": null,
+          "collapse": null,
+          "obs_deplete_pct_s": 1.1228442582827074,
+          "recovery_gained": null,
+          "idle_seconds": null
+        }
+      ]
+    }
+  },
+  "ideal": {
+    "combat_ease": 0.692,
+    "recovery_ease": 0.00125,
+    "encumbrance_speed_penalty_coeff": 0.28
+  },
+  "tier_order": {
+    "combat_ok": true,
+    "recovery_ok": false,
+    "combat": [
+      0.6898072814763907,
+      0.6908130971144747,
+      0.6946783742965427
+    ],
+    "recovery": [
+      0.0016515130389919822,
+      0.0011400600799393022,
+      0.001726917177607722
+    ]
+  },
+  "standard_vs_ideal": {
+    "combat_ease": 0.6908130971144747,
+    "combat_ideal": 0.692,
+    "combat_delta": -0.001186902885525254,
+    "recovery_ease": 0.0011400600799393022,
+    "recovery_ideal": 0.00125,
+    "recovery_delta": -0.00010993992006069785,
+    "enc": 0.3011543446848675,
+    "enc_ideal": 0.28,
+    "enc_delta": 0.021154344684867488
+  }
+}

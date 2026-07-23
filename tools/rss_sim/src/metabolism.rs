@@ -117,18 +117,52 @@ pub fn metabolism_power_watts(
     terrain_factor: f64,
     movement_phase: i32,
 ) -> f64 {
+    metabolism_power_watts_damped(
+        velocity_ms,
+        total_weight_kg,
+        grade_percent,
+        terrain_factor,
+        movement_phase,
+        0.70,
+    )
+}
+
+pub fn metabolism_power_watts_damped(
+    velocity_ms: f64,
+    total_weight_kg: f64,
+    grade_percent: f64,
+    terrain_factor: f64,
+    movement_phase: i32,
+    load_metabolic_dampening: f64,
+) -> f64 {
     let pandolf_w =
         calculate_pandolf_power_watts(velocity_ms, total_weight_kg, grade_percent, terrain_factor);
     let prefer_acsm = movement_phase == 2 || movement_phase == 3 || velocity_ms >= V6_ACSM_BLEND_END_MS;
-    if !prefer_acsm && velocity_ms < V6_ACSM_BLEND_START_MS {
-        return pandolf_w;
+    let blended = if !prefer_acsm && velocity_ms < V6_ACSM_BLEND_START_MS {
+        pandolf_w
+    } else {
+        let acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg);
+        let mut blend = get_acsm_blend_weight(velocity_ms);
+        if movement_phase == 3 {
+            blend = blend.max(0.85);
+        }
+        pandolf_w * (1.0 - blend) + acsm_w * blend
+    };
+
+    let body_weight = 90.0;
+    if total_weight_kg <= body_weight + 0.5 || load_metabolic_dampening >= 1.0 {
+        return blended;
     }
-    let acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg);
-    let mut blend = get_acsm_blend_weight(velocity_ms);
-    if movement_phase == 3 {
-        blend = blend.max(0.85);
-    }
-    pandolf_w * (1.0 - blend) + acsm_w * blend
+    let unloaded = metabolism_power_watts_damped(
+        velocity_ms,
+        body_weight,
+        grade_percent,
+        terrain_factor,
+        movement_phase,
+        1.0,
+    );
+    let load_extra = (blended - unloaded).max(0.0);
+    unloaded + load_extra * load_metabolic_dampening
 }
 
 pub fn invert_speed_for_power_watts(

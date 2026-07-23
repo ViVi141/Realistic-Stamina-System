@@ -108,7 +108,7 @@ class SCR_RSS_SpeedCalculator
 
         float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
         float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
-        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
+        float sprintMs = GetEnsuredMarchSprintSpeedMs();
         float encMult = 1.0 - encumbranceSpeedPenalty;
         if (encMult < 0.5)
             encMult = 0.5;
@@ -149,7 +149,40 @@ class SCR_RSS_SpeedCalculator
         return baseMult;
     }
 
-    //! v6 Sprint 绝对速度：invert(P = available burst power)
+    //! 冲刺负重惩罚（相对 Run 的放大系数）
+    static float ScaleSprintEncumbrancePenalty(float encumbrancePenalty)
+    {
+        return encumbrancePenalty * SCR_RSS_Constants.SPRINT_ENCUMBRANCE_PENALTY_MULT;
+    }
+
+    //! 步态基准 Sprint（保证相对 Run 的最低拉开）
+    static float GetEnsuredMarchSprintSpeedMs()
+    {
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
+        float minSprint = runMs * SCR_RSS_Constants.SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+        if (sprintMs < minSprint)
+            sprintMs = minSprint;
+        if (sprintMs > SCR_RSS_MetabolismMath.GAME_MAX_SPEED)
+            sprintMs = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        return sprintMs;
+    }
+
+    //! 允许冲刺时：功率软顶不得把 Sprint 压到接近 Run
+    static float ApplySprintGaitMinSeparation(float sprintMs, float runMs)
+    {
+        float minSprint = runMs * SCR_RSS_Constants.SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+        float gaitSprint = GetEnsuredMarchSprintSpeedMs();
+        if (minSprint > gaitSprint)
+            minSprint = gaitSprint;
+        if (sprintMs < minSprint)
+            sprintMs = minSprint;
+        if (sprintMs > gaitSprint)
+            sprintMs = gaitSprint;
+        return sprintMs;
+    }
+
+    //! v6 Sprint：步态基准优先，功率仅作软顶；W′ 耗尽才硬降为 Run
     static float GetV6SprintSpeedMs(
         float encumbrancePenalty,
         float totalWeightKg,
@@ -164,19 +197,24 @@ class SCR_RSS_SpeedCalculator
             encMult = 0.5;
 
         float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult;
+        float gaitSprintMs = GetEnsuredMarchSprintSpeedMs() * encMult;
         if (!cpModel)
-            return SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult;
+            return gaitSprintMs;
 
         float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         if (cpModel.GetPool01() <= threshold)
             return runMs;
 
         float availableP = cpModel.GetAvailablePowerWatts(true, timeDeltaSec, worldTimeSec);
-        float sprintMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+        float powerMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             availableP, totalWeightKg, gradePercent, terrainFactor, 3);
-        sprintMs = sprintMs * encMult;
-        if (sprintMs < runMs)
-            sprintMs = runMs;
+        powerMs = powerMs * encMult;
+
+        // ① 步态基准 ② 功率软顶向下压 ③ 最低拉开保身份
+        float sprintMs = gaitSprintMs;
+        if (powerMs < sprintMs)
+            sprintMs = powerMs;
+        sprintMs = ApplySprintGaitMinSeparation(sprintMs, runMs);
         return sprintMs;
     }
     
@@ -209,16 +247,19 @@ class SCR_RSS_SpeedCalculator
 
         float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * encMult * staminaScale;
         float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult * staminaScale;
-        float sprintMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs() * encMult * staminaScale;
+        float sprintMs = GetEnsuredMarchSprintSpeedMs() * encMult * staminaScale;
 
         if (anaerobicPercent < 1.0)
         {
             float anaScale = 0.65 + 0.35 * anaerobicPercent;
             sprintMs = sprintMs * anaScale;
+            float minSprint = runMs * SCR_RSS_Constants.SPRINT_GAIT_MIN_OVER_RUN_RATIO;
+            if (sprintMs < minSprint)
+                sprintMs = minSprint;
         }
 
         if (isSprinting || currentMovementPhase == 3)
-            return Math.Clamp(sprintMs, walkMs, SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs());
+            return Math.Clamp(sprintMs, walkMs, GetEnsuredMarchSprintSpeedMs());
         if (currentMovementPhase == 2)
             return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetMarchRunSpeedMs());
         if (currentMovementPhase == 1)
@@ -288,7 +329,7 @@ class SCR_RSS_SpeedCalculator
         float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
-            encumbrancePenalty = encumbrancePenalty * 1.5;
+            encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
@@ -349,7 +390,7 @@ class SCR_RSS_SpeedCalculator
         float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
-            encumbrancePenalty = encumbrancePenalty * 1.5;
+            encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
         
