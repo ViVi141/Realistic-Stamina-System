@@ -264,6 +264,26 @@ class SCR_RSS_MetabolismModel
         return powerWatts;
     }
 
+    //! 负重 Run/Sprint 步态税（Walk/Idle=1）。负载从 START→REF 升到 MAX_MULT。
+    static float GetLoadedGaitStaminaDrainMultiplier(float loadWeightKg, int movementPhase)
+    {
+        if (movementPhase < 2)
+            return 1.0;
+        if (loadWeightKg <= SCR_RSS_Constants.LOADED_RUN_DRAIN_START_KG)
+            return 1.0;
+
+        float span = SCR_RSS_Constants.LOADED_RUN_DRAIN_REF_KG
+            - SCR_RSS_Constants.LOADED_RUN_DRAIN_START_KG;
+        if (span < 0.1)
+            span = 0.1;
+        float t = (loadWeightKg - SCR_RSS_Constants.LOADED_RUN_DRAIN_START_KG) / span;
+        t = Math.Clamp(t, 0.0, 1.0);
+        float maxMult = SCR_RSS_Constants.LOADED_RUN_DRAIN_MAX_MULT;
+        if (maxMult < 1.0)
+            maxMult = 1.0;
+        return 1.0 + (maxMult - 1.0) * t;
+    }
+
     //! 功率 → 有氧消耗率（%/s）
     static float StaminaDrainRatePerSecondFromPowerWatts(float powerWatts, float criticalPowerCapWatts = -1.0)
     {

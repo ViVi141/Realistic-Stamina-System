@@ -81,6 +81,11 @@ class SCR_RSS_UpdateCoordinator
                 pandolfPerS = pandolfPerS * SCR_RSS_Constants.V6_SPRINT_WPRIME_STA_RELIEF;
         }
 
+        float bodyWeightKg = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+        float loadWeightKg = Math.Max(currentWeightWithWet - bodyWeightKg, 0.0);
+        pandolfPerS = pandolfPerS * SCR_RSS_MetabolismModel.GetLoadedGaitStaminaDrainMultiplier(
+            loadWeightKg, phase);
+
         // 风阻/热应激由 StaminaConsumptionCalculator.GetQuickEnvironmentMultiplier 单层施加，此处不再叠 windDrag
         return pandolfPerS * SCR_RSS_Constants.RSS_STAMINA_TICK_SEC;
     }
@@ -296,7 +301,7 @@ class SCR_RSS_UpdateCoordinator
                 if (anaRun && anaRun.GetCpModel())
                 {
                     SCR_RSS_CriticalPowerModel cpRun = anaRun.GetCpModel();
-                    if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpRun.GetPool01()))
+                    if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpRun))
                     {
                         float totalWeightKg = controller.GetRssCurrentWeight()
                             + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;

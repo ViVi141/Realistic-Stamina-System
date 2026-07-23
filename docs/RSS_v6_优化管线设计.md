@@ -50,6 +50,7 @@
 | `v5_sprint_burst_duration` | 满池抽干 ≤ 15 s | 无氧池（legacy） |
 | `v5_sprint_cooldown` | 抽干后冷却 ≥ 120 s | |
 | `v6_cp_sprint_burst_35kg` | W′ 冲刺 ≤ 15 s @ 35 kg | CP–W′ 模型 |
+| `zero_load_2mile_pt_ge70` | 零负重 Sprint 2 mi ≤ **18:00**（≥70 分）；软目标 **15:30**/85 分 | `game_player_tick` Sprint 积分 |
 | `march_4h_aerobic_end_35kg` | 4 h 行军结束有氧 ≥ 0.20 | **当前 soft**（孪生无 fatigue cap） |
 
 实现：`rss_constraints_v6.evaluate_hard_constraints()`。  

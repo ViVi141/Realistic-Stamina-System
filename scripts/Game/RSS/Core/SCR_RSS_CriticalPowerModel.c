@@ -11,6 +11,8 @@ class SCR_RSS_CriticalPowerModel
     protected float m_fLastShortBurstReleaseSec;
     protected bool m_bDepletionCooldownApplied;
     protected float m_fFatigueCpMultiplier;
+    //! Run/Sprint 超速武装（施密特）：耗尽后钉在 CP，直到 W′ 明显回升
+    protected bool m_bOverspeedArmed;
 
     protected float m_fContextLoadKg;
     protected float m_fContextGradePercent;
@@ -36,6 +38,35 @@ class SCR_RSS_CriticalPowerModel
         m_bWasSprinting = false;
         m_fLastShortBurstReleaseSec = -1.0;
         m_bDepletionCooldownApplied = false;
+        m_bOverspeedArmed = true;
+    }
+
+    //! 施密特更新并返回是否允许超过 CP 的步态速度
+    bool RefreshAndGetOverspeedArmed()
+    {
+        float pool = GetPool01();
+        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
+        float disableAt = threshold + SCR_RSS_Constants.V6_WPRIME_OVERSPEED_HYSTERESIS;
+        float rearmAt = threshold + SCR_RSS_Constants.V6_WPRIME_OVERSPEED_REARM;
+        if (rearmAt <= disableAt + 0.01)
+            rearmAt = disableAt + 0.15;
+
+        if (m_bOverspeedArmed)
+        {
+            if (pool <= disableAt)
+                m_bOverspeedArmed = false;
+        }
+        else
+        {
+            if (pool > rearmAt)
+                m_bOverspeedArmed = true;
+        }
+        return m_bOverspeedArmed;
+    }
+
+    bool IsOverspeedArmed()
+    {
+        return m_bOverspeedArmed;
     }
 
     void SetRuntimeContext(float loadKg, float gradePercent, float envCpMult, float fatigueNorm)
@@ -151,6 +182,7 @@ class SCR_RSS_CriticalPowerModel
         if (wPrimeMaxJoules > 1.0)
             m_fWPrimeMaxJoules = wPrimeMaxJoules;
         m_fWPrimeJoules = Math.Clamp(pool01, 0.0, 1.0) * m_fWPrimeMaxJoules;
+        RefreshAndGetOverspeedArmed();
         m_fCooldownUntilSec = cooldownUntilSec;
     }
 

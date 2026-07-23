@@ -17,6 +17,28 @@ pub fn get_drain_velocity_ms(measured_ms: f64, theoretical_max_ms: f64) -> f64 {
     }
 }
 
+pub fn refresh_wprime_overspeed_armed(
+    pool01: f64,
+    armed: bool,
+    threshold: f64,
+) -> bool {
+    let disable_at = threshold + crate::constants::V6_WPRIME_OVERSPEED_HYSTERESIS;
+    let mut rearm_at = threshold + crate::constants::V6_WPRIME_OVERSPEED_REARM;
+    if rearm_at <= disable_at + 0.01 {
+        rearm_at = disable_at + 0.15;
+    }
+    if armed {
+        if pool01 <= disable_at {
+            return false;
+        }
+        return true;
+    }
+    if pool01 > rearm_at {
+        return true;
+    }
+    false
+}
+
 pub fn is_wprime_pool_available_for_overspeed(
     w_prime_pool01: f64,
     threshold: f64,

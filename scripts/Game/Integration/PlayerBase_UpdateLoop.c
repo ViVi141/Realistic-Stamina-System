@@ -594,8 +594,13 @@ modded class SCR_CharacterControllerComponent
 
             bool overspeeding = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
                 loc.currentSpeed, m_fAppliedSpeedLimitMs);
-            bool wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                pool01AfterTick);
+            bool wPrimeAllowsOverspeed = false;
+            if (cpPostTick)
+                wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    cpPostTick);
+            else
+                wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    pool01AfterTick);
 
             // 客户端实测仍高于 RSS 限速（缓降残留/惯性）：每帧硬钳重申；
             // W′ 不可用时再与代谢 CP 反解上限取更严者

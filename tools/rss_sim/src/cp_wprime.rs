@@ -7,6 +7,7 @@ use crate::constants::{
 };
 use crate::drain::{
     get_drain_velocity_ms, is_metabolic_overspeed_accounting, is_wprime_pool_available_for_overspeed,
+    refresh_wprime_overspeed_armed,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{compute_cp_watts, invert_speed_for_power_watts};
@@ -57,6 +58,7 @@ pub struct V6CriticalPowerState {
     pub env_cp_mult: f64,
     pub fatigue_norm: f64,
     pub fatigue_cp_multiplier: f64,
+    pub overspeed_armed: bool,
 }
 
 impl V6CriticalPowerState {
@@ -76,6 +78,7 @@ impl V6CriticalPowerState {
             env_cp_mult: 1.0,
             fatigue_norm: 0.0,
             fatigue_cp_multiplier: 1.0,
+            overspeed_armed: true,
         };
         s.reset_to_full();
         s
@@ -88,6 +91,7 @@ impl V6CriticalPowerState {
         self.was_sprinting = false;
         self.last_short_burst_release_sec = -1.0;
         self.depletion_cooldown_applied = false;
+        self.overspeed_armed = true;
     }
 
     pub fn set_runtime_context(
@@ -112,6 +116,15 @@ impl V6CriticalPowerState {
             return 0.0;
         }
         clip_f64(self.w_prime_joules / self.w_prime_max_joules, 0.0, 1.0)
+    }
+
+    pub fn refresh_and_get_overspeed_armed(&mut self) -> bool {
+        self.overspeed_armed = refresh_wprime_overspeed_armed(
+            self.pool01(),
+            self.overspeed_armed,
+            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+        );
+        self.overspeed_armed
     }
 
     pub fn cooldown_remaining_at(&self, world_time_sec: f64) -> f64 {
@@ -271,7 +284,7 @@ impl V6CriticalPowerState {
     }
 
     pub fn get_w_prime_exhausted_overspeed_cap_ms(
-        &self,
+        &mut self,
         measured_speed_ms: f64,
         applied_speed_limit_ms: f64,
         movement_phase: i32,
@@ -282,7 +295,7 @@ impl V6CriticalPowerState {
         if !is_metabolic_overspeed_accounting(measured_speed_ms, applied_speed_limit_ms) {
             return -1.0;
         }
-        if is_wprime_pool_available_for_overspeed(self.pool01(), V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT) {
+        if self.refresh_and_get_overspeed_armed() {
             return -1.0;
         }
         let mut cp = self.get_effective_critical_power_watts();

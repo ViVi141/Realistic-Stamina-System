@@ -149,6 +149,31 @@ def _mobility_ok() -> bool:
     return c0.passed and c35.passed
 
 
+def _zero_load_2mile_constants_ok() -> bool:
+    from rss_constraints_v6 import (
+        TWO_MILE_DIST_M,
+        TWO_MILE_HARD,
+        TWO_MILE_MAX_SEC,
+        TWO_MILE_SCORE_70_SEC,
+        TWO_MILE_SCORE_85_SEC,
+        two_mile_score_01,
+    )
+
+    if abs(TWO_MILE_DIST_M - 3218.688) > 0.01:
+        return False
+    if TWO_MILE_MAX_SEC != TWO_MILE_SCORE_70_SEC:
+        return False
+    if abs(TWO_MILE_SCORE_70_SEC - 1080.0) > 1e-6:
+        return False
+    if abs(TWO_MILE_SCORE_85_SEC - 930.0) > 1e-6:
+        return False
+    if abs(two_mile_score_01(1080.0) - 0.70) > 1e-6:
+        return False
+    if abs(two_mile_score_01(930.0) - 0.85) > 1e-6:
+        return False
+    return bool(TWO_MILE_HARD)
+
+
 def _tier_scalar_gradients_ok() -> bool:
     from rss_pipeline_v6 import V6Metrics, scalarize_tier_metrics, make_mo_sampler
 
@@ -256,6 +281,7 @@ SCENARIOS = [
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
     ("mobility_run_speed", lambda: _mobility_ok()),
+    ("zero_load_run_2mile_constants", lambda: _zero_load_2mile_constants_ok()),
     ("sprint_load_30m", lambda: _sprint_load_30m_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),

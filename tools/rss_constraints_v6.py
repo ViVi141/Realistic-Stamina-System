@@ -37,6 +37,16 @@ MOBILITY_RUN_35KG_MIN_MS = 2.15
 MOBILITY_RUN_35KG_MAX_MS = 2.85
 MOBILITY_HARD = True
 
+# 零负重 2 英里体测（Sprint 意图；18:00=70 分硬底线，15:30=85 分软目标）
+TWO_MILE_DIST_M = 2.0 * 1609.344
+TWO_MILE_SCORE_70_SEC = 18.0 * 60.0
+TWO_MILE_SCORE_85_SEC = 15.0 * 60.0 + 30.0
+TWO_MILE_SCORE_70 = 0.70
+TWO_MILE_SCORE_85 = 0.85
+TWO_MILE_MAX_SEC = TWO_MILE_SCORE_70_SEC
+TWO_MILE_TIMEOUT_SEC = 1800.0
+TWO_MILE_HARD = True
+
 TOOLS_DIR = Path(__file__).resolve().parent
 ELITE_PRESET_JSON = TOOLS_DIR / "optimized_rss_config_elitestandard_v4.json"
 
@@ -263,6 +273,126 @@ def check_march_4h_aerobic_end(
     )
 
 
+def two_mile_score_01(time_s: float) -> float:
+    """2 英里用时 → 百分制分数（0–1）。18:00→0.70，15:30→0.85，两端线性外推。"""
+    denom = TWO_MILE_SCORE_85_SEC - TWO_MILE_SCORE_70_SEC
+    if abs(denom) < 1e-9:
+        return float(TWO_MILE_SCORE_70)
+    score = TWO_MILE_SCORE_70 + (float(time_s) - TWO_MILE_SCORE_70_SEC) * (
+        TWO_MILE_SCORE_85 - TWO_MILE_SCORE_70
+    ) / denom
+    return float(score)
+
+
+def two_mile_ease_from_time(time_s: float) -> float:
+    """软目标：相对 85 分的缺口（minimize）。"""
+    return max(0.0, TWO_MILE_SCORE_85 - two_mile_score_01(time_s))
+
+
+def simulate_zero_load_run_time_to_distance(
+    distance_m: float = TWO_MILE_DIST_M,
+    params: Optional[Dict] = None,
+    timeout_s: float = TWO_MILE_TIMEOUT_SEC,
+    movement_intent: int = 3,
+) -> Tuple[float, float]:
+    """闭环孪生：零负重体测跑（默认 Sprint 意图），积分实测速度至目标距离。
+
+    Returns:
+        (time_s, distance_m_reached). 超时未跑完时 time_s == timeout_s。
+    """
+    from rss_digital_twin_fix import (
+        MovementType,
+        RSSConstants,
+        RSSDigitalTwin,
+        RSS_PLAYER_TICK_SEC,
+        Stance,
+        merge_game_aligned_params,
+    )
+
+    merged = merge_game_aligned_params(_load_elite_preset_params())
+    if params:
+        merged.update(
+            {k: float(v) for k, v in params.items() if not str(k).startswith("_")}
+        )
+    twin = RSSDigitalTwin(RSSConstants(**merged))
+    twin.reset()
+    dt = RSS_PLAYER_TICK_SEC
+    body_kg = float(getattr(twin.constants, "CHARACTER_WEIGHT", 90.0))
+    intent = int(movement_intent)
+    if intent < MovementType.WALK:
+        intent = MovementType.SPRINT
+    dist = 0.0
+    t = 0.0
+    while t < timeout_s and dist < distance_m:
+        twin.game_player_tick(
+            intent,
+            body_kg,
+            0.0,
+            1.0,
+            Stance.STAND,
+            t,
+            dt,
+            enable_randomness=False,
+        )
+        dist += float(twin._measured_velocity_ms) * dt
+        t += dt
+    return float(t), float(dist)
+
+
+def check_zero_load_run_2mile(
+    params: Optional[Dict] = None,
+) -> ConstraintCheck:
+    """零负重 Sprint 2 英里：用时必须 ≤18:00（≥70 分）；软目标 15:30（85 分）。"""
+    time_s, dist_m = simulate_zero_load_run_time_to_distance(
+        TWO_MILE_DIST_M,
+        params=params,
+        timeout_s=TWO_MILE_TIMEOUT_SEC,
+        movement_intent=3,
+    )
+    finished = dist_m + 1e-6 >= TWO_MILE_DIST_M
+    ok = finished and time_s <= TWO_MILE_MAX_SEC
+    margin = float(TWO_MILE_MAX_SEC - time_s)
+    if not finished:
+        margin = float(TWO_MILE_MAX_SEC - TWO_MILE_TIMEOUT_SEC)
+    score = two_mile_score_01(time_s) if finished else 0.0
+    hint = ""
+    if not ok:
+        hint = (
+            "raise critical_power_watts / w_prime_max_joules or sprint_power_cap_watts "
+            "so 2mi Sprint finishes by 18:00 (70%)"
+        )
+    minutes = int(time_s // 60)
+    seconds = time_s - 60.0 * minutes
+    if finished:
+        detail = (
+            f"time={minutes}:{seconds:05.2f} score={score * 100.0:.1f}% "
+            f"(hard≤18:00/70%, soft 15:30/85%, dist={dist_m:.1f}m)"
+        )
+    else:
+        detail = (
+            f"timeout at {dist_m:.1f}m / {TWO_MILE_DIST_M:.1f}m "
+            f"after {TWO_MILE_TIMEOUT_SEC:.0f}s"
+        )
+    check_name = "zero_load_2mile_pt_ge70"
+    if not TWO_MILE_HARD and not ok:
+        return ConstraintCheck(
+            check_name,
+            True,
+            f"{detail} (soft)",
+            hard=False,
+            margin=margin,
+            hint=hint,
+        )
+    return ConstraintCheck(
+        check_name,
+        ok,
+        detail,
+        hard=TWO_MILE_HARD,
+        margin=margin,
+        hint=hint,
+    )
+
+
 def check_march_cruise_below_cp(
     load_kg: float = 38.0,
     speed_ms: float = 1.7,
@@ -339,6 +469,7 @@ def evaluate_physio_anchors(
         check_mobility_run_speed(
             35.0, MOBILITY_RUN_35KG_MIN_MS, MOBILITY_RUN_35KG_MAX_MS, "35kg", trial_params
         ),
+        check_zero_load_run_2mile(trial_params),
         check_march_4h_aerobic_end(load_kg, params=trial_params),
     ]
     return ConstraintReport(checks=checks)

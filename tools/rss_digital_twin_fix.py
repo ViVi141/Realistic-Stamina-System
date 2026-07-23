@@ -692,6 +692,9 @@ class RSSDigitalTwin:
             per_sec = per_sec * V6_SPRINT_AEROBIC_DRAIN_FACTOR
             if effective_cp_watts > 1.0 and power_w > effective_cp_watts:
                 per_sec = per_sec * V6_SPRINT_WPRIME_STA_RELIEF
+        bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
+        load_kg = max(0.0, current_weight - bw)
+        per_sec = per_sec * loaded_gait_stamina_drain_multiplier(load_kg, phase)
         return per_sec * (1.0 + wind_drag)
 
     # -------------------------------------------------------------------------
@@ -712,7 +715,7 @@ class RSSDigitalTwin:
         rest_per_tick = getattr(self.constants, 'REST_RECOVERY_PER_TICK', 0.0005)
         idle_threshold = 0.1
 
-        cp0 = getattr(self.constants, 'V6_CRITICAL_POWER_WATTS_DEFAULT', V6_CRITICAL_POWER_WATTS_DEFAULT)
+        cp0 = self._critical_power_watts()
         load_kg = max(0.0, current_weight - bw)
         effective_cp = compute_cp_watts(cp0, load_kg, grade_percent, 1.0, 0.0)
 
@@ -1273,7 +1276,7 @@ class RSSDigitalTwin:
                 dt,
                 current_time,
             )
-        elif not is_wprime_pool_available_for_overspeed(self.v6_cp_state.pool01):
+        elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
             run_phase = phase
             if run_phase < MovementType.WALK:
                 run_phase = MovementType.RUN
@@ -1791,13 +1794,36 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
 V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05
+V6_WPRIME_OVERSPEED_REARM = 0.40
 V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.2
+
+
+def refresh_wprime_overspeed_armed(
+    pool01: float,
+    armed: bool,
+    threshold: float = V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+) -> bool:
+    disable_at = threshold + V6_WPRIME_OVERSPEED_HYSTERESIS
+    rearm_at = threshold + V6_WPRIME_OVERSPEED_REARM
+    if rearm_at <= disable_at + 0.01:
+        rearm_at = disable_at + 0.15
+    if armed:
+        if pool01 <= disable_at:
+            return False
+        return True
+    if pool01 > rearm_at:
+        return True
+    return False
 
 
 def is_wprime_pool_available_for_overspeed(
     w_prime_pool01: float,
     threshold: float = V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+    overspeed_armed=None,
 ) -> bool:
+    """无状态近似；传入 overspeed_armed 时使用施密特闩锁结果。"""
+    if overspeed_armed is not None:
+        return bool(overspeed_armed)
     enable_at = threshold + V6_WPRIME_OVERSPEED_HYSTERESIS
     return w_prime_pool01 > enable_at
 
@@ -2031,6 +2057,24 @@ V6_FATIGUE_INTEGRAL_SCALE = 0.000055
 V6_MAX_FATIGUE_PENALTY = 0.2
 V6_SPRINT_AEROBIC_DRAIN_FACTOR = 0.72
 V6_SPRINT_WPRIME_STA_RELIEF = 0.65
+LOADED_RUN_DRAIN_START_KG = 12.0
+LOADED_RUN_DRAIN_REF_KG = 30.0
+LOADED_RUN_DRAIN_MAX_MULT = 4.5
+
+
+def loaded_gait_stamina_drain_multiplier(load_weight_kg: float, movement_phase: int) -> float:
+    """与 SCR_RSS_MetabolismModel.GetLoadedGaitStaminaDrainMultiplier 同形。"""
+    if movement_phase < 2:
+        return 1.0
+    if load_weight_kg <= LOADED_RUN_DRAIN_START_KG:
+        return 1.0
+    span = LOADED_RUN_DRAIN_REF_KG - LOADED_RUN_DRAIN_START_KG
+    if span < 0.1:
+        span = 0.1
+    t = (load_weight_kg - LOADED_RUN_DRAIN_START_KG) / span
+    t = max(0.0, min(1.0, t))
+    return 1.0 + (LOADED_RUN_DRAIN_MAX_MULT - 1.0) * t
+
 
 V6_FATIGUE_I_MAX = 1.0
 V6_FATIGUE_K_RECOVERY = 0.0008
@@ -2367,6 +2411,7 @@ class V6CriticalPowerState:
         self.was_sprinting = False
         self.last_short_burst_release_sec = -1.0
         self.depletion_cooldown_applied = False
+        self.overspeed_armed = True
 
     def set_runtime_context(self, load_kg: float, grade_percent: float,
                             env_cp_mult: float, fatigue_norm: float):
@@ -2377,6 +2422,11 @@ class V6CriticalPowerState:
 
     def set_fatigue_cp_multiplier(self, mult: float):
         self.fatigue_cp_multiplier = max(0.75, min(mult, 1.0))
+
+    def refresh_and_get_overspeed_armed(self) -> bool:
+        self.overspeed_armed = refresh_wprime_overspeed_armed(
+            self.pool01, bool(getattr(self, "overspeed_armed", True)))
+        return self.overspeed_armed
 
     # ── 属性 ──
     @property
@@ -2543,7 +2593,11 @@ class V6CriticalPowerState:
         """
         if not is_metabolic_overspeed_accounting(measured_speed_ms, applied_speed_limit_ms):
             return -1.0
-        if is_wprime_pool_available_for_overspeed(self.pool01, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT):
+        if is_wprime_pool_available_for_overspeed(
+            self.pool01,
+            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+            self.refresh_and_get_overspeed_armed(),
+        ):
             return -1.0
 
         cp = self.get_effective_critical_power_watts()

@@ -1,15 +1,16 @@
 use crate::constants::{
-    RssConstants, EPOC_MAX_POWER_EXCESS_RATIO, EXHAUSTION_LIMP_SPEED, MIN_SPEED_MULTIPLIER,
-    MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK, RSS_IDLE_SPEED_THRESHOLD_MPS,
-    RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD, SPRINT_ENCUMBRANCE_PENALTY_MULT,
-    SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
-    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION, V6_SPRINT_POWER_CAP_WATTS_DEFAULT,
-    VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
+    RssConstants, EPOC_MAX_POWER_EXCESS_RATIO, EXHAUSTION_LIMP_SPEED,
+    LOADED_RUN_DRAIN_MAX_MULT, LOADED_RUN_DRAIN_REF_KG, LOADED_RUN_DRAIN_START_KG,
+    MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
+    RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
+    SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_CRITICAL_POWER_WATTS_DEFAULT,
+    V6_STAMINA_DRAIN_CALIBRATION, V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS,
+    WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
     get_drain_velocity_ms, get_metabolic_corrected_speed_multiplier,
-    is_wprime_pool_available_for_overspeed,
 };
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
@@ -312,6 +313,26 @@ impl RSSDigitalTwin {
         }
     }
 
+    fn _loaded_gait_stamina_drain_multiplier(load_weight_kg: f64, movement_phase: i32) -> f64 {
+        if movement_phase < 2 {
+            return 1.0;
+        }
+        if load_weight_kg <= LOADED_RUN_DRAIN_START_KG {
+            return 1.0;
+        }
+        let mut span = LOADED_RUN_DRAIN_REF_KG - LOADED_RUN_DRAIN_START_KG;
+        if span < 0.1 {
+            span = 0.1;
+        }
+        let mut t = (load_weight_kg - LOADED_RUN_DRAIN_START_KG) / span;
+        if t < 0.0 {
+            t = 0.0;
+        } else if t > 1.0 {
+            t = 1.0;
+        }
+        1.0 + (LOADED_RUN_DRAIN_MAX_MULT - 1.0) * t
+    }
+
     fn _v6_land_drain_per_second(
         &self,
         speed: f64,
@@ -335,7 +356,11 @@ impl RSSDigitalTwin {
         if effective_cp_watts > 1.0 && power_w > effective_cp_watts {
             aerobic_w = effective_cp_watts;
         }
-        let per_sec = (aerobic_w * self.constants.energy_to_stamina_coeff * V6_STAMINA_DRAIN_CALIBRATION).max(0.0);
+        let mut per_sec =
+            (aerobic_w * self.constants.energy_to_stamina_coeff * V6_STAMINA_DRAIN_CALIBRATION)
+                .max(0.0);
+        let load_kg = (current_weight - self.constants.character_weight).max(0.0);
+        per_sec *= Self::_loaded_gait_stamina_drain_multiplier(load_kg, phase);
         per_sec * (1.0 + wind_drag)
     }
 
@@ -351,7 +376,10 @@ impl RSSDigitalTwin {
     ) -> (f64, f64) {
         let bw = self.constants.character_weight;
         let idle_threshold = 0.1;
-        let cp0 = V6_CRITICAL_POWER_WATTS_DEFAULT;
+        let mut cp0 = self.constants.critical_power_watts;
+        if cp0 <= 1.0 {
+            cp0 = V6_CRITICAL_POWER_WATTS_DEFAULT;
+        }
         let load_kg = (current_weight - bw).max(0.0);
         let effective_cp = compute_cp_watts(cp0, load_kg, grade_percent, 1.0, 0.0);
         let wind_mult = 1.0 + wind_drag;
@@ -923,10 +951,7 @@ impl RSSDigitalTwin {
                 dt,
                 current_time,
             );
-        } else if !is_wprime_pool_available_for_overspeed(
-            self.v6_cp_state.pool01(),
-            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
-        ) {
+        } else if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
             let mut run_phase = phase;
             if run_phase < MOVEMENT_WALK {
                 run_phase = MOVEMENT_RUN;

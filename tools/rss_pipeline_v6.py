@@ -76,7 +76,7 @@ PRESET_FILES = {
 }
 
 V6_DEFAULTS = {
-    "critical_power_watts": 780.0,
+    "critical_power_watts": 1000.0,
     "w_prime_max_joules": 20000.0,
     "w_prime_recovery_w_per_s": 12.0,
     "sprint_power_cap_watts": 2400.0,
@@ -119,8 +119,8 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 10.0,
         "energy_to_stamina_coeff": 1.05e-7,
         "base_recovery_rate": 9.0e-5,
-        "critical_power_watts": 770.0,
-        "w_prime_max_joules": 16500.0,
+        "critical_power_watts": 980.0,
+        "w_prime_max_joules": 28500.0,
     },
     "StandardMilsim": {
         "combat_ease": 0.69,
@@ -129,8 +129,8 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 13.0,
         "energy_to_stamina_coeff": 9.5e-8,
         "base_recovery_rate": 1.10e-4,
-        "critical_power_watts": 780.0,
-        "w_prime_max_joules": 20000.0,
+        "critical_power_watts": 1000.0,
+        "w_prime_max_joules": 30000.0,
     },
     "TacticalAction": {
         "combat_ease": 0.82,
@@ -139,8 +139,8 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 15.5,
         "energy_to_stamina_coeff": 7.5e-8,
         "base_recovery_rate": 1.25e-4,
-        "critical_power_watts": 820.0,
-        "w_prime_max_joules": 23000.0,
+        "critical_power_watts": 1030.0,
+        "w_prime_max_joules": 31500.0,
     },
 }
 
@@ -286,7 +286,13 @@ def _rel_abs(value: float, target: float) -> float:
     return abs(float(value) - float(target)) / denom
 
 
-def scalarize_tier_metrics(metrics: V6Metrics, enc_coeff: float, tier: str, params: Dict = None) -> float:
+def scalarize_tier_metrics(
+    metrics: V6Metrics,
+    enc_coeff: float,
+    tier: str,
+    params: Dict = None,
+    two_mile_time_s: float = None,
+) -> float:
     """按档位理想点标量化（minimize）。含 param ladder 软拉扯，拉开三档叙事。"""
     if tier not in TIER_TARGETS:
         raise ValueError(f"unknown tier: {tier}")
@@ -301,6 +307,12 @@ def scalarize_tier_metrics(metrics: V6Metrics, enc_coeff: float, tier: str, para
         + metrics.mobility_ease * 0.45
         + metrics.param_drift * 0.08
     )
+
+    if two_mile_time_s is not None:
+        from rss_constraints_v6 import two_mile_ease_from_time
+
+        # 软目标：15:30 / 85 分；硬底线 18:00 / 70 分已由硬约束保证
+        score += two_mile_ease_from_time(float(two_mile_time_s)) * 12.0
 
     # 参数阶梯锚点：即使 combat_ease 被 CP 双池压扁，档位仍可区分
     score += _rel_abs(
@@ -462,9 +474,9 @@ def search_feasible_seeds(
             for p in batch:
                 cp = float(p.get("critical_power_watts", 0.0))
                 if cp < anchor.min_cp0:
-                    lifted = float(anchor.min_cp0) + (cp - 700.0) * 0.25
-                    if lifted > 880.0:
-                        lifted = 880.0
+                    lifted = float(anchor.min_cp0) + (cp - 750.0) * 0.25
+                    if lifted > 1100.0:
+                        lifted = 1100.0
                     p["critical_power_watts"] = lifted
         except Exception:
             pass
@@ -713,8 +725,9 @@ class RSSOptimizerV6:
     }
 
     SEARCH_SPACE_V6 = {
-        "critical_power_watts": (700.0, 880.0, False),
-        "w_prime_max_joules": (16000.0, 24000.0, False),
+        # 零负重 Run 2mi&lt;20:00 约需 CP≳965 + W′≈30k（与冲刺≤15s 折中）
+        "critical_power_watts": (750.0, 1100.0, False),
+        "w_prime_max_joules": (18000.0, 33000.0, False),
         "w_prime_recovery_w_per_s": (8.0, 16.0, False),
         "sprint_power_cap_watts": (2200.0, 3000.0, False),
     }
@@ -856,12 +869,24 @@ class TierOptimizerV6:
             self.stats.record_prune(failed)
             raise optuna.TrialPruned()
 
+        two_mile_time_s = None
+        from rss_constraints_v6 import TWO_MILE_MAX_SEC
+
+        for c in report.checks:
+            if c.name == "zero_load_2mile_pt_ge70":
+                two_mile_time_s = float(TWO_MILE_MAX_SEC - c.margin)
+                break
+
         results = run_mission_suite(params, fast_mode=self.fast_mode)
         metrics = compute_v6_metrics(results, params)
         enc = float(params.get("encumbrance_speed_penalty_coeff", 0.28))
-        score = scalarize_tier_metrics(metrics, enc, self.tier, params)
+        score = scalarize_tier_metrics(
+            metrics, enc, self.tier, params, two_mile_time_s=two_mile_time_s
+        )
         trial.set_user_attr("metrics_v6", metrics.as_tuple())
         trial.set_user_attr("enc_coeff", enc)
+        if two_mile_time_s is not None:
+            trial.set_user_attr("two_mile_time_s", two_mile_time_s)
         self.stats.complete += 1
         return score
 

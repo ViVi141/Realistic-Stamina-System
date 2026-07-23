@@ -81,12 +81,20 @@ class SCR_RSS_DrainCalculator
     }
 
     //! W′ 池是否仍可支撑「超限速按 v_meas 记账」
-    //! 使用迟滞：须明显高于冲刺启用阈值，避免 W'≈阈值时记账开关抖动、硬限速被跳过
+    //! 无 CP 模型时的无状态近似；有模型时请用带 cpModel 的重载（施密特闩锁）
     static bool IsWPrimePoolAvailableForOverspeed(float wPrimePool01)
     {
         float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
         float enableAt = threshold + SCR_RSS_Constants.V6_WPRIME_OVERSPEED_HYSTERESIS;
         return wPrimePool01 > enableAt;
+    }
+
+    //! 施密特：关闭带 disarm，再武装带 rearm，避免阈值附近均速被抬高
+    static bool IsWPrimePoolAvailableForOverspeed(SCR_RSS_CriticalPowerModel cpModel)
+    {
+        if (!cpModel)
+            return false;
+        return cpModel.RefreshAndGetOverspeedArmed();
     }
 
     //! W′ 耗尽且仍超速：返回应强制应用的绝对速度上限（m/s）；否则 -1
@@ -102,7 +110,7 @@ class SCR_RSS_DrainCalculator
     {
         if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
             return -1.0;
-        if (IsWPrimePoolAvailableForOverspeed(wPrimePool01))
+        if (IsWPrimePoolAvailableForOverspeed(cpModel))
             return -1.0;
         if (!cpModel)
             return -1.0;
@@ -199,7 +207,7 @@ class SCR_RSS_DrainCalculator
 
         if (!isSprintPhase && cpModel)
         {
-            if (IsWPrimePoolAvailableForOverspeed(cpModel.GetPool01()))
+            if (IsWPrimePoolAvailableForOverspeed(cpModel))
                 return -1.0;
         }
 

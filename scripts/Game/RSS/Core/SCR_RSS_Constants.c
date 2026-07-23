@@ -613,8 +613,16 @@ class SCR_RSS_Constants
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
     //! 超限速代谢记账：v_meas 超出 v_limit 超过此值则 W′ 按实测速度（疲劳仍 v_drain）
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
-    //! 超速记账启用迟滞：池须高于冲刺阈值 + 此值，避免 W'≈20% 边界闪烁开关
+    //! 超速关闭阈值：池 ≤ 冲刺阈值 + 此值时解除超速武装（CP 巡航）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
+    //! 超速再武装：池须回到 冲刺阈值 + 此值，避免 W′≈关闭带附近抖动把均速抬到精英级
+    static const float V6_WPRIME_OVERSPEED_REARM = 0.40;
     //! 体力 tick 间隔（秒）；EstimateRecoveryTimeToFull 分段积分用
     static const float RSS_STAMINA_TICK_SEC = 0.2;
+
+    //! 负重 Run/Sprint 额外掉条：负载超过起点后线性升至满幅（不作用于 Walk）
+    //! 目标：~29 kg 连续 Run 在十余分钟内明显力竭，而非 CP 封顶后磨 1–2 小时。
+    static const float LOADED_RUN_DRAIN_START_KG = 12.0;
+    static const float LOADED_RUN_DRAIN_REF_KG = 30.0;
+    static const float LOADED_RUN_DRAIN_MAX_MULT = 4.5;
 }

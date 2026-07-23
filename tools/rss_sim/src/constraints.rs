@@ -1,5 +1,6 @@
 use crate::constants::{
-    merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_WALK, STANCE_STAND,
+    merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
+    RSS_PLAYER_TICK_SEC, STANCE_STAND,
 };
 use crate::cp_wprime::{simulate_v6_sprint_seconds, V5AnaerobicState};
 use crate::drain::{get_drain_velocity_ms, get_metabolic_overspeed_factor};
@@ -25,6 +26,15 @@ pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 2.95;
 pub const MOBILITY_RUN_35KG_MIN_MS: f64 = 2.15;
 pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 2.85;
 pub const MOBILITY_HARD: bool = true;
+
+pub const TWO_MILE_DIST_M: f64 = 2.0 * 1609.344;
+pub const TWO_MILE_SCORE_70_SEC: f64 = 18.0 * 60.0;
+pub const TWO_MILE_SCORE_85_SEC: f64 = 15.0 * 60.0 + 30.0;
+pub const TWO_MILE_SCORE_70: f64 = 0.70;
+pub const TWO_MILE_SCORE_85: f64 = 0.85;
+pub const TWO_MILE_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
+pub const TWO_MILE_TIMEOUT_SEC: f64 = 1800.0;
+pub const TWO_MILE_HARD: bool = true;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConstraintCheck {
@@ -329,6 +339,106 @@ pub fn check_march_4h_aerobic_end(
     )
 }
 
+pub fn two_mile_score_01(time_s: f64) -> f64 {
+    let denom = TWO_MILE_SCORE_85_SEC - TWO_MILE_SCORE_70_SEC;
+    if denom.abs() < 1e-9 {
+        return TWO_MILE_SCORE_70;
+    }
+    TWO_MILE_SCORE_70
+        + (time_s - TWO_MILE_SCORE_70_SEC) * (TWO_MILE_SCORE_85 - TWO_MILE_SCORE_70) / denom
+}
+
+pub fn two_mile_ease_from_time(time_s: f64) -> f64 {
+    (TWO_MILE_SCORE_85 - two_mile_score_01(time_s)).max(0.0)
+}
+
+pub fn simulate_zero_load_run_time_to_distance(
+    distance_m: f64,
+    params: Option<&HashMap<String, f64>>,
+    timeout_s: f64,
+) -> (f64, f64) {
+    let mut merged = merge_game_aligned_params(&load_elite_preset_params());
+    if let Some(p) = params {
+        for (k, v) in p {
+            if !k.starts_with('_') {
+                merged.insert(k.clone(), *v);
+            }
+        }
+    }
+    let constants = RssConstants::from_params(&merged);
+    let body_kg = constants.character_weight;
+    let mut twin = RSSDigitalTwin::new(constants);
+    twin.reset();
+    let dt = RSS_PLAYER_TICK_SEC;
+    let mut dist = 0.0;
+    let mut t = 0.0;
+    while t < timeout_s && dist < distance_m {
+        twin.game_player_tick(
+            MOVEMENT_SPRINT,
+            body_kg,
+            0.0,
+            1.0,
+            STANCE_STAND,
+            t,
+            dt,
+            0.0,
+            false,
+        );
+        dist += twin.measured_velocity_ms * dt;
+        t += dt;
+    }
+    (t, dist)
+}
+
+pub fn check_zero_load_run_2mile(params: Option<&HashMap<String, f64>>) -> ConstraintCheck {
+    let (time_s, dist_m) =
+        simulate_zero_load_run_time_to_distance(TWO_MILE_DIST_M, params, TWO_MILE_TIMEOUT_SEC);
+    let finished = dist_m + 1e-6 >= TWO_MILE_DIST_M;
+    let ok = finished && time_s <= TWO_MILE_MAX_SEC;
+    let mut margin = TWO_MILE_MAX_SEC - time_s;
+    if !finished {
+        margin = TWO_MILE_MAX_SEC - TWO_MILE_TIMEOUT_SEC;
+    }
+    let score = if finished {
+        two_mile_score_01(time_s)
+    } else {
+        0.0
+    };
+    let mut hint = String::new();
+    if !ok {
+        hint = "raise critical_power_watts / w_prime_max_joules or sprint_power_cap_watts so 2mi Sprint finishes by 18:00 (70%)"
+            .to_string();
+    }
+    let minutes = (time_s / 60.0).floor() as i64;
+    let seconds = time_s - 60.0 * (minutes as f64);
+    let detail = if finished {
+        format!(
+            "time={}:{:05.2} score={:.1}% (hard≤18:00/70%, soft 15:30/85%, dist={:.1}m)",
+            minutes,
+            seconds,
+            score * 100.0,
+            dist_m
+        )
+    } else {
+        format!(
+            "timeout at {:.1}m / {:.1}m after {:.0}s",
+            dist_m, TWO_MILE_DIST_M, TWO_MILE_TIMEOUT_SEC
+        )
+    };
+    let check_name = "zero_load_2mile_pt_ge70";
+    if !TWO_MILE_HARD && !ok {
+        return make_check(
+            check_name,
+            true,
+            format!("{} (soft)", detail),
+            false,
+            margin,
+            hint,
+        );
+    }
+    make_check(check_name, ok, detail, TWO_MILE_HARD, margin, hint)
+}
+
 pub fn check_mobility_run_speed(
     load_kg: f64,
     min_ms: f64,
@@ -500,6 +610,7 @@ pub fn evaluate_physio_anchors(
             "35kg",
             trial_ref,
         ),
+        check_zero_load_run_2mile(trial_ref),
         check_march_4h_aerobic_end(load_kg, 4.0, trial_ref),
     ];
 
