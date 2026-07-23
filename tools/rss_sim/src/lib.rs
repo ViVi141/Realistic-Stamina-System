@@ -218,19 +218,66 @@ fn evaluate_hard_constraints(
     let report = py.allow_threads(|| {
         constraints_mod::evaluate_hard_constraints(parsed_params.as_ref(), false)
     });
+    Ok(constraint_report_to_pydict(py, &report)?.into_any().unbind())
+}
+
+fn constraint_report_to_pydict<'py>(
+    py: Python<'py>,
+    report: &constraints_mod::ConstraintReport,
+) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new_bound(py);
     d.set_item("all_hard_passed", report.all_hard_passed)?;
+    d.set_item(
+        "violation_score",
+        constraints_mod::report_violation_score(report),
+    )?;
     let checks = PyList::empty_bound(py);
-    for c in report.checks {
+    for c in &report.checks {
         let row = PyDict::new_bound(py);
-        row.set_item("name", c.name)?;
+        row.set_item("name", &c.name)?;
         row.set_item("passed", c.passed)?;
-        row.set_item("detail", c.detail)?;
+        row.set_item("detail", &c.detail)?;
         row.set_item("hard", c.hard)?;
+        row.set_item("margin", c.margin)?;
+        row.set_item("hint", &c.hint)?;
         checks.append(row)?;
     }
     d.set_item("checks", checks)?;
-    Ok(d.into_any().unbind())
+    Ok(d)
+}
+
+#[pyfunction]
+#[pyo3(signature = (params_batch_json, fast_mode=false))]
+fn batch_evaluate_hard_constraints(
+    py: Python<'_>,
+    params_batch_json: &str,
+    fast_mode: bool,
+) -> PyResult<Py<PyAny>> {
+    let batch: Vec<HashMap<String, f64>> = serde_json::from_str(params_batch_json).map_err(|e| {
+        PyValueError::new_err(format!(
+            "params_batch_json must be a JSON array of param objects: {}",
+            e
+        ))
+    })?;
+    let reports = py.allow_threads(|| {
+        constraints_mod::batch_evaluate_hard_constraints(&batch, fast_mode)
+    });
+    let out = PyList::empty_bound(py);
+    for report in reports {
+        out.append(constraint_report_to_pydict(py, &report)?)?;
+    }
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (load_kg=38.0, speed_ms=1.7, damp=0.70, headroom_w=10.0))]
+fn min_cp0_for_march_cruise(
+    load_kg: f64,
+    speed_ms: f64,
+    damp: f64,
+    headroom_w: f64,
+) -> f64 {
+    constraints_mod::min_cp0_for_march_cruise(load_kg, speed_ms, damp, headroom_w)
 }
 
 #[pymodule]
@@ -241,5 +288,7 @@ fn rss_sim(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_mission_suite, m)?)?;
     m.add_function(wrap_pyfunction!(simulate_ideal_march_aerobic_end, m)?)?;
     m.add_function(wrap_pyfunction!(evaluate_hard_constraints, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_evaluate_hard_constraints, m)?)?;
+    m.add_function(wrap_pyfunction!(min_cp0_for_march_cruise, m)?)?;
     Ok(())
 }

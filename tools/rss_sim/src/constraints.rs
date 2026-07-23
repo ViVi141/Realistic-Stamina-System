@@ -32,6 +32,10 @@ pub struct ConstraintCheck {
     pub passed: bool,
     pub detail: String,
     pub hard: bool,
+    #[serde(default)]
+    pub margin: f64,
+    #[serde(default)]
+    pub hint: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,18 +85,40 @@ pub fn check_drain_velocity_contract() -> ConstraintCheck {
         passed: ok,
         detail: format!("expected 4.0 m/s, got {:.4}", v),
         hard: true,
+        margin: 4.0 - (v - 4.0).abs(),
+        hint: String::new(),
+    }
+}
+
+fn make_check(
+    name: &str,
+    passed: bool,
+    detail: String,
+    hard: bool,
+    margin: f64,
+    hint: String,
+) -> ConstraintCheck {
+    ConstraintCheck {
+        name: name.to_string(),
+        passed,
+        detail,
+        hard,
+        margin,
+        hint,
     }
 }
 
 pub fn check_metabolic_overspeed_contract() -> ConstraintCheck {
     let f = get_metabolic_overspeed_factor(800.0, 400.0, 0.35);
     let ok = (f - OVERSPEED_EXPECTED).abs() <= DRAIN_VEL_TOLERANCE;
-    ConstraintCheck {
-        name: "metabolic_overspeed_factor".to_string(),
-        passed: ok,
-        detail: format!("expected {}, got {:.4} (v5 legacy API)", OVERSPEED_EXPECTED, f),
-        hard: false,
-    }
+    make_check(
+        "metabolic_overspeed_factor",
+        ok,
+        format!("expected {}, got {:.4} (v5 legacy API)", OVERSPEED_EXPECTED, f),
+        false,
+        OVERSPEED_EXPECTED - (f - OVERSPEED_EXPECTED).abs(),
+        String::new(),
+    )
 }
 
 pub fn check_v5_sprint_burst_duration() -> ConstraintCheck {
@@ -103,12 +129,14 @@ pub fn check_v5_sprint_burst_duration() -> ConstraintCheck {
         t += 0.2;
     }
     let ok = t <= SPRINT_BURST_MAX_SEC;
-    ConstraintCheck {
-        name: "v5_sprint_burst_duration".to_string(),
-        passed: ok,
-        detail: format!("empty pool in {:.1}s (max {}s)", t, SPRINT_BURST_MAX_SEC),
-        hard: true,
-    }
+    make_check(
+        "v5_sprint_burst_duration",
+        ok,
+        format!("empty pool in {:.1}s (max {}s)", t, SPRINT_BURST_MAX_SEC),
+        true,
+        SPRINT_BURST_MAX_SEC - t,
+        String::new(),
+    )
 }
 
 pub fn check_v5_sprint_cooldown() -> ConstraintCheck {
@@ -118,12 +146,14 @@ pub fn check_v5_sprint_cooldown() -> ConstraintCheck {
     };
     let rem = ana.cooldown_remaining(0.0);
     let ok = rem >= SPRINT_COOLDOWN_MIN_SEC;
-    ConstraintCheck {
-        name: "v5_sprint_cooldown".to_string(),
-        passed: ok,
-        detail: format!("cooldown remaining {:.0}s (min {}s)", rem, SPRINT_COOLDOWN_MIN_SEC),
-        hard: true,
-    }
+    make_check(
+        "v5_sprint_cooldown",
+        ok,
+        format!("cooldown remaining {:.0}s (min {}s)", rem, SPRINT_COOLDOWN_MIN_SEC),
+        true,
+        rem - SPRINT_COOLDOWN_MIN_SEC,
+        String::new(),
+    )
 }
 
 pub fn check_v6_cp_sprint_burst(
@@ -134,12 +164,21 @@ pub fn check_v6_cp_sprint_burst(
 ) -> ConstraintCheck {
     let t = simulate_v6_sprint_seconds(load_kg, cp0, 0.017, sprint_cap_w, w_prime_max);
     let ok = t <= SPRINT_BURST_MAX_SEC;
-    ConstraintCheck {
-        name: "v6_cp_sprint_burst_35kg".to_string(),
-        passed: ok,
-        detail: format!("W' burst {:.2}s (max {}s)", t, SPRINT_BURST_MAX_SEC),
-        hard: true,
+    let mut hint = String::new();
+    if !ok {
+        hint = format!(
+            "lower sprint_power_cap_watts or w_prime_max_joules (burst {:.1}s > {:.0}s)",
+            t, SPRINT_BURST_MAX_SEC
+        );
     }
+    make_check(
+        "v6_cp_sprint_burst_35kg",
+        ok,
+        format!("W' burst {:.2}s (max {}s)", t, SPRINT_BURST_MAX_SEC),
+        true,
+        SPRINT_BURST_MAX_SEC - t,
+        hint,
+    )
 }
 
 pub fn simulate_ideal_march_aerobic_end(
@@ -217,27 +256,42 @@ pub fn check_sustain_run_observed(
     };
     let result = simulate_mission(&mut twin, &mission, fast_mode, true);
     let obs = result.observed_depletion_pct_per_s;
+    let mid = 0.5 * (SUSTAIN_OBS_MIN_PCT_PER_S + SUSTAIN_OBS_MAX_PCT_PER_S);
+    let half = 0.5 * (SUSTAIN_OBS_MAX_PCT_PER_S - SUSTAIN_OBS_MIN_PCT_PER_S);
+    let margin = half - (obs - mid).abs();
     let ok = (SUSTAIN_OBS_MIN_PCT_PER_S..=SUSTAIN_OBS_MAX_PCT_PER_S).contains(&obs);
+    let mut hint = String::new();
+    if !ok {
+        if obs < SUSTAIN_OBS_MIN_PCT_PER_S {
+            hint = "raise energy_to_stamina_coeff or lower critical_power_watts".to_string();
+        } else {
+            hint = "lower energy_to_stamina_coeff or raise critical_power_watts".to_string();
+        }
+    }
     if !SUSTAIN_OBS_HARD && !ok {
-        return ConstraintCheck {
-            name: "sustain_run_observed_35kg".to_string(),
-            passed: true,
-            detail: format!(
+        return make_check(
+            "sustain_run_observed_35kg",
+            true,
+            format!(
                 "obs={:.3}%/s outside [{}, {}] (soft)",
                 obs, SUSTAIN_OBS_MIN_PCT_PER_S, SUSTAIN_OBS_MAX_PCT_PER_S
             ),
-            hard: false,
-        };
+            false,
+            margin,
+            hint,
+        );
     }
-    ConstraintCheck {
-        name: "sustain_run_observed_35kg".to_string(),
-        passed: ok,
-        detail: format!(
+    make_check(
+        "sustain_run_observed_35kg",
+        ok,
+        format!(
             "obs={:.3}%/s (band {}–{})",
             obs, SUSTAIN_OBS_MIN_PCT_PER_S, SUSTAIN_OBS_MAX_PCT_PER_S
         ),
-        hard: SUSTAIN_OBS_HARD,
-    }
+        SUSTAIN_OBS_HARD,
+        margin,
+        hint,
+    )
 }
 
 pub fn check_march_4h_aerobic_end(
@@ -247,23 +301,32 @@ pub fn check_march_4h_aerobic_end(
 ) -> ConstraintCheck {
     let aerobic_end = simulate_ideal_march_aerobic_end(hours, encumbrance_kg, 2.0, params);
     let ok = aerobic_end >= MARCH_4H_AEROBIC_MIN;
+    let margin = aerobic_end - MARCH_4H_AEROBIC_MIN;
+    let mut hint = String::new();
+    if !ok {
+        hint = "lower energy_to_stamina_coeff".to_string();
+    }
     if !MARCH_4H_HARD && !ok {
-        return ConstraintCheck {
-            name: "march_4h_aerobic_end_35kg".to_string(),
-            passed: true,
-            detail: format!(
+        return make_check(
+            "march_4h_aerobic_end_35kg",
+            true,
+            format!(
                 "aerobic_end={:.3} < {} (soft; coeff calibration pending)",
                 aerobic_end, MARCH_4H_AEROBIC_MIN
             ),
-            hard: false,
-        };
+            false,
+            margin,
+            hint,
+        );
     }
-    ConstraintCheck {
-        name: "march_4h_aerobic_end_35kg".to_string(),
-        passed: ok,
-        detail: format!("aerobic_end={:.3} (min {})", aerobic_end, MARCH_4H_AEROBIC_MIN),
-        hard: MARCH_4H_HARD,
-    }
+    make_check(
+        "march_4h_aerobic_end_35kg",
+        ok,
+        format!("aerobic_end={:.3} (min {})", aerobic_end, MARCH_4H_AEROBIC_MIN),
+        MARCH_4H_HARD,
+        margin,
+        hint,
+    )
 }
 
 pub fn check_mobility_run_speed(
@@ -287,23 +350,60 @@ pub fn check_mobility_run_speed(
     let speed_ms = twin.theoretical_speed_at_weight(total_weight, MOVEMENT_RUN, 0.0, 1.0, 1.0);
     let ok = (min_ms..=max_ms).contains(&speed_ms);
     let name = format!("mobility_run_{}", label);
+    let mid = 0.5 * (min_ms + max_ms);
+    let half = 0.5 * (max_ms - min_ms);
+    let margin = half - (speed_ms - mid).abs();
+    let mut hint = String::new();
+    if !ok {
+        if speed_ms < min_ms {
+            hint = "lower encumbrance_speed_penalty_coeff".to_string();
+        } else {
+            hint = "raise encumbrance_speed_penalty_coeff".to_string();
+        }
+    }
     if !MOBILITY_HARD && !ok {
-        return ConstraintCheck {
-            name,
-            passed: true,
-            detail: format!(
+        return make_check(
+            &name,
+            true,
+            format!(
                 "speed={:.3} m/s outside [{}, {}] (soft)",
                 speed_ms, min_ms, max_ms
             ),
-            hard: false,
-        };
+            false,
+            margin,
+            hint,
+        );
     }
-    ConstraintCheck {
-        name,
-        passed: ok,
-        detail: format!("speed={:.3} m/s (band {}–{})", speed_ms, min_ms, max_ms),
-        hard: MOBILITY_HARD,
-    }
+    make_check(
+        &name,
+        ok,
+        format!("speed={:.3} m/s (band {}–{})", speed_ms, min_ms, max_ms),
+        MOBILITY_HARD,
+        margin,
+        hint,
+    )
+}
+
+pub fn min_cp0_for_march_cruise(
+    load_kg: f64,
+    speed_ms: f64,
+    damp: f64,
+    headroom_w: f64,
+) -> f64 {
+    use crate::metabolism::metabolism_power_watts_damped;
+
+    let total_w = 90.0 + load_kg;
+    let p_acct = metabolism_power_watts_damped(
+        speed_ms,
+        total_w,
+        0.0,
+        1.0,
+        MOVEMENT_WALK,
+        damp,
+    );
+    let excess = (load_kg - crate::constants::V6_CP_LOAD_REF_KG).max(0.0);
+    let factor = (1.0 - crate::constants::V6_CP_LOAD_DECAY_PER_KG * excess).max(0.05);
+    (p_acct + headroom_w) / factor
 }
 
 pub fn check_march_cruise_below_cp(
@@ -330,16 +430,28 @@ pub fn check_march_cruise_below_cp(
         damp,
     );
     let cp_eff = compute_cp_watts(cp0, load_kg, 0.0, 1.0, 0.0);
+    let margin = cp_eff - p_acct;
     let ok = p_acct <= cp_eff + 1.0;
-    ConstraintCheck {
-        name: "march_cruise_below_cp_38kg_1p7".to_string(),
-        passed: ok,
-        detail: format!(
+    let mut hint = String::new();
+    if !ok {
+        let need = min_cp0_for_march_cruise(load_kg, speed_ms, damp, 10.0);
+        hint = format!(
+            "raise critical_power_watts to >= {:.0} (have {:.0})",
+            need.ceil(),
+            cp0
+        );
+    }
+    make_check(
+        "march_cruise_below_cp_38kg_1p7",
+        ok,
+        format!(
             "P={:.1}W vs CPeff={:.1}W (CP0={:.0})",
             p_acct, cp_eff, cp0
         ),
-        hard: true,
-    }
+        true,
+        margin,
+        hint,
+    )
 }
 
 pub fn evaluate_physio_anchors(
@@ -408,4 +520,25 @@ pub fn evaluate_hard_constraints(
         780.0
     };
     evaluate_physio_anchors(35.0, cp0, params, fast_mode)
+}
+
+/// Parallel batch hard-constraint evaluation (one report per params map).
+pub fn batch_evaluate_hard_constraints(
+    batch: &[HashMap<String, f64>],
+    fast_mode: bool,
+) -> Vec<ConstraintReport> {
+    use rayon::prelude::*;
+    batch
+        .par_iter()
+        .map(|p| evaluate_hard_constraints(Some(p), fast_mode))
+        .collect()
+}
+
+pub fn report_violation_score(report: &ConstraintReport) -> f64 {
+    report
+        .checks
+        .iter()
+        .filter(|c| c.hard && !c.passed)
+        .map(|c| 1.0 + (-c.margin).max(0.0) * 0.01)
+        .sum()
 }

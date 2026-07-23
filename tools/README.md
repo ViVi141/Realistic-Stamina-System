@@ -8,8 +8,9 @@ Rust CLI 入口（Phase-A）：`rust_pipeline_v6/`。
 
 | 文件 | 说明 |
 |------|------|
-| **`rss_pipeline_v6.py`** | **主入口**：`validate`（CI 门禁）/ `optimize`（NSGA-II） |
-| `rss_constraints_v6.py` | 生理锚点硬约束 + soft 行军锚点 |
+| **`rss_pipeline_v6.py`** | **主入口**：`validate` / `optimize`（默认两阶段 LHS→MOEA）/ `anchors` / `optimize-tiers` |
+| `rss_anchors_v6.py` | LCDA Walk → 最低 CP0 / 三档建议（锚点编译器） |
+| `rss_constraints_v6.py` | 生理锚点硬约束 + soft 行军锚点（含 margin/hint 归因） |
 | `rss_pipeline_v4.py` | v4 三目标优化（历史对照） |
 | `rss_pipeline_v5.py` | 薄包装 → `rss_pipeline_v6 validate` |
 | `rss_digital_twin_fix.py` | 与 C 端对齐的数字孪生 |
@@ -60,9 +61,15 @@ cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- dual-run --fast
 
 ## 优化（生成 v6 预设 JSON）
 
+默认 **两阶段**：LHS 批量硬约束可行域 → NSGA-III。
+
 ```bash
+python rss_pipeline_v6.py anchors
 python rss_pipeline_v6.py optimize --trials 400 --jobs 4 --output .
+python rss_pipeline_v6.py optimize --no-two-phase --trials 200   # 跳过可行域
 ```
+
+`rss_sim.batch_evaluate_hard_constraints` 在可用时并行评估 LHS 样本。
 
 ## v4 优化（对照）
 

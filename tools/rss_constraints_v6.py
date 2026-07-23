@@ -55,6 +55,8 @@ class ConstraintCheck:
     passed: bool
     detail: str
     hard: bool = True
+    margin: float = 0.0
+    hint: str = ""
 
 
 @dataclass
@@ -72,12 +74,31 @@ class ConstraintReport:
     def failed_hard(self) -> List[ConstraintCheck]:
         return [c for c in self.checks if c.hard and not c.passed]
 
+    @property
+    def violation_score(self) -> float:
+        score = 0.0
+        for c in self.failed_hard:
+            score += 1.0 + max(0.0, -float(c.margin)) * 0.01
+        return float(score)
+
+    def prune_reason(self) -> str:
+        parts = []
+        for c in self.failed_hard:
+            if c.hint:
+                parts.append(f"{c.name}({c.hint})")
+            else:
+                parts.append(c.name)
+        return ", ".join(parts)
+
     def summary_lines(self) -> List[str]:
         lines: List[str] = []
         for c in self.checks:
             tag = "PASS" if c.passed else ("FAIL" if c.hard else "SKIP")
             hard_tag = "hard" if c.hard else "soft"
-            lines.append(f"  [{tag}] ({hard_tag}) {c.name}: {c.detail}")
+            extra = ""
+            if c.hint and not c.passed:
+                extra = f" | hint: {c.hint}"
+            lines.append(f"  [{tag}] ({hard_tag}) {c.name}: {c.detail}{extra}")
         return lines
 
 
@@ -270,12 +291,21 @@ def check_march_cruise_below_cp(
         speed_ms, total_w, 0.0, 1.0, MovementType.WALK, damp
     )
     cp_eff = compute_cp_watts(cp0, float(load_kg), 0.0, 1.0, 0.0)
+    margin = float(cp_eff - p_acct)
     ok = p_acct <= cp_eff + 1.0
+    hint = ""
+    if not ok:
+        from rss_anchors_v6 import min_cp0_for_march_cruise
+
+        need = min_cp0_for_march_cruise(load_kg, speed_ms, damp, 10.0)
+        hint = f"raise critical_power_watts to >= {int(need + 0.999)} (have {cp0:.0f})"
     return ConstraintCheck(
         "march_cruise_below_cp_38kg_1p7",
         ok,
         f"P={p_acct:.1f}W vs CPeff={cp_eff:.1f}W (CP0={cp0:.0f})",
         hard=True,
+        margin=margin,
+        hint=hint,
     )
 
 

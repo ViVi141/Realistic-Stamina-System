@@ -177,10 +177,58 @@ def _dict_to_constraint_report(data: Dict):
                 passed=bool(row["passed"]),
                 detail=str(row["detail"]),
                 hard=bool(row.get("hard", True)),
+                margin=float(row.get("margin", 0.0)),
+                hint=str(row.get("hint", "")),
             )
         )
     report = ConstraintReport(checks=checks)
     return report
+
+
+class _ReportBatch(list):
+    """ConstraintReport 列表；附带 backend 标记（rust/python）。"""
+
+    backend: str = "unknown"
+
+
+def batch_evaluate_hard_constraints(
+    params_list: List[Dict],
+    fast_mode: bool = False,
+) -> List:
+    """批量硬约束：Rust 并行优先，否则 Python 顺序。
+
+    返回 `_ReportBatch`（list 子类），`.backend` = \"rust\" | \"python\" | \"none\"。
+    """
+    from rss_constraints_v6 import evaluate_hard_constraints_python
+
+    if not params_list:
+        out = _ReportBatch()
+        out.backend = "none"
+        return out
+
+    rss_sim = get_rss_sim()
+    if rss_sim is not None and use_rust_backend() and hasattr(
+        rss_sim, "batch_evaluate_hard_constraints"
+    ):
+        try:
+            clean = []
+            for p in params_list:
+                clean.append(
+                    {k: float(v) for k, v in p.items() if not str(k).startswith("_")}
+                )
+            raw = rss_sim.batch_evaluate_hard_constraints(
+                json.dumps(clean, ensure_ascii=False),
+                bool(fast_mode),
+            )
+            reports = _ReportBatch(_dict_to_constraint_report(row) for row in raw)
+            reports.backend = "rust"
+            return reports
+        except Exception:
+            pass
+
+    reports = _ReportBatch(evaluate_hard_constraints_python(p) for p in params_list)
+    reports.backend = "python"
+    return reports
 
 
 def _params_json(params: Optional[Dict]) -> str:

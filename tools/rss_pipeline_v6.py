@@ -60,10 +60,12 @@ from rss_pipeline_v4 import (
 )
 from rss_sim_backend import (
     evaluate_hard_constraints,
+    batch_evaluate_hard_constraints,
     log_backend_once,
     run_mission_suite as run_mission_suite_backend,
     simulate_ideal_march_aerobic_end,
     sustain_run_observed_pct,
+    use_rust_backend,
 )
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -274,6 +276,8 @@ def constraint_violation_score(params: Dict) -> float:
     report = evaluate_hard_constraints(params)
     if report.all_hard_passed:
         return 0.0
+    if hasattr(report, "violation_score"):
+        return float(report.violation_score)
     return float(len(report.failed_hard))
 
 
@@ -392,32 +396,121 @@ class OptimizeStats:
         return lines
 
 
+def _search_space_items() -> List[Tuple[str, float, float, bool]]:
+    items: List[Tuple[str, float, float, bool]] = []
+    for space in (RSSOptimizerV6.SEARCH_SPACE_V4, RSSOptimizerV6.SEARCH_SPACE_V6):
+        for name, (low, high, log_scale) in space.items():
+            items.append((name, float(low), float(high), bool(log_scale)))
+    return items
+
+
+def sample_lhs_params(n_samples: int, seed: int = 42) -> List[Dict]:
+    """Latin Hypercube 采样（覆盖 SEARCH_SPACE_V4+V6）。"""
+    rng = np.random.default_rng(seed)
+    items = _search_space_items()
+    n_dim = len(items)
+    if n_samples <= 0 or n_dim <= 0:
+        return []
+
+    cut = (np.arange(n_samples) + rng.random(n_samples)) / float(n_samples)
+    samples = np.zeros((n_samples, n_dim), dtype=float)
+    for d in range(n_dim):
+        perm = rng.permutation(n_samples)
+        samples[:, d] = cut[perm]
+
+    out: List[Dict] = []
+    for i in range(n_samples):
+        params = dict(V6_DEFAULTS)
+        for d, (name, low, high, log_scale) in enumerate(items):
+            u = float(samples[i, d])
+            if log_scale and low > 0.0 and high > 0.0:
+                params[name] = float(
+                    math.exp(math.log(low) + u * (math.log(high) - math.log(low)))
+                )
+            else:
+                params[name] = float(low + u * (high - low))
+        out.append(params)
+    return out
+
+
 def search_feasible_seeds(
     n_trials: int,
     fast_mode: bool,
     target_count: int = 12,
 ) -> List[Dict]:
-    """阶段 A：最小化硬约束违反量，收集可行种子。"""
-    if not HAS_OPTUNA:
-        raise RuntimeError("optuna not installed")
-
-    print(f"[V6] feasibility phase: {n_trials} trials (target seeds={target_count})")
-    study = optuna.create_study(
-        study_name="rss_v6_feasibility",
-        direction="minimize",
-        sampler=optuna.samplers.TPESampler(seed=42),
-    )
-
-    def objective(trial) -> float:
-        params = suggest_search_params(trial)
-        return constraint_violation_score(params)
-
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    """阶段 A：LHS 批量硬约束扫描（Rust 并行）+ 不足时 TPE 补种。"""
+    print(f"[V6] feasibility phase: {n_trials} samples (target seeds={target_count})")
+    log_backend_once()
 
     seeds: List[Dict] = []
-    for trial in study.trials:
-        if trial.value is not None and trial.value <= 0.0:
-            seeds.append(dict(trial.params))
+    seen = set()
+
+    def _add_seed(params: Dict) -> None:
+        key = tuple(sorted((k, round(float(v), 8)) for k, v in params.items()))
+        if key in seen:
+            return
+        seen.add(key)
+        seeds.append(dict(params))
+
+    lhs_n = max(0, int(n_trials))
+    if lhs_n > 0:
+        batch = sample_lhs_params(lhs_n, seed=42)
+        try:
+            from rss_anchors_v6 import compile_march_cp_anchors
+
+            anchor = compile_march_cp_anchors()
+            for p in batch:
+                cp = float(p.get("critical_power_watts", 0.0))
+                if cp < anchor.min_cp0:
+                    lifted = float(anchor.min_cp0) + (cp - 700.0) * 0.25
+                    if lifted > 880.0:
+                        lifted = 880.0
+                    p["critical_power_watts"] = lifted
+        except Exception:
+            pass
+
+        t0 = time.time()
+        reports = batch_evaluate_hard_constraints(batch, fast_mode=bool(fast_mode))
+        elapsed = time.time() - t0
+        feasible = 0
+        for params, report in zip(batch, reports):
+            if report.all_hard_passed:
+                feasible += 1
+                _add_seed(params)
+                if len(seeds) >= target_count:
+                    break
+        backend = getattr(reports, "backend", getattr(reports, "_backend", "unknown"))
+        print(
+            f"[V6] LHS batch ({backend}): {feasible}/{len(batch)} feasible "
+            f"in {elapsed:.1f}s → seeds={len(seeds)}"
+        )
+
+    remain = target_count - len(seeds)
+    if remain > 0 and HAS_OPTUNA:
+        tpe_trials = max(remain * 8, min(80, max(20, n_trials // 3)))
+        print(f"[V6] feasibility TPE top-up: {tpe_trials} trials (need {remain} more)")
+        study = optuna.create_study(
+            study_name="rss_v6_feasibility_tpe",
+            direction="minimize",
+            sampler=optuna.samplers.TPESampler(seed=42),
+        )
+
+        def objective(trial) -> float:
+            params = suggest_search_params(trial)
+            return constraint_violation_score(params)
+
+        study.optimize(objective, n_trials=tpe_trials, show_progress_bar=False)
+        ranked = sorted(
+            [t for t in study.trials if t.value is not None],
+            key=lambda t: float(t.value),
+        )
+        for trial in ranked:
+            if float(trial.value) > 0.0:
+                break
+            _add_seed(dict(trial.params))
+            if len(seeds) >= target_count:
+                break
+
     seeds = seeds[:target_count]
     print(f"[V6] feasibility phase: found {len(seeds)} feasible seeds")
     return seeds
@@ -653,8 +746,13 @@ class RSSOptimizerV6:
 
         report = evaluate_hard_constraints(params)
         if not report.all_hard_passed:
-            failed = ", ".join(c.name for c in report.failed_hard)
+            failed = report.prune_reason() if hasattr(report, "prune_reason") else ", ".join(
+                c.name for c in report.failed_hard
+            )
             trial.set_user_attr("pruned_reason", failed)
+            hints = [c.hint for c in report.failed_hard if c.hint]
+            if hints:
+                trial.set_user_attr("prune_hints", hints[:3])
             self.stats.record_prune(failed)
             raise optuna.TrialPruned()
 
@@ -748,8 +846,13 @@ class TierOptimizerV6:
 
         report = evaluate_hard_constraints(params)
         if not report.all_hard_passed:
-            failed = ", ".join(c.name for c in report.failed_hard)
+            failed = report.prune_reason() if hasattr(report, "prune_reason") else ", ".join(
+                c.name for c in report.failed_hard
+            )
             trial.set_user_attr("pruned_reason", failed)
+            hints = [c.hint for c in report.failed_hard if c.hint]
+            if hints:
+                trial.set_user_attr("prune_hints", hints[:3])
             self.stats.record_prune(failed)
             raise optuna.TrialPruned()
 
@@ -1252,14 +1355,22 @@ def _maybe_embed_c(embed: bool) -> int:
 
 
 def _resolve_feasibility_trials(args: argparse.Namespace) -> int:
+    # 默认开启两阶段：LHS 批量可行域 → MOEA
     if getattr(args, "feasibility_trials", None) is not None and args.feasibility_trials >= 0:
-        if args.feasibility_trials > 0:
-            return int(args.feasibility_trials)
-        if getattr(args, "two_phase", False):
-            return DEFAULT_FEASIBILITY_TRIALS
+        return int(args.feasibility_trials)
+    if getattr(args, "no_two_phase", False):
         return 0
-    if getattr(args, "two_phase", False):
-        return DEFAULT_FEASIBILITY_TRIALS
+    return DEFAULT_FEASIBILITY_TRIALS
+
+
+def cmd_anchors(_args: argparse.Namespace) -> int:
+    from rss_anchors_v6 import anchors_summary_lines, compile_march_cp_anchors
+
+    print("[V6] anchors — LCDA Walk → CP 编译")
+    log_backend_once()
+    anchor = compile_march_cp_anchors()
+    for line in anchors_summary_lines(anchor):
+        print(f"  {line}")
     return 0
 
 
@@ -1393,12 +1504,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=-1,
         dest="feasibility_trials",
-        help="Phase-A feasibility search trials (-1=auto: 0, or 150 with --two-phase)",
+        help="Phase-A LHS samples (-1=auto 150; 0 disables with --no-two-phase)",
     )
     o.add_argument(
         "--two-phase",
         action="store_true",
-        help="Run feasibility search before MOEA (seeds feasible region)",
+        default=True,
+        help="LHS feasible seeds before MOEA (default ON)",
+    )
+    o.add_argument(
+        "--no-two-phase",
+        action="store_true",
+        help="Skip feasibility phase",
     )
     o.add_argument(
         "--embed-c",
@@ -1427,9 +1544,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=-1,
         dest="feasibility_trials",
     )
-    t.add_argument("--two-phase", action="store_true")
+    t.add_argument("--two-phase", action="store_true", default=True)
+    t.add_argument("--no-two-phase", action="store_true")
     t.add_argument("--embed-c", action="store_true")
     t.set_defaults(func=cmd_optimize_tiers)
+
+    a = sub.add_parser("anchors", help="Compile LCDA Walk → min CP0 / tier suggestions")
+    a.set_defaults(func=cmd_anchors)
 
     r = sub.add_parser(
         "repair-tiers",

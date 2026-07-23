@@ -221,12 +221,33 @@ def _lcda_walk_30kg_ok() -> bool:
     return True
 
 
+def _anchors_and_batch_ok() -> bool:
+    from rss_anchors_v6 import compile_march_cp_anchors, min_cp0_for_march_cruise
+    from rss_pipeline_v6 import sample_lhs_params
+    from rss_sim_backend import batch_evaluate_hard_constraints
+
+    a = compile_march_cp_anchors()
+    if a.min_cp0 < 700.0 or a.min_cp0 > 850.0:
+        return False
+    if a.elite_cp0 > a.standard_cp0 or a.standard_cp0 > a.tactical_cp0:
+        return False
+    need = min_cp0_for_march_cruise()
+    if abs(need - a.min_cp0) > 1.0:
+        return False
+    batch = sample_lhs_params(8, seed=7)
+    reports = batch_evaluate_hard_constraints(batch, fast_mode=True)
+    if len(reports) != 8:
+        return False
+    return True
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),
     ("lcda_walk_30kg_level", lambda: _lcda_walk_30kg_ok()),
+    ("anchors_batch_feasibility", lambda: _anchors_and_batch_ok()),
     ("invert_speed_monotonic", lambda: invert_speed_for_power_watts(500.0, 125.0, movement_phase=2) > 0.8),
     ("cp_load_penalty", lambda: compute_cp_watts(400.0, 35.0, 0.0) < 400.0),
     ("wprime_discharge", lambda: _wprime_discharge_ok()),
