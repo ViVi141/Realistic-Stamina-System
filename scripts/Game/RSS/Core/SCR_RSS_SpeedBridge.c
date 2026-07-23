@@ -22,6 +22,24 @@ class SCR_RSS_SpeedBridge
         return s_StaminaSpeedSource;
     }
 
+    //! 是否写入体力限速并做水平硬钳（负重/坡度等；见 V6_APPLY_STAMINA_SPEED_LIMIT）。
+    static bool IsStaminaSpeedPressEnabled()
+    {
+        return SCR_RSS_Constants.V6_APPLY_STAMINA_SPEED_LIMIT;
+    }
+
+    //! 是否用 CP/有氧巡航再压 Run 速度（见 V6_APPLY_CP_METABOLIC_SPEED_CAP）。
+    static bool IsCpMetabolicSpeedCapEnabled()
+    {
+        return SCR_RSS_Constants.V6_APPLY_CP_METABOLIC_SPEED_CAP;
+    }
+
+    //! 是否使用 March 行军档绝对速度（见 V6_USE_MARCH_GAIT_SPEEDS）。
+    static bool IsMarchGaitSpeedEnabled()
+    {
+        return SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS;
+    }
+
     //! 将 RSS 体力速度倍率写入角色限速图（与灌木/铁丝网等取全局最小值）。
     //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)

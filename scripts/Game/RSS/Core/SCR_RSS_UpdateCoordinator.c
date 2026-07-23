@@ -295,9 +295,10 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
 
-            // Run：W′ 不足时套 CP∩有氧巡航顶；Walk 不套（本身应在有氧带内）
+            // Run：W′ 不足时套 CP∩有氧巡航顶；Walk 不套。试跑可关代谢压速，只留负重/坡度。
             bool isWalkPhase = (currentMovementPhase == 1);
-            if (!(isSprinting || currentMovementPhase == 3) && !isWalkPhase)
+            if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()
+                && !(isSprinting || currentMovementPhase == 3) && !isWalkPhase)
             {
                 SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
                 if (anaRun && anaRun.GetCpModel())
@@ -355,11 +356,15 @@ class SCR_RSS_UpdateCoordinator
                     theoreticalTargetSpeed, runFloorMs);
             }
             
-            // 动态获取引擎当前的原始速度（已被负重降低后的速度）
+            // 动态获取引擎当前相位的原始顶速（倍率 = 绝对目标 / 该顶速）
             float currentEngineOriginalSpeed;
             if (isSprinting || currentMovementPhase == 3)
             {
                 currentEngineOriginalSpeed = controller.GetOriginalEngineMaxSpeed_Sprint();
+            }
+            else if (currentMovementPhase == 1)
+            {
+                currentEngineOriginalSpeed = controller.GetOriginalEngineMaxSpeed_Walk();
             }
             else
             {
@@ -380,6 +385,8 @@ class SCR_RSS_UpdateCoordinator
                 float theoreticalBaseSpeed;
                 if (isSprinting || currentMovementPhase == 3)
                     theoreticalBaseSpeed = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+                else if (currentMovementPhase == 1)
+                    theoreticalBaseSpeed = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
                 else
                     theoreticalBaseSpeed = SCR_RSS_MetabolismMath.TARGET_RUN_SPEED;
                 finalSpeedMultiplier = theoreticalTargetSpeed / theoreticalBaseSpeed;

@@ -108,6 +108,8 @@ class SCR_RSS_DrainCalculator
         float terrainFactor,
         SCR_RSS_CriticalPowerModel cpModel)
     {
+        if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+            return -1.0;
         if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
             return -1.0;
         if (IsWPrimePoolAvailableForOverspeed(cpModel))
@@ -195,6 +197,8 @@ class SCR_RSS_DrainCalculator
         float worldTimeSec,
         SCR_RSS_CriticalPowerModel cpModel)
     {
+        if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+            return -1.0;
         if (isExhausted)
             return -1.0;
 

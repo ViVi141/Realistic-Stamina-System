@@ -700,8 +700,12 @@ class SCR_RSS_ConfigBridge
     }
 
     //! 行军档 Walk 绝对速度（m/s）；Params 字段仍为 v5_walk_speed_ms（网络同步不可改）
+    //! V6_USE_MARCH_GAIT_SPEEDS=false 时改回引擎 Walk 顶。
     static float GetMarchWalkSpeedMs()
     {
+        if (!SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS)
+            return SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
@@ -712,9 +716,12 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_WALK_SPEED_MS_DEFAULT;
     }
 
-    //! 行军档 Run 绝对速度（m/s）
+    //! 行军档 Run 绝对速度（m/s）；关 March 时用引擎 Run 顶 3.8
     static float GetMarchRunSpeedMs()
     {
+        if (!SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS)
+            return SCR_RSS_Constants.TARGET_RUN_SPEED;
+
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {
@@ -725,9 +732,12 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_RUN_SPEED_MS_DEFAULT;
     }
 
-    //! 行军档 Sprint 绝对速度（m/s）
+    //! 行军档 Sprint 绝对速度（m/s）；关 March 时用引擎 Sprint 顶 5.5
     static float GetMarchSprintSpeedMs()
     {
+        if (!SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS)
+            return SCR_RSS_Constants.GAME_MAX_SPEED;
+
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
         {

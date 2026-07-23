@@ -652,7 +652,11 @@ modded class SCR_CharacterControllerComponent
         if (engineStillSprinting)
             return GetOriginalEngineMaxSpeed_Sprint();
 
-        // 仅玩家按住 Walk 时用 Walk 顶；卡相位时仍按 Run，避免 Run 管线失效
+        int phase = GetCurrentMovementPhase();
+        if (phase == 1)
+            return GetOriginalEngineMaxSpeed_Walk();
+
+        // 玩家按住 Walk 但相位尚未切到 Walk 时仍用 Walk 顶
         bool walkKeyHeld = false;
         if (IsPlayerControlled() && GetGame())
         {
@@ -1062,7 +1066,9 @@ modded class SCR_CharacterControllerComponent
             return;
 
         // 每帧重申限速并硬钳：下坡/控制器回灌会把 v_meas 冲到引擎 Run 顶（~3.8）
-        if (m_fAppliedSpeedLimitMs > 0.05 && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+        if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled()
+            && m_fAppliedSpeedLimitMs > 0.05
+            && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
         {
             float limitFrac = m_fLastRssSpeedMultiplierApplied;
             if (limitFrac < 0.01)

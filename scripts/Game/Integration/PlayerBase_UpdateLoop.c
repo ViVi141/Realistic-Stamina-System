@@ -352,10 +352,12 @@ modded class SCR_CharacterControllerComponent
         if (m_pSprintBlockSpeedTransition)
         {
             bool sprintAllowed = GetRssSprintAllowed();
-            // 过渡与落盘限速必须共用同一 engineBase，禁止随后再按相位另取分母
+            // 过渡与落盘限速必须共用同一 engineBase（按有效相位，Walk 不可再用 Run 分母）
             float engineBaseForLimit = GetOriginalEngineMaxSpeed_Run();
             if (loc.isSprintingNow || loc.phaseNow == 3)
                 engineBaseForLimit = GetOriginalEngineMaxSpeed_Sprint();
+            else if (loc.effectivePhase == 1 || loc.phaseNow == 1)
+                engineBaseForLimit = GetOriginalEngineMaxSpeed_Walk();
             float targetAbsoluteSpeedMs = loc.finalSpeedMultiplier * engineBaseForLimit;
             float lastEngineBase = m_fLastRssEngineBaseForLimit;
             if (lastEngineBase <= 0.1)
@@ -392,13 +394,17 @@ modded class SCR_CharacterControllerComponent
         }
         loc.finalSpeedToApply = Math.Clamp(loc.speedToApply, 0.01, 3.0);
 
-        // 与过渡器同一 engineBase 还原绝对速（避免 Run/Sprint 分母切换跳变）
+        // 与过渡器同一 engineBase 还原绝对速（避免 Run/Sprint/Walk 分母切换跳变）
         float refEngineBase = m_fLastRssEngineBaseForLimit;
+        if (refEngineBase <= 0.1)
+            refEngineBase = GetRssSpeedLimitEngineBaseMs();
         if (refEngineBase <= 0.1)
         {
             refEngineBase = GetOriginalEngineMaxSpeed_Run();
             if (loc.isSprintingNow || loc.phaseNow == 3)
                 refEngineBase = GetOriginalEngineMaxSpeed_Sprint();
+            else if (loc.effectivePhase == 1 || loc.phaseNow == 1)
+                refEngineBase = GetOriginalEngineMaxSpeed_Walk();
         }
         float desiredAbsMs = loc.finalSpeedToApply * refEngineBase;
 
@@ -408,7 +414,14 @@ modded class SCR_CharacterControllerComponent
         m_fAppliedSpeedLimitMs = desiredAbsMs;
         if (m_fAppliedSpeedLimitMs <= 0.05)
             m_fAppliedSpeedLimitMs = -1.0;
-        if (IsPlayerControlled())
+        if (!SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
+        {
+            // 试跑：清掉体力限速源，不硬钳；代谢用 v_meas（applied=-1）
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, 1.0);
+            m_fAppliedSpeedLimitMs = -1.0;
+            m_fLastRssSpeedMultiplierApplied = 1.0;
+        }
+        else if (IsPlayerControlled())
         {
             float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
                 desiredAbsMs, loc.storedEngineBase);
@@ -575,7 +588,8 @@ modded class SCR_CharacterControllerComponent
                 engineBase,
                 loc.currentTime,
                 cpModel);
-            if (correctedSpeed != m_fLastRssSpeedMultiplierApplied)
+            if (correctedSpeed != m_fLastRssSpeedMultiplierApplied
+                && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
             {
                 if (IsPlayerControlled())
                 {
@@ -698,7 +712,8 @@ modded class SCR_CharacterControllerComponent
             if (m_pSprintBlockSpeedTransition)
                 inAbsSpeedTransition = m_pSprintBlockSpeedTransition.IsInTransition();
 
-            if (inAbsSpeedTransition && IsPlayerControlled() && m_fAppliedSpeedLimitMs > 0.05)
+            if (inAbsSpeedTransition && IsPlayerControlled() && m_fAppliedSpeedLimitMs > 0.05
+                && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
             {
                 float engineBase = GetRssSpeedLimitEngineBaseMs();
                 if (engineBase <= 0.05)
@@ -712,7 +727,8 @@ modded class SCR_CharacterControllerComponent
                 SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
             }
 
-            if (overspeeding && !inAbsSpeedTransition)
+            if (overspeeding && !inAbsSpeedTransition
+                && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
             {
                 // 必须用已落盘的绝对限速钳制；禁止再用可能切换的 Sprint/Run 分母重算
                 float hardAbs = m_fAppliedSpeedLimitMs;
