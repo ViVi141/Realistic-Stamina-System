@@ -218,61 +218,20 @@ class SCR_RSS_EnvironmentFactor
             m_fLongitude,
             m_fTimeZoneOffsetHours);
 
-        // 尝试基于日出/日落估算经纬度
-        if (m_pCachedWeatherManager && Replication.IsServer() && SCR_RSS_ConfigBridge.IsDebugEnabled())
-        {
-            bool skipEstimate = false;
-            float engLat = m_pCachedWeatherManager.GetCurrentLatitude();
-            float engLon = m_pCachedWeatherManager.GetCurrentLongitude();
-            if (engLat != 0.0 || engLon != 0.0)
-            {
-                skipEstimate = true;
-                float tmpLocLog1 = m_fNextLocationEstimateLogTime;
-                if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLocLog1))
-                {
-                    m_fNextLocationEstimateLogTime = tmpLocLog1;
-                    PrintFormat("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
-                }
-            }
-
-            if (!skipEstimate)
-            {
-                float estLat = 0.0;
-                float estLon = 0.0;
-                float estConf = EstimateLatLongFromSunriseSunset(estLat, estLon);
-                if (estConf > 0.0)
-                {
-                    float tmpLocLog2 = m_fNextLocationEstimateLogTime;
-                    if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLocLog2))
-                    {
-                        m_fNextLocationEstimateLogTime = tmpLocLog2;
-                        PrintFormat("[RSS][LocationEstimate] Estimated Lat=%1 Lon=%2 Conf=%3 (initial)",
-                            Math.Round(estLat * 10.0) / 10.0,
-                            Math.Round(estLon * 10.0) / 10.0,
-                            Math.Round(estConf * 100.0) / 100.0);
-                    }
-
-                    if (estConf < 0.9)
-                    {
-                        float refinedLat = 0.0;
-                        float refinedLon = 0.0;
-                        float refinedConf = EstimateLatLongFromAstronomicalSearch(refinedLat, refinedLon);
-                        if (refinedConf > estConf)
-                        {
-                            float tmpLocLog3 = m_fNextLocationEstimateLogTime;
-                            if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLocLog3))
-                            {
-                                m_fNextLocationEstimateLogTime = tmpLocLog3;
-                                PrintFormat("[RSS][LocationEstimate] Refined Lat=%1 Lon=%2 Conf=%3 (improved)",
-                                    Math.Round(refinedLat * 10.0) / 10.0,
-                                    Math.Round(refinedLon * 10.0) / 10.0,
-                                    Math.Round(refinedConf * 100.0) / 100.0);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        float latBoot = m_fLatitude;
+        float lonBoot = m_fLongitude;
+        float nextLocLog = m_fNextLocationEstimateLogTime;
+        SCR_RSS_EnvLocationBootstrap.TryEstimateOnInit(
+            m_pCachedWeatherManager,
+            m_fTimeZoneOffsetHours,
+            m_fCachedRainIntensity,
+            m_fCachedSurfaceWetness,
+            latBoot,
+            lonBoot,
+            nextLocLog);
+        m_fLatitude = latBoot;
+        m_fLongitude = lonBoot;
+        m_fNextLocationEstimateLogTime = nextLocLog;
 
         // 初始化室内检测模块（始终创建，不依赖 debug 开关）
         m_pIndoorDetector = new SCR_RSS_IndoorDetection();
@@ -455,7 +414,6 @@ class SCR_RSS_EnvironmentFactor
             MarkPendingForceUpdate();
         }
 
-        // 同步更新实时检测缓存
         if (m_pCachedWeatherManager)
         {
             RSS_WeatherSnapshot syncSnap = SCR_RSS_WeatherChangeDetector.Sample(
@@ -463,61 +421,60 @@ class SCR_RSS_EnvironmentFactor
                 ReadSignalTOD(),
                 ReadSignalRainIntensity(),
                 ReadSignalWindSpeed());
-            if (syncSnap)
-            {
-                m_fLastKnownTOD = syncSnap.tod;
-                m_iLastKnownYear = syncSnap.year;
-                m_iLastKnownMonth = syncSnap.month;
-                m_iLastKnownDay = syncSnap.day;
-                m_fLastKnownRainIntensity = syncSnap.rainIntensity;
-                m_fLastKnownWindSpeed = syncSnap.windSpeed;
-                m_bLastKnownOverrideTemperature = syncSnap.overrideTemp;
-                if (syncSnap.hasSunrise)
-                    m_fLastKnownSunriseHour = syncSnap.sunriseHour;
-                if (syncSnap.hasSunset)
-                    m_fLastKnownSunsetHour = syncSnap.sunsetHour;
-            }
+            float lastTOD = m_fLastKnownTOD;
+            int lastY = m_iLastKnownYear;
+            int lastMo = m_iLastKnownMonth;
+            int lastD = m_iLastKnownDay;
+            float lastRain = m_fLastKnownRainIntensity;
+            float lastWind = m_fLastKnownWindSpeed;
+            bool lastOverride = m_bLastKnownOverrideTemperature;
+            float lastSunrise = m_fLastKnownSunriseHour;
+            float lastSunset = m_fLastKnownSunsetHour;
+            SCR_RSS_EnvPendingUpdate.SyncWeatherCacheFromSnapshot(
+                syncSnap,
+                lastTOD, lastY, lastMo, lastD,
+                lastRain, lastWind, lastOverride,
+                lastSunrise, lastSunset);
+            m_fLastKnownTOD = lastTOD;
+            m_iLastKnownYear = lastY;
+            m_iLastKnownMonth = lastMo;
+            m_iLastKnownDay = lastD;
+            m_fLastKnownRainIntensity = lastRain;
+            m_fLastKnownWindSpeed = lastWind;
+            m_bLastKnownOverrideTemperature = lastOverride;
+            m_fLastKnownSunriseHour = lastSunrise;
+            m_fLastKnownSunsetHour = lastSunset;
         }
 
-        // 若之前被标记为 pending，则在安全上下文中执行重算并清理标记（使用通用气温模型）
-        if (m_bPendingForceUpdate)
-        {
-            if (m_pCachedWeatherManager)
-            {
-                float lat = m_fLatitude; // perf: 缓存纬度
-                int year, month, day;
-                m_pCachedWeatherManager.GetDate(year, month, day);
-                int n = SCR_RSS_AstronomyMath.DayOfYear(year, month, day);
-                float tod = ReadSignalTOD();
-                float cloud = GetCloudFactorCached();
-                float rain = ReadSignalRainIntensity();
-                float altM = GetCurrentAltitudeMeters(owner);
-                float T = SCR_RSS_AstronomyMath.CalculateUniversalTemperature(lat, n, tod, altM, cloud, rain, m_fFogDensity);
-                m_fCachedSurfaceTemperature = T;
-                m_fCachedTemperature = m_fCachedSurfaceTemperature;
-            }
-            m_bPendingForceUpdate = false;
+        bool pendingForce = m_bPendingForceUpdate;
+        float surfaceTemp = m_fCachedSurfaceTemperature;
+        float cachedTemp = m_fCachedTemperature;
+        float nextForceLog = m_fNextForceUpdateLogTime;
+        SCR_RSS_EnvPendingUpdate.ApplyPendingForceTemperature(
+            m_pCachedWeatherManager,
+            m_fLatitude,
+            m_fFogDensity,
+            ReadSignalTOD(),
+            GetCloudFactorCached(),
+            ReadSignalRainIntensity(),
+            GetCurrentAltitudeMeters(owner),
+            pendingForce,
+            surfaceTemp,
+            cachedTemp,
+            nextForceLog);
+        m_bPendingForceUpdate = pendingForce;
+        m_fCachedSurfaceTemperature = surfaceTemp;
+        m_fCachedTemperature = cachedTemp;
+        m_fNextForceUpdateLogTime = nextForceLog;
 
-            // 日志（使用临时变量以避免 inout 成员写入问题）
-            float tmpLogTime2 = m_fNextForceUpdateLogTime;
-            if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLogTime2))
-            {
-                m_fNextForceUpdateLogTime = tmpLogTime2;
-                PrintFormat("[RSS] ForceUpdate: Applied pending recompute: %1°C", Math.Round(m_fCachedSurfaceTemperature * 10.0) / 10.0);
-            }
-        }
-
-        // 调试信息：环境因子更新（统一节流）
         static float nextEnvLogTime = 0.0;
-        if (SCR_RSS_DebugBatchManager.ShouldLog(nextEnvLogTime))
-        {
-            PrintFormat("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
-                Math.Round(m_fCachedTemperature * 10.0) / 10.0,
-                Math.Round(m_fCachedHeatStressMultiplier * 100.0) / 100.0,
-                Math.Round(m_fCachedRainWeight * 10.0) / 10.0,
-                Math.Round(m_fCurrentTotalWetWeight * 10.0) / 10.0,
-                Math.Round(m_fCachedWindSpeed * 10.0) / 10.0);
-        }
+        SCR_RSS_EnvPendingUpdate.LogEnvironmentFactorsThrottle(
+            nextEnvLogTime,
+            m_fCachedTemperature,
+            m_fCachedHeatStressMultiplier,
+            m_fCachedRainWeight,
+            m_fCurrentTotalWetWeight,
+            m_fCachedWindSpeed);
         
         return true;
     }
@@ -695,53 +652,39 @@ class SCR_RSS_EnvironmentFactor
 
     // 正弦波叠加气温模型 — 直接委托 SCR_RSS_AstronomyMath（见 UpdateAdvancedEnvironmentFactors）
 
-    // EstimateLatLongFromSunriseSunset / EstimateLatLongFromAstronomicalSearch — 委托 AstronomyMath 并写回纬度
     protected float EstimateLatLongFromSunriseSunset(out float outLatDeg, out float outLonDeg)
     {
-        float conf = SCR_RSS_AstronomyMath.EstimateLatLongFromSunriseSunset(
-            m_pCachedWeatherManager, m_fTimeZoneOffsetHours,
-            outLatDeg, outLonDeg,
-            m_fCachedRainIntensity, m_fCachedSurfaceWetness);
-
-        if (conf > 0.0)
-        {
-            m_fLatitude = outLatDeg;
-            m_fLongitude = outLonDeg;
-            float tmpLog = m_fNextLocationEstimateLogTime;
-            if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLog))
-            {
-                m_fNextLocationEstimateLogTime = tmpLog;
-                PrintFormat("[RSS] EstimateLatLong: lat=%1 lon=%2 conf=%3",
-                    Math.Round(outLatDeg * 10.0) / 10.0,
-                    Math.Round(outLonDeg * 10.0) / 10.0,
-                    Math.Round(conf * 100.0) / 100.0);
-            }
-        }
+        float lat = m_fLatitude;
+        float lon = m_fLongitude;
+        float nextLog = m_fNextLocationEstimateLogTime;
+        float conf = SCR_RSS_EnvLocationBootstrap.ApplySunriseSunsetEstimate(
+            m_pCachedWeatherManager,
+            m_fTimeZoneOffsetHours,
+            m_fCachedRainIntensity,
+            m_fCachedSurfaceWetness,
+            lat, lon, nextLog,
+            outLatDeg, outLonDeg);
+        m_fLatitude = lat;
+        m_fLongitude = lon;
+        m_fNextLocationEstimateLogTime = nextLog;
         return conf;
     }
 
-    // 天文网格搜索 — 委托给 SCR_RSS_AstronomyMath（副作用：写回 m_fLatitude/m_fLongitude + 日志）
     protected float EstimateLatLongFromAstronomicalSearch(out float outLatDeg, out float outLonDeg)
     {
-        float conf = SCR_RSS_AstronomyMath.EstimateLatLongFromAstronomicalSearch(
-            m_pCachedWeatherManager, m_fTimeZoneOffsetHours,
-            outLatDeg, outLonDeg,
-            m_fCachedRainIntensity, m_fCachedSurfaceWetness);
-
-        if (conf > 0.0)
-        {
-            m_fLatitude = outLatDeg;
-            m_fLongitude = outLonDeg;
-            float tmpLog = m_fNextLocationEstimateLogTime;
-            if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLog))
-            {
-                m_fNextLocationEstimateLogTime = tmpLog;
-                PrintFormat("[RSS] EstimateLatLongAstronomy: lat=%1 lon=%2 conf=%3",
-                    Math.Round(outLatDeg * 10.0) / 10.0,
-                    Math.Round(outLonDeg * 10.0) / 10.0,
-                    Math.Round(conf * 100.0) / 100.0);
-            }
-        }
+        float lat = m_fLatitude;
+        float lon = m_fLongitude;
+        float nextLog = m_fNextLocationEstimateLogTime;
+        float conf = SCR_RSS_EnvLocationBootstrap.ApplyAstronomicalSearchEstimate(
+            m_pCachedWeatherManager,
+            m_fTimeZoneOffsetHours,
+            m_fCachedRainIntensity,
+            m_fCachedSurfaceWetness,
+            lat, lon, nextLog,
+            outLatDeg, outLonDeg);
+        m_fLatitude = lat;
+        m_fLongitude = lon;
+        m_fNextLocationEstimateLogTime = nextLog;
         return conf;
     }
 
