@@ -1,272 +1,849 @@
 # Realistic Stamina System (RSS) v6.0.0
 
-[中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [简版 README](README.md)
+[中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
 [![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
-**Realistic Stamina System（RSS）** — 面向 **Arma Reforger** 的拟真体力与移动速度模组。  
-根据体力、负重、坡度、环境等因素动态调整移动速度与消耗，核心采用运动生理学模型（Pandolf / ACSM / Critical Power–W′），而非简单常数扣条。
+**Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
-- **作者**: ViVi141（747384120@qq.com）· GitHub [@ViVi141](https://github.com/ViVi141)
-- **许可证**: [AGPL-3.0](LICENSE)
+**English**: A realistic stamina and speed system mod for Arma Reforger that dynamically adjusts movement speed based on stamina and encumbrance, using precise medical/physiological models.
+
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
-- **建议游戏版本**: Arma Reforger **1.7+**（灌木/铁丝网减速与 RSS 限速合并）
+- **建议游戏版本**: Arma Reforger **1.7+**
 - **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.0.0**
 
-> 逐版本变更请看 [CHANGELOG.md](CHANGELOG.md)。本 README 描述**当前仓库代码**；部分历史公式/路径名已在文中标注「v6 变更」。
+> 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
----
+## 作者信息
+
+- **作者**: ViVi141
+- **邮箱**: 747384120@qq.com
+- **许可证**: [AGPL-3.0](LICENSE)
+
+## 许可证
+
+本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
+
+## 专用服性能（v3.21.1+ / 现行仍相关）
+
+- 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
+- 专用服大规模 AI：可通过设置关闭 AI 全量计算（`m_bDisableAIAllCalc` / `m_bDisableAIStaminaCalc`），或关闭实验性 AI 战斗效果（`m_bEnableAIStaminaCombatEffects`）。
+- 历史「远距群组仅队长全量计算」等性能路径的常量名见 [SCR_RSS_Constants.c](scripts/Game/RSS/Core/SCR_RSS_Constants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)；**当前 AI 编排入口为 `SCR_RSS_AIManager`**，以 `scripts/Game/RSS/AI/` 源码为准。
 
 ## 功能说明
 
-本模组根据玩家的体力值、负重、坡度与环境动态调整移动速度与消耗。体力充沛时可维持行军档目标速度；体力下降后消耗与限速闭环收紧；极低体力进入跛行。负重主要抬升「油耗」（代谢功率 / CP 压力），同时保留可配置的速度惩罚。
+本模组根据玩家的体力值和负重动态调整移动速度，实现更真实的游戏体验。当体力充沛时，玩家可以全速移动；当体力下降时，移动速度会逐渐减慢。同时，负重也会影响移动速度。
 
-**体力标准参考**：引用 **ACFT（Army Combat Fitness Test）** 中 22–26 岁男性 2 英里测试 100 分用时 **15 分 27 秒**（可用 `tools/test_acft_2mile.py` / 锚点管线校验）。
+**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
 
-### 主要特性
-
-#### v6 功率预算与速度闭环
-- **CP–W′ 功率预算**：Pandolf/ACSM 代谢功率 → 动态 Critical Power → W′（焦耳）放电/再填充
-  - Elite：Skiba 双指数再填充；Standard / Tactical：线性 `w_prime_recovery_w_per_s`
-  - Sprint 目标速度 ≈ `invert(min(sprint_power_cap, CP + W′/Δt))`
-- **相位行军档**：Walk / Run / Sprint 使用配置的 m/s 目标；**已移除 25%/35%「意志力平台期」**
-- **低体力跛行**：STA 低于约 5%（`SMOOTH_TRANSITION_END`）时按跛行倍率衰减
-- **5 秒「撞墙」阻尼**（`SCR_RSS_CollapseTransition`）：刚跌破跛行阈值时用 5 秒 SmoothStep 过渡，避免「引擎突然断油」感
-- **v_drain 闭环**：消耗按 `min(v_meas, appliedLimit)` 记账，与 `SetSpeedLimit` 一致
-- **SpeedBridge 限速合并**：经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit` 写入独立 source，与原生灌木/铁丝网减速取 **min**；禁止单独 `OverrideMaxSpeed` 盖掉 Foliage
-
-#### 坡度与负重
-- **坡度自适应步幅**：上坡自动降低目标速度（坡度–速度负反馈 / Tobler 系逻辑）
-- **非线性坡度消耗**：小坡几乎无感，陡坡才真正吃力（避免缓坡频繁断气）
-- **生理上限保护**：防止负重+坡度组合导致数值爆炸
-- **负重影响**：负重主要抬升代谢成本与动态 CP 压力；速度惩罚系数可配（预设约 0.2–0.34 量级）
-- **趴下休息负重优化**：趴姿时负重对恢复影响降低（地面支撑装备），重装更适合趴下回血
-
-#### 移动、跳跃与冲刺
-- **移动类型**：Idle / Walk / Run / Sprint（陆地）+ 游泳独立模型
-- **跳跃 / 翻越额外消耗**：动态负重倍率；连续跳跃惩罚（窗口内加罚）；冷却；低体力（&lt;10%）禁用跳跃
-- **Sprint 门禁**：有氧阈值 + W′ 池阈值（`IsSprintAllowedWithCp`）；短冲松键后剩余 W′ 可再冲
-- **战术冲刺爆发减免**（负重速度惩罚短时减轻）与冷却字段仍保留兼容
-
-#### 恢复、疲劳与代谢
-- **深度恢复模型（代谢净值）**
-  - **呼吸困顿期**：停跑后短时间不立刻回满（消除「跑两步停一下」）
-  - **负重恢复惩罚**：Penalty ≈ (总重/耐受基准)^exponent × coeff
-  - **边际效应衰减**：高体力区恢复变慢（亚健康区手感）
-  - **最低体力阈值 + 休息时间**：极低体力需休息一段时间才进入有效恢复
-- **姿态恢复倍率**：站 / 蹲 / 趴可配；趴姿通常最快
-- **积分疲劳 I(t)**：长时间运动抬升 CP 压力与消耗
-- **EPOC**：停跑后氧债消耗 ∝ 峰值意图代谢功率
-- **代谢适应 / 健康状态建模**：有氧区更省、无氧区功率高但效率低（参数可配）
-
-#### 环境
-- **热应激**：日间升温时段抬升消耗、压制恢复；室内可部分豁免
-- **冷应激**：对称惩罚路径（见 Environment 模块）
-- **降雨湿重**：小/中/暴雨对应湿重；雨停后衰减
-- **风阻 / 泥泞惩罚**：可按 Custom 开关
-- **室内检测**：向上射线等，降低开放屋顶误判
-- **气温物理步进**：短波/长波、云量、海拔等（可选用引擎气温作边界）
-- **总湿重**：游泳湿重 + 降雨湿重，带饱和上限
-
-#### 游泳
-- **3D 阻力模型**：水平阻力 ∝ v²；垂直上浮/下潜额外功率；静态踩水基础功率（默认约 25 W）
-- **负重阈值**：超过约 25 kg 时静态消耗显著增加
-- **上岸湿重**：上岸后获得湿重并在数十秒内衰减
-- **测速**：位置差分（`GetOrigin()`），避免游泳命令下 `GetVelocity()` 为 0
-
-#### 表现、物品与 AI
-- **HUD**：右上角体力/速度/负重等（`m_bHintDisplayEnabled`，默认关）
-- **设置 UI / 管理菜单**：预设与说明面板
-- **第一人称镜头惯性 / 头部物理**；冲刺 FOV 与疲劳态联动（可受原生表现开关影响）
-- **CSB（苯甲酸钠咖啡因）注射器、吗啡**等消耗品与伤害效果
-- **泥泞滑倒**（可选，默认关）：湿滑地形布娃娃/镜头失稳
-- **AI（实验性）**：`SCR_RSS_AIManager` 编排状态机 → 限速 → 意图过滤 → 战斗衰减 → 伤害联动；专用服可关
-
-#### 联机、配置与性能
-- 服务端权威配置；客户端上报、服务端校验（`SCR_RSS_NetworkSyncManager`）
-- 不参与本地 RSS 的复制体可跳过每 tick 体力循环；AI 不建玩家 Hint
-- AI 可按距离/开关降载（`m_bDisableAIAllCalc` 等）
-- 对外 API：`SCR_RSS_API`（含 `wPrimePool01`）；可选导出 `RSS_PlayerData.json`
-
----
-
-## 核心闭环（v6）
+### 【v6】核心闭环（当前主模型）
 
 每 tick（约 17 ms；体力结算按 0.2 s 协调）大致为：
 
 ```
 v_meas → P(v) [SCR_RSS_MetabolismModel]
       → CP_eff / W′ [SCR_RSS_CriticalPowerModel]
-      → v_max = invert(P_target) [DrainCalculator + SpeedCalculator]
-      → SetSpeedLimit [SCR_RSS_SpeedBridge]   // 与灌木/铁丝网取 min
+      → v_max = invert(P_target) [SCR_RSS_DrainCalculator + SCR_RSS_SpeedCalculator]
+      → SetSpeedLimit [SCR_RSS_SpeedBridge]  // 与灌木/铁丝网减速取 min，不覆盖原生 Foliage
 ```
 
 | 概念 | 说明 |
 |------|------|
-| **有氧主条 (STA)** | 驱动引擎体力条 UI；低 STA → 跛行 + Collapse 阻尼 |
-| **W′** | 超过动态 CP 的功率以焦耳放电；对外 `wPrimePool01` |
-| **Sprint** | 功率反解速度；门禁看有氧 + W′ |
-| **已移除** | 意志力平台期、固定无氧扣条、用 `OverrideMaxSpeed` 单独盖 Foliage |
+| **有氧主条 (STA)** | 仍驱动引擎体力条 UI；极低 STA（约 &lt;5%，`SMOOTH_TRANSITION_END`）进入跛行 |
+| **W′ 功率储备** | 超过动态 CP 的功率以焦耳放电；对外字段 `wPrimePool01`（`anaerobicPercent` 已弃用） |
+| **Sprint** | `v_sprint ≈ invert(min(sprint_cap, CP + W′/Δt))`；门禁看有氧阈值 + W′ 池 |
+| **v_drain** | 消耗按 `min(v_meas, appliedLimit)` 记账，与限速闭环一致 |
+| **【v6】已移除** | 25%/35%「意志力平台期」；主速度曲线改为相位行军档 `CalculateV6PhaseSpeedMultiplier` |
+| **5 秒撞墙阻尼** | `SCR_RSS_CollapseTransition`：刚跌破跛行阈值时 SmoothStep 过渡，避免「引擎断油」感 |
 
-权威计算：[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
+预设（`m_sSelectedPreset`）：**EliteStandard** / **StandardMilsim**（默认）/ **TacticalAction** / **Custom**。  
+数值嵌入于 `SCR_RSS_SettingsPresetBake`；离线 JSON 见 `tools/optimized_rss_config_*_v6.json`。
 
----
+权威计算说明：[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
 
-## 预设
+### 主要特性
 
-`SCR_RSS_Settings.m_sSelectedPreset`：
+- ✅ **v6 CP–W′ 功率预算**：Pandolf/ACSM 代谢 → 动态 CP → W′ 焦耳放电/再填充（Elite Skiba 双指数）
+- ✅ **相位行军档速度**【v6】：Walk/Run/Sprint 按配置 m/s 目标；低体力仅跛行（**无** 25% 意志力平台期）
+- ✅ **5秒阻尼过渡（"撞墙"瞬间优化）**【v6 阈值改为约 5% 跛行点】：跌破跛行阈值时使用 5 秒时间阻尼过渡
+  - 让玩家感觉角色"腿越来越重"，而不是"引擎突然断油"
+  - 使用 SmoothStep；实现见 `SCR_RSS_CollapseTransition`
+- ✅ **坡度自适应步幅逻辑**：上坡时自动降低目标速度（坡度-速度负反馈）
+  - 每度坡度降低2.5%速度，换取更持久的续航
+  - 模拟现实中人爬坡时自动缩短步幅的行为
+- ✅ **非线性坡度消耗**：使用幂函数代替线性增长
+  - 小坡（5%以下）几乎无感，陡坡才真正吃力
+  - 避免Everon缓坡频繁断气
+- ✅ **生理上限保护**：体力消耗有生理上限（VO2 Max峰值）
+  - 防止负重+坡度组合导致的数值爆炸
+  - 每0.2秒最大消耗不超过0.02（每秒最多掉10%）
+- ✅ **动态速度调整**：根据体力百分比动态调整移动速度（精确数学模型）
+- ✅ **消耗全面采用 Pandolf 模型**：所有行走/奔跑/冲刺的体力下落直接由 Pandolf 能量公式计算，弃用简单常数扣除。
+- ✅ **负重影响系统**：负重主要影响"油耗"（体力消耗）而非直接降低"最高档位"（速度）
+  - 负重对速度的影响降低至20%，让30kg负重时仍能短时间跑3.7 m/s
+- ✅ **移动类型系统**：支持Idle/Walk/Run/Sprint四种移动类型，每种有不同的速度和消耗特性
+- ✅ **坡度影响系统**：上坡/下坡会影响体力消耗（基于[Pandolf模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)，包含负重×坡度交互项）
+- ✅ **跳跃/翻越体力消耗**（v2.6.0优化）：跳跃和翻越动作会消耗额外体力
+  - 跳跃基础消耗3.5%，翻越起始消耗2%，使用动态负重倍率
+  - 连续跳跃惩罚机制（无氧欠债）：3秒内连续跳跃，每次额外增加50%消耗
+  - 跳跃冷却机制：3秒冷却时间，防止重复触发
+  - 低体力禁用：体力 < 10% 时禁用跳跃
+- ✅ **Sprint机制**：速度仍比Run快30%（由Pandolf模型在高速度下自然输出），不再使用独立的消耗倍数。
+- ✅ **健康状态系统**：训练有素者（fitness=1.0）能量效率提升约35%，恢复速度增加25%（基于个性化运动建模）
+- ✅ **累积疲劳系统**：长时间运动后，相同速度的消耗逐渐增加（基于个性化运动建模）
+- ✅ **代谢适应系统**：根据运动强度动态调整能量效率（有氧区效率高，无氧区效率低但功率高）
+- ✅ **多维交互模型**：速度×负重×坡度三维交互项，更真实地模拟复杂运动场景
+- ✅ **深度生理压制恢复系统**（v2.13.0）：从"净增加"改为"代谢净值"的恢复模型
+  - **呼吸困顿期（RECOVERY_COOLDOWN）**：停止运动后5秒内系统完全不处理恢复
+    - 医学依据：剧烈运动停止后的前10-15秒，身体处于摄氧量极度不足状态（Oxygen Deficit）
+    - 游戏目的：消除"跑两步停一下瞬间回血"的游击战式打法
+  - **负重对恢复的静态剥夺机制（LOAD_RECOVERY_PENALTY）**：负重越大，恢复越慢
+    - 惩罚公式：Penalty = (当前总重 / 身体耐受基准)^2 × 0.0004
+    - 战术意图：强迫重装兵必须趴下（通过姿态加成抵消负重扣除）
+  - **边际效应衰减机制（MARGINAL_DECAY）**：体力>80%时恢复速度显著降低
+    - 当体力>80%时，恢复率 = 原始恢复率 × (1.1 - 当前体力百分比)
+    - 战术意图：玩家经常会处于80%-90%的"亚健康"状态
+  - **最低体力阈值限制（MIN_RECOVERY_STAMINA_THRESHOLD）**：体力<20%时需要10秒休息才能开始恢复
+    - 战术意图：防止玩家在极度疲劳时通过"跑两步停一下"快速回血
+- ✅ **重载下恢复优化**：负重时恢复速率提升，模拟深呼吸快速调整能力
+- ✅ **趴下休息负重优化**（v2.6.0）：当角色趴下休息时，负重影响降至最低（地面支撑装备重量），重装兵趴下时能够快速恢复体力
+- ✅ **深度模块化架构**（v2.8.0/v2.11.0）：代码完全模块化，提高可维护性和游戏工作台兼容性
+  - v2.11.0进一步优化：PlayerBase.c 减少 40%，新增游泳状态管理和体力更新协调器模块
+- ✅ **环境因子系统**（v2.10.0）：热应激和降雨湿重系统
+  - **热应激模型**：
+    - 时间段：10:00-18:00（10:00-14:00逐渐增加，14:00-18:00逐渐减少）
+    - 峰值（14:00）：消耗增加30%（倍数1.3）
+    - 室内豁免：室内热应激减少50%（室外1.3 → 室内1.15）
+    - 恢复影响：热应激越大，恢复速度越慢（恢复倍数 = 1.0 / 热应激倍数）
+  - **降雨湿重系统**：
+    - 小雨（强度 < 50%）：2kg湿重
+    - 中雨（强度 50%-80%）：4-6kg湿重（线性插值）
+    - 暴雨（强度 ≥ 80%）：8kg湿重
+    - 停止降雨后：60秒内线性衰减至0
+  - **室内检测**：向上射线检测（Raycast），判断角色头顶是否有遮挡
+  - **总湿重计算**：
+    - 游泳湿重 + 降雨湿重：加权平均（游泳权重0.6，降雨权重0.4）
+    - 饱和上限：总湿重不超过10kg（防止数值爆炸）
+- ✅ **实时状态显示**：每秒显示速度、体力、速度倍率、移动类型和坡度信息
+- ✅ **调试信息增强**（v2.10.0/v2.11.0）：每5秒显示完整的环境因子信息（时间、热应激、降雨、室内状态、游泳湿重）
+  - v2.11.0优化：统一调试信息输出接口，所有格式化逻辑集中在 DebugDisplay 模块
+- ✅ **精确医学模型**：基于[Pandolf能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)和耐力下降模型，不使用近似
+- ✅ **游泳体力管理**（v2.9.0）：3D物理模型，包含水平阻力、垂直上浮/下潜功率、静态踩水功率
+  - **3D物理阻力模型**：基于流体力学，水平阻力与速度平方成正比（`F_d = 0.5 × ρ × v² × C_d × A`）
+  - **垂直功率**：上浮/下潜需要额外功率，垂直速度对消耗影响更明显
+  - **静态踩水功率**：基础功率25W（维持浮力和基本动作）
+  - **负重阈值**：超过25kg时静态消耗大幅增加（3倍），模拟负重踩水困难
+  - **低强度折扣**：速度 < 0.2 m/s 时消耗减少30%（低强度踩水）
+  - **游泳湿重**：上岸后获得7.5kg湿重（5-10kg之间），30秒内线性衰减
+  - **速度检测**：使用位置差分测速（`GetOrigin()`），避免游泳命令下 `GetVelocity()` 为0的问题
 
-| 预设 | 取向 |
-|------|------|
-| **EliteStandard** | 最硬核 / 最拟真 |
-| **StandardMilsim** | 默认折中 |
-| **TacticalAction** | 更宽容，偏战术节奏 |
-| **Custom** | 手调；可强制刷新系统预设回代码默认 |
-
-数值由 `SCR_RSS_SettingsPresetBake` 嵌入（v6 优化器）。离线 JSON：`tools/optimized_rss_config_*_v6.json`。
-
-粗略量级（以 Bake 为准）：
-
-| | Elite | Standard | Tactical |
-|--|------:|---------:|---------:|
-| CP (W) | ~942 | ~1012 | ~1075 |
-| W′_max (J) | ~20.4k | ~20.9k | ~20.4k |
-| Sprint cap (W) | ~2830 | ~2880 | ~2525 |
-
-Custom 常用倍率/开关（节选）：体力消耗/恢复倍率、负重速度惩罚、Sprint 倍率、热/雨/风/泥、疲劳、代谢适应、室内检测、HUD、泥泞滑倒、AI 战斗效果、数据导出等。
-
----
-
-## 项目结构（与仓库一致）
+## 项目结构
 
 约 **98** 个 EnforceScript `.c`。领域类统一 `SCR_RSS_*`（modded 入口除外）。
 
 ```
 Realistic-Stamina-System/
-├── addon.gproj
-├── Assets/ Configs/ Prefabs/ UI/ photos/
+├── LICENSE / LICENSE.txt                 # AGPL-3.0
+├── README.md / README_CN.md / README_EN.md
+├── AUTHORS.md / CONTRIBUTING.md / CHANGELOG.md
+├── addon.gproj                           # GUID 68649101601CC93D
+├── WORKSHOP_CHANGENOTE_*.txt
+├── Assets/                               # 资源
+├── Configs/EntityCatalog/                # 军火库条目登记
+├── Prefabs/
+│   ├── Characters/Core/Character_Base.et
+│   └── Items/Medicine/CombatStimInjection_01/
+├── UI/layouts/
+│   ├── HUD/StatsPanel/                   # Stamina HUD
+│   └── Menus/RSSSettings/                # 设置菜单
+├── docs/                                 # 计算逻辑、API、规范、已知问题
+├── githooks/pre-commit
+├── photos/ / preview.png
 ├── scripts/Game/
-│   ├── Integration/                 # modded 薄壳（高冲突面）
-│   │   ├── PlayerBase.c
-│   │   ├── PlayerBase_UpdateLoop.c  # 主更新循环
-│   │   ├── SCR_StaminaOverride.c    # 拦截引擎体力条
+│   ├── Integration/                      # modded 入口层（高冲突面）
+│   │   ├── PlayerBase.c                  # modded SCR_CharacterControllerComponent
+│   │   ├── PlayerBase_UpdateLoop.c       # 主更新循环扩展
+│   │   ├── SCR_StaminaOverride.c         # 拦截引擎体力条
 │   │   ├── SCR_RSS_ServerBootstrap.c
 │   │   ├── SCR_RSS_InventoryOverride.c
 │   │   ├── SCR_PlayerBaseIntegrationHelpers.c
-│   │   ├── SCR_PlayerBaseLoop.c / RpcHandler / VehicleHelper
+│   │   ├── SCR_PlayerBaseLoop.c
+│   │   ├── SCR_PlayerBaseRpcHandler.c
+│   │   ├── SCR_PlayerBaseVehicleHelper.c
 │   │   └── SCR_RSS_StaminaComponentCompat.c
 │   ├── RSS/
-│   │   ├── Core/                    # ~30：代谢 / CP–W′ / 消耗·恢复 / 速度 / 协调器
+│   │   ├── Core/                         # 体力核心（~30）
 │   │   │   ├── SCR_RSS_MetabolismModel.c / MetabolismMath.c
 │   │   │   ├── SCR_RSS_CriticalPowerModel.c / AnaerobicBurst.c
 │   │   │   ├── SCR_RSS_UpdateCoordinator.c / DrainCalculator.c
 │   │   │   ├── SCR_RSS_SpeedCalculator.c / SpeedBridge.c
 │   │   │   ├── SCR_RSS_RecoveryCalculator.c / EpocState.c / FatigueSystem.c
-│   │   │   ├── SCR_RSS_CollapseTransition.c / SprintGate.c / …
-│   │   │   ├── SCR_RSS_Constants.c / ConfigBridge.c / StaminaHelpers.c
+│   │   │   ├── SCR_RSS_CollapseTransition.c / SprintGate.c / SprintBlockSpeedTransition.c
+│   │   │   ├── SCR_RSS_EncumbranceCache.c / StanceTransitionManager.c
+│   │   │   ├── SCR_RSS_SwimmingStaminaModel.c / ExerciseTracker.c
+│   │   │   ├── SCR_RSS_Constants.c / ConfigBridge.c / StaminaHelpers.c / StaminaState.c
+│   │   │   ├── SCR_RSS_CombatStimController.c / WPrimeServerTick.c
+│   │   │   └── …（调试批处理 / NetRate / UpdateLoop* 等）
+│   │   ├── Environment/                  # 环境（~18）
+│   │   │   ├── SCR_RSS_EnvironmentFactor.c
+│   │   │   ├── SCR_RSS_AstronomyMath.c / PenaltyMath.c / WeatherApi.c
+│   │   │   ├── SCR_RSS_RainWetWeight.c / TemperatureSampler.c / IndoorDetection.c
+│   │   │   ├── SCR_RSS_TerrainDetection.c / MaterialTerrainTable.c
+│   │   │   ├── SCR_RSS_SlopeSpeedTransition.c / JumpVaultDetection.c
+│   │   │   ├── SCR_RSS_SwimmingState.c / SwimConstants.c
+│   │   │   └── …（EnvConstants / Debug / PendingUpdate / WeatherChange / LocationBootstrap）
+│   │   ├── AI/                           # AI（~8，当前实现）
+│   │   │   ├── SCR_RSS_AIManager.c       # 统一编排（500ms 行为节流）
+│   │   │   ├── SCR_RSS_AIStaminaState.c  # 体力状态机
+│   │   │   ├── SCR_RSS_AISpeedCap.c      # SetSpeedLimit 限速（与灌木合并）
+│   │   │   ├── SCR_RSS_AIIntentFilter.c / AICombatDecay.c / AIInjuryLink.c
+│   │   │   ├── SCR_RSS_AIUpdateInterval.c / AIConstants.c
+│   │   │   └── （历史群组代理/路点模块名见旧文档；以本目录源码为准）
+│   │   ├── NetworkConfig/                # 网络与配置（~8）
+│   │   │   ├── SCR_RSS_Settings.c / Params.c / SettingsPresetBake.c / SettingsSync.c
+│   │   │   ├── SCR_RSS_ConfigManager.c / NetworkSyncManager.c
+│   │   │   ├── SCR_RSS_API.c / DataExport.c
 │   │   │   └── …
-│   │   ├── Environment/             # ~18：热冷雨风泥 / 坡 / 游泳 / 跳跃 / 地形
-│   │   ├── AI/                      # ~8：AIManager + 状态机 / 限速 / 意图 / 衰减 / 伤害
-│   │   ├── NetworkConfig/           # Settings / Params / Bake / ConfigManager / API / Sync
-│   │   ├── Presentation/            # HUD、镜头、屏效、设置 UI
-│   │   └── MudSlip/                 # 泥泞滑倒
-│   ├── Components/Gadgets/          # CSB / 吗啡等
+│   │   ├── MudSlip/
+│   │   │   ├── SCR_RSS_MudSlipEffects.c
+│   │   │   └── SCR_RSS_MudSlipRunner.c
+│   │   └── Presentation/                 # HUD / 镜头 / 屏效 / 设置 UI（~12）
+│   │       ├── SCR_RSS_StaminaHUDComponent.c / UISignalBridge.c / DebugDisplay.c
+│   │       ├── CharacterCamera1stPerson.c / PresentationBridge.c
+│   │       ├── SCR_RSSAdminMenuUI.c / SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
+│   │       └── CombatStim / Stamina 屏效脚本
+│   ├── Components/Gadgets/               # CSB / 吗啡等
 │   ├── UserActions/
-│   └── Damage/…/
-├── tools/                           # 数字孪生 + v6 管线（Python / Rust）
-├── docs/
-├── githooks/pre-commit
-├── AUTHORS.md  CONTRIBUTING.md  CHANGELOG.md  LICENSE
-└── WORKSHOP_CHANGENOTE_*.txt
+│   └── Damage/DamageEffects/CharacterDamageEffects/
+└── tools/                                # 数字孪生 + v4/v6 管线 + Rust
+    ├── rss_pipeline_v6.py / rss_pipeline_v4.py / rss_digital_twin_fix.py
+    ├── rss_sim/（PyO3） / rust_pipeline_v6/
+    ├── test_v6_smoke.py / bench_physio_anchors.py / test_acft_2mile.py
+    ├── check_script_size.py / check_enforce_syntax.py / embed_json_to_c.py
+    ├── optimized_rss_config_*_v4.json / *_v6.json
+    └── README.md
 ```
 
-**分层约定**：
-- 公式在 `RSS/Core/`（及 Environment 等域模块），不进 Override 壳
-- 速度只经 `SCR_RSS_SpeedBridge`
-- 单文件硬上限 **65535 字节**；见 [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md)
+
+## v6.0.0 版本更新 / v6.0.0 Updates
+
+**2026-06-04**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.0.0]**）
+
+- **CP–W′** — `SCR_RSS_MetabolismModel`（Pandolf + ACSM）+ `SCR_RSS_CriticalPowerModel`（焦耳 W′、动态 CP、Elite Skiba 再填充）
+- **移除意志力平台期** — 主速度曲线改为 `CalculateV6PhaseSpeedMultiplier`（低 STA 跛行）
+- **v_drain 闭环** — 消耗与 `m_fAppliedSpeedLimitMs` / SpeedBridge 对齐
+- **Integration** — `TickPower` + runtime context；Sprint 门禁走 CP 模型
+- **疲劳 / EPOC** — 积分疲劳 I(t)；EPOC ∝ 峰值功率
+- **AI** — `SCR_RSS_AISpeedCap` 与玩家同源 v6 相位曲线
+- **工具** — `test_v6_smoke.py`、`test_acft_2mile.py`、Python/Rust 孪生与 `rss_pipeline_v6.py`
+- **配置** — `m_sConfigVersion` / ConfigManager → **6.0.0**；Params +CP/W′/sprint cap
+
+## v5.0.0 版本更新 / v5.0.0 Updates
+
+**2026-06-04**（详见 [CHANGELOG.md](CHANGELOG.md) **[5.0.0]** / **[5.0.0-dev]**）
+
+- **双池语义** — 有氧主条 + 无氧/W′ 前身语义；命名统一 `SCR_RSS_*`
+- **归档** — v3.23.1 脚本归档后清理；Integration 拆分 `PlayerBase_UpdateLoop.c`
+- **冲刺门禁 / 联机 / HUD** — 见 CHANGELOG；为 v6 CP–W′ 铺路
+
+## v3.23.1 版本更新 / v3.23.1 Updates
+
+**2026-05-28**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.23.1]**）
+
+- **1.7 灌木丛减速** — 新增 `SCR_RSS_SpeedBridge`，RSS 体力限速与原生 Foliage 减速合并，穿灌木不再被 RSS 覆盖。
+- **HUD / 配置** — 回满 ETA 分段积分估算；`willpower_threshold` / `sprint_enable_threshold` / 蹲姿恢复可按预设配置。
+- **稳定版预设** — 三档参数锁定 v3.23.0 基线；`CURRENT_VERSION` **3.23.1**。
+
+## v3.23.0 版本更新 / v3.23.0 Updates
+
+**2026-05-18**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.23.0]**）
+
+- **版本** - `CURRENT_VERSION` **3.23.0**（`SCR_RSS_ConfigManager.c`）、AI 子系统管理器重构。
+- **AI 体力** - 6 态状态机 + 群组同步/休息路点/意图过滤/远距代理；设置中 AI 战斗标为 experimental。
+- **泥泞** - 管理员可再次通过设置开启泥泞滑倒（此前版本曾全路径强制关闭）。
+- **设置 UI** - RSS 设置页右侧说明面板；Stamina HUD 布局与字体修复。
+- **工具** - `tools/` 收敛为 v4 数字孪生管线。
+
+## v3.22.8 版本更新 / v3.22.8 Updates
+
+**2026-05-10**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.8]**）
+
+- **版本** - `CURRENT_VERSION` **3.22.8**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **仅原生表现** - `RSS_PRESENTATION_NATIVE_ONLY` 默认 `true`：只保留引擎原生相机/屏效/相关音频，不应用 RSS 自定义表现；`false` 时恢复冲刺 FOV、泥泞镜头、CombatStim 首针/OD 屏效与可选冲刺发闷。
+- **冲刺 FOV** - 体力滞回与目标平滑、变化速率上限 8°/s；泥泞机制关闭时镜头应力路径立即清零。
+
+## v3.22.5 版本更新 / v3.22.5 Updates
+
+**2026-05-09**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.22.5]**）
+
+- **版本** - `CURRENT_VERSION` **3.22.5**（`SCR_RSS_ConfigManager.c`）、三份 README 与 Workshop 说明对齐。
+- **退出崩溃热修** - 客户端关游戏 / 断线时对空指针读取导致的 Access violation：`RSS_WaitForGameModeConfig` 判空与同步成功后移除重复 `CallLater`；GameMode 扩展析构与回调入口守卫；体力 HUD 在 Workspace 已销毁时不刷新 / 不强制移出层级；`InitStaminaHUD` 在组件已删除或无 Owner 时跳过。
+- **Workbench 重载世界** - `OnGameStart` 清空 `EnvironmentFactor` 全局天气信号静态缓存、AI 休整注册表与 HUD 单例，避免「重载脚本 + 重载世界」后仍使用已销毁的 `GameSignalsManager` 或旧 Widget 导致 `0x0` 读。
+
+## v3.21.1 版本更新 / v3.21.1 Updates
+
+**2026-04-12**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.21.1]**）
+
+- **版本** - `CURRENT_VERSION` **3.21.1**（`SCR_RSS_ConfigManager.c`）、三份 README 与 `PlayerBase.c` 头注释对齐。
+- **注射器与药效** - 由原先**肾上腺素式战术兴奋针**（RUSH/CRASH 等）改为 **苯甲酸钠咖啡因 20%（CSB）** 注射器；阶段为 **吸收等待 → 药效期**，药效期内体力消耗减免、并可按设计绕过部分天气对体力链的惩罚（见 CHANGELOG 与 `SCR_CombatStimConstants`）。
+- **特效** - 删除与新药效无关或冗余的 **HUD 全屏叠层**、旧 ScreenEffects 挂钩及附属表现；药效不依赖屏幕特效，仍由体力与环境逻辑体现。
+
+## v3.21.0 版本更新 / v3.21.0 Updates
+
+**2026-04-12**（条目与当前仓库变更一致，详见 [CHANGELOG.md](CHANGELOG.md) **[3.21.0]**）
+
+- **配置与 README** - `CURRENT_VERSION` **3.21.0**（`SCR_RSS_ConfigManager.c`）、三份 README 与 `PlayerBase.c` 头注释版本对齐。
+- **战术兴奋剂** - `SCR_CombatStimConstants`、`SCR_ConsumableCombatStimInjector`、`SCR_CombatStimUserAction`；`PlayerBase` 内 RUSH/CRASH/过量、体力与速度、**`RPC_CombatStimSyncToOwner`**；预制体 **`Prefabs/Items/Medicine/CombatStimInjection_01/`**。
+- **注射器扩展** - 自定义注射器与吗啡相关消耗品 / UserAction / DamageEffect 脚本（见 CHANGELOG 文件列表）。
+- **实体目录** - `Configs/EntityCatalog/US/InventoryItems_EntityCatalog_US.conf` 登记战斗兴奋剂军火库数据（若需在游戏内出现，还须按 CHANGELOG 说明接好派系 `US.conf` 目录引用）。
+
+## v3.20.6 版本更新 / v3.20.6 Updates
+
+**2026-04-09** · 发布区间（含两端）：`b18953d9421289a3bc994bfba621da04f5fcb41c` … `a79a8ef04777f73d938049374c68d8c9cb60b8e3`
+
+### 配置与工具
+
+- **预设与嵌入** - `SCR_RSS_Params` 与 `embed_json_to_c.py`、三份 `optimized_rss_config_*_super.json`、`SCR_RSS_Settings.c` 同步；嵌入脚本支持 JSON 缺省时的固定默认值，避免丢失生理学常数字段。
+- **优化管线与绘图** - 优化管线与绘图工具更新（该时期脚本名见 CHANGELOG；现行工具见 [tools/README.md](tools/README.md)）。
+- **配置版本** - `SCR_RSS_ConfigManager` 中 `CURRENT_VERSION` = **3.20.6**。
+
+### 区间内其它变更（摘要）
+
+- 自 **AI 交战体力效果**、专用服 AI 群组代理与 `RSS_PERF_*` 起，至 **3.20.5** 的网络同步、体力协调器与多模块性能/修复，**完整条目见 [CHANGELOG.md](CHANGELOG.md) 中 [3.20.6] 与 [3.19.3]～[3.20.5]**。
+
+### （原 v3.20.5 亮点，仍含于本发布区间）
+
+**2026-03-30**
+
+#### ⚡ 性能优化
+
+- **Pandolf 调用减少** - `CalculateLandBaseDrainRate` 中 T1 阻尼结果提升为外层变量复用，努力补偿分支在速度差 < 0.01 时跳过重复调用，最坏情况 4 次→3 次，常见情况降至 2 次（`SCR_RSS_UpdateCoordinator.c`）。
+- **消除运行时除法** - `ShouldSync` / `AcceptClientReport` 新增三个预计算间隔常量替换 `1.0 / Hz` 浮点除法（`SCR_RSS_NetworkSyncManager.c`）。
+
+#### 🔧 修复
+
+- **网络速度插值实际无效** - `SMOOTH_TRANSITION_DURATION` 从 `0.05s` 提升至 `0.15s`，50ms 间隔下 lerpSpeed ≈ 0.33，插值真正生效，消除速度突变感（`SCR_RSS_NetworkSyncManager.c`）。
+- **死代码清理** - 删除 `CalculateBaseDrainRate` 中计算后从未使用的 `loadFactor` 等三行（`SCR_RSS_UpdateCoordinator.c`）。
+
+#### 🏗️ 重构
+
+- **提取 `BuildRecoveryContext`** - 新增 `RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_RSS_UpdateCoordinator.c`）。
 
 ---
+
+## v3.14.1 版本更新 / v3.14.1 Updates
+
+**2026-03-05**
+
+### ✅ 新增
+
+- **战术冲刺爆发与冷却** - Sprint 前 8 秒爆发期内负重对速度惩罚降至 20%；8～13 秒缓冲区内线性过渡到正常惩罚；爆发结束或松开冲刺后 15 秒冷却内再次冲刺不触发爆发。
+- **室内楼梯负重速度减免** - 室内且原始坡度 &gt; 0 时判定为楼梯，负重速度惩罚乘 0.4；新增 `GetRawSlopeAngle` 供室内楼梯判定使用。
+- **坡度速度过渡立即提速** - 目标速度比当前平滑值高出 ≥ 0.08 时取消 5 秒平滑、立即提速，避免上坡中细微缓坡频繁加速。
+- **镜头惯性与头部物理** - 第一人称下：起步滞后/前倾、急停前冲（随负重非线性）、步伐垂直颠簸与上坡左右摇摆；冲刺 FOV 与战术爆发联动（Burst +5° / Cruise +3° / Limp -2°）。见 [CharacterCamera1stPerson.c](scripts/Game/RSS/Presentation/CharacterCamera1stPerson.c)、[SCR_RSS_Constants.c](scripts/Game/RSS/Core/SCR_RSS_Constants.c)。
+
+### 🔁 变更
+
+- **坡度与消耗/速度** - 缓坡下坡消耗最多减少 60%（原 50%）；Tobler 坡度速度上坡再乘 1.15、下坡再乘 1.15 且上限 1.25，坡度对速度限制再向 1.0 拉近 30%。
+
+### 📚 文档
+
+- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) 补充战术冲刺、室内楼梯、坡度过渡、镜头与头部物理等小节与常量表。
+
+---
+
+## v3.12.0 版本更新 / v3.12.0 Updates
+
+**2026-02-09**
+
+本版本仅记录 C 脚本层面的变化。
+
+### ✅ 新增
+- **环境温度物理模型** - 新增温度步进、短波/长波与云量修正、太阳/日出日落与月相推断，支持引擎温度或模组模型切换（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **室内检测增强** - 增加向上射线与水平封闭检测，降低开放屋顶/天窗误判（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **配置变更同步链路** - 新增监听器注册、变更检测、全量参数/设置数组同步与广播（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/Integration/PlayerBase.c）
+- **网络校验与平滑** - 客户端上报体力/负重，服务器权威校验并下发速度倍率，含重连延迟同步（scripts/Game/Integration/PlayerBase.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_NetworkSyncManager.c）
+- **日志节流工具** - 统一 Debug/Verbose 日志节流接口（scripts/Game/RSS/Core/SCR_RSS_Constants.c）
+
+### 🔁 变更
+- **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c）
+- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf 路径，并提供服务端权威速度倍数计算接口（scripts/Game/RSS/Core/SCR_RSS_UpdateCoordinator.c）。Givoni模型已弃用。
+- **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/RSS/Core/SCR_RSS_Constants.c）
+- **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c）
+- **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/RSS/Core/SCR_RSS_Constants.c）
+- **体重参与消耗** - 体力消耗输入改为“装备+身体”的总重，并优化调试输出（scripts/Game/Integration/PlayerBase.c）
+
+### 🐞 修复
+- **室内判定误报** - 通过屋顶射线与水平封闭检测降低开放屋顶/天窗误判（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **引擎温度极值退化** - 当日最小/最大温度趋同会回退到物理/模拟估算，避免温度异常（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **客户端写盘覆盖** - 客户端不再写入本地 JSON，避免覆盖服务器配置（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c）
+
+## v3.11.1 版本更新 / v3.11.1 Updates
+
+**2026-02-02**
+
+### 🔧 配置修复与优化
+- ✅ **JSON 配置覆盖修复** - 用户修改的 hint/debug 等不再被覆盖
+- ✅ **ValidateSettings 修正** - 参数越界时仅 clamp，不清空全部配置
+- ✅ **Custom 预设大小写** - 支持 "custom" / "CUSTOM" 识别
+- ✅ **HUD 默认关闭** - 首次下载默认不显示 HUD；已有 JSON 的老用户 HUD 按原设置保持
+- ✅ **配置可读性** - 常量提取、描述精简、分组优化
+
+## v3.11.0 版本更新 / v3.11.0 Updates
+
+**2026-01-26**
+
+### 🌟 核心功能更新
+- ✅ **体力系统优化** - 优化体力系统响应速度和起步体验
+- ✅ **体力系统修复** - 修复体力系统的高频监听和速度计算问题
+- ✅ **负重系统增强** - 实现库存变更时实时更新负重缓存
+- ✅ **负重计算修复** - 修复武器重量未计入总负重的问题
+- ✅ **环境感知增强** - 添加室内环境忽略坡度影响功能
+- ✅ **配置管理优化** - 修复预设配置逻辑，确保系统预设值保持最新
+- ✅ **参数优化** - 优化RSS系统参数并调整配置文件路径
+
+### 📁 项目清理与优化
+- ✅ **项目文件清理** - 删除所有生成的 PNG 图表文件
+- ✅ **Tools 目录优化** - 仅保留核心 NSGA-II 优化管道，删除过时脚本
+- ✅ **配置文件更新** - 移除旧的优化配置文件和更新相关路径
+
+### 📚 文档完善
+- ✅ **工具集文档** - 新增 tools/README.md - 完整工具集文档
+- ✅ **配置验证报告** - 新增 CONFIG_APPLICATION_VERIFICATION.md - 配置应用验证报告
+- ✅ **开关验证报告** - 新增 DEBUG_AND_HINT_SWITCH_VERIFICATION.md - 开关验证报告
+
+### 🎯 版本整并
+- ✅ **版本统一** - 将从提交 d1ebb9c 到现在的所有变更作为 v3.11.0
+
+详细信息请参考 [CHANGELOG.md](CHANGELOG.md) / See [CHANGELOG.md](CHANGELOG.md) for details.
+
+## 技术文档 / Technical Documentation
+
+**配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。详见 [docs/config_sync_summary.md](docs/config_sync_summary.md)。
+
+- **[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)** - v6.0.0 CP–W′ 计算逻辑（权威）
+- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 历史归档（v3/v5）
+- **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
+- **[tools/README.md](tools/README.md)** - 工具集完整文档
 
 ## 技术实现
 
 ### 模型架构
 
-- **[Pandolf](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**：步行/低速陆地代谢（含负重×坡度项）；陡下坡有 Santee 系修正
-- **ACSM 跑/冲模型**：较高速度；与 Pandolf 在约 2.0–2.4 m/s **C¹ 混合**
-- **Critical Power + W′**：可持续功率上限与无氧储备（焦耳）
-- **[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)**（Palumbo et al.）：疲劳、代谢适应等思想仍用于参数化子系统
-- **多维交互**：速度 × 负重 × 坡度 × 环境进入功率与恢复
-
-> v6 **不再**使用「双稳态意志力平台期」作为主速度曲线；`CalculateSpeedMultiplierByStamina` 已转发到 `CalculateV6PhaseSpeedMultiplier`。
+本项目采用**精确的医学/生理学模型**，包括：
+- **[Pandolf 能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**：步行/负重/坡度代谢
+- **ACSM 跑/冲模型 + Critical Power–W′**【v6】：可持续功率与无氧焦耳储备
+- **双稳态-应激性能模型**（历史）：曾用于意志力平台期；**【v6 玩家主路径已移除平台期】**
+- **[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)**：健康状态、累积疲劳和代谢适应等参数化思想
+- **多维交互模型**：速度、负重、坡度、环境的综合影响
 
 ### 实现方式
 
-- `modded SCR_CharacterStaminaComponent`（`SCR_StaminaOverride`）：拦截 `OnStaminaDrain` / 受控写回目标体力
-- `modded SCR_CharacterControllerComponent`（`PlayerBase.c` + `PlayerBase_UpdateLoop.c`）：主循环、测速、限速、环境与 AI 编排
-- 速度：`SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit` → `SCR_ChimeraCharacter.SetSpeedLimit(source, limit)`
-- 调度：约每 **0.2 s** 结算体力相关；表现/行为另有节流
-- 游泳使用独立 3D 模型，不套用陆地坡度/地形逻辑
+- 使用 `modded class SCR_CharacterStaminaComponent`（`SCR_StaminaOverride`）拦截引擎体力条
+- 使用 `modded class SCR_CharacterControllerComponent`（`PlayerBase.c` + `PlayerBase_UpdateLoop.c`）驱动主循环
+- **【v6】** 通过 `SCR_RSS_SpeedBridge` → `SetSpeedLimit(source, limit)` 写入限速，与灌木/铁丝网取 **min**；禁止单独 `OverrideMaxSpeed` 盖掉 Foliage
+- 约每 0.2 秒结算体力相关逻辑，确保实时响应
+- **使用精确的数学模型**：陆地低速 **Pandolf**，跑/冲 **ACSM**，中间 C¹ 混合；功率经 **CP–W′** 预算后再反解限速
+- **说明**：已同时支持 **陆地（Walk/Run/Sprint）** 与 **游泳体力管理**。游泳使用独立的 3D 物理消耗模型（阻力/浮力/踩水），不套用陆地的坡度/地形逻辑。
 
-### 速度与消耗（摘要）
+### 速度计算逻辑
 
-1. **行军档目标**：`GetMarchWalk/Run/SprintSpeedMs` ×（1 − 负重速度惩罚）→ 换算为相对引擎最大速度的倍率  
-2. **低 STA**：低于跛行阈值线性/SmoothStep 收到动态跛行倍率；Collapse 提供 5 s 阻尼  
-3. **Sprint**：功率反解 + 与 Run 的最低拉开；门禁看 STA + W′  
-4. **陆地消耗**：`P = MetabolismModel(v_drain, load, grade, …)` → `drain ∝ P × energy_to_stamina_coeff`  
-5. **超 CP**：差额由 W′ 放电；再填充按预设（Skiba / 线性）  
-6. **游泳**：`F_d = 0.5·ρ·v²·C_d·A` + 垂直功率 + 踩水；上岸湿重并入环境总湿重  
+#### 1. 体力-速度关系模型
 
-### 跳跃 / 翻越（当前常量量级）
+**【v6 当前】**：玩家主曲线为相位行军档 `CalculateV6PhaseSpeedMultiplier`（Walk/Run/Sprint 目标 m/s × 负重修正；STA &lt; ~5% 跛行）。`CalculateSpeedMultiplierByStamina` 仅作兼容转发。撞墙阻尼见 `SCR_RSS_CollapseTransition`（阈值 = `SMOOTH_TRANSITION_END`）。
 
-见 `SCR_RSS_Constants` / Params（以代码为准）：
-- 肌肉效率、跳跃高度猜测、焦耳→体力标尺
-- 连续跳跃窗口与惩罚、冷却、最低体力阈值（约 10%）
-- 单次消耗硬钳位，防止极端负重爆炸
+**【历史 v3/v4 双稳态模型说明】**（下列平台期逻辑 **已从玩家主路径移除**，保留便于理解旧文档与部分 fallback 常量）：
 
-### 恢复（当前设计意图）
+基于 **双稳态-应激性能模型（Dual-State Stress Performance Model）**（历史实现曾在体力核心中）：
 
-- 最终恢复 ≈ 姿态修正后的基础恢复 − 负重惩罚 − EPOC/氧债等
-- 站姿往往慢于蹲/趴；重装鼓励趴下
-- 高 STA 区边际衰减；极低 STA 需休息门槛
+- **意志力平台期（25% - 100%）**（历史）：只要体力 ≥ 25%，速度维持在目标 Run 速度  
+  - `TARGET_RUN_SPEED = 3.7 m/s`  
+  - `TARGET_RUN_SPEED_MULTIPLIER = 3.7 / 5.2 ≈ 0.7115`
+- **平滑衰减期（5% - 25%）**：使用 `SmoothStep` 在目标速度与跛行速度之间平滑过渡（避免“撞墙”突变）  
+  - `SMOOTH_TRANSITION_START = 0.25`  
+  - `SMOOTH_TRANSITION_END = 0.05`
+- **生理崩溃期（0% - 5%）**：速度快速下降，并由最低速度保护兜底  
+  - `EXHAUSTION_LIMP_SPEED = 1.0 m/s`（跛行）。实际精疲力尽速度将根据当前负重惩罚动态计算，而非始终为 1 m/s。  
+  - `MIN_SPEED_MULTIPLIER = 0.15`（最低速度倍率保护）
 
-### 关键入口文件
+#### 2. 负重影响系统（精确非线性模型）
 
-| 职责 | 文件 |
-|------|------|
-| 主循环 | `PlayerBase_UpdateLoop.c` |
-| 体力拦截 | `SCR_StaminaOverride.c` |
-| 代谢 / CP–W′ | `SCR_RSS_MetabolismModel.c` / `SCR_RSS_CriticalPowerModel.c` |
-| 协调 / 消耗 | `SCR_RSS_UpdateCoordinator.c` / `SCR_RSS_DrainCalculator.c` |
-| 速度 | `SCR_RSS_SpeedCalculator.c` / `SCR_RSS_SpeedBridge.c` |
-| 恢复 / EPOC / 疲劳 | `SCR_RSS_RecoveryCalculator.c` / `EpocState` / `FatigueSystem` |
-| 环境 | `SCR_RSS_EnvironmentFactor.c` 及 Astronomy/Weather/Rain/… |
-| 配置 | `SCR_RSS_Settings.c` / `Params` / `SettingsPresetBake` / `ConfigManager` |
-| API | `SCR_RSS_API.c` |
+基于 US Army 背包负重实验数据（Knapik et al., 1996）：
+
+**精确数学模型**：
+**速度惩罚 = β × (负重百分比)^γ**
+
+其中（当前实现以“负重占体重比例”为基础，见 `SCR_RSS_Constants.c`）：
+- β = `ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20`
+- γ = `ENCUMBRANCE_SPEED_EXPONENT = 1.0`
+- 负重百分比 = `负重(kg) / CHARACTER_WEIGHT(kg)`（默认 `CHARACTER_WEIGHT = 90.0kg`）
+
+**配置参数**：
+- **最大负重**：40.5 kg（角色可以携带的最大重量）
+- **战斗负重**：30.0 kg（战斗状态下的推荐负重阈值）
+- **最大速度惩罚**：40%（当负重达到最大负重时）
+- **战斗负重状态**：当负重超过 30 kg 时，可能影响战斗表现
+
+**技术实现**：使用精确的幂函数计算，不使用线性近似
+
+#### 3. 体力消耗模型（完整 Pandolf 模型）
+
+**使用完整的 [Pandolf 能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**（Pandolf et al., 1977）：
+- **公式**：`E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))`
+- **其中**：
+  - E = 能量消耗率（W/kg）
+  - M = 总重量（身体重量 + 负重）
+  - V = 速度（m/s）
+  - G = 坡度（坡度百分比，正数=上坡，负数=下坡）
+- **坡度项**：`G·(0.23 + 1.34·V²)` 已直接整合在公式中
+- **特点**：始终使用 Pandolf 模型，坡度项已包含在公式中，不需要额外的坡度倍数
+- **参考文献**：Pandolf, K. B., Givoni, B. A., & Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. *Journal of Applied Physiology*, 43(4), 577-581.
+
+**注意**：由于几乎没有完全平地的地形，系统始终使用包含坡度的完整 Pandolf 模型
+
+#### 4. 游泳体力消耗模型（3D物理模型，v2.9.0）
+
+**使用3D物理阻力模型**（基于流体力学）：
+- **水平阻力公式**：`F_d = 0.5 × ρ × v² × C_d × A`
+  - ρ = 1000 kg/m³（水密度）
+  - C_d = 0.5（阻力系数，简化值）
+  - A = 0.5 m²（正面面积，简化值）
+  - v = 水平速度（m/s）
+- **垂直功率**：上浮/下潜需要额外功率，垂直速度对消耗影响更明显
+- **静态踩水功率**：基础功率25W（维持浮力和基本动作）
+- **负重阈值效应**：
+  - 负重 ≤ 25kg：正常游泳消耗
+  - 负重 > 25kg：静态消耗增加3倍（模拟负重踩水困难）
+  - 负重 ≥ 40kg：应用满额惩罚
+- **低强度折扣**：速度 < 0.2 m/s 时消耗减少30%（低强度踩水）
+
+**游泳湿重机制**：
+- **上岸后湿重**：7.5kg（5-10kg之间，固定值）
+- **衰减时间**：30秒内线性衰减至0
+- **检测方式**：使用 `IsSwimming()` 检测游泳状态（通过动画组件）
+
+**速度检测优化**：
+- **位置差分测速**：使用 `GetOrigin()` 计算位置差，避免游泳命令下 `GetVelocity()` 为0的问题
+- **速度向量**：计算3D速度向量（水平+垂直），用于物理模型计算
+
+**游泳消耗特点**：
+- 游泳的能量消耗远高于陆地移动（约3-5倍）
+- 游泳时负重影响更大（1.5倍陆地影响）
+- 游泳速度对消耗的影响更明显（速度平方项）
+
+#### 5. 环境因子模型（v2.10.0）
+
+**热应激模型**：
+- **时间段**：10:00-18:00
+  - 10:00-14:00：热应激逐渐增加（1.0 → 1.3）
+  - 14:00-18:00：热应激逐渐减少（1.3 → 1.0）
+- **峰值时间**：14:00（消耗增加30%）
+- **室内豁免**：室内热应激减少50%（通过向上射线检测判断）
+- **恢复影响**：热应激越大，恢复速度越慢（恢复倍数 = 1.0 / 热应激倍数）
+
+**降雨湿重模型**：
+- **小雨**（强度 < 50%）：2kg湿重
+- **中雨**（强度 50%-80%）：4-6kg湿重（线性插值）
+- **暴雨**（强度 ≥ 80%）：8kg湿重
+- **停止降雨后**：60秒内线性衰减至0
+
+**总湿重计算**：
+- **游泳湿重 + 降雨湿重**：加权平均（游泳权重0.6，降雨权重0.4）
+- **饱和上限**：总湿重不超过10kg（防止数值爆炸）
+
+#### 6. 跳跃和翻越体力消耗（v2.6.0优化）
+
+**跳跃体力消耗**：
+- 基础消耗：3.5%（v2.6.0优化，从3%提升）
+- 动态负重倍率：`实际消耗 = 基础消耗 × (currentWeight / 90.0) ^ 1.5`
+  - 30KG负重时，跳跃消耗约4.6%
+  - 模拟负重对爆发性动作的额外负担
+- 连续跳跃惩罚（无氧欠债）：3秒内连续跳跃，每次额外增加50%消耗
+  - 第一次跳：3.5%，第二次跳：5.25%，第三次跳：7.0%
+  - 有效防止"兔子跳"战术滥用
+- 冷却机制：3秒冷却时间（15个更新周期），防止重复触发
+- 低体力禁用：体力 < 10% 时禁用跳跃（肌肉在力竭时无法提供爆发力）
+- 检测方式：使用动作监听器直接检测"Jump"输入动作
+
+**翻越/攀爬体力消耗**：
+- 初始消耗：2%（v2.6.0优化，从1.5%提升）
+- 持续消耗：每秒1%（每0.2秒0.002）
+- 动态负重倍率：`实际消耗 = 基础消耗 × (currentWeight / 90.0) ^ 1.5`
+  - 30KG负重时，翻越起始消耗约2.7%
+- 冷却机制：5秒内视为同一个翻越动作，不会重复消耗初始体力
+- 检测方式：`IsClimbing()` 返回true
+
+#### 7. Sprint机制（v2.6.0优化）
+
+**Sprint速度计算**（统一增量模型）：
+- Sprint速度 = Run速度 × (1 + 30%)（v2.6.0优化，从15%提升）
+- Sprint完全基于Run的完整逻辑（双稳态-平台期、5秒阻尼过渡等）
+- Sprint负重惩罚系数：0.15（Run为0.2），模拟爆发力克服阻力
+- 最高速度限制：100%（游戏最大速度5.2 m/s）
+- 仍然受体力和负重限制
+- **效果**：28KG负重下，Run 3.6 m/s vs Sprint 4.7 m/s（差距 1.1 m/s）
+
+**Sprint体力消耗**：
+- Sprint消耗 = Run消耗 × 3.0倍（v2.6.0优化，从2.5倍提升）
+- 基于医学研究：Sprint时的能量消耗约为Run的2-3倍
+- 确保玩家不能长时间使用Sprint，只能作为战术爆发
+
+**Sprint特点**：
+- 速度比Run快30%（v2.6.0优化），适合短距离冲刺
+- 体力消耗大幅增加（3.0倍），不适合长时间使用
+- 确保在任何负重和体力状态下，Sprint都比Run快30%的固定阶梯
+- 只有在满体力、无负重时才能达到最高速度
+
+#### 8. 综合速度计算（精确模型）
+
+```
+基础速度倍数 S_base = CalculateSpeedMultiplierByStamina(staminaPercent)
+  - 25%-100%：恒定目标 Run（3.7 m/s → 0.7115）
+  - 5%-25%：SmoothStep 平滑衰减到跛行
+  - 0%-5%：快速崩溃 + 最低速度保护
+
+负重速度惩罚 P_enc = 0.20 × (loadKg / 90.0)^1.0
+
+Run：S_run = S_base - (P_enc × 0.20)
+Sprint：S_sprint = (S_base × 1.30) - (P_enc × 0.15)
+Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
+最终：clamp 到引擎允许范围（最低保护 `MIN_SPEED_MULTIPLIER`，最高不超过 1.0）
+```
+
+**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
+
+**优化目标**：2英里（3218.7米）在15分27秒（927秒）内完成  
+**优化结果**：完成时间 925.8秒（15.43分钟），提前1.2秒完成 ✅
+
+**初始体力**：角色初始体力为100%（满值）
+
+### 关键参数
+
+**体力-速度核心参数（当前版本以 `SCR_RSS_Constants.c` 为准）：**
+- `TARGET_RUN_SPEED = 3.7`（m/s）：平台期目标 Run 速度
+- `SMOOTH_TRANSITION_START = 0.25`：平台期下界（25%）
+- `SMOOTH_TRANSITION_END = 0.05`：平滑过渡终点（5%）
+- `EXHAUSTION_LIMP_SPEED = 1.0`（m/s）：基础跛行速度，作为动态计算的下限
+- `MIN_SPEED_MULTIPLIER = 0.15`：最低速度倍率保护
+
+**Sprint 相关：**
+- `SPRINT_SPEED_BOOST = 0.30`：Sprint 相对 Run 的速度提升（+30%）
+- `SPRINT_STAMINA_DRAIN_MULTIPLIER = 3.0`：Sprint 消耗倍数（×3.0）
+- `SPRINT_ENABLE_THRESHOLD = 0.15`：体力 ≥ 15% 才允许 Sprint
+
+**负重相关：**
+- `CHARACTER_WEIGHT = 90.0`（kg）
+- `ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20`（速度惩罚系数）
+- `ENCUMBRANCE_STAMINA_DRAIN_COEFF = 1.5`（消耗放大系数，主要影响“油耗”）
+
+**更新频率：**
+- 速度更新间隔：200 毫秒（0.2 秒）
+- 状态显示间隔：1000 毫秒（1 秒）
+
+## 系统特性
+
+### 体力-速度关系
+
+系统会根据体力百分比动态调整速度，实现以下效果：
+
+1. **【v6】行军档维持（STA 高于跛行阈值）**：
+   - 按 Walk/Run/Sprint 配置 m/s 目标限速，并叠负重/坡度/功率预算
+   - **不再**使用 25%–100% 意志力恒速平台期
+
+2. **【历史】平滑衰减期（曾为 5%-25%）**：
+   - 旧双稳态用 SmoothStep；现主要由跛行阈值 + Collapse 5 s 阻尼承担“撞墙”手感
+
+3. **生理崩溃 / 跛行期（约 0%-5%）**：
+   - 速度快速下降，并由最低速度保护兜底
+   - Sprint 会被门禁禁用（有氧过低或 W′ 不足）
+
+### 负重-速度关系
+
+负重系统会根据携带物品的重量影响移动速度：
+
+- **无负重（0 kg）**：无影响
+- **轻度负重（0-15 kg）**：轻微影响，速度减少 < 15%
+- **中度负重（15-30 kg）**：明显影响，速度减少 15-30%
+- **战斗负重阈值（30 kg）**：达到战斗负重阈值，可能影响战斗表现
+- **重度负重（30-40.5 kg）**：严重影响，速度减少 30-40%
+- **最大负重（40.5 kg）**：达到最大负重，速度最多减少 40%
+
+### 移动类型系统
+
+系统支持四种陆地移动类型，每种类型有不同的速度特性和体力消耗：
+
+#### 5. 游泳体力管理（v2.9.0）
+
+✅ **游泳体力管理已完整实现**：游泳使用独立的 3D 物理消耗模型，不套用陆地的坡度/地形逻辑。
+
+**游泳3D物理模型**：
+- **水平阻力**：`F_d = 0.5 × ρ × v² × C_d × A`
+  - 阻力系数 C_d = 0.5，水密度 ρ = 1000 kg/m³
+  - 正面面积 A = 0.5 m²（简化值）
+  - 水平速度对消耗的影响为平方关系
+- **垂直功率**：上浮/下潜需要额外功率，垂直速度对消耗影响更明显
+- **静态踩水功率**：基础功率25W（维持浮力和基本动作）
+- **负重阈值效应**：
+  - 负重 ≤ 25kg：正常游泳消耗
+  - 负重 > 25kg：静态消耗增加3倍（模拟负重踩水困难）
+  - 负重 ≥ 40kg：应用满额惩罚
+- **低强度折扣**：速度 < 0.2 m/s 时消耗减少30%（低强度踩水）
+
+**游泳湿重机制**：
+- **上岸后湿重**：7.5kg（5-10kg之间，固定值）
+- **衰减时间**：30秒内线性衰减至0
+- **检测方式**：使用 `IsSwimming()` 检测游泳状态（通过动画组件）
+
+**速度检测优化**：
+- **位置差分测速**：使用 `GetOrigin()` 计算位置差，避免游泳命令下 `GetVelocity()` 为0的问题
+- **速度向量**：计算3D速度向量（水平+垂直），用于物理模型计算
+
+**游泳消耗特点**：
+- 游泳的能量消耗远高于陆地移动（约3-5倍）
+- 游泳时负重影响更大（1.5倍陆地影响）
+- 游泳速度对消耗的影响更明显（速度平方项）
+
+#### 1. Idle（静止）
+- **速度倍数**：0.0（完全静止）
+- **体力消耗**：无（静止时恢复体力）
+- **适用场景**：站立、蹲伏、休息
+
+#### 2. Walk（行走）
+- **速度倍数**：Run速度 × 0.7（约为Run的70%）
+- **速度限制**：20% - 80%
+- **体力消耗**：低（基础消耗 + 速度相关消耗）
+- **适用场景**：正常移动、探索、节省体力
+
+#### 3. Run（跑步）
+- **速度倍数**：基础速度 × (1 - 负重惩罚)
+- **速度限制**：20% - 100%
+- **体力消耗**：中等（基于Pandolf模型）
+- **适用场景**：正常行军、长距离移动
+- **速度计算**：
+  - 基础速度 = 目标速度倍数 × 体力^0.6
+  - 最终速度 = 基础速度 × (1 - 负重惩罚)
+  - 例如：满体力、无负重时，Run速度 = 4.78 m/s（92%）
+
+#### 4. Sprint（冲刺）（v2.6.0优化）
+- **速度倍数**：Run速度 × 1.30（v2.6.0优化，比Run快30%）
+- **速度限制**：20% - 100%（最高速度 = 游戏最大速度5.2 m/s）
+- **体力消耗**：高（Run消耗 × 3.0倍，v2.6.0优化）
+- **适用场景**：追击、逃命、短距离冲刺
+- **速度计算**（统一增量模型）：
+  - Sprint速度 = Run速度 × (1 + 30%)（v2.6.0优化）
+  - Sprint完全基于Run的完整逻辑（双稳态-平台期、5秒阻尼过渡等）
+  - Sprint负重惩罚系数：0.15（Run为0.2），模拟爆发力克服阻力
+  - 例如：Run速度80%时，Sprint速度 = 104%（限制在100%）
+  - 28KG负重下，Run 3.6 m/s vs Sprint 4.7 m/s（差距 1.1 m/s）
+  - 最高速度限制在5.2 m/s（基于现实情况：一般健康成年人的Sprint速度约20-30 km/h）
+- **特点**：
+  - 速度比Run快30%（v2.6.0优化），确保在任何负重状态下都有明显差距
+  - 体力消耗大幅增加（3.0倍），不适合长时间使用
+  - 确保在任何负重和体力状态下，Sprint都比Run快30%的固定阶梯
+  - 只有在满体力、无负重时才能达到最高速度
+
+**移动类型对比表**：
+
+| 移动类型 | 速度倍数（相对于Run） | 最高速度限制 | 体力消耗倍数 | 适用场景 |
+|---------|---------------------|------------|------------|---------|
+| Idle | 0.0 | - | 0（恢复） | 静止、休息 |
+| Walk | 0.7 | 80% | 1.0 | 正常移动、探索 |
+| Run | 1.0 | 100% | 1.0 | 正常行军、长距离 |
+| Sprint | 1.30（v2.6.0优化） | 100% | 3.0（v2.6.0优化） | 追击、逃命、短距离 |
+
+### 环境因子系统（v2.10.0）
+
+系统会根据游戏内时间和天气动态调整体力消耗和恢复速度。
+
+#### 1. 热应激系统
+
+**时间段模型**：
+- **热应激时间段**：10:00-18:00
+- **10:00-14:00**：热应激逐渐增加（1.0 → 1.3）
+- **14:00-18:00**：热应激逐渐减少（1.3 → 1.0）
+- **峰值时间**：14:00（消耗增加30%）
+
+**室内豁免机制**：
+- **检测方式**：向上射线检测（Raycast），判断角色头顶是否有遮挡
+- **豁免效果**：室内热应激减少50%
+  - 室外峰值（1.3）→ 室内峰值（1.15）
+  - 公式：`室内热应激 = 1.0 + (室外热应激 - 1.0) × 0.5`
+
+**恢复影响**：
+- 热应激不仅影响消耗，还影响恢复速度
+- 恢复倍数 = `1.0 / 热应激倍数`
+- 例如：热应激1.3倍时，恢复速度降至约77%
+
+#### 2. 降雨湿重系统
+
+**降雨强度分级**：
+- **小雨**（强度 < 50%）：2kg湿重
+- **中雨**（强度 50%-80%）：4-6kg湿重（线性插值）
+- **暴雨**（强度 ≥ 80%）：8kg湿重
+
+**湿重衰减机制**：
+- **停止降雨后**：60秒内线性衰减至0
+- **衰减公式**：`当前湿重 = 初始湿重 × (1 - 已过时间 / 60秒)`
+
+#### 3. 总湿重计算
+
+**湿重来源**：
+- **游泳湿重**：上岸后7.5kg，30秒内衰减
+- **降雨湿重**：根据降雨强度，0-8kg，停止后60秒内衰减
+
+**总湿重计算**：
+- **两者都存在时**：加权平均（游泳权重0.6，降雨权重0.4）
+  - `总湿重 = 游泳湿重 × 0.6 + 降雨湿重 × 0.4`
+- **只有一个存在时**：直接使用较大值
+- **饱和上限**：总湿重不超过10kg（防止数值爆炸）
+
+**湿重影响**：
+- 湿重会增加总重量，影响体力消耗计算
+- 湿重会显示在调试信息中（每5秒一次）
+
+### 状态显示
+
+系统每秒输出一次状态信息，格式如下：
+
+```
+[RealisticSystem] 移动速度: 4.2 m/s | 体力: 65% | 速度倍率: 88% | 类型: Run | 坡度: 3.5° (上坡)
+```
+
+显示内容：
+- **移动速度**：上一秒的水平移动速度（米/秒）
+- **体力**：当前体力百分比（0-100%）
+- **速度倍率**：当前速度倍数（相对于标准速度的百分比）
+- **类型**：当前移动类型（Idle/Walk/Run/Sprint）
+- **坡度**：当前移动坡度角度和方向（仅在坡度有意义时显示）
 
 ### 调试信息
 
-开启 `m_bDebugLogEnabled` / Verbose 后，控制台可输出移动类型、体力、速度倍率、负重、坡度、环境因子（时间、热应激、降雨、室内、湿重）等。格式化集中在 `SCR_RSS_DebugDisplay` / UpdateLoop 调试模块。
+系统每5秒输出一次详细调试信息（仅在客户端），格式如下：
 
----
+```
+[RealisticSystem] 调试: 类型=Sprint | 体力=100% | 基础速度倍数=0.71 | 负重惩罚=0.10 | 最终速度倍数=0.90 | 坡度=5.0% | 坡度: 5.0° (上坡) | Sprint消耗倍数: 3.0x | 负重: 15kg/40.5kg (最大:40.5kg, 战斗:30kg)
+```
 
-## 安装方法
+调试信息包含：
+- **类型**：当前移动类型（Idle/Walk/Run/Sprint/游泳）
+- **体力**：当前体力百分比
+- **基础速度倍数**：根据体力计算的基础速度倍数
+- **负重惩罚**：负重对速度的影响
+- **最终速度倍数**：考虑所有因素后的最终速度倍数
+- **坡度**：坡度百分比（坡度已整合在Pandolf模型中）
+- **坡度信息**：坡度角度和方向（仅在坡度有意义时显示）
+- **Sprint消耗倍数**：Sprint时的体力消耗倍数（仅在Sprint时显示）
+- **负重信息**：当前重量、最大重量、战斗负重阈值和状态
+- **环境因子信息**（每5秒显示）：
+  - **时间**：当前游戏内时间（小时:分钟）
+  - **热应激**：当前热应激倍数（1.0-1.3）
+  - **降雨**：降雨状态和湿重（小雨/中雨/暴雨，湿重kg）
+  - **室内状态**：室内/室外
+  - **游泳湿重**：当前游泳湿重（kg，上岸后30秒内衰减）
 
-1. 将本仓库放到 Arma Reforger Workbench 的 `addons`（或等价路径）
-2. 打开 `addon.gproj` 并编译
-3. 在游戏 / 服务器中启用模组（依赖原版数据，见 `addon.gproj` Dependencies）
-
-## 使用方法
-
-1. 加载模组后系统自动接管体力与限速
-2. 在设置菜单或服务器 JSON 中选择预设（默认 **StandardMilsim**）
-3. 需要时打开 HUD、调试日志、泥泞滑倒、AI 战斗效果、数据导出
-4. Custom 下可调消耗/恢复倍率与环境开关；系统预设可用强制刷新回到 Bake 默认
-
-配置优先级：运行期动态配置（当前预设/服务器）优先；Custom 增量补全，避免粗暴覆盖用户已设项。
-
-### 外部模组 API
+## 外部模组 API
 
 ```c
 IEntity player = SCR_PlayerController.GetLocalControlledEntity();
@@ -276,140 +853,393 @@ if (!player)
 RSS_PlayerInfo info = SCR_RSS_API.GetPlayerInfo(player);
 if (info.isValid)
 {
-    PrintFormat("STA=%1 W'=%2 sprintAllowed=%3 speed=%4",
+    PrintFormat("STA=%1 W'=%2 sprintAllowed=%3",
         info.staminaPercent,
         info.wPrimePool01,
-        info.sprintAllowed,
-        info.currentSpeed);
+        info.sprintAllowed);
 }
-
-RSS_EnvironmentInfo env = SCR_RSS_API.GetEnvironmentInfo(player);
 ```
 
-详见 [docs/RSS_API.md](docs/RSS_API.md)。`anaerobicPercent` 已弃用，请读 **`wPrimePool01`**。
+完整字段见 [docs/RSS_API.md](docs/RSS_API.md)。请优先使用 **`wPrimePool01`**。
 
-### 调整参数
+## 安装方法
 
-- **玩法向**：设置 UI / `$profile` 下 RSS JSON / 平面参数数组
-- **预设嵌入**：改 `tools/optimized_rss_config_*_v6.json` → `embed_json_to_c.py` → `SCR_RSS_SettingsPresetBake.c`
-- **硬常量 / 开关**：`SCR_RSS_Constants.c`、`SCR_RSS_ConfigBridge.c`
-- **禁止**在业务里绕过 SpeedBridge 直接 `OverrideMaxSpeed` 盖 Foliage
+1. 将整个 `RealisticStaminaSystem` 文件夹复制到 Arma Reforger 工作台的 `addons` 目录
+2. 在 Arma Reforger 工作台中打开项目
+3. 编译模组
+4. 在游戏中选择并启用此模组
 
-常见常量（fallback，实际常被预设覆盖）：跛行阈值、最低速度倍率、跳跃冷却/惩罚、角色体重基准、各类 `RSS_PERF_*` 性能参数等。
+## 使用方法
 
----
+1. 启动游戏并加载模组
+2. 系统会自动监控体力值和负重
+3. 移动速度会根据体力百分比和负重自动调整
+4. 状态信息会每秒一次输出到控制台，格式如下：
+   ```
+   [RealisticSystem] 移动速度: 4.2 m/s | 体力: 65% | 速度倍率: 88%
+   ```
+
+## 调整系统参数
+
+玩法参数优先通过 **设置 UI / 服务器 JSON / 预设** 调整（`SCR_RSS_Settings` + `SCR_RSS_Params`，平面数组序列化）。系统预设数值在 `SCR_RSS_SettingsPresetBake`；可用 `tools/embed_json_to_c.py` 从 `optimized_rss_config_*_v6.json` 重新嵌入。
+
+硬常量与 fallback 仍集中在 `scripts/Game/RSS/Core/SCR_RSS_Constants.c` / `SCR_RSS_ConfigBridge.c`，例如：
+
+- **体力-速度**【v6】
+  - 行军档：`GetMarchWalk/Run/SprintSpeedMs`（经 ConfigBridge / Params）
+  - `SMOOTH_TRANSITION_END`（跛行阈值，约 0.05）、`EXHAUSTION_LIMP_SPEED`、`MIN_SPEED_MULTIPLIER`
+  - `willpower_threshold` 等字段保留兼容，**不再驱动玩家主速度平台期**
+- **Sprint / CP–W′**
+  - `critical_power_watts`、`w_prime_max_joules`、`w_prime_recovery_w_per_s`、`sprint_power_cap_watts`
+  - `sprint_enable_threshold`、`SPRINT_SPEED_BOOST`、`sprint_stamina_drain_multiplier` 等
+- **负重**
+  - `CHARACTER_WEIGHT`（默认约 90kg）
+  - `encumbrance_speed_penalty_*`、`encumbrance_stamina_drain_coeff`、`load_metabolic_dampening`
+
+更新频率在 `scripts/Game/Integration/PlayerBase_UpdateLoop.c` / `PlayerBase.c` 内通过 Callqueue 等调度（约 0.2 s 体力结算）：
+
+```c
+GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
+```
 
 ## 系统优势
 
-- **拟真**：功率–限速闭环，负重/坡度/环境进入同一代谢叙事
-- **可调**：三档预设 + Custom + 大量开关，服主可定难度
-- **可维护**：领域分层、`SCR_RSS_*` 命名、文件大小门禁
-- **可校验**：Python/Rust 数字孪生与生理锚点测试
+### 拟真体验
 
-战术层面：需要管理体力与负重；重装更依赖趴下恢复；冲刺受 W′ 约束，不能无限「意志力跑」。
+- **动态响应**：速度随体力实时变化，更真实
+- **平滑过渡**：体力变化时速度平滑过渡，避免突兀
+- **综合影响**：同时考虑体力和负重，更全面
 
----
+### 游戏平衡
+
+- **战略考虑**：需要管理体力和负重
+- **资源管理**：携带物品需要权衡重量和速度
+- **战术选择**：体力管理影响战术决策
 
 ## 已知问题与限制
 
-- HUD 默认关闭，需手动开启
-- 引擎对部分速度倍率仍有上限/合并规则；必须以 SpeedBridge 参与 min 合并
-- 部分表现（自定义 FOV/屏效）可能受「原生表现优先」开关影响
-- 极低体力/高负重/陡坡组合仍可能手感偏硬——属设计取向，可用 Tactical / Custom 放宽
-- 已知限速与滑步问题见 [docs/RSS_已知问题_限速与滑步.md](docs/RSS_已知问题_限速与滑步.md)
-- 部分旧文档仍写 v3 路径或群组 AI 旧模块名；**以本 README 与 `scripts/` 为准**
+### 当前限制
 
----
+- **状态显示**：✅ **已实现（v3.11+）** — 右上角 HUD 状态条显示体力/速度/负重等关键信息，通过 `m_bHintDisplayEnabled` 开关控制
+- **速度限制**：速度倍数值大于 1.0 时会被引擎限制为 1.0（无法超过标准速度）
+- **游泳体力管理**：✅ **已实现（v2.9.0）**
+  - 游泳时的体力管理已完整实现
+  - 游泳的能量消耗远高于陆地移动（约4倍）
+  - 使用 `IsSwimming()` 检测游泳状态
+  - 根据游泳速度和负重计算体力消耗
+  - 游泳时负重影响更大（1.5倍陆地影响）
+  - 游泳速度对消耗的影响更明显（速度平方项）
 
-## 工具链（`tools/`）
+### 技术问题
 
-| 入口 | 用途 |
-|------|------|
-| `rss_pipeline_v6.py` | `validate` / `optimize` / `anchors` |
-| `rss_sim/` | PyO3 仿真核（可回退纯 Python） |
-| `rust_pipeline_v6/` | Rust CLI / dual-run |
-| `test_v6_smoke.py` / `bench_physio_anchors.py` / `test_acft_2mile.py` | 冒烟与锚点 |
-| `check_script_size.py` / `check_enforce_syntax.py` | 提交前门禁 |
-| `embed_json_to_c.py` | JSON → SettingsPresetBake |
-
-```bash
-cd tools
-pip install -r requirements.txt
-python rss_pipeline_v6.py validate
-python test_v6_smoke.py
-python check_script_size.py
-```
-
-详见 [tools/README.md](tools/README.md)。
-
----
-
-## 文档索引
-
-| 文档 | 内容 |
-|------|------|
-| [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md) | v6 计算权威说明 |
-| [docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md) | 历史归档（v3/v5） |
-| [docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md) | 孪生公式 |
-| [docs/RSS_API.md](docs/RSS_API.md) | 外部 API |
-| [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) | 命名 / 分层 / 大小限制 |
-| [docs/灌木丛移动减速机制.md](docs/灌木丛移动减速机制.md) | 1.7+ 限速合并 |
-| [docs/泥泞滑倒判定模型.md](docs/泥泞滑倒判定模型.md) | 泥泞滑倒 |
-| [docs/RSS_已知问题_限速与滑步.md](docs/RSS_已知问题_限速与滑步.md) | 已知问题 |
-| [CHANGELOG.md](CHANGELOG.md) | 全版本变更 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 |
-
----
-
-## 近期版本要点（详情见 CHANGELOG）
-
-- **6.0.0** — CP–W′ 学术拟真重构；移除意志力平台期；代谢统一；AI 限速与玩家相位曲线对齐；工具 v6 管线
-- **5.0.0** — 双池（有氧 + 无氧/W′ 前身语义）大重写；命名统一 `SCR_RSS_*`；归档 v3.23.1
-- **3.23.1** — Reforger 1.7 灌木减速合并；稳定版预设锁定
-- **3.23.0** — AI 子系统管理器、泥泞开关、设置 UI 等
-
-更早的 v2.x–v3.22 细节（游泳湿重修复、时间单位、环境温度模型、CSB 药效改版等）全部保留在 [CHANGELOG.md](CHANGELOG.md)，不再整页粘贴进 README。
-
----
+- 需要测试 `GetStamina()` 和 `GetMaxStamina()` 方法是否可用（如果不可用，可能需要通过其他方式获取体力值）
 
 ## 开发说明
 
 ### 编译要求
-- Arma Reforger Workbench + EnforceScript
 
-### EnforceScript 注意
-- **禁止**三元 `?:`；单行 `if` 必须 `{}`
-- 使用 `ref`，避免废弃 `autoptr`
-- 提交前跑 `check_script_size.py`、`check_enforce_syntax.py`
+- Arma Reforger 工作台
+- EnforceScript 编译器
 
----
+### 代码结构
+
+**`scripts/Game/RSS/Core/SCR_RSS_SpeedCalculator.c` / `SCR_RSS_MetabolismMath.c` / `SCR_RSS_MetabolismModel.c` / `SCR_RSS_CriticalPowerModel.c`** — v6 核心：
+- `CalculateV6PhaseSpeedMultiplier()`：相位行军档速度（**【v6】无意志力平台期**；低 STA 跛行）
+- `CalculateSpeedMultiplierByStamina()`：兼容转发到上述 v6 相位曲线
+- `SCR_RSS_MetabolismModel`：Pandolf + ACSM 混合代谢功率；`InvertSpeedForPowerWatts`
+- `SCR_RSS_CriticalPowerModel`：动态 CP、W′ 焦耳放电/再填充、Sprint 门禁相关状态
+- `SCR_RSS_CollapseTransition`：5 s 撞墙阻尼（阈值 = 跛行点）
+- 负重速度惩罚 / 动作成本 / 战斗负重百分比等：见 `EncumbranceCache`、`ConfigBridge`、Environment 跳跃检测
+
+**`scripts/Game/Integration/SCR_StaminaOverride.c`** - 体力系统覆盖（拦截原生系统）：
+- `OnStaminaDrain()`: 覆盖体力变化事件，拦截原生系统修改
+- `SetTargetStamina()`: 设置目标体力值（唯一允许的修改方式）
+- `MonitorStamina()`: 主动监控机制（每50ms检查一次）
+- `CorrectStaminaToTarget()`: 纠正体力值到目标值
+
+**`scripts/Game/Integration/PlayerBase.c`** - 主控制器组件（速度更新和状态显示）：
+- `OnInit()`: 初始化控制器组件，获取体力组件引用，禁用原生体力系统
+- `UpdateSpeedBasedOnStamina()`: 根据体力、负重、移动类型和坡度精确更新速度（每0.2秒）
+  - 检测移动类型（Idle/Walk/Run/Sprint）
+  - 检测跳跃和翻越动作，应用额外体力消耗（v2.6.0优化：动态负重倍率、连续跳跃惩罚、冷却机制）
+  - 计算坡度影响，调整体力消耗
+  - 计算Sprint额外消耗（3.0倍，v2.6.0优化）
+  - 实现Sprint统一增量模型（v2.6.0优化）：基于Run速度加乘，确保30%固定阶梯
+  - 实现趴下休息负重优化（v2.6.0）：使用`ECharacterStance.PRONE`检测姿态
+- `CollectSpeedSample()`: 每秒采集一次速度样本
+- `DisplayStatusInfo()`: 显示速度、体力、速度倍率、移动类型和坡度信息
+
+**精确体力消耗模型**（完整的 Pandolf 模型，包含健康状态、累积疲劳和代谢适应）：
+- **完整 Pandolf 公式**：`E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))`
+  - E = 能量消耗率（W/kg）
+  - M = 总重量（身体重量 + 负重）
+  - V = 速度（m/s）
+  - G = 坡度（坡度百分比，正数=上坡，负数=下坡）
+- **坡度项**：`G·(0.23 + 1.34·V²)` 已直接整合在公式中，不需要单独的坡度倍数
+- **效率因子和疲劳因子**：应用于完整 Pandolf 模型的结果
+- **Sprint消耗倍数**：`sprint_multiplier = 3.0`（仅在Sprint时）
+
+**效率因子**（基于[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)，Palumbo et al., 2018）：
+- 健康状态效率因子（当前参数）：`fitness_efficiency_factor = 1.0 - 0.35 × fitness_level`（训练有素=1.0时，效率65%）
+- 代谢适应效率因子：根据速度比动态调整
+  - 有氧区（<60% VO2max）：`metabolic_efficiency_factor = 0.9`（更高效）
+  - 混合区（60-80% VO2max）：`0.9 → 1.2`（线性插值）
+  - 无氧区（≥80% VO2max）：`metabolic_efficiency_factor = 1.2`（低效但高功率）
+- 综合效率因子：`total_efficiency_factor = fitness_efficiency_factor × metabolic_efficiency_factor`
+
+**累积疲劳因子**（基于[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)，Palumbo et al., 2018）：
+- 疲劳因子：`fatigue_factor = 1.0 + 0.015 × max(0, exercise_duration_minutes - 5.0)`
+- 前5分钟无疲劳累积，之后每分钟增加1.5%消耗
+- 最大疲劳因子：`2.0`（消耗最多增加100%）
+- 静止时疲劳快速恢复（恢复速度是累积速度的2倍）
+
+**体力恢复模型**（考虑健康状态）：
+- 基础恢复率：`0.00015`（每0.2秒恢复0.015%）
+- 健康状态恢复倍数：`fitness_recovery_multiplier = 1.0 + 0.25 × fitness_level`（训练有素=1.0时，恢复速度增加25%）
+- 最终恢复率：`base_recovery_rate × fitness_recovery_multiplier`（训练有素时：0.0001875，每0.2秒恢复0.01875%）
 
 ## 参考文献
 
-1. **Pandolf, K. B., Givoni, B. A., & Goldman, R. F. (1977)**. Predicting energy expenditure with loads while standing or walking very slowly. *Journal of Applied Physiology*, 43(4), 577–581.  
-   https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577  
-   - 应用：陆地步行/负重/坡度代谢项
+本项目基于以下学术研究和数学模型：
 
-2. **Palumbo, M. C., et al. (2018)**. Personalizing physical exercise in a computational model of fuel homeostasis. *PLOS Computational Biology*, 14(4), e1006073.  
-   https://doi.org/10.1371/journal.pcbi.1006073  
-   - 应用：个性化效率、疲劳与代谢适应等建模思想
+1. **Pandolf, K. B., Givoni, B. A., & Goldman, R. F. (1977)**. Predicting energy expenditure with loads while standing or walking very slowly. *Journal of Applied Physiology*, 43(4), 577-581. https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577
+   - **应用**：本项目使用完整的 Pandolf 能量消耗模型计算体力消耗
+   - **公式**：`E = M·(2.7 + 3.2·(V-0.7)² + G·(0.23 + 1.34·V²))`
+   - **说明**：坡度项 `G·(0.23 + 1.34·V²)` 已直接整合在公式中
 
-3. Critical Power / W′ 与 Skiba 再填充相关运动生理学文献（见 v6 计算文档中的模型说明）
+2. **Palumbo, M. C., Morettini, M., Tieri, P., Diele, F., Sacchetti, M., & Castiglione, F. (2018)**. Personalizing physical exercise in a computational model of fuel homeostasis. *PLOS Computational Biology*, 14(4), e1006073. https://doi.org/10.1371/journal.pcbi.1006073
+   - **应用**：本项目采用个性化运动建模方法，包括：
+     - **健康状态系统**：训练有素者（fitness=1.0）能量效率提升约35%，恢复速度增加25%
+     - **累积疲劳系统**：长时间运动后，相同速度的消耗逐渐增加（每分钟增加1.5%）
+     - **代谢适应系统**：根据运动强度动态调整能量效率（有氧区效率高，无氧区效率低但功率高）
+   - **说明**：这些机制使体力系统能够更真实地模拟个体的生理响应
 
----
+3. **Critical Power / W′ 与 Skiba 再填充**（运动生理学）
+   - **应用**【v6】：`SCR_RSS_CriticalPowerModel` 动态 CP、W′ 焦耳池与 Elite 双指数再填充；详见 [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
+
+## 版本历史
+
+- **v6.0.0** (当前版本) - CP–W′ 拟真重构（见上文 v6.0.0 章节与 CHANGELOG）
+
+- **v3.2.0** - 时间单位错误修复（历史）
+  - **游泳湿重系统修复（Swimming Wet Weight Fix）**
+    - 修复 `SCR_EnvironmentFactor.UpdateEnvironmentFactors()` 方法没有接收游泳湿重参数的问题
+    - 修复前：总湿重计算只考虑降雨湿重，完全忽略游泳湿重
+    - 修复后：正确接收并使用 `swimmingWetWeight` 参数，使用 `SwimmingStateManager.CalculateTotalWetWeight()` 计算总湿重
+    - 修复前：上岸后湿重不增加，体力消耗不受影响
+    - 修复后：上岸后立即获得 7.5kg 湿重，30秒内线性衰减到 0kg
+    - 更新调试信息，添加总湿重显示
+
+  - **时间单位错误修复（Time Unit Bug Fixes）**
+    - 修复 `GetWorldTime()` 返回毫秒但多处代码没有转换为秒的问题
+    - 修复前：所有时间相关的计算都错误了 1000 倍
+    - 修复后：所有时间计算正确使用秒作为单位
+    - 影响范围：
+      - `PlayerBase.c`: 6 处修复（FatigueSystem、SwimmingStateManager、EPOC延迟）
+      - `SCR_RSS_JumpVaultDetection.c`: 1 处修复（连续跳跃检测）
+      - `SCR_RSS_ConfigManager.c`: 1 处修复（配置重载冷却）
+      - `SCR_RSS_DebugDisplay.c`: 3 处修复（调试日志时间检查）
+      - `SCR_RSS_UpdateCoordinator.c`: 1 处修复（速度计算时间）
+
+  - **ExerciseTracker 时间单位修复**
+    - 修复 `ExerciseTracker` 期望接收毫秒但传入了秒的问题
+    - 修复前：时间被除以 1000.0 两次，运动时间和休息时间累积慢 1000 倍
+    - 修复后：正确传入毫秒，`ExerciseTracker` 内部转换为秒
+    - 影响范围：
+      - `PlayerBase.c:113`: `ExerciseTracker.Initialize()` 传入毫秒
+      - `PlayerBase.c:493`: `currentTimeForExercise` 使用毫秒
+    - 修复前的影响：
+      - 疲劳恢复需要 16.7 小时后才开始（而不是 60 秒）
+      - 快速恢复期持续 50 小时（而不是 3 分钟）
+      - 中等恢复期持续 167 小时（而不是 10 分钟）
+    - 修复后：所有时间相关功能正常工作
+
+  - **代码统计**：12处修复，涉及5个文件
+
+  - **已知问题**：
+    - **体力恢复速度可能过快**
+      - 当前恢复速度基于 Optuna 优化的参数，可能在实际游戏中感觉过快
+      - 作者对目前体力恢复速度感到不满意，可能会在以后调整
+      - 恢复速度相关参数：
+        - `base_recovery_rate`: 基础恢复率（每 0.2 秒）
+        - `standing_recovery_multiplier`: 站姿恢复倍数
+        - `prone_recovery_multiplier`: 趴姿恢复倍数
+        - `FAST_RECOVERY_MULTIPLIER`: 快速恢复期倍数（3.5x）
+        - `MEDIUM_RECOVERY_MULTIPLIER`: 中等恢复期倍数（1.8x）
+      - 管理员可以通过修改配置文件中的 `m_sSelectedPreset` 字段切换预设
+      - 或者在 `Custom` 预设中手动调整恢复速度相关参数
+
+  - 详细修复内容请参考 [CHANGELOG.md](CHANGELOG.md)
+
+- **v2.17.0** (2026-01-20) - Python模拟器完整优化
+  - **地形因素影响系统**：铺装路面（1.0x）、碎石路（1.1x）、高草丛（1.2x）、重度灌木丛（1.5x）、软沙地（1.8x）
+  - **环境因素影响系统**：
+    - 温度影响：基于时间段的热应激计算（10:00-18:00，正午14:00达到峰值）
+    - 风速影响：顺风减少消耗（最多10%），逆风增加消耗（最多5%）
+    - 表面湿度影响：湿地趴下时的恢复惩罚（15%）
+  - **动作成本计算系统**：跳跃消耗（3.5%体力，连续跳跃50%惩罚）、攀爬消耗（1%/秒）
+  - **特殊运动模式系统**：游泳消耗（静态踩水25W基础+动态v³阻尼）、静态站立消耗（Pandolf静态项）
+  - **高级修正模型系统**：Santee下坡修正（Givoni-Goldman 模型已弃用）
+  - **战斗负重系统**：战斗负重百分比计算（基于30kg阈值）
+  - **模拟器参数扩展**：新增地形类型、温度、风速、表面湿度、姿态、时间、室内等参数
+  - **代码统计**：simulate_stamina_system.py新增12个函数（约450行）
+- **v2.16.0** - 休息时间累积修复和虚拟气温曲线
+  - 修复时间单位错误：GetWorldTime()返回毫秒，需要除以1000转换为秒
+  - 虚拟气温曲线：使用余弦函数模拟昼夜温度变化，峰值出现在14:00
+  - 热应激阈值优化：将热应激挂钩到阈值（26°C），而非线性时间（10:00-18:00）
+  - 静态消耗优化：降低PANDOLF静态系数（从1.5/2.0降到1.2/1.6）
+  - 跳跃和攀爬冷却拦截：跳跃冷却2秒，攀爬冷却5秒
+- **v2.15.0** - 配置系统
+  - 使用[BaseContainerProps]和[Attribute]属性实现自动序列化
+  - 使用官方的SCR_JsonLoadContext和SCR_JsonSaveContext
+  - 配置文件路径：$profile:RealisticStaminaSystem.json
+  - 支持热重载（无需重启服务器）
+  - 调试日志门禁系统：零开销门禁、时间间隔控制、工作台模式自动开启调试
+  - 配置管理器（SCR_RSS_ConfigManager）：单例模式，自动加载/保存配置
+  - 配置类（SCR_RSS_Settings）：包含所有可配置参数（调试、体力、移动、环境、高级、性能）
+  - 常量桥接方法（SCR_RSS_Constants.c）：15个静态方法用于获取配置值
+- **v2.14.1** - 室内检测系统
+  - 使用建筑物边界框检测角色是否在室内
+  - 检测逻辑：检查角色位置是否在建筑物的世界坐标边界框内
+  - 局限性说明：边界框可能包含建筑物周围的空间，无法区分"在边界框内"和"真正在建筑物内部"
+- **v2.14.0** - 高级环境因子系统
+  - 精确降雨强度系统：使用GetRainIntensity()API替代字符串匹配
+  - 风阻模型：基于风速和风向计算逆风阻力
+  - 路面泥泞度系统：基于积水程度计算泥泞惩罚
+  - 实时气温热应激模型：使用GetTemperatureAirMinOverride()API
+  - 地表湿度和静态恢复惩罚：趴下时受地表湿度影响
+  - SCR_RSS_EnvironmentFactor.c - 高级环境因子模块（约1250行）
+- **v2.13.0** - 深度生理压制恢复系统
+  - 核心概念：从"净增加"改为"代谢净值"
+  - 最终恢复率 = (基础恢复率 × 姿态修正) - (负重压制 + 氧债惩罚)
+  - 新增呼吸困顿期（RECOVERY_COOLDOWN）：停止运动后5秒内系统完全不处理恢复
+  - 新增负重对恢复的静态剥夺机制（LOAD_RECOVERY_PENALTY）：负重越大，恢复越慢
+  - 新增边际效应衰减机制（MARGINAL_DECAY）：体力>80%时恢复速度显著降低
+  - 新增最低体力阈值限制（MIN_RECOVERY_STAMINA_THRESHOLD）：体力<20%时需要10秒休息才能开始恢复
+  - 恢复系统参数全面调整：
+    - BASE_RECOVERY_RATE：0.0005 → 0.0003（基础恢复时间从6.6分钟延长到11分钟）
+    - RECOVERY_STARTUP_DELAY_SECONDS：1.5 → 5.0（呼吸困顿期从1.5秒延长到5秒）
+    - STANDING_RECOVERY_MULTIPLIER：1.0 → 0.4（站姿恢复效率从100%降到40%）
+    - CROUCHING_RECOVERY_MULTIPLIER：1.3 → 1.5（蹲姿恢复效率从130%提升到150%）
+    - PRONE_RECOVERY_MULTIPLIER：1.7 → 2.2（趴姿恢复效率从170%提升到220%）
+  - 更新Python趋势图脚本以反映新的恢复参数
+  - 创建深度生理压制恢复系统测试脚本
+- **v2.11.0** - 进一步模块化重构和调试信息优化
+  - 代码精简：PlayerBase.c 减少 40%（1362行 → 817行）
+  - 新增游泳状态管理模块（SCR_RSS_SwimmingState.c）
+  - 新增体力更新协调器模块（SCR_RSS_UpdateCoordinator.c）
+  - 扩展调试显示模块（SCR_RSS_DebugDisplay.c）
+  - 统一调试信息输出接口
+- **v2.10.0** - 环境因子系统（热应激和降雨湿重）
+- **v2.9.0** - 游泳体力管理完善与游泳速度检测修复
+  - 游泳体力管理：引入3D物理阻力/浮力模型，区分水平/垂直代价，包含湿重效应
+  - 修复游泳速度始终为0：改为使用 `GetOrigin()` 位置差分测速（游泳命令位移不更新 `GetVelocity()` 的情况下仍可正确取速）
+  - 速度显示与体力消耗使用同一套游泳速度输入，调试与体验更一致
+
+- **v2.6.0** - Sprint速度系统优化和跳跃/翻越机制增强
+  - 新增趴下休息时的负重优化：当角色趴下休息时，负重影响降至最低（地面支撑装备重量）
+  - 新增跳跃冷却机制：3秒冷却时间，防止重复触发
+  - 新增连续跳跃惩罚机制（无氧欠债）：3秒内连续跳跃，每次额外增加50%消耗
+  - 新增低体力禁用跳跃：体力 < 10% 时禁用跳跃
+  - Sprint速度系统优化（统一增量模型）：
+    - Sprint速度增量从15%提升到30%，确保负重状态下仍有明显差距
+    - Sprint计算完全基于Run的完整逻辑（双稳态-平台期、5秒阻尼过渡等）
+    - Sprint负重惩罚系数从20%降为15%（模拟爆发力克服阻力）
+    - 重构Sprint计算逻辑，确保始终比Run快30%的固定阶梯
+    - 效果：28KG负重下，Run 3.6 m/s vs Sprint 4.7 m/s（差距 1.1 m/s）
+  - Sprint体力消耗优化：从2.5倍提升到3.0倍，平衡速度提升带来的优势
+  - 跳跃和翻越消耗优化（动态负重倍率）：
+    - 跳跃基础消耗从3%提升到3.5%
+    - 翻越起始消耗从1.5%提升到2%
+    - 使用动态负重倍率：`实际消耗 = 基础消耗 × (currentWeight / 90.0) ^ 1.5`
+  - 跳跃和翻越UI交互增强：跳跃后更新Exhaustion信号，触发深呼吸音效和视觉模糊效果
+
+- **v2.5** - Pandolf 模型医疗级扩展和系统优化
+  - 新增地形系数系统：根据地面类型动态调整消耗（铺装路面 1.0 → 深雪 2.1-3.0）
+  - 新增静态负重站立消耗：负重下站立时减缓恢复速度（基于 Pandolf 静态项公式）
+  - 新增 Santee 下坡修正模型：精确处理下坡时的体力消耗（超过 -15% 时需"刹车"）
+  - （历史记录）新增 Givoni-Goldman 跑步模式切换：速度 >2.2 m/s 时自动切换到跑步模型
+  - 新增恢复启动延迟机制：负重下恢复需静止 3 秒后才生效，防止机制滥用
+  - 新增网络同步容差优化：连续偏差累计触发（2 秒容差），速度插值平滑处理
+  - 新增疲劳积累系统：超出最大消耗转化为疲劳，降低最大体力上限（最多 30%）
+  - 新增 UI 信号桥接系统：让官方 UI 特效（视觉模糊、呼吸声）响应自定义体力系统状态
+  - 性能优化：地形检测频率根据移动状态动态调整
+
+- **v2.4** - 累积疲劳和代谢适应系统
+  - 新增累积疲劳系统：长时间运动后，相同速度的消耗逐渐增加（基于[Palumbo et al., 2018](https://doi.org/10.1371/journal.pcbi.1006073)）
+    - 前5分钟无疲劳累积
+    - 之后每分钟增加1.5%消耗（30分钟后增加45%）
+    - 最大疲劳因子2.0（消耗最多增加100%）
+    - 静止时疲劳快速恢复（恢复速度是累积速度的2倍）
+  - 新增代谢适应系统：根据运动强度动态调整能量效率（基于[Palumbo et al., 2018](https://doi.org/10.1371/journal.pcbi.1006073)）
+    - 有氧区（<60% VO2max）：效率因子0.9（更高效，主要依赖脂肪）
+    - 混合区（60-80% VO2max）：效率因子0.9→1.2（线性插值，糖原+脂肪混合）
+    - 无氧区（≥80% VO2max）：效率因子1.2（低效但高功率，主要依赖糖原）
+  - 优化综合效率因子：健康状态效率 × 代谢适应效率，更真实地模拟能量代谢
+  - 更新所有Python脚本：同步累积疲劳和代谢适应系统到所有趋势图生成脚本
+
+- **v2.8.0** - 深度模块化重构
+  - 新增4个核心计算模块（速度计算、体力消耗、体力恢复、调试显示）
+  - PlayerBase.c从1554行减少到1283行（减少17%）
+  - UpdateSpeedBasedOnStamina函数从990行减少到约500行（减少49%）
+  - 解决游戏工作台多行代码支持问题
+  - 代码结构更清晰，可维护性显著提升
+  - 修复EnforceScript语法兼容性问题
+
+- **v2.7.0** - 代码模块化重构
+  - 创建10个模块化组件，提高代码可维护性
+  - PlayerBase.c从2037行减少到1464行（减少28%）
+  - 所有常量定义和辅助函数提取到独立模块
+
+- **v2.3** - 健康状态系统和多维交互模型
+  - 新增健康状态系统：实现[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)（基于Palumbo et al., 2018）
+    - 训练有素者（fitness=1.0）能量效率提高18%（基础消耗、速度线性项、速度平方项均减少18%）
+    - 训练有素者恢复速度增加25%
+    - 角色设置为22岁男性，训练有素水平
+  - 改进多维交互模型：添加速度×负重×坡度三维交互项
+  - 更新所有Python脚本：同步健康状态系统到所有趋势图生成脚本
+
+- **v2.2** - 移动类型和坡度系统
+  - 添加移动类型系统（Idle/Walk/Run/Sprint）
+  - 添加Sprint机制（Sprint速度/消耗参数在后续版本持续优化）
+  - 添加坡度影响系统（上坡/下坡影响体力消耗）
+  - 添加跳跃和翻越体力消耗
+  - 增强状态显示（包含移动类型和坡度信息）
+  - 增强调试信息（包含更多详细信息）
+  - 优化代码结构，注释掉拦截体力系统的调试信息
+
+- **v2.1** - 参数优化版本
+  - 优化参数以达到2英里15分27秒目标
+  - 速度参数优化以达成2英里15分27秒目标（历史版本参数与当前版本不同）
+  - 速度平方项系数从0.0003降低至0.0001
+  - 完成时间：925.8秒（15.43分钟），提前1.2秒完成目标 ✅
+  - 使用精确数学模型（α=0.6，Pandolf模型）
+
+- **v2.0** - Realistic Stamina System (RSS) - 拟真体力-速度系统
+  - 实现动态速度调整系统（根据体力百分比）
+  - 实现负重影响系统（负重影响速度）
+  - 实现精确数学模型（不使用近似）
+  - 实现综合状态显示（速度、体力、倍率）
+  - 实现平滑速度过渡机制
+  - 实现原生体力系统完全覆盖
+
+- **v1.0** - 初始版本（已废弃）
+  - 实现固定速度修改功能（50%）
+  - 实现速度显示功能（每秒一次）
 
 ## 贡献
 
-欢迎 Issue 与 Pull Request。贡献即同意以 AGPL-3.0 发布修改。见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 
-[GNU Affero General Public License v3.0](LICENSE)
+本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
 
 ## 作者
 
-- **ViVi141** — 747384120@qq.com
+- **ViVi141**
+- Email: 747384120@qq.com
 
 ---
 
-**注意：** 本模组深度介入移动与体力机制，可能与其他改速度/体力的模组冲突。建议先在测试环境验证。
+**注意：** 本模组修改了游戏的核心速度机制，可能会影响游戏体验。建议在测试环境中使用。
