@@ -12,20 +12,24 @@ class SCR_RSS_StaminaComponentCompat
             staminaComp = CharacterStaminaComponent.Cast(
                 owner.FindComponent(CharacterStaminaComponent));
 
+        if (!staminaComp && owner)
+            staminaComp = CharacterStaminaComponent.Cast(
+                owner.FindComponent(SCR_CharacterStaminaComponent));
+
         SCR_CharacterStaminaComponent rssStamina =
             SCR_CharacterStaminaComponent.Cast(staminaComp);
         if (!rssStamina)
+        {
+            Print("[RSS] Compat: SCR_CharacterStaminaComponent missing on character "
+                + "(foreign prefab may have removed it)");
             return null;
+        }
 
         if (!rssStamina.IsActive() && owner)
         {
             rssStamina.Activate(owner);
-            if (SCR_PlayerBaseConfigHelper.IsRssDebugEnabled())
-            {
-                Print(
-                    "[RSS] Compat: re-activated SCR_CharacterStaminaComponent "
-                    + "(foreign prefab had Enabled 0)");
-            }
+            Print("[RSS] Compat: re-activated SCR_CharacterStaminaComponent "
+                + "(foreign prefab had Enabled 0)");
         }
 
         return rssStamina;

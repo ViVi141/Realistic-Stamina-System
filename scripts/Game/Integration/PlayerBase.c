@@ -387,6 +387,7 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastConfigTimeoutWarningTime = -1.0;
 
     protected bool m_bRssWaitingGameModeConfig = false;
+    protected static bool s_bLoggedEnergieCoeffOnce = false;
     protected float m_fRssConfigWaitStartTime = -1.0;
 
     protected ref SCR_RSS_CollapseTransition m_pCollapseTransition;
@@ -883,8 +884,40 @@ modded class SCR_CharacterControllerComponent
             m_pTerrainDetector.SetIsAiEntity(!controlled);
 
         if (controlled)
+        {
+            // CPR 等模组可能在 OnInit 时关掉体力组件；接管时再解析一次。
+            if (!m_pStaminaComponent)
+            {
+                m_pStaminaComponent = SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
+                    owner,
+                    GetStaminaComponent());
+                if (m_pStaminaComponent)
+                {
+                    m_pStaminaComponent.SetAllowNativeStaminaSystem(false);
+                    m_pStaminaComponent.SetTargetStamina(
+                        SCR_RSS_MetabolismMath.INITIAL_STAMINA_AFTER_ACFT);
+                }
+            }
+            else
+            {
+                SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
+                    owner,
+                    m_pStaminaComponent);
+            }
+
+            // Workbench/听主机：OnControlled 与 LocalControlledEntity 可能不同步，
+            // 强制重开 loop，并延迟重试，避免玩家 tick 永久不起。
+            m_bRssStaminaLoopActive = false;
             SCR_PlayerBaseLoop.EnsureClientLoop(this);
-        
+            if (GetGame() && GetGame().GetCallqueue())
+            {
+                GetGame().GetCallqueue().CallLater(
+                    SCR_PlayerBaseLoop.DelayedEnsureClient, 500, false, this);
+                GetGame().GetCallqueue().CallLater(
+                    SCR_PlayerBaseLoop.DelayedEnsureClient, 2000, false, this);
+            }
+        }
+
         if (controlled && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
             InputManager inputManager = GetGame().GetInputManager();
@@ -1058,8 +1091,9 @@ modded class SCR_CharacterControllerComponent
         {
             SCR_RSS_ConfigManager.Load();
 
-            if (IsRssDebugEnabled())
+            if (IsRssDebugEnabled() && !s_bLoggedEnergieCoeffOnce)
             {
+                s_bLoggedEnergieCoeffOnce = true;
                 float coeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
                 PrintFormat("[RSS] 初始 energie->stamina coeff = %1", coeff);
             }
@@ -1173,8 +1207,8 @@ modded class SCR_CharacterControllerComponent
         if (GetGame() && GetGame().GetCallqueue())
         {
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedStart, 500, false, this);
-            if (!Replication.IsServer())
-                GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureClient, 2000, false, this);
+            // 听主机也是 IsServer()：仍需 DelayedEnsure，否则玩家 loop 可能永不启动。
+            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureClient, 2000, false, this);
             if (Replication.IsServer() && !IsPlayerControlled())
                 GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
         }

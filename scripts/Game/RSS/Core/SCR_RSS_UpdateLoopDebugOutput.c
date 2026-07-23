@@ -136,6 +136,9 @@ class SCR_RSS_UpdateLoopDebugOutput
     }
 
     //! AI tick debug (kept out of modded PlayerBase fragments for link reliability)
+    //! 默认关闭：波次刷兵时每名 AI 一条会刷爆日志并拖帧；仅 Verbose 时按全局节流输出。
+    protected static float s_fNextGlobalAiDebugMs = 0.0;
+
     static void LogAiStaminaTick(
         IEntity owner,
         float staminaPercent,
@@ -150,10 +153,16 @@ class SCR_RSS_UpdateLoopDebugOutput
     {
         if (!owner || !SCR_PlayerBaseConfigHelper.IsRssDebugEnabled())
             return;
+        if (!SCR_RSS_ConfigBridge.IsVerboseLoggingEnabled())
+            return;
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
             return;
 
         float nowMs = GetGame().GetWorld().GetWorldTime();
+        if (nowMs < s_fNextGlobalAiDebugMs)
+            return;
+        s_fNextGlobalAiDebugMs = nowMs + 30000.0;
+
         float aiDebugLastPrint = -1.0;
         if (aiManager)
             aiDebugLastPrint = aiManager.GetDebugLastPrintTime();

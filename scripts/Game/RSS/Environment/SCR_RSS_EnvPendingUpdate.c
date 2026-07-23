@@ -2,6 +2,8 @@
 
 class SCR_RSS_EnvPendingUpdate
 {
+    protected static float s_fNextGlobalEnvLogTime = 0.0;
+
     static void SyncWeatherCacheFromSnapshot(
         RSS_WeatherSnapshot syncSnap,
         inout float lastKnownTOD,
@@ -75,8 +77,10 @@ class SCR_RSS_EnvPendingUpdate
         float totalWetWeight,
         float windSpeed)
     {
-        if (!SCR_RSS_DebugBatchManager.ShouldLog(nextEnvLogTime))
+        // 使用全局节流：多 AI 各带一份 nextEnvLogTime 仍会刷屏。
+        if (!SCR_RSS_DebugBatchManager.ShouldLog(s_fNextGlobalEnvLogTime))
             return;
+        nextEnvLogTime = s_fNextGlobalEnvLogTime;
 
         PrintFormat("[RSS] 环境因子 / Environment Factors: 虚拟气温=%1°C | 热应激=%2x | 降雨湿重=%3kg | 总湿重=%4kg | 风速=%5m/s | Simulated Temp=%1°C | Heat Stress=%2x | Rain Weight=%3kg | Total Wet Weight=%4kg | Wind Speed=%5m/s",
             Math.Round(cachedTemperature * 10.0) / 10.0,

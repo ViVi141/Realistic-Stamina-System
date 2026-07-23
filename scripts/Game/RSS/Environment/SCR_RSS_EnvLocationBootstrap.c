@@ -2,6 +2,8 @@
 
 class SCR_RSS_EnvLocationBootstrap
 {
+    protected static bool s_bLoggedLocationEstimateOnce = false;
+
     //! Server+debug: log engine coords or estimate lat/lon from sunrise/sunset.
     static void TryEstimateOnInit(
         TimeAndWeatherManagerEntity weatherManager,
@@ -25,10 +27,9 @@ class SCR_RSS_EnvLocationBootstrap
         if (engLat != 0.0 || engLon != 0.0)
         {
             skipEstimate = true;
-            float tmpLocLog1 = nextLocationEstimateLogTime;
-            if (SCR_RSS_DebugBatchManager.ShouldLog(tmpLocLog1))
+            if (!s_bLoggedLocationEstimateOnce)
             {
-                nextLocationEstimateLogTime = tmpLocLog1;
+                s_bLoggedLocationEstimateOnce = true;
                 PrintFormat("[RSS][LocationEstimate] using engine coords lat=%1 lon=%2", engLat, engLon);
             }
         }

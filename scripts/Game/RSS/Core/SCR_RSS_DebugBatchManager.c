@@ -81,9 +81,11 @@ class SCR_RSS_DebugBatchManager
     // 在帧末刷新批次：输出所有累积行并清空
     static void FlushDebugBatch()
     {
-        if (!s_bDebugBatchActive || !s_aDebugBatchLines || s_aDebugBatchLines.Count() == 0)
+        if (!s_bDebugBatchActive)
             return;
         s_bDebugBatchActive = false;
+        if (!s_aDebugBatchLines || s_aDebugBatchLines.Count() == 0)
+            return;
         World world = GetGame().GetWorld();
         if (world)
             s_fLastBatchFlushTime = world.GetWorldTime() / 1000.0;

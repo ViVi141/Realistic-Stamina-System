@@ -68,7 +68,9 @@ class SCR_RSS_EnvironmentDebug
         PrintFormat("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(snap.m_fSurfaceWetnessPenalty * 100.0) / 100.0);
     }
 
-    //! Initialize 时的天气管理器调试输出
+    //! Initialize 时的天气管理器调试输出（全会话仅一次，避免波次 AI 刷屏）
+    protected static bool s_bLoggedInitWeatherOnce = false;
+
     static void LogInitWeatherDebug(
         TimeAndWeatherManagerEntity weatherManager,
         bool useEngineTemperature,
@@ -82,6 +84,9 @@ class SCR_RSS_EnvironmentDebug
             return;
         if (!SCR_RSS_ConfigBridge.IsDebugEnabled())
             return;
+        if (s_bLoggedInitWeatherOnce)
+            return;
+        s_bLoggedInitWeatherOnce = true;
 
         bool overrideTemp = weatherManager.GetOverrideTemperature();
         float tempMin = weatherManager.GetTemperatureAirMinOverride();

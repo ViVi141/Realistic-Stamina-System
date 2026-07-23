@@ -729,6 +729,17 @@ modded class SCR_CharacterControllerComponent
         m_bRssStaminaLoopActive = true;
         int intervalMs = GetSpeedUpdateIntervalMs();
         GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.Tick, intervalMs, false, this);
+
+        if (IsRssDebugEnabled() && IsPlayerControlled())
+        {
+            string hasStamina = "0";
+            if (m_pStaminaComponent)
+                hasStamina = "1";
+            PrintFormat(
+                "[RSS] Player stamina loop started (interval=%1ms, staminaComp=%2)",
+                intervalMs,
+                hasStamina);
+        }
         
         if (IsRssDebugEnabled())
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.CollectSpeedSampleBridge, SPEED_SAMPLE_INTERVAL_MS, false, this);

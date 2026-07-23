@@ -51,6 +51,10 @@ class SCR_RSS_ConfigManager
     {
         // 工作台模式：强制使用嵌入的预设值，避免 profile 覆盖导致消耗为 0
         #ifdef WORKBENCH
+        // 波次刷兵时每个角色 OnInit 都会 Load()：已加载则直接返回，避免反复 InitPresets/Save/Print。
+        if (m_bIsLoaded && m_Settings)
+            return;
+
         m_Settings = new SCR_RSS_Settings();
         m_Settings.m_sSelectedPreset = "EliteStandard";
         m_Settings.InitPresets(true);
