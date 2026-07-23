@@ -1,161 +1,247 @@
 # Realistic Stamina System (RSS) v6.0.0
 
-[中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
+[中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Short hub](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
 [![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
-**Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
-It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
+**Realistic Stamina System (RSS)** is a stamina and movement-speed mod for **Arma Reforger**.  
+It drives drain, recovery, and speed limits with exercise-physiology models (Pandolf / ACSM / Critical Power–W′), not flat constant deductions.
 
-## Authors
-
-- **Author**: ViVi141
-- **Email**: 747384120@qq.com
+- **Author**: ViVi141 (747384120@qq.com)
 - **License**: [AGPL-3.0](LICENSE)
+- **Mod ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
+- **Recommended game version**: Arma Reforger **1.7+** (foliage/wire slowdown merges with RSS limits)
+- **Config version**: `SCR_RSS_ConfigManager` → `6.0.0`
 
-## Highlights
+> Release history lives in [CHANGELOG.md](CHANGELOG.md). This README documents the **current tree only**.
 
-- **v6 CP–W′ power budget**: Pandolf/ACSM metabolism → dynamic CP → W′ joules; Sprint = `invert(P_available)`.
-- **Phase-based march speeds**: Walk/Run/Sprint use configured m/s targets; **no 25% willpower plateau**.
-- **Elite Skiba W′ refill**; Standard/Tactical linear recovery + tiered cooldown.
-- **v_drain closed loop**: drain and `SetSpeedLimit` share `m_fAppliedSpeedLimitMs`.
-- **Slope-adaptive pacing**: Tobler-based uphill/downhill speed feedback.
-- **Encumbrance system**: load affects metabolic cost and dynamic CP more than hard speed caps.
-- **Movement types**: Idle / Walk / Run / Sprint.
-- **Environmental stress**: heat stress + rain wet weight.
-- **Swimming stamina management**: 3D physical model (drag + vertical work + treading).
-- **EPOC delay**: post-exercise oxygen consumption tied to peak exercise power.
-- **Modular architecture**: metabolism model, CP model, update coordination, etc.
+---
 
-For the full v6 calculation reference, see:
-- **`docs/RSS_v6_计算逻辑权威版.md`** (authoritative v6 logic, Chinese)
-- **Changelog**: `CHANGELOG.md`
-- **Chinese full README**: `README_CN.md`
+## Core loop (v6)
 
-## v3.14.1 Updates
+Each tick (~17 ms; stamina settlement coordinated at 0.2 s):
 
-**2026-03-05**
+```
+v_meas → P(v) [MetabolismModel]
+      → CP_eff / W′ [CriticalPowerModel]
+      → v_max = invert(P_target) [DrainCalculator + SpeedCalculator]
+      → SetSpeedLimit [SpeedBridge]  (min with foliage/wire; does not overwrite native slowdown)
+```
 
-### ✅ Added
+| Concept | Role |
+|------|------|
+| **Aerobic bar (STA)** | Still drives the engine stamina UI; very low STA (~&lt;5%) → limp + collapse damping |
+| **W′ power reserve** | Power above dynamic CP discharges in joules; exposed as normalized `wPrimePool01` |
+| **Sprint** | `v_sprint = invert(min(sprint_cap, CP + W′/Δt))`; gated by aerobic + W′ thresholds |
+| **v_drain** | Drain uses `min(v_meas, appliedLimit)` so accounting matches the applied cap |
+| **Removed** | 25%/35% “willpower plateau”, fixed anaerobic bar drain, etc. |
 
-- **Tactical sprint burst and cooldown** - First 8 s of sprint: encumbrance speed penalty ×0.2; 8–13 s buffer: linear transition to full penalty; 15 s cooldown after burst end or release, during which re-sprint does not trigger burst.
-- **Indoor stairs encumbrance speed reduction** - When indoor and raw slope &gt; 0, encumbrance speed penalty ×0.4; new `GetRawSlopeAngle` for stairs detection.
-- **Slope speed transition snap-up** - If target speed exceeds current smoothed value by ≥0.08, skip 5 s transition and snap to target (avoids frequent micro-acceleration on gentle slopes while climbing).
-- **Camera inertia and head bob (first-person)** - Start lag/tilt, decel overshoot (nonlinear with load), vertical step bob and uphill sway; sprint FOV tied to tactical burst (Burst +5° / Cruise +3° / Limp −2°). See [CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c), [SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c).
+Authoritative math (Chinese): [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
 
-### 🔁 Changed
+---
 
-- **Slope and drain/speed** - Gentle downhill drain reduction cap 60% (was 50%); Tobler slope speed: uphill ×1.15, downhill ×1.15 with max 1.25, then 30% pull toward 1.0.
+## Features
 
-### 📚 Docs
+### Physiology & locomotion
+- Pandolf (walk) + ACSM (run/sprint) metabolism with C¹ blend in between
+- Dynamic CP (load / grade / environment / integral fatigue) and W′ refill (Elite: Skiba biexponential; Standard/Tactical: linear W/s)
+- March gait targets Walk / Run / Sprint (m/s); load mainly raises metabolic cost
+- Slope: Tobler-style pace feedback, nonlinear grade cost, smoothed slope-speed transition
+- Jump / vault extra cost and rapid-repeat penalty
+- Swimming 3D drag model (horizontal drag, vertical work, treading, post-exit wet weight)
+- Integral fatigue I(t) + EPOC (post-exercise drain ∝ peak power)
 
-- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) updated with tactical sprint, indoor stairs, slope transition, camera/head bob sections and constant tables.
+### Environment
+- Heat / cold stress, rain wet weight, wind resistance, mud penalty
+- Indoor detection (raycast), terrain material table, stepped air-temperature physics (optional engine temp boundary)
+- Under Custom: toggles for heat / rain / wind / mud / fatigue / metabolic adaptation / indoor, etc.
 
-## v3.12.0 Updates
+### Presentation & items
+- Top-right stamina HUD (off by default), admin / settings UI
+- First-person camera inertia and head physics
+- CSB combat stim, morphine, and related damage effects
 
-**2026-02-09**
+### AI (experimental)
+- `SCR_RSS_AIManager` orchestration (server-side, 500 ms behavior throttle)
+- Stamina state machine → `AISpeedCap` (`SetSpeedLimit`, merges with foliage) → intent filter → combat decay → injury link
+- Toggle: `m_bEnableAIStaminaCombatEffects` (Workbench often ON; dedicated-server JSON often OFF)
+- Load shedding: `m_bDisableAIAllCalc` / `m_bDisableAIStaminaCalc`
 
-This release documents changes at the C script layer.
+### Networking & config
+- Server-authoritative settings; client report + server validation (`SCR_RSS_NetworkSyncManager`)
+- Three system presets + Custom; params serialized as flat float arrays (Workbench ICE relief)
+- External API: `SCR_RSS_API` (includes `wPrimePool01`); optional `RSS_PlayerData.json` export
 
-### ✅ Added
-- **Environment temperature physics model** - temperature stepping, shortwave/longwave with cloud and cloud fraction corrections, sunrise/sunset & moon-phase inference; supports engine-temperature or module model selection (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
-- **Improved indoor detection** - added upward raycast and horizontal enclosure checks to reduce false positives from open roofs/skylights (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
-- **Configuration change sync pipeline** - listener registration, change detection, full parameter/settings array sync and broadcast (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c, scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/PlayerBase.c)
-- **Network validation & smoothing** - client reports stamina/encumbrance; server authoritative validation and issuance of speed multiplier, including reconnect-delay synchronization (scripts/Game/PlayerBase.c, scripts/Game/Components/Stamina/SCR_NetworkSync.c)
-- **Log throttling utility** - unified Debug/Verbose log throttling interface (scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
+---
 
-### 🔁 Changed
-- **Server-authoritative config** - client no longer writes JSON; defaults kept in-memory awaiting sync; server writes to disk and adds backup/repair flow (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)
-- **Movement-phase-driven drain** - sprint state no longer affects choice of expenditure model; Pandolf formula used universally, server‑authoritative speed calculation remains (SCR_StaminaUpdateCoordinator.c)
-- **Encumbrance parameter constraints** - added penalty exponent/upper bound and clamp presets (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c, scripts/Game/Components/Stamina/SCR_RSS_Settings.c, scripts/Game/Components/Stamina/SCR_StaminaConstants.c)
-- **Preset refresh** - Elite/Standard/Tactical presets updated and top-level defaults for the weather model added (scripts/Game/Components/Stamina/SCR_RSS_Settings.c)
-- **Sprint drain default** - (legacy) sprint multiplier has no effect under the new Pandolf‑only model; setting retained for config compatibility.
-- **Body weight included in drain input** - stamina drain input now uses total weight (equipment + body); improved debug output (scripts/Game/PlayerBase.c)
+## Presets
 
-### 🐞 Fixed
-- **Indoor detection false positives** - reduced via roof raycast and horizontal enclosure checks (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
-- **Engine temperature extrema degradation** - fallback to physical/simulated estimates when daily min/max converge (scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c)
-- **Client disk overwrite** - client no longer writes local JSON to avoid overwriting server configs (scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c)
+`m_sSelectedPreset`:
 
-## v3.11.1 Updates
+| Preset | Intent |
+|------|------|
+| **EliteStandard** | Hardest / most realistic (low combat/recovery ease) |
+| **StandardMilsim** | Default balanced profile |
+| **TacticalAction** | More forgiving, action-friendly pacing |
+| **Custom** | Manual tuning; system presets can be force-refreshed to code defaults |
 
-**2026-02-02**
+Values are baked in `SCR_RSS_SettingsPresetBake` (v6 optimizer output).  
+Offline JSON: `tools/optimized_rss_config_*_v6.json` (re-embed with `embed_json_to_c.py`).
 
-### 🔧 Config Fixes & Improvements
-- ✅ **JSON overwrite fix** - User-modified hint/debug etc. no longer overwritten
-- ✅ **ValidateSettings fix** - Only clamp out-of-range values, don't reset entire config
-- ✅ **Custom preset case-insensitive** - "custom" / "CUSTOM" recognized
-- ✅ **HUD default OFF** - First-time users: HUD off by default. Existing users with JSON: HUD keeps your previous setting
-- ✅ **Config readability** - Constants extracted, descriptions streamlined, grouping improved
+Approximate magnitudes (Bake is source of truth; numbers change with retunes):
 
-## v3.11.0 Updates
+| | Elite | Standard | Tactical |
+|--|------:|---------:|---------:|
+| CP (W) | ~942 | ~1012 | ~1075 |
+| W′_max (J) | ~20.4k | ~20.9k | ~20.4k |
+| Sprint cap (W) | ~2830 | ~2880 | ~2525 |
 
-### 🌟 Core Functionality Updates
-- ✅ **Stamina system optimization** - Improved stamina system response speed and start experience
-- ✅ **Stamina system fix** - Fixed high-frequency monitoring and speed calculation issues in the stamina system
-- ✅ **Encumbrance system enhancement** - Implemented real-time encumbrance cache updates on inventory changes
-- ✅ **Encumbrance calculation fix** - Fixed issue where weapon weight was not included in total encumbrance
-- ✅ **Environment awareness enhancement** - Added indoor environment slope ignore functionality
-- ✅ **Configuration management optimization** - Fixed preset configuration logic to ensure system presets stay up-to-date
-- ✅ **Parameter optimization** - Optimized RSS system parameters and adjusted configuration file paths
+Physiological anchor: ACFT 2-mile (ages 22–26, male, 100 pts ≈ 15:27).
 
-### 📁 Project Cleanup and Optimization
-- ✅ **Project file cleanup** - Removed all generated PNG charts
-- ✅ **Tools directory optimization** - Kept only core NSGA-II optimization pipeline, removed outdated scripts
-- ✅ **Configuration file update** - Removed old optimization configuration files and updated related paths
+---
 
-### 📚 Documentation Improvement
-- ✅ **Toolset documentation** - Added tools/README.md - complete toolset documentation
-- ✅ **Configuration verification report** - Added CONFIG_APPLICATION_VERIFICATION.md - configuration application verification report
-- ✅ **Switch verification report** - Added DEBUG_AND_HINT_SWITCH_VERIFICATION.md - switch verification report
+## Repository layout (matches the tree)
 
-### 🎯 Version Consolidation
-- ✅ **Version unification** - All changes from git commit d1ebb9c to present as v3.11.0
+About **98** EnforceScript `.c` files. Domain classes use `SCR_RSS_*` (except modded entry points).
 
-## Project Structure (High-level)
+```
+Realistic-Stamina-System/
+├── addon.gproj
+├── Assets/
+├── Configs/EntityCatalog/
+├── Prefabs/
+├── UI/layouts/
+├── scripts/Game/
+│   ├── Integration/            # modded shells (high conflict surface)
+│   │   ├── PlayerBase.c
+│   │   ├── PlayerBase_UpdateLoop.c
+│   │   ├── SCR_StaminaOverride.c
+│   │   ├── SCR_RSS_ServerBootstrap.c
+│   │   └── …
+│   ├── RSS/
+│   │   ├── Core/               # metabolism / CP–W′ / drain·recovery / speed / coordinator (~30)
+│   │   ├── Environment/        # heat·cold·rain·wind·mud / slope / swim / jump (~18)
+│   │   ├── AI/                 # AIManager + state / cap / intent / decay (~8)
+│   │   ├── NetworkConfig/      # Settings / Params / ConfigManager / API / Sync (~8)
+│   │   ├── Presentation/       # HUD, camera, FX, settings UI (~12)
+│   │   └── MudSlip/            # mud slip (off by default)
+│   ├── Components/Gadgets/
+│   ├── UserActions/
+│   └── Damage/…/
+├── tools/                      # digital twin + v6 pipeline (Python / Rust)
+├── docs/
+└── githooks/pre-commit
+```
 
-Key paths (see `README_CN.md` for the full tree):
+**Layering (summary)**:
 
-- `scripts/Game/Integration/PlayerBase.c`: main controller (modded SCR_CharacterControllerComponent)
-- `scripts/Game/Integration/`: modded entry points (StaminaOverride, ServerBootstrap, InventoryOverride)
-- `scripts/Game/RSS/Core/`: stamina core (RealisticStaminaSystem, UpdateCoordinator, SpeedCalculation, Consumption, Recovery, etc.)
-- `scripts/Game/RSS/Environment/`: environment system (EnvironmentFactor, TerrainDetection, SwimmingState, etc.)
-- `scripts/Game/RSS/AI/`: AI stamina & behavior bridge (GroupProxy, CombatEffects, RestCoordinator)
-- `scripts/Game/RSS/NetworkConfig/`: config model, sync, migration (ConfigManager, Settings, NetworkSync, API)
-- `scripts/Game/RSS/MudSlip/`: mud-slip mechanics
-- `scripts/Game/RSS/Presentation/`: HUD, debug, UI signals, camera inertia
-- `scripts/Game/Components/Gadgets/`: combat stim items & state machine
-- `tools/`: v4/v6 Python optimization pipeline + Rust v6 entrypoint (`rss_pipeline_v6.py`, `rust_pipeline_v6/`, twin, smoke tests, embed script, preset JSON)
+- Formulas live under `RSS/Core/` (and domain modules such as Environment)
+- `SCR_StaminaOverride` only intercepts the engine stamina bar
+- Speed goes through `SCR_RSS_SpeedBridge` → `SetSpeedLimit` only; do not `OverrideMaxSpeed` alone (that kills foliage slowdown)
+- Hard file size cap **65535 bytes**; see `docs/RSS_CODING_STANDARDS.md`
 
-## Installation
+| Role | File |
+|------|------|
+| Metabolic power | `SCR_RSS_MetabolismModel.c` |
+| CP–W′ | `SCR_RSS_CriticalPowerModel.c` / `SCR_RSS_AnaerobicBurst.c` |
+| Drain coordination | `SCR_RSS_UpdateCoordinator.c` / `SCR_RSS_DrainCalculator.c` |
+| Speed | `SCR_RSS_SpeedCalculator.c` / `SCR_RSS_SpeedBridge.c` |
+| Recovery / EPOC | `SCR_RSS_RecoveryCalculator.c` / `SCR_RSS_EpocState.c` |
+| Main loop | `PlayerBase_UpdateLoop.c` |
+| Config | `SCR_RSS_Settings.c` / `SCR_RSS_Params.c` / `SCR_RSS_SettingsPresetBake.c` |
 
-1. Copy the entire addon folder into Arma Reforger Workbench `addons/`
-2. Open the project in Workbench
-3. Build/compile
-4. Enable the mod in-game
+---
 
-## Tools (Python + Rust)
+## Install & usage
 
-The `tools/` directory contains the v4/v6 optimization stack and a Rust Phase-A entrypoint:
+### Workbench
+1. Place this repo under Workbench `addons` (or equivalent)
+2. Open `addon.gproj`
+3. Depend on base game data (`addon.gproj` Dependencies)
 
-- `rss_pipeline_v4.py` — Optuna NSGA-II pipeline (multi-objective, 8 missions)
-- `rss_pipeline_v6.py` — v6 validate/calibrate/optimize pipeline
-- `rust_pipeline_v6/` — Rust CLI entrypoint (`validate`, `calibrate`, `optimize`, `dual-run`)
-- `rss_digital_twin_fix.py` — digital twin used by the pipeline
-- `embed_json_to_c.py` — optional embed of JSON presets into `SCR_RSS_Settings.c`
-- `test_v4_smoke.py` / `test_v6_smoke.py` / `quick_verify.py` — smoke and short-run checks
-- `optimized_rss_config_*_v4.json` / `optimized_rss_config_*_v6.json` — shipped and generated presets
-- `requirements.txt` — `numpy`, `optuna`
-- `README.md` — tool usage (Chinese)
+### Dedicated server
+1. Enable the mod; config is **server-authored** and replicated
+2. Pick a preset in the settings UI or JSON; Custom unlocks multipliers and environment toggles
+3. HUD, mud slip, AI combat effects, and data export are optional (mostly off by default)
 
-See `tools/README.md` for commands.
+### External mod API
 
-## Contributing
+```c
+IEntity player = SCR_PlayerController.GetLocalControlledEntity();
+if (!player)
+    return;
 
-See `CONTRIBUTING.md`.
+RSS_PlayerInfo info = SCR_RSS_API.GetPlayerInfo(player);
+if (info.isValid)
+{
+    PrintFormat("STA=%1 W'=%2 sprintAllowed=%3",
+        info.staminaPercent,
+        info.wPrimePool01,
+        info.sprintAllowed);
+}
+
+RSS_EnvironmentInfo env = SCR_RSS_API.GetEnvironmentInfo(player);
+```
+
+See [docs/RSS_API.md](docs/RSS_API.md).  
+`anaerobicPercent` is deprecated; read `wPrimePool01`.
+
+---
+
+## Tooling (`tools/`)
+
+Digital twin aligned with C, physiological anchors, preset optimization.
+
+| Entry | Purpose |
+|------|------|
+| `rss_pipeline_v6.py` | `validate` / `optimize` / `anchors` |
+| `rss_sim/` | PyO3 sim core (falls back to pure Python) |
+| `rust_pipeline_v6/` | Rust CLI (optional dual-run) |
+| `test_v6_smoke.py` / `bench_physio_anchors.py` / `test_acft_2mile.py` | Smoke & anchors |
+| `check_script_size.py` / `check_enforce_syntax.py` | Pre-commit gates |
+| `embed_json_to_c.py` | JSON → `SettingsPresetBake` |
+
+```bash
+cd tools
+pip install -r requirements.txt
+python rss_pipeline_v6.py validate
+python test_v6_smoke.py
+python check_script_size.py
+```
+
+Details: [tools/README.md](tools/README.md).
+
+---
+
+## Docs index
+
+| Doc | Topic |
+|------|------|
+| [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md) | Authoritative v6 math (CN) |
+| [docs/RSS_API.md](docs/RSS_API.md) | External API |
+| [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) | Naming / layering / size limits |
+| [docs/灌木丛移动减速机制.md](docs/灌木丛移动减速机制.md) | 1.7+ speed-limit merge |
+| [docs/RSS_已知问题_限速与滑步.md](docs/RSS_已知问题_限速与滑步.md) | Known issues |
+| [docs/泥泞滑倒判定模型.md](docs/泥泞滑倒判定模型.md) | Mud slip |
+| [CHANGELOG.md](CHANGELOG.md) | Full history |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing |
+
+Some older v3/v5 design notes under `docs/` may lag behind `RSS/AI/`; prefer this README and the source.
+
+---
+
+## EnforceScript notes
+
+- **No** ternary `?:`
+- Single-line `if` must use `{}`
+- Prefer `ref` over deprecated `autoptr`
+- Run `check_script_size.py` and `check_enforce_syntax.py` before commit
+
+---
 
 ## License
 
-This project is licensed under **GNU AGPL-3.0**. See `LICENSE`.
+[GNU Affero General Public License v3.0](LICENSE).  
+By contributing, you agree your changes are licensed under AGPL-3.0.
