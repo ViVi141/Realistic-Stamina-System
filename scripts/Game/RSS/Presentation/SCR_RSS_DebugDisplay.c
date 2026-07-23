@@ -368,6 +368,54 @@ class SCR_RSS_DebugDisplay
             indoorStr,
             swimWetStr);
     }
+
+    //! 状态行代谢诊断片段（从 PlayerBase 迁出）
+    static string FormatStatusMetabolismDiagnostic(
+        float powerW,
+        float powerMetW,
+        float powerRawW,
+        float maxCap,
+        float anaerobicPct,
+        float cpW,
+        float fatigueNorm,
+        float drainTick,
+        float metabolicNetTick,
+        float capRatchetTick,
+        float netTick)
+    {
+        if (powerW <= 1.0)
+            return "";
+
+        int capPct = Math.Round(maxCap * 100.0);
+        int anaPct = Math.Round(anaerobicPct * 100.0);
+        int pBillW = Math.Round(powerW);
+        int cpWi = Math.Round(cpW);
+        int fatPct = Math.Round(fatigueNorm * 100.0);
+
+        string line = string.Format(
+            " | cap=%1%% W'=%2%% P_bill=%3 CP=%4 finalDrain=%5 metaNet=%6 capΔ=%7 net=%8/t If=%9%%",
+            capPct.ToString(),
+            anaPct.ToString(),
+            pBillW.ToString(),
+            cpWi.ToString(),
+            Math.Round(drainTick * 100000.0) / 100000.0,
+            Math.Round(metabolicNetTick * 100000.0) / 100000.0,
+            Math.Round(capRatchetTick * 100000.0) / 100000.0,
+            Math.Round(netTick * 100000.0) / 100000.0,
+            fatPct.ToString());
+
+        if (powerMetW > powerW + 50.0)
+        {
+            int pMetW = Math.Round(powerMetW);
+            line = line + string.Format(" P_met=%1W", pMetW.ToString());
+        }
+        if (powerRawW > powerMetW + 50.0)
+        {
+            int rawW = Math.Round(powerRawW);
+            line = line + string.Format(" P_raw=%1W", rawW.ToString());
+        }
+        return line;
+    }
     
     // 格式化姿态转换信息字符串（v2.0 乳酸堆积模型）
     // @param stanceTransitionManager 姿态转换管理器
@@ -728,7 +776,7 @@ class SCR_RSS_DebugDisplay
         if (!SCR_RSS_DebugBatchManager.IsDebugBatchActive())
             return;
 
-        float recoveryPerTick = SCR_RSS_UpdateCoordinator.ComputeRecoveryRatePerTick(
+        float recoveryPerTick = SCR_RSS_StaminaNetRate.ComputeRecoveryRatePerTick(
             tick.staminaPercent,
             tick.currentSpeed,
             tick.baseDrainRateByVelocity,
@@ -741,7 +789,7 @@ class SCR_RSS_DebugDisplay
             environmentFactor,
             false);
 
-        float finalDrainPerTick = SCR_RSS_UpdateCoordinator.ComputeFinalDrainRatePerTick(
+        float finalDrainPerTick = SCR_RSS_StaminaNetRate.ComputeFinalDrainRatePerTick(
             tick.useSwimmingModel,
             tick.currentSpeed,
             tick.totalDrainRate,
@@ -753,7 +801,7 @@ class SCR_RSS_DebugDisplay
         float perSecMult = 1.0 / tickSec;
         float recoveryPerSec = recoveryPerTick * perSecMult;
         float drainPerSec = finalDrainPerTick * perSecMult;
-        float netPerSec = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+        float netPerSec = SCR_RSS_StaminaNetRate.GetNetStaminaRatePerSecond(
             tick.staminaPercent,
             tick.useSwimmingModel,
             tick.currentSpeed,

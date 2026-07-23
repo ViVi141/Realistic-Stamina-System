@@ -49,23 +49,23 @@ class SCR_RSS_AIInjuryLink
         }
         else if (ratio > 0.7)
         {
-            outDrainMul = SCR_RSS_Constants.RSS_AI_INJURY_DRAIN_MILD;
-            outRecoveryMul = SCR_RSS_Constants.RSS_AI_INJURY_RECOVERY_MILD;
+            outDrainMul = SCR_RSS_AIConstants.RSS_AI_INJURY_DRAIN_MILD;
+            outRecoveryMul = SCR_RSS_AIConstants.RSS_AI_INJURY_RECOVERY_MILD;
         }
         else if (ratio > 0.5)
         {
-            outDrainMul = SCR_RSS_Constants.RSS_AI_INJURY_DRAIN_MODERATE;
-            outRecoveryMul = SCR_RSS_Constants.RSS_AI_INJURY_RECOVERY_MODERATE;
+            outDrainMul = SCR_RSS_AIConstants.RSS_AI_INJURY_DRAIN_MODERATE;
+            outRecoveryMul = SCR_RSS_AIConstants.RSS_AI_INJURY_RECOVERY_MODERATE;
         }
         else if (ratio > 0.3)
         {
-            outDrainMul = SCR_RSS_Constants.RSS_AI_INJURY_DRAIN_SEVERE;
-            outRecoveryMul = SCR_RSS_Constants.RSS_AI_INJURY_RECOVERY_SEVERE;
+            outDrainMul = SCR_RSS_AIConstants.RSS_AI_INJURY_DRAIN_SEVERE;
+            outRecoveryMul = SCR_RSS_AIConstants.RSS_AI_INJURY_RECOVERY_SEVERE;
         }
         else
         {
-            outDrainMul = SCR_RSS_Constants.RSS_AI_INJURY_DRAIN_CRITICAL;
-            outRecoveryMul = SCR_RSS_Constants.RSS_AI_INJURY_RECOVERY_CRITICAL;
+            outDrainMul = SCR_RSS_AIConstants.RSS_AI_INJURY_DRAIN_CRITICAL;
+            outRecoveryMul = SCR_RSS_AIConstants.RSS_AI_INJURY_RECOVERY_CRITICAL;
         }
 
         return true;

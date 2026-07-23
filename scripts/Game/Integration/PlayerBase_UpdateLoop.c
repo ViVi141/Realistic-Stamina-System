@@ -744,13 +744,13 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        float finalDrainDbg = SCR_RSS_UpdateCoordinator.ComputeFinalDrainRatePerTick(
+        float finalDrainDbg = SCR_RSS_StaminaNetRate.ComputeFinalDrainRatePerTick(
             useSwimmingModel,
             currentSpeed,
             totalDrainRate,
             m_pEpocState,
             false);
-        float metabolicNetDbg = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+        float metabolicNetDbg = SCR_RSS_StaminaNetRate.GetNetStaminaRatePerSecond(
             staminaBeforeUpdate,
             useSwimmingModel,
             currentSpeed,
@@ -1087,7 +1087,7 @@ modded class SCR_CharacterControllerComponent
             if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 targetStamina = m_pFatigueSystem.GetMaxStaminaCap();
 
-            StaminaEtaResult eta = SCR_RSS_UpdateCoordinator.ComputeStaminaEta(
+            StaminaEtaResult eta = SCR_RSS_StaminaNetRate.ComputeStaminaEta(
                 tick.staminaPercent,
                 targetStamina,
                 tick.useSwimmingModel,

@@ -95,40 +95,6 @@ class SCR_PlayerBaseConfigHelper
     }
 }
 
-class SCR_PlayerBaseCombatStimHelper
-{
-    static bool AdvancePhase(
-        int currentPhase,
-        float currentEndsAt,
-        float worldTimeSec,
-        out int nextPhase,
-        out float nextEndsAt)
-    {
-        return SCR_CombatStimStateMachine.AdvancePhase(currentPhase, currentEndsAt, worldTimeSec, nextPhase, nextEndsAt);
-    }
-
-    static bool TryStartFromInjection(
-        int currentPhase,
-        float currentEndsAt,
-        float worldTimeSec,
-        int delayInjectionCount,
-        out int nextPhase,
-        out float nextEndsAt,
-        out int nextDelayInjectionCount,
-        out bool shouldDie)
-    {
-        return SCR_CombatStimStateMachine.TryStartFromInjection(
-            currentPhase,
-            currentEndsAt,
-            worldTimeSec,
-            delayInjectionCount,
-            nextPhase,
-            nextEndsAt,
-            nextDelayInjectionCount,
-            shouldDie);
-    }
-}
-
 class SCR_PlayerBaseMovementHelper
 {
     static bool IsSwimmingByCommand(CharacterAnimationComponent animComponent)

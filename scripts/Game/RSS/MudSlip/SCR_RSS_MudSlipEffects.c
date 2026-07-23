@@ -39,11 +39,11 @@ class SCR_RSS_MudSlipEffects
             return false;
         if (cooldownAnchorTime >= 0.0)
         {
-            if (currentWorldTime - cooldownAnchorTime < SCR_RSS_Constants.ENV_MUD_SLIP_COOLDOWN_SEC)
+            if (currentWorldTime - cooldownAnchorTime < SCR_RSS_EnvConstants.ENV_MUD_SLIP_COOLDOWN_SEC)
                 return false;
         }
 
-        if (horizontalSpeed < SCR_RSS_Constants.ENV_MUD_SLIP_MIN_SPEED_MS)
+        if (horizontalSpeed < SCR_RSS_EnvConstants.ENV_MUD_SLIP_MIN_SPEED_MS)
             return false;
 
         float acof = ComputeAvailableCof(env);
@@ -59,7 +59,7 @@ class SCR_RSS_MudSlipEffects
             prevVerticalVelocityY,
             true);
         float gap = rcof - acof;
-        if (gap <= SCR_RSS_Constants.ENV_SLIP_GAP_EPSILON_DICE)
+        if (gap <= SCR_RSS_EnvConstants.ENV_SLIP_GAP_EPSILON_DICE)
             return false;
 
         float lambda = ComputeLambdaFromGap(gap, env);
@@ -94,7 +94,7 @@ class SCR_RSS_MudSlipEffects
             return 0.0;
         if (env.GetSlipRisk() <= 0.0)
             return 0.0;
-        if (horizontalSpeed < SCR_RSS_Constants.ENV_MUD_SLIP_MIN_SPEED_MS)
+        if (horizontalSpeed < SCR_RSS_EnvConstants.ENV_MUD_SLIP_MIN_SPEED_MS)
             return 0.0;
 
         float acof = ComputeAvailableCof(env);
@@ -110,8 +110,8 @@ class SCR_RSS_MudSlipEffects
             prevVerticalVelocityY,
             false);
         float gap = rcof - acof;
-        float epsCam = SCR_RSS_Constants.ENV_SLIP_GAP_EPSILON_CAMERA;
-        float thrFat = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_STAMINA_THRESHOLD;
+        float epsCam = SCR_RSS_EnvConstants.ENV_SLIP_GAP_EPSILON_CAMERA;
+        float thrFat = SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_STAMINA_THRESHOLD;
         if (thrFat > 0.0001)
         {
             if (staminaPercent < thrFat)
@@ -120,14 +120,14 @@ class SCR_RSS_MudSlipEffects
                 if (s < 0.0)
                     s = 0.0;
                 float u = s / thrFat;
-                float sc = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_EPS_SCALE;
+                float sc = SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_FATIGUE_EPS_SCALE;
                 epsCam = epsCam * (sc + (1.0 - sc) * u);
             }
         }
         if (gap <= epsCam)
             return 0.0;
 
-        float span = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_GAP_SPAN;
+        float span = SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_GAP_SPAN;
         if (span <= 0.0001)
             return 0.0;
         float t = (gap - epsCam) / span;
@@ -143,15 +143,15 @@ class SCR_RSS_MudSlipEffects
     {
         float eta = env.GetCachedTerrainFactor();
         float mud = env.GetMudFactor();
-        float thr = SCR_RSS_Constants.ENV_MUD_SLIPPERY_THRESHOLD;
+        float thr = SCR_RSS_EnvConstants.ENV_MUD_SLIPPERY_THRESHOLD;
 
-        float muDry = SCR_RSS_Constants.ENV_SLIP_ACOF_DRY_BASE;
+        float muDry = SCR_RSS_EnvConstants.ENV_SLIP_ACOF_DRY_BASE;
         if (eta > 1.0)
         {
             float t = eta - 1.0;
             if (t > 1.0)
                 t = 1.0;
-            muDry = muDry - t * SCR_RSS_Constants.ENV_SLIP_ACOF_OFFROAD_DROP;
+            muDry = muDry - t * SCR_RSS_EnvConstants.ENV_SLIP_ACOF_OFFROAD_DROP;
         }
 
         float lub = 0.0;
@@ -159,8 +159,8 @@ class SCR_RSS_MudSlipEffects
             lub = (mud - thr) / (1.0 - thr);
         lub = Math.Clamp(lub, 0.0, 1.0);
 
-        float mu = muDry * (1.0 - SCR_RSS_Constants.ENV_SLIP_LUBRICATION_MAX * lub);
-        mu = Math.Clamp(mu, SCR_RSS_Constants.ENV_SLIP_ACOF_MIN, SCR_RSS_Constants.ENV_SLIP_ACOF_MAX);
+        float mu = muDry * (1.0 - SCR_RSS_EnvConstants.ENV_SLIP_LUBRICATION_MAX * lub);
+        mu = Math.Clamp(mu, SCR_RSS_EnvConstants.ENV_SLIP_ACOF_MIN, SCR_RSS_EnvConstants.ENV_SLIP_ACOF_MAX);
         return mu;
     }
 
@@ -177,33 +177,33 @@ class SCR_RSS_MudSlipEffects
         float prevVerticalVelocityY,
         bool applyBalanceJitter)
     {
-        float vmin = SCR_RSS_Constants.ENV_MUD_SLIP_MIN_SPEED_MS;
+        float vmin = SCR_RSS_EnvConstants.ENV_MUD_SLIP_MIN_SPEED_MS;
         float ex = horizontalSpeed - vmin;
         if (ex < 0.0)
             ex = 0.0;
 
-        float rcof = SCR_RSS_Constants.ENV_SLIP_RCOF_BASE;
-        rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_VSQ * ex * ex;
+        float rcof = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_BASE;
+        rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_VSQ * ex * ex;
         if (isSprinting)
-            rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_SPRINT;
+            rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SPRINT;
 
         float enc = Math.Clamp(encumbranceKg, 0.0, 55.0);
-        rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_WEIGHT * (enc / 55.0);
+        rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_WEIGHT * (enc / 55.0);
 
         if (isCrouching)
-            rcof = rcof * SCR_RSS_Constants.ENV_SLIP_RCOF_CROUCH_MULT;
+            rcof = rcof * SCR_RSS_EnvConstants.ENV_SLIP_RCOF_CROUCH_MULT;
 
         float slopeMagDeg = Math.AbsFloat(slopeAngleDegreesSigned);
-        float slopeAdd = SCR_RSS_Constants.ENV_SLIP_RCOF_SLOPE_PER_DEG * slopeMagDeg;
-        if (slopeAdd > SCR_RSS_Constants.ENV_SLIP_RCOF_SLOPE_MAX)
-            slopeAdd = SCR_RSS_Constants.ENV_SLIP_RCOF_SLOPE_MAX;
+        float slopeAdd = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SLOPE_PER_DEG * slopeMagDeg;
+        if (slopeAdd > SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SLOPE_MAX)
+            slopeAdd = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SLOPE_MAX;
         float slopeDirMult = 1.0;
         if (slopeAngleDegreesSigned < 0.0)
-            slopeDirMult = SCR_RSS_Constants.ENV_SLIP_RCOF_SLOPE_DOWNHILL_MULT;
+            slopeDirMult = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SLOPE_DOWNHILL_MULT;
         else
         {
             if (slopeAngleDegreesSigned > 0.0)
-                slopeDirMult = SCR_RSS_Constants.ENV_SLIP_RCOF_SLOPE_UPHILL_MULT;
+                slopeDirMult = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_SLOPE_UPHILL_MULT;
         }
         slopeAdd = slopeAdd * slopeDirMult;
         rcof = rcof + slopeAdd;
@@ -211,14 +211,14 @@ class SCR_RSS_MudSlipEffects
         float omega = turnRateRadPerSec;
         if (omega < 0.0)
             omega = 0.0;
-        if (omega > SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
-            omega = SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
+        if (omega > SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
+            omega = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
         float vTurn = horizontalSpeed;
         if (vTurn < vmin)
             vTurn = vmin;
-        float turnAdd = omega * vTurn * SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_OMEGA_V_COEFF;
-        if (turnAdd > SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_MAX)
-            turnAdd = SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_MAX;
+        float turnAdd = omega * vTurn * SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_OMEGA_V_COEFF;
+        if (turnAdd > SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_MAX)
+            turnAdd = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_MAX;
         rcof = rcof + turnAdd;
 
         float st = staminaPercent;
@@ -227,21 +227,21 @@ class SCR_RSS_MudSlipEffects
         if (st > 1.0)
             st = 1.0;
         float staminaDeficit = 1.0 - st;
-        rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_BALANCE_STAMINA * staminaDeficit;
+        rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_BALANCE_STAMINA * staminaDeficit;
         if (applyBalanceJitter)
         {
             if (staminaDeficit > 0.01)
-                rcof = rcof + Math.RandomFloat01() * SCR_RSS_Constants.ENV_SLIP_RCOF_BALANCE_JITTER * staminaDeficit;
+                rcof = rcof + Math.RandomFloat01() * SCR_RSS_EnvConstants.ENV_SLIP_RCOF_BALANCE_JITTER * staminaDeficit;
         }
 
-        if (prevVerticalVelocityY < SCR_RSS_Constants.ENV_SLIP_LANDING_VY_PREV)
+        if (prevVerticalVelocityY < SCR_RSS_EnvConstants.ENV_SLIP_LANDING_VY_PREV)
         {
-            if (verticalVelocityY > SCR_RSS_Constants.ENV_SLIP_LANDING_VY_CUR)
-                rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_LANDING;
+            if (verticalVelocityY > SCR_RSS_EnvConstants.ENV_SLIP_LANDING_VY_CUR)
+                rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_LANDING;
         }
 
-        if (verticalVelocityY > SCR_RSS_Constants.ENV_SLIP_RCOF_JUMP_UP_VY)
-            rcof = rcof + SCR_RSS_Constants.ENV_SLIP_RCOF_JUMP_UP;
+        if (verticalVelocityY > SCR_RSS_EnvConstants.ENV_SLIP_RCOF_JUMP_UP_VY)
+            rcof = rcof + SCR_RSS_EnvConstants.ENV_SLIP_RCOF_JUMP_UP;
 
         return rcof;
     }
@@ -252,8 +252,8 @@ class SCR_RSS_MudSlipEffects
         float g = gap;
         if (g < 0.0)
             g = 0.0;
-        float lambda = SCR_RSS_Constants.ENV_MUD_SLIP_PHYS_SCALE * g;
-        lambda = lambda * SCR_RSS_Constants.ENV_MUD_SLIP_GLOBAL_SCALE;
+        float lambda = SCR_RSS_EnvConstants.ENV_MUD_SLIP_PHYS_SCALE * g;
+        lambda = lambda * SCR_RSS_EnvConstants.ENV_MUD_SLIP_GLOBAL_SCALE;
         if (env.GetMudTerrainFactor() > 0.0)
             lambda = lambda * 1.18;
         return lambda;

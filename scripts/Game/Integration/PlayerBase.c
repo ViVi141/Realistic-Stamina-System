@@ -352,38 +352,18 @@ modded class SCR_CharacterControllerComponent
 
     string RSS_FormatStatusMetabolismDiagnostic()
     {
-        if (m_fStatusLogPowerW <= 1.0)
-            return "";
-
-        int capPct = Math.Round(m_fStatusLogMaxCap * 100.0);
-        int anaPct = Math.Round(m_fStatusLogAnaerobicPct * 100.0);
-        int pBillW = Math.Round(m_fStatusLogPowerW);
-        int cpW = Math.Round(m_fStatusLogCpW);
-        int fatPct = Math.Round(m_fStatusLogFatigueNorm * 100.0);
-
-        string line = string.Format(
-            " | cap=%1%% W'=%2%% P_bill=%3 CP=%4 finalDrain=%5 metaNet=%6 capΔ=%7 net=%8/t If=%9%%",
-            capPct.ToString(),
-            anaPct.ToString(),
-            pBillW.ToString(),
-            cpW.ToString(),
-            Math.Round(m_fStatusLogDrainTick * 100000.0) / 100000.0,
-            Math.Round(m_fStatusLogMetabolicNetTick * 100000.0) / 100000.0,
-            Math.Round(m_fStatusLogCapRatchetTick * 100000.0) / 100000.0,
-            Math.Round(m_fStatusLogNetTick * 100000.0) / 100000.0,
-            fatPct.ToString());
-
-        if (m_fStatusLogPowerMetW > m_fStatusLogPowerW + 50.0)
-        {
-            int pMetW = Math.Round(m_fStatusLogPowerMetW);
-            line = line + string.Format(" P_met=%1W", pMetW.ToString());
-        }
-        if (m_fStatusLogPowerRawW > m_fStatusLogPowerMetW + 50.0)
-        {
-            int rawW = Math.Round(m_fStatusLogPowerRawW);
-            line = line + string.Format(" P_raw=%1W", rawW.ToString());
-        }
-        return line;
+        return SCR_RSS_DebugDisplay.FormatStatusMetabolismDiagnostic(
+            m_fStatusLogPowerW,
+            m_fStatusLogPowerMetW,
+            m_fStatusLogPowerRawW,
+            m_fStatusLogMaxCap,
+            m_fStatusLogAnaerobicPct,
+            m_fStatusLogCpW,
+            m_fStatusLogFatigueNorm,
+            m_fStatusLogDrainTick,
+            m_fStatusLogMetabolicNetTick,
+            m_fStatusLogCapRatchetTick,
+            m_fStatusLogNetTick);
     }
 
     void CollectSpeedSample()
@@ -469,9 +449,9 @@ modded class SCR_CharacterControllerComponent
         if (m_pAnimComponent && m_pAnimComponent.IsRagdollActive())
             return;
         Ragdoll();
-        RefreshRagdoll(SCR_RSS_Constants.ENV_MUD_SLIP_RAGDOLL_WARMUP_SEC);
+        RefreshRagdoll(SCR_RSS_EnvConstants.ENV_MUD_SLIP_RAGDOLL_WARMUP_SEC);
         if (GetGame() && GetGame().GetCallqueue())
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.MudSlipFinishRagdollBridge, SCR_RSS_Constants.ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS, false, this);
+            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.MudSlipFinishRagdollBridge, SCR_RSS_EnvConstants.ENV_MUD_SLIP_RAGDOLL_BLEND_DELAY_MS, false, this);
     }
 
     void RSS_MudSlip_FinishRagdoll()
@@ -932,41 +912,28 @@ modded class SCR_CharacterControllerComponent
     //! 专服上玩家体力主循环不在服务端跑时，补 tick 无氧池（权威写 RplProp）。
     void RSS_MaybeServerTickAnaerobic()
     {
-        if (!Replication.IsServer() || !IsPlayerControlled())
-            return;
-        if (!m_pAnaerobicBurst)
-            return;
-        if (ShouldProcessStaminaUpdate())
+        float lastUpdate = m_fLastStaminaUpdateTime;
+        float replPool = m_fReplAnaerobicPool;
+        float replCd = m_fReplAnaerobicCooldownUntil;
+        bool didTick = SCR_RSS_WPrimeServerTick.MaybeTick(
+            Replication.IsServer(),
+            IsPlayerControlled(),
+            ShouldProcessStaminaUpdate(),
+            m_pAnaerobicBurst,
+            m_pStaminaState,
+            IsSprinting() || (GetCurrentMovementPhase() == 3),
+            GetRssAerobicPercent(),
+            GetSpeedUpdateIntervalMs() / 1000.0,
+            lastUpdate,
+            replPool,
+            replCd);
+        if (!didTick)
             return;
 
-        if (!GetGame() || !GetGame().GetWorld())
-            return;
-
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-        float intervalSec = GetSpeedUpdateIntervalMs() / 1000.0;
-        if (m_fLastStaminaUpdateTime >= 0.0)
-        {
-            float elapsed = currentTime - m_fLastStaminaUpdateTime;
-            if (elapsed < intervalSec * 0.5)
-                return;
-            intervalSec = Math.Clamp(elapsed, 0.01, 0.5);
-        }
-
-        bool isSprintActive = IsSprinting() || (GetCurrentMovementPhase() == 3);
-        float anaDrain = SCR_RSS_ConfigBridge.GetWPrimeDrainPerSec();
-        float powerW = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
-        if (isSprintActive)
-            powerW = powerW + anaDrain * SCR_RSS_ConfigBridge.GetWPrimeMaxJoules() * 0.01;
-        m_pAnaerobicBurst.TickPower(powerW, isSprintActive, currentTime, intervalSec);
-        if (m_pStaminaState)
-        {
-            m_pStaminaState.SetWPrimePool01(m_pAnaerobicBurst.GetPool());
-            m_pStaminaState.SetAerobic(GetRssAerobicPercent());
-        }
-        SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
-            m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
+        m_fLastStaminaUpdateTime = lastUpdate;
+        m_fReplAnaerobicPool = replPool;
+        m_fReplAnaerobicCooldownUntil = replCd;
         Replication.BumpMe();
-        m_fLastStaminaUpdateTime = currentTime;
     }
 
     SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
@@ -1012,185 +979,61 @@ modded class SCR_CharacterControllerComponent
 
     protected void RSS_ClearSprintGateEnginePoke()
     {
-        if (!m_bSprintGateEnginePokeActive || !m_pStaminaComponent)
-            return;
-        m_pStaminaComponent.RestoreEngineStaminaFromTarget();
-        m_bSprintGateEnginePokeActive = false;
+        bool pokeActive = m_bSprintGateEnginePokeActive;
+        SCR_RSS_SprintGate.ClearEnginePoke(m_pStaminaComponent, pokeActive);
+        m_bSprintGateEnginePokeActive = pokeActive;
     }
 
     //! proto external 的 IsSprintingAllowed 无法 modded override；仅临时压低引擎条读数，有氧目标保留在 StaminaState。
     protected void RSS_PokeEngineStaminaForSprintBlock(bool sprintIntent)
     {
-        if (GetRssSprintAllowed() || !sprintIntent)
-        {
-            RSS_ClearSprintGateEnginePoke();
-            return;
-        }
-
-        if (!m_pStaminaComponent)
-            return;
-
-        float blockStamina = SCR_RSS_ConfigBridge.GetSprintEnableThreshold() - 0.01;
-        if (blockStamina < 0.0)
-            blockStamina = 0.0;
-        m_pStaminaComponent.ApplyTransientEngineStamina(blockStamina);
-        m_bSprintGateEnginePokeActive = true;
+        bool pokeActive = m_bSprintGateEnginePokeActive;
+        SCR_RSS_SprintGate.PokeEngineStaminaForSprintBlock(
+            GetRssSprintAllowed(),
+            sprintIntent,
+            m_pStaminaComponent,
+            pokeActive);
+        m_bSprintGateEnginePokeActive = pokeActive;
     }
 
     protected void RSS_ApplySprintGateOnPrepareControls(ActionManager am)
     {
-        if (GetRssSprintAllowed())
-            return;
-
-        bool sprintIntent = false;
-        if (IsSprinting() || GetCurrentMovementPhase() == 3)
-            sprintIntent = true;
-        if (GetIsSprintingToggle())
-            sprintIntent = true;
-        if (am.GetActionValue("CharacterSprint") > 0.5)
-            sprintIntent = true;
-
-        am.SetActionValue("CharacterSprint", 0.0);
-        am.SetActionValue("CharacterSprintToggle", 0.0);
-
-        RSS_PokeEngineStaminaForSprintBlock(sprintIntent);
+        bool pokeActive = m_bSprintGateEnginePokeActive;
+        SCR_RSS_SprintGate.ApplyOnPrepareControls(
+            am,
+            GetRssSprintAllowed(),
+            IsSprinting(),
+            GetCurrentMovementPhase(),
+            GetIsSprintingToggle(),
+            m_pStaminaComponent,
+            pokeActive);
+        m_bSprintGateEnginePokeActive = pokeActive;
     }
-
 
     protected float GetNearestPlayerDistanceM(IEntity ownerEntity)
     {
-        if (!ownerEntity)
-            return -1.0;
-
-        PlayerManager pm = GetGame().GetPlayerManager();
-        if (!pm)
-            return -1.0;
-
-        array<int> playerIds = {};
-        pm.GetPlayers(playerIds);
-        float nearM = 99999.0;
-        for (int pi = 0; pi < playerIds.Count(); pi++)
-        {
-            IEntity pe = pm.GetPlayerControlledEntity(playerIds.Get(pi));
-            if (pe)
-            {
-                float d = vector.Distance(ownerEntity.GetOrigin(), pe.GetOrigin());
-                if (d < nearM)
-                    nearM = d;
-            }
-        }
-        if (nearM < 99999.0)
-            return nearM;
-        return -1.0;
+        return SCR_RSS_AIUpdateInterval.GetNearestPlayerDistanceM(ownerEntity);
     }
 
     protected int GetSpeedUpdateIntervalMs()
     {
-        if (IsPlayerControlled())
-            return SCR_RSS_Constants.RSS_PLAYER_SPEED_UPDATE_INTERVAL_MS;
-
-        if (!Replication.IsServer())
-            return SCR_RSS_Constants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
-
-        if (!SCR_RSS_Constants.RSS_PERF_AI_DISTANCE_LOD_ENABLED)
-            return SCR_RSS_Constants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
-
-        IEntity ownerEntity = GetOwner();
-        if (!ownerEntity)
-            return SCR_RSS_Constants.RSS_AI_SPEED_UPDATE_INTERVAL_MS;
-
-        float distM = GetNearestPlayerDistanceM(ownerEntity);
-
-        if (distM < 0.0 || distM <= SCR_RSS_Constants.RSS_PERF_AI_LOD_NEAR_M)
-            return SCR_RSS_Constants.RSS_PERF_AI_LOD_NEAR_INTERVAL_MS;
-        if (distM <= SCR_RSS_Constants.RSS_PERF_AI_LOD_FAR_M)
-            return SCR_RSS_Constants.RSS_PERF_AI_LOD_MID_INTERVAL_MS;
-        return SCR_RSS_Constants.RSS_PERF_AI_LOD_FAR_INTERVAL_MS;
+        return SCR_RSS_AIUpdateInterval.GetSpeedUpdateIntervalMs(IsPlayerControlled(), GetOwner());
     }
 
     //! 在 Workbench 编辑器中，预览实体不应启动体力 tick
-    //! 特征：有 CharacterControllerComponent + AIControlComponent + 无玩家控制 + 无 AI 群组
     protected bool IsWorkbenchPreviewEntity()
     {
-        #ifdef WORKBENCH
-        IEntity owner = GetOwner();
-        if (!owner)
-            return true;
-        if (IsPlayerControlled())
-            return false;
-        AIControlComponent aiCtrl = AIControlComponent.Cast(owner.FindComponent(AIControlComponent));
-        if (!aiCtrl)
-            return true;
-        AIAgent agent = aiCtrl.GetAIAgent();
-        if (!agent)
-            return true;
-        AIGroup parentGroup = agent.GetParentGroup();
-        if (!parentGroup)
-            return true;
-        return false;
-        #else
-        return false;
-        #endif
+        return SCR_RSS_AIUpdateInterval.IsWorkbenchPreviewEntity(IsPlayerControlled(), GetOwner());
     }
 
-
-
-
-    //! 计算群组成员间最大分散距离（存活成员间的 max distance）
     static float CalcAiGroupSpreadM(SCR_AIGroup scrGrp)
     {
-        if (!scrGrp)
-            return -1.0;
-        array<AIAgent> agents = {};
-        int ac = scrGrp.GetAgents(agents);
-        if (ac < 2)
-            return -1.0;
-
-        float maxDist = 0.0;
-        for (int i = 0; i < ac - 1; i++)
-        {
-            AIAgent agI = agents.Get(i);
-            if (!agI)
-                continue;
-            IEntity ceI = agI.GetControlledEntity();
-            if (!ceI)
-                continue;
-            for (int j = i + 1; j < ac; j++)
-            {
-                AIAgent agJ = agents.Get(j);
-                if (!agJ)
-                    continue;
-                IEntity ceJ = agJ.GetControlledEntity();
-                if (!ceJ)
-                    continue;
-                float d = vector.Distance(ceI.GetOrigin(), ceJ.GetOrigin());
-                if (d > maxDist)
-                    maxDist = d;
-            }
-        }
-        return maxDist;
+        return SCR_RSS_AIUpdateInterval.CalcAiGroupSpreadM(scrGrp);
     }
 
-    //! 获取群组中存活成员数量
     static int GetAliveMemberCount(SCR_AIGroup scrGrp)
     {
-        if (!scrGrp)
-            return 0;
-        array<AIAgent> agents = {};
-        int ac = scrGrp.GetAgents(agents);
-        int alive = 0;
-        for (int i = 0; i < ac; i++)
-        {
-            AIAgent ag = agents.Get(i);
-            if (!ag)
-                continue;
-            IEntity ce = ag.GetControlledEntity();
-            if (!ce)
-                continue;
-            if (SCR_CharacterDamageManagerComponent.Cast(ce.FindComponent(SCR_CharacterDamageManagerComponent)))
-                alive++;
-        }
-        return alive;
+        return SCR_RSS_AIUpdateInterval.GetAliveMemberCount(scrGrp);
     }
 
 
@@ -1216,7 +1059,7 @@ modded class SCR_CharacterControllerComponent
         float oldEndsAt = m_fCombatStimPhaseEndsAt;
         int nextPhase = m_iCombatStimPhase;
         float nextEndsAt = m_fCombatStimPhaseEndsAt;
-        if (!SCR_PlayerBaseCombatStimHelper.AdvancePhase(
+        if (!SCR_CombatStimStateMachine.AdvancePhase(
                 m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
                 nextPhase, nextEndsAt))
             return;
@@ -1257,7 +1100,7 @@ modded class SCR_CharacterControllerComponent
         float nextEndsAt = m_fCombatStimPhaseEndsAt;
         int nextDelayInjectionCount = m_iCombatStimDelayInjectionCount;
         bool shouldDie = false;
-        if (!SCR_PlayerBaseCombatStimHelper.TryStartFromInjection(
+        if (!SCR_CombatStimStateMachine.TryStartFromInjection(
                 m_iCombatStimPhase, m_fCombatStimPhaseEndsAt, wt,
                 m_iCombatStimDelayInjectionCount,
                 nextPhase, nextEndsAt, nextDelayInjectionCount, shouldDie))

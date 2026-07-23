@@ -50,7 +50,7 @@ class SCR_RSS_IndoorDetection
             return false;
         if (!owner)
             return false;
-        return EvaluateRoofedBuildingInterior(owner, SCR_RSS_Constants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
+        return EvaluateRoofedBuildingInterior(owner, SCR_RSS_EnvConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
     }
 
     // 地形坡度是否应按「非室外」处理为零
@@ -86,7 +86,7 @@ class SCR_RSS_IndoorDetection
             m_fLastIndoorCheckTime = currentTime;
             m_bCachedIndoorState = IsUnderCover(owner);
             m_bCachedRoofedVolumeForSlopeState = EvaluateRoofedBuildingInterior(
-                owner, SCR_RSS_Constants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
+                owner, SCR_RSS_EnvConstants.ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT, false);
             return true;
         }
         return false;
@@ -112,7 +112,7 @@ class SCR_RSS_IndoorDetection
     // 检测角色是否在室内（基于建筑物边界框 + 向上射线确认）
     bool IsUnderCover(IEntity owner)
     {
-        return EvaluateRoofedBuildingInterior(owner, SCR_RSS_Constants.ENV_INDOOR_CHECK_HEIGHT, true);
+        return EvaluateRoofedBuildingInterior(owner, SCR_RSS_EnvConstants.ENV_INDOOR_CHECK_HEIGHT, true);
     }
 
     // 在建筑物 OBB 内且向上能命中该建筑物的遮挡时返回 true

@@ -3,11 +3,11 @@ class SCR_RSS_PenaltyMath
 {
     static float CalculateRainBreathingPenalty(float rainIntensity)
     {
-        if (rainIntensity < SCR_RSS_Constants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
+        if (rainIntensity < SCR_RSS_EnvConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD)
             return 0.0;
 
-        return SCR_RSS_Constants.ENV_RAIN_INTENSITY_BREATHING_PENALTY
-            * (rainIntensity - SCR_RSS_Constants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
+        return SCR_RSS_EnvConstants.ENV_RAIN_INTENSITY_BREATHING_PENALTY
+            * (rainIntensity - SCR_RSS_EnvConstants.ENV_RAIN_INTENSITY_HEAVY_THRESHOLD);
     }
 
     static float CalculateMudTerrainFactor(float terrainFactor, float mudFactor)
@@ -15,39 +15,39 @@ class SCR_RSS_PenaltyMath
         if (terrainFactor <= 1.0)
             return 0.0;
 
-        return mudFactor * SCR_RSS_Constants.ENV_MUD_PENALTY_MAX;
+        return mudFactor * SCR_RSS_EnvConstants.ENV_MUD_PENALTY_MAX;
     }
 
     static float CalculateMudSprintPenalty(float mudFactor)
     {
-        if (mudFactor < SCR_RSS_Constants.ENV_MUD_SLIPPERY_THRESHOLD)
+        if (mudFactor < SCR_RSS_EnvConstants.ENV_MUD_SLIPPERY_THRESHOLD)
             return 0.0;
 
-        return SCR_RSS_Constants.ENV_MUD_SPRINT_PENALTY * mudFactor;
+        return SCR_RSS_EnvConstants.ENV_MUD_SPRINT_PENALTY * mudFactor;
     }
 
     static float CalculateSlipRisk(float mudFactor)
     {
         if (!SCR_RSS_ConfigBridge.IsMudSlipMechanismEnabled())
             return 0.0;
-        if (mudFactor < SCR_RSS_Constants.ENV_MUD_SLIPPERY_THRESHOLD)
+        if (mudFactor < SCR_RSS_EnvConstants.ENV_MUD_SLIPPERY_THRESHOLD)
             return 0.0;
 
-        return SCR_RSS_Constants.ENV_MUD_SLIP_RISK_BASE * mudFactor;
+        return SCR_RSS_EnvConstants.ENV_MUD_SLIP_RISK_BASE * mudFactor;
     }
 
     static float CalculateHeatStressPenalty(float temperature)
     {
-        if (temperature <= SCR_RSS_Constants.ENV_TEMPERATURE_HEAT_THRESHOLD)
+        if (temperature <= SCR_RSS_EnvConstants.ENV_TEMPERATURE_HEAT_THRESHOLD)
             return 0.0;
 
         float heatPenaltyCoeff = SCR_RSS_ConfigBridge.GetEnvTemperatureHeatPenaltyCoeff();
-        return (temperature - SCR_RSS_Constants.ENV_TEMPERATURE_HEAT_THRESHOLD) * heatPenaltyCoeff;
+        return (temperature - SCR_RSS_EnvConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * heatPenaltyCoeff;
     }
 
     static void CalculateColdStressPenalty(float temperature, out float coldStressPenalty, out float coldStaticPenalty)
     {
-        if (temperature >= SCR_RSS_Constants.ENV_TEMPERATURE_COLD_THRESHOLD)
+        if (temperature >= SCR_RSS_EnvConstants.ENV_TEMPERATURE_COLD_THRESHOLD)
         {
             coldStressPenalty = 0.0;
             coldStaticPenalty = 0.0;
@@ -55,15 +55,15 @@ class SCR_RSS_PenaltyMath
         }
 
         float coldRecoveryPenaltyCoeff = SCR_RSS_ConfigBridge.GetEnvTemperatureColdRecoveryPenaltyCoeff();
-        coldStressPenalty = (SCR_RSS_Constants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * coldRecoveryPenaltyCoeff;
-        coldStaticPenalty = (SCR_RSS_Constants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * SCR_RSS_Constants.ENV_TEMPERATURE_COLD_STATIC_PENALTY;
+        coldStressPenalty = (SCR_RSS_EnvConstants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * coldRecoveryPenaltyCoeff;
+        coldStaticPenalty = (SCR_RSS_EnvConstants.ENV_TEMPERATURE_COLD_THRESHOLD - temperature) * SCR_RSS_EnvConstants.ENV_TEMPERATURE_COLD_STATIC_PENALTY;
     }
 
     static float CalculateSurfaceWetnessPenalty(float surfaceWetness, int stance)
     {
         if (stance != 2)
             return 0.0;
-        if (surfaceWetness < SCR_RSS_Constants.ENV_SURFACE_WETNESS_THRESHOLD)
+        if (surfaceWetness < SCR_RSS_EnvConstants.ENV_SURFACE_WETNESS_THRESHOLD)
             return 0.0;
 
         float surfaceWetnessPenaltyMax = SCR_RSS_ConfigBridge.GetEnvSurfaceWetnessPenaltyMax();
@@ -91,5 +91,23 @@ class SCR_RSS_PenaltyMath
         float coeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
         float extraPerTick = extraWatts * coeff * 0.2;
         return basePower + extraPerTick;
+    }
+
+    //! 热应激倍数（基于气温阈值 + 室内减免）
+    static float CalculateHeatStressMultiplier(float currentTemp, bool isIndoor)
+    {
+        const float heatStressThreshold = 26.0;
+        float multiplier = 1.0;
+
+        if (currentTemp >= heatStressThreshold)
+        {
+            float tempExcess = currentTemp - heatStressThreshold;
+            multiplier = 1.0 + tempExcess * 0.02;
+        }
+
+        if (isIndoor)
+            multiplier = multiplier * (1.0 - SCR_RSS_EnvConstants.ENV_HEAT_STRESS_INDOOR_REDUCTION);
+
+        return Math.Clamp(multiplier, 1.0, SCR_RSS_EnvConstants.ENV_HEAT_STRESS_MAX_MULTIPLIER);
     }
 }

@@ -92,7 +92,7 @@ class SCR_RSS_SwimmingStateManager
             // 增长公式：wetWeight = WET_WEIGHT_MAX * sqrt(duration / 60.0)
             // 60秒时达到最大值 WET_WEIGHT_MAX kg
             float swimProgress = Math.Clamp(swimDuration / 60.0, 0.0, 1.0);
-            float swimWetWeight = SCR_RSS_Constants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
+            float swimWetWeight = SCR_RSS_SwimConstants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
             
             result.wetWeightStartTime = -1.0;
             result.currentWetWeight = swimWetWeight;
@@ -107,15 +107,15 @@ class SCR_RSS_SwimmingStateManager
         {
             // 检查湿重是否过期（30秒）
             float wetWeightElapsed = currentTime - result.wetWeightStartTime;
-            if (wetWeightElapsed >= SCR_RSS_Constants.WET_WEIGHT_DURATION)
+            if (wetWeightElapsed >= SCR_RSS_SwimConstants.WET_WEIGHT_DURATION)
             {
                 result.wetWeightStartTime = -1.0;
                 result.currentWetWeight = 0.0;
             }
             else
             {
-                float wetWeightRatio = 1.0 - (wetWeightElapsed / SCR_RSS_Constants.WET_WEIGHT_DURATION);
-                result.currentWetWeight = SCR_RSS_Constants.WET_WEIGHT_MAX * wetWeightRatio;
+                float wetWeightRatio = 1.0 - (wetWeightElapsed / SCR_RSS_SwimConstants.WET_WEIGHT_DURATION);
+                result.currentWetWeight = SCR_RSS_SwimConstants.WET_WEIGHT_MAX * wetWeightRatio;
             }
         }
         
@@ -131,7 +131,7 @@ class SCR_RSS_SwimmingStateManager
     static float CalculateTotalWetWeight(float swimmingWetWeight, float rainWeight)
     {
         float totalWetWeight = swimmingWetWeight + rainWeight;
-        totalWetWeight = Math.Min(totalWetWeight, SCR_RSS_Constants.ENV_MAX_TOTAL_WET_WEIGHT);
+        totalWetWeight = Math.Min(totalWetWeight, SCR_RSS_EnvConstants.ENV_MAX_TOTAL_WET_WEIGHT);
         return totalWetWeight;
     }
 }

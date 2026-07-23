@@ -165,6 +165,6 @@ class SCR_RSS_AIIntentFilter
         AIActionBase waitAction = utility.FindActionOfType(SCR_AIWaitBehavior);
         SCR_AIActionBase scrWait = SCR_AIActionBase.Cast(waitAction);
         if (scrWait)
-            scrWait.SetPriority(SCR_RSS_Constants.RSS_AI_INTENT_WAIT_PROMOTED_PRIORITY);
+            scrWait.SetPriority(SCR_RSS_AIConstants.RSS_AI_INTENT_WAIT_PROMOTED_PRIORITY);
     }
 }

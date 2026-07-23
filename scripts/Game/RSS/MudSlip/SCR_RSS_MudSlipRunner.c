@@ -38,9 +38,9 @@ class SCR_RSS_MudSlipRunner
         float turnRateRadPerSec = 0.0;
         float hLenSlip = horizontalVelForSlip.Length();
         float lastHLenSlip = m_vLastHorizontalVelocity.Length();
-        if (hLenSlip > SCR_RSS_Constants.ENV_SLIP_TURN_MIN_HORIZ_MS)
+        if (hLenSlip > SCR_RSS_EnvConstants.ENV_SLIP_TURN_MIN_HORIZ_MS)
         {
-            if (lastHLenSlip > SCR_RSS_Constants.ENV_SLIP_TURN_MIN_HORIZ_MS)
+            if (lastHLenSlip > SCR_RSS_EnvConstants.ENV_SLIP_TURN_MIN_HORIZ_MS)
             {
                 if (timeDeltaSec > 0.00001)
                 {
@@ -55,8 +55,8 @@ class SCR_RSS_MudSlipRunner
                         dot = -1.0;
                     float angleRad = Math.Acos(dot);
                     turnRateRadPerSec = angleRad / timeDeltaSec;
-                    if (turnRateRadPerSec > SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
-                        turnRateRadPerSec = SCR_RSS_Constants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
+                    if (turnRateRadPerSec > SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC)
+                        turnRateRadPerSec = SCR_RSS_EnvConstants.ENV_SLIP_RCOF_TURN_RATE_CAP_RADSEC;
                 }
             }
         }
@@ -86,7 +86,7 @@ class SCR_RSS_MudSlipRunner
                     }
                     if (!anchored)
                     {
-                        float fbSec = SCR_RSS_Constants.ENV_MUD_SLIP_COOLDOWN_ANCHOR_FALLBACK_SEC;
+                        float fbSec = SCR_RSS_EnvConstants.ENV_MUD_SLIP_COOLDOWN_ANCHOR_FALLBACK_SEC;
                         if (fbSec > 0.0)
                         {
                             if (!ctrl.RSS_IsRagdollActiveForCamera())
@@ -153,7 +153,7 @@ class SCR_RSS_MudSlipRunner
                             m_fMudSlipEventWorldTime = currentWorldTime;
                             m_bMudSlipAwaitCooldownAnchor = true;
                             float stmBefore = stamina.GetTargetStamina();
-                            float stmAfter = stmBefore - SCR_RSS_Constants.ENV_MUD_SLIP_STAMINA_FRAC;
+                            float stmAfter = stmBefore - SCR_RSS_EnvConstants.ENV_MUD_SLIP_STAMINA_FRAC;
                             stmAfter = Math.Clamp(stmAfter, 0.0, 1.0);
                             stamina.SetTargetStamina(stmAfter);
                             ctrl.RSS_TriggerMudSlipRagdoll();

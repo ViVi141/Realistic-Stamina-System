@@ -67,4 +67,50 @@ class SCR_RSS_EnvironmentDebug
         PrintFormat("  冷应激静态惩罚 / Cold Static Penalty: %1", Math.Round(snap.m_fColdStaticPenalty * 100.0) / 100.0);
         PrintFormat("  地表湿度惩罚 / Surface Wetness Penalty: %1", Math.Round(snap.m_fSurfaceWetnessPenalty * 100.0) / 100.0);
     }
+
+    //! Initialize 时的天气管理器调试输出
+    static void LogInitWeatherDebug(
+        TimeAndWeatherManagerEntity weatherManager,
+        bool useEngineTemperature,
+        bool useEngineTimezone,
+        float longitude,
+        float timeZoneOffsetHours)
+    {
+        if (!weatherManager)
+            return;
+        if (!Replication.IsServer())
+            return;
+        if (!SCR_RSS_ConfigBridge.IsDebugEnabled())
+            return;
+
+        bool overrideTemp = weatherManager.GetOverrideTemperature();
+        float tempMin = weatherManager.GetTemperatureAirMinOverride();
+        float tempMax = weatherManager.GetTemperatureAirMaxOverride();
+        float wetness = weatherManager.GetCurrentWetness();
+        float rain = weatherManager.GetRainIntensity();
+        float wind = weatherManager.GetWindSpeed();
+        float tod = weatherManager.GetTimeOfTheDay();
+
+        string useEngineTempStr = "false";
+        if (useEngineTemperature)
+            useEngineTempStr = "true";
+
+        string useEngineTzStr = "false";
+        if (useEngineTimezone)
+            useEngineTzStr = "true";
+
+        string extras = useEngineTempStr + " | " + useEngineTzStr
+            + " | Lon=" + (Math.Round(longitude * 10.0) / 10.0)
+            + " | TZOff=" + (Math.Round(timeZoneOffsetHours * 10.0) / 10.0);
+
+        PrintFormat("[RSS][WeatherDebug] OverrideTemp=%1 | TempMin=%2 | TempMax=%3 | Wetness=%4 | Rain=%5 | Wind=%6 | TimeOfDay=%7 | Server=true | Extras=%8",
+            overrideTemp,
+            Math.Round(tempMin * 10.0) / 10.0,
+            Math.Round(tempMax * 10.0) / 10.0,
+            Math.Round(wetness * 100.0) / 100.0,
+            Math.Round(rain * 100.0) / 100.0,
+            Math.Round(wind * 10.0) / 10.0,
+            Math.Round(tod * 10.0) / 10.0,
+            extras);
+    }
 }

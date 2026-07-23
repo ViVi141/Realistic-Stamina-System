@@ -87,7 +87,7 @@ modded class CharacterCamera1stPerson
         }
 
         float targetStress = rssController.RSS_GetMudSlipCameraShake01();
-        float smoothRate = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
+        float smoothRate = SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE;
         float blend = smoothRate * pDt;
         if (blend > 1.0)
             blend = 1.0;
@@ -100,16 +100,16 @@ modded class CharacterCamera1stPerson
             return;
         }
 
-        float freq = SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
-        freq = freq + stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
+        float freq = SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_BASE;
+        freq = freq + stress * SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS;
         m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad + pDt * 2.0 * Math.PI * freq;
         if (m_fMudSlipShakePhaseRad > 100000.0)
             m_fMudSlipShakePhaseRad = m_fMudSlipShakePhaseRad - 100000.0;
 
         float ph = m_fMudSlipShakePhaseRad;
-        float sYaw = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
-        float sPitch = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
-        float sRoll = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
+        float sYaw = stress * SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_YAW_DEG * Math.Sin(ph);
+        float sPitch = stress * SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_PITCH_DEG * Math.Sin(ph * 1.17 + 1.1);
+        float sRoll = stress * SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_ROLL_DEG * Math.Sin(ph * 1.41 + 0.73);
         vector ypr = "0 0 0";
         ypr[0] = sYaw;
         ypr[1] = sPitch;
@@ -118,7 +118,7 @@ modded class CharacterCamera1stPerson
         Math3D.AnglesToMatrix(ypr, rotMat);
         Math3D.MatrixMultiply4(rotMat, pOutResult.m_CameraTM, pOutResult.m_CameraTM);
 
-        float fovJit = stress * SCR_RSS_Constants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
+        float fovJit = stress * SCR_RSS_EnvConstants.ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG * Math.Sin(ph * 2.03 + 0.4);
         pOutResult.m_fFOV = fovBase + fovJit;
     }
 

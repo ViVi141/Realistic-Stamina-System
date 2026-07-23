@@ -54,7 +54,7 @@ class SCR_PlayerBaseVehicleHelper
         float vehicleNetRatePerSec = 0.0;
         if (vehicleStaminaPercent < 1.0)
         {
-            vehicleNetRatePerSec = SCR_RSS_UpdateCoordinator.GetNetStaminaRatePerSecond(
+            vehicleNetRatePerSec = SCR_RSS_StaminaNetRate.GetNetStaminaRatePerSecond(
                 vehicleStaminaPercent, false, 0.0, -SCR_RSS_Constants.REST_RECOVERY_PER_TICK, 0.0, 0.0, 1.0,
                 epocState, encumbranceCache, exerciseTracker, ctrl, null, true);
             float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
