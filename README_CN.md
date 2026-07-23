@@ -6,9 +6,15 @@
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
 [![Version](https://img.shields.io/badge/Version-6.0.0-brightgreen)](CHANGELOG.md)
 
-**Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
+**Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
 **English**: A realistic stamina and speed system mod for Arma Reforger that dynamically adjusts movement speed based on stamina and encumbrance, using precise medical/physiological models.
+
+- **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
+- **建议游戏版本**: Arma Reforger **1.7+**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.0.0**
+
+> 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
 ## 作者信息
 
@@ -20,10 +26,11 @@
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE) 许可证。
 
-## 专用服性能（v3.21.1+）
+## 专用服性能（v3.21.1+ / 现行仍相关）
 
 - 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
-- 专用服上大规模 AI 时，远距且非交战群组可降为「仅队长全量计算体力（默认 5s）、队员同步体力与速度倍率」，未命中该模式时另有按距离分档的 AI 刷新间隔；群组「是否交战」判定带短时间缓存（`RSS_PERF_AI_GROUP_BATTLE_CACHE_SEC`），减轻大组扫描开销。可调参数见 [SCR_StaminaConstants.c](scripts/Game/RSS/Core/SCR_StaminaConstants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)。
+- 专用服大规模 AI：可通过设置关闭 AI 全量计算（`m_bDisableAIAllCalc` / `m_bDisableAIStaminaCalc`），或关闭实验性 AI 战斗效果（`m_bEnableAIStaminaCombatEffects`）。
+- 历史「远距群组仅队长全量计算」等性能路径的常量名见 [SCR_RSS_Constants.c](scripts/Game/RSS/Core/SCR_RSS_Constants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)；**当前 AI 编排入口为 `SCR_RSS_AIManager`**，以 `scripts/Game/RSS/AI/` 源码为准。
 
 ## 功能说明
 
@@ -31,13 +38,38 @@
 
 **体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
 
+### 【v6】核心闭环（当前主模型）
+
+每 tick（约 17 ms；体力结算按 0.2 s 协调）大致为：
+
+```
+v_meas → P(v) [SCR_RSS_MetabolismModel]
+      → CP_eff / W′ [SCR_RSS_CriticalPowerModel]
+      → v_max = invert(P_target) [SCR_RSS_DrainCalculator + SCR_RSS_SpeedCalculator]
+      → SetSpeedLimit [SCR_RSS_SpeedBridge]  // 与灌木/铁丝网减速取 min，不覆盖原生 Foliage
+```
+
+| 概念 | 说明 |
+|------|------|
+| **有氧主条 (STA)** | 仍驱动引擎体力条 UI；极低 STA（约 &lt;5%，`SMOOTH_TRANSITION_END`）进入跛行 |
+| **W′ 功率储备** | 超过动态 CP 的功率以焦耳放电；对外字段 `wPrimePool01`（`anaerobicPercent` 已弃用） |
+| **Sprint** | `v_sprint ≈ invert(min(sprint_cap, CP + W′/Δt))`；门禁看有氧阈值 + W′ 池 |
+| **v_drain** | 消耗按 `min(v_meas, appliedLimit)` 记账，与限速闭环一致 |
+| **【v6】已移除** | 25%/35%「意志力平台期」；主速度曲线改为相位行军档 `CalculateV6PhaseSpeedMultiplier` |
+| **5 秒撞墙阻尼** | `SCR_RSS_CollapseTransition`：刚跌破跛行阈值时 SmoothStep 过渡，避免「引擎断油」感 |
+
+预设（`m_sSelectedPreset`）：**EliteStandard** / **StandardMilsim**（默认）/ **TacticalAction** / **Custom**。  
+数值嵌入于 `SCR_RSS_SettingsPresetBake`；离线 JSON 见 `tools/optimized_rss_config_*_v6.json`。
+
+权威计算说明：[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
+
 ### 主要特性
 
 - ✅ **v6 CP–W′ 功率预算**：Pandolf/ACSM 代谢 → 动态 CP → W′ 焦耳放电/再填充（Elite Skiba 双指数）
-- ✅ **相位行军档速度**：Walk/Run/Sprint 按配置 m/s 目标；低体力仅跛行（无 25% 意志力平台期）
-- ✅ **5秒阻尼过渡（"撞墙"瞬间优化）**：在体力触及25%临界点时，使用5秒时间阻尼过渡
+- ✅ **相位行军档速度**【v6】：Walk/Run/Sprint 按配置 m/s 目标；低体力仅跛行（**无** 25% 意志力平台期）
+- ✅ **5秒阻尼过渡（"撞墙"瞬间优化）**【v6 阈值改为约 5% 跛行点】：跌破跛行阈值时使用 5 秒时间阻尼过渡
   - 让玩家感觉角色"腿越来越重"，而不是"引擎突然断油"
-  - 使用SmoothStep函数实现渐进式速度下降（从3.7 m/s逐渐降到约2.2 m/s）
+  - 使用 SmoothStep；实现见 `SCR_RSS_CollapseTransition`
 - ✅ **坡度自适应步幅逻辑**：上坡时自动降低目标速度（坡度-速度负反馈）
   - 每度坡度降低2.5%速度，换取更持久的续航
   - 模拟现实中人爬坡时自动缩短步幅的行为
@@ -109,128 +141,118 @@
 
 ## 项目结构
 
+约 **98** 个 EnforceScript `.c`。领域类统一 `SCR_RSS_*`（modded 入口除外）。
+
 ```
-RealisticStaminaSystem/
-├── LICENSE                               # AGPL-3.0 许可证
-├── README.md                             # 项目说明文档
-├── AUTHORS.md                            # 作者信息
-├── CONTRIBUTING.md                       # 贡献指南
-├── CHANGELOG.md                          # 更新日志
-├── .gitignore                            # Git 忽略文件配置
-├── addon.gproj                           # Arma Reforger 项目配置文件
-├── Configs/                              # 实体目录配置
-│   └── EntityCatalog/                    # 军火库条目登记
-├── scripts/                              # EnforceScript 脚本目录
-│   └── Game/
-│       ├── Integration/                  # modded 入口层（高冲突面集中管理）
-│       │   ├── PlayerBase.c              # 主控制器（modded SCR_CharacterControllerComponent，1731行）
-│       │   ├── SCR_StaminaOverride.c     # 体力系统覆盖（modded SCR_CharacterStaminaComponent）
-│       │   ├── SCR_RSS_ServerBootstrap.c # 服务端引导（modded SCR_BaseGameMode）
-│       │   ├── SCR_InventoryStorageManagerComponent_Override.c # 库存覆盖
-│       │   └── SCR_PlayerBaseIntegrationHelpers.c # 集成辅助
-│       ├── RSS/                          # 模组主体（6 领域分层）
-│       │   ├── Core/                     # 体力核心（13 文件）
-│       │   │   ├── SCR_RealisticStaminaSystem.c  # 双稳态速度模型＋Pandolf 能量公式（1329行）
-│       │   │   ├── SCR_StaminaUpdateCoordinator.c # 每 0.2s 主更新协调器（873行）
-│       │   │   ├── SCR_SpeedCalculation.c        # 综合速度／Tobler 坡度／战术冲刺
-│       │   │   ├── SCR_StaminaConsumption.c      # 体力消耗计算
-│       │   │   ├── SCR_StaminaRecovery.c         # 体力恢复计算
-│       │   │   ├── SCR_FatigueSystem.c           # 累积疲劳模型
-│       │   │   ├── SCR_EpocState.c               # EPOC 状态管理
-│       │   │   ├── SCR_ExerciseTracking.c        # 运动／休息时间累计跟踪
-│       │   │   ├── SCR_EncumbranceCache.c        # 负重缓存（分段非线性惩罚）
-│       │   │   ├── SCR_CollapseTransition.c      # 5s 阻尼过渡（25% 临界点）
-│       │   │   ├── SCR_StanceTransitionManager.c # 姿态转换成本与窗口结算
-│       │   │   ├── SCR_StaminaConstants.c        # 全系统常量与日志节流（1708行）
-│       │   │   └── SCR_StaminaHelpers.c          # 辅助函数
-│       │   ├── Environment/              # 环境系统（9 文件）
-│       │   │   ├── SCR_EnvironmentFactor.c       # 热应激／冷应激／降雨湿重／风阻／泥泞（2258行）
-│       │   │   ├── SCR_EnvironmentAstronomyMath.c # 天文／太阳几何
-│       │   │   ├── SCR_EnvironmentPenaltyMath.c  # 温-风补偿（冷热对称平方响应）
-│       │   │   ├── SCR_EnvironmentWeatherApi.c   # 天气 API 读取／风阻计算
-│       │   │   ├── SCR_TerrainDetection.c        # 地形类型检测（AI LOD 分档）
-│       │   │   ├── SCR_MaterialTerrainTable.c    # 地形材质映射表
-│       │   │   ├── SCR_SlopeSpeedTransition.c    # 坡度速度 5s 平滑过渡
-│       │   │   ├── SCR_SwimmingState.c           # 3D 游泳物理模型
-│       │   │   └── SCR_JumpVaultDetection.c      # 跳跃／翻越检测
-│       │   ├── AI/                      # AI 体力系统（v3.23，7 文件）
-│       │   │   ├── SCR_RSS_AIStaminaState.c           # 6 态体力状态机
-│       │   │   ├── SCR_RSS_AISpeedCap.c               # 移动限速
-│       │   │   ├── SCR_RSS_AIIntentFilter.c           # 行为意图过滤
-│       │   │   ├── SCR_RSS_AICombatDecay.c            # 感知／射速／技能衰减
-│       │   │   ├── SCR_RSS_AIGroupSync.c              # 群组路点／休息／步速
-│       │   │   ├── SCR_RSS_AIGroupStaminaProxy.c      # 远距群组代理
-│       │   │   └── SCR_RSS_AIInjuryLink.c             # 伤害-体力联动
-│       │   ├── Integration/
-│       │   │   └── SCR_AIGroup_RSS.c                  # modded SCR_AIGroup 事件注册
-│       │   ├── NetworkConfig/           # 网络与配置（7 文件）
-│       │   │   ├── SCR_NetworkSync.c                 # 客户端上报／服务端权威校验／三层限流
-│       │   │   ├── SCR_RSS_ConfigManager.c           # 单例配置管理器（版本迁移／热重载，1044行）
-│       │   │   ├── SCR_RSS_Settings.c                # 可序列化配置类（41+ 参数，3 预设，1139行）
-│       │   │   ├── SCR_RSS_ConfigSyncUtils.c         # 配置同步工具
-│       │   │   ├── SCR_RSS_API.c                     # 外部模组 API
-│       │   │   ├── SCR_RSS_DataExport.c              # 数据导出
-│       │   │   └── SCR_RSS_PlayerBaseConfigArrays.c  # 配置数组桥接
-│       │   ├── MudSlip/                 # 泥泞滑倒（2 文件）
-│       │   │   ├── SCR_MudSlipEffects.c              # 泥泞滑倒效果
-│       │   │   └── SCR_RSS_MudSlipRunner.c           # 玩家侧泥泞滑倒推进器
-│       │   └── Presentation/            # HUD 与表现（8 文件）
-│       │       ├── SCR_StaminaHUDComponent.c         # 右上角实时状态条
-│       │       ├── SCR_UISignalBridge.c              # 官方 UI 信号桥接
-│       │       ├── SCR_DebugDisplay.c                # 调试信息输出
-│       │       ├── CharacterCamera1stPerson.c        # 第一人称镜头惯性／头部物理
-│       │       ├── SCR_RSS_PresentationBridge.c      # 表现桥接
-│       │       ├── SCR_DesaturationEffect_CombatStimOD.c
-│       │       ├── SCR_NoiseFilterEffect_Stamina.c
-│       │       └── SCR_RegenerationScreenEffect_CombatStim.c
-│       ├── Components/                 # 游戏组件
-│       │   └── Gadgets/                # 战术物品（5 文件）
-│       │       ├── SCR_CombatStimConstants.c         # CSB 兴奋剂常量
-│       │       ├── SCR_CombatStimStateMachine.c      # CSB 状态机
-│       │       ├── SCR_ConsumableCombatStimInjector.c # CSB 注射器
-│       │       ├── SCR_ConsumableCustomInjector.c    # 自定义注射器
-│       │       └── SCR_ConsumableMorphine.c          # 吗啡消耗品
-│       ├── UserActions/                # 用户动作（3 文件）
-│       │   ├── SCR_CombatStimUserAction.c
-│       │   ├── SCR_CustomInjectorUserAction.c
-│       │   └── SCR_MorphineUserAction.c
-│       └── Damage/                     # 伤害效果
-│           └── DamageEffects/
-│               └── CharacterDamageEffects/
-│                   ├── SCR_CustomInjectorDamageEffect.c
-│                   └── SCR_MorphineDamageEffect.c
-├── UI/                                   # UI布局文件
-│   └── layouts/
-│       └── HUD/
-│           └── StatsPanel/
-│               └── StaminaHUD.layout     # 状态HUD布局
-├── Prefabs/                              # 预制体文件
-│   ├── Characters/
-│   │   └── Core/
-│   │       └── Character_Base.et         # 角色基础预制体
-│   └── Items/
-│       └── Medicine/
-│           └── CombatStimInjection_01/   # CSB 注射器预制体
-└── tools/                                # v4/v6 优化管道（Python）+ Rust v6 入口
-    ├── rss_pipeline_v4.py                # Optuna v4 主入口
-    ├── rss_pipeline_v6.py                # v6 validate/calibrate/optimize 主入口
-    ├── rust_pipeline_v6/                 # Rust CLI 入口（Phase-A 双跑）
-    ├── rss_digital_twin_fix.py           # 数字孪生（供管线引用）
-    ├── embed_json_to_c.py                # JSON → C 嵌入（可选）
-    ├── test_v4_smoke.py                  # v4 烟雾测试（无 Optuna）
-    ├── test_v6_smoke.py                  # v6 合约/生理锚点烟雾测试
-    ├── quick_verify.py                   # 少量 trial 快速跑通
-    ├── requirements.txt                  # numpy、optuna
-    ├── optimized_rss_config_*_v4.json   # v4 三份预设
-    ├── optimized_rss_config_*_v6.json   # v6 优化产物
-    └── README.md                         # 工具说明
+Realistic-Stamina-System/
+├── LICENSE / LICENSE.txt                 # AGPL-3.0
+├── README.md / README_CN.md / README_EN.md
+├── AUTHORS.md / CONTRIBUTING.md / CHANGELOG.md
+├── addon.gproj                           # GUID 68649101601CC93D
+├── WORKSHOP_CHANGENOTE_*.txt
+├── Assets/                               # 资源
+├── Configs/EntityCatalog/                # 军火库条目登记
+├── Prefabs/
+│   ├── Characters/Core/Character_Base.et
+│   └── Items/Medicine/CombatStimInjection_01/
+├── UI/layouts/
+│   ├── HUD/StatsPanel/                   # Stamina HUD
+│   └── Menus/RSSSettings/                # 设置菜单
+├── docs/                                 # 计算逻辑、API、规范、已知问题
+├── githooks/pre-commit
+├── photos/ / preview.png
+├── scripts/Game/
+│   ├── Integration/                      # modded 入口层（高冲突面）
+│   │   ├── PlayerBase.c                  # modded SCR_CharacterControllerComponent
+│   │   ├── PlayerBase_UpdateLoop.c       # 主更新循环扩展
+│   │   ├── SCR_StaminaOverride.c         # 拦截引擎体力条
+│   │   ├── SCR_RSS_ServerBootstrap.c
+│   │   ├── SCR_RSS_InventoryOverride.c
+│   │   ├── SCR_PlayerBaseIntegrationHelpers.c
+│   │   ├── SCR_PlayerBaseLoop.c
+│   │   ├── SCR_PlayerBaseRpcHandler.c
+│   │   ├── SCR_PlayerBaseVehicleHelper.c
+│   │   └── SCR_RSS_StaminaComponentCompat.c
+│   ├── RSS/
+│   │   ├── Core/                         # 体力核心（~30）
+│   │   │   ├── SCR_RSS_MetabolismModel.c / MetabolismMath.c
+│   │   │   ├── SCR_RSS_CriticalPowerModel.c / AnaerobicBurst.c
+│   │   │   ├── SCR_RSS_UpdateCoordinator.c / DrainCalculator.c
+│   │   │   ├── SCR_RSS_SpeedCalculator.c / SpeedBridge.c
+│   │   │   ├── SCR_RSS_RecoveryCalculator.c / EpocState.c / FatigueSystem.c
+│   │   │   ├── SCR_RSS_CollapseTransition.c / SprintGate.c / SprintBlockSpeedTransition.c
+│   │   │   ├── SCR_RSS_EncumbranceCache.c / StanceTransitionManager.c
+│   │   │   ├── SCR_RSS_SwimmingStaminaModel.c / ExerciseTracker.c
+│   │   │   ├── SCR_RSS_Constants.c / ConfigBridge.c / StaminaHelpers.c / StaminaState.c
+│   │   │   ├── SCR_RSS_CombatStimController.c / WPrimeServerTick.c
+│   │   │   └── …（调试批处理 / NetRate / UpdateLoop* 等）
+│   │   ├── Environment/                  # 环境（~18）
+│   │   │   ├── SCR_RSS_EnvironmentFactor.c
+│   │   │   ├── SCR_RSS_AstronomyMath.c / PenaltyMath.c / WeatherApi.c
+│   │   │   ├── SCR_RSS_RainWetWeight.c / TemperatureSampler.c / IndoorDetection.c
+│   │   │   ├── SCR_RSS_TerrainDetection.c / MaterialTerrainTable.c
+│   │   │   ├── SCR_RSS_SlopeSpeedTransition.c / JumpVaultDetection.c
+│   │   │   ├── SCR_RSS_SwimmingState.c / SwimConstants.c
+│   │   │   └── …（EnvConstants / Debug / PendingUpdate / WeatherChange / LocationBootstrap）
+│   │   ├── AI/                           # AI（~8，当前实现）
+│   │   │   ├── SCR_RSS_AIManager.c       # 统一编排（500ms 行为节流）
+│   │   │   ├── SCR_RSS_AIStaminaState.c  # 体力状态机
+│   │   │   ├── SCR_RSS_AISpeedCap.c      # SetSpeedLimit 限速（与灌木合并）
+│   │   │   ├── SCR_RSS_AIIntentFilter.c / AICombatDecay.c / AIInjuryLink.c
+│   │   │   ├── SCR_RSS_AIUpdateInterval.c / AIConstants.c
+│   │   │   └── （历史群组代理/路点模块名见旧文档；以本目录源码为准）
+│   │   ├── NetworkConfig/                # 网络与配置（~8）
+│   │   │   ├── SCR_RSS_Settings.c / Params.c / SettingsPresetBake.c / SettingsSync.c
+│   │   │   ├── SCR_RSS_ConfigManager.c / NetworkSyncManager.c
+│   │   │   ├── SCR_RSS_API.c / DataExport.c
+│   │   │   └── …
+│   │   ├── MudSlip/
+│   │   │   ├── SCR_RSS_MudSlipEffects.c
+│   │   │   └── SCR_RSS_MudSlipRunner.c
+│   │   └── Presentation/                 # HUD / 镜头 / 屏效 / 设置 UI（~12）
+│   │       ├── SCR_RSS_StaminaHUDComponent.c / UISignalBridge.c / DebugDisplay.c
+│   │       ├── CharacterCamera1stPerson.c / PresentationBridge.c
+│   │       ├── SCR_RSSAdminMenuUI.c / SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
+│   │       └── CombatStim / Stamina 屏效脚本
+│   ├── Components/Gadgets/               # CSB / 吗啡等
+│   ├── UserActions/
+│   └── Damage/DamageEffects/CharacterDamageEffects/
+└── tools/                                # 数字孪生 + v4/v6 管线 + Rust
+    ├── rss_pipeline_v6.py / rss_pipeline_v4.py / rss_digital_twin_fix.py
+    ├── rss_sim/（PyO3） / rust_pipeline_v6/
+    ├── test_v6_smoke.py / bench_physio_anchors.py / test_acft_2mile.py
+    ├── check_script_size.py / check_enforce_syntax.py / embed_json_to_c.py
+    ├── optimized_rss_config_*_v4.json / *_v6.json
+    └── README.md
 ```
+
+
+## v6.0.0 版本更新 / v6.0.0 Updates
+
+**2026-06-04**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.0.0]**）
+
+- **CP–W′** — `SCR_RSS_MetabolismModel`（Pandolf + ACSM）+ `SCR_RSS_CriticalPowerModel`（焦耳 W′、动态 CP、Elite Skiba 再填充）
+- **移除意志力平台期** — 主速度曲线改为 `CalculateV6PhaseSpeedMultiplier`（低 STA 跛行）
+- **v_drain 闭环** — 消耗与 `m_fAppliedSpeedLimitMs` / SpeedBridge 对齐
+- **Integration** — `TickPower` + runtime context；Sprint 门禁走 CP 模型
+- **疲劳 / EPOC** — 积分疲劳 I(t)；EPOC ∝ 峰值功率
+- **AI** — `SCR_RSS_AISpeedCap` 与玩家同源 v6 相位曲线
+- **工具** — `test_v6_smoke.py`、`test_acft_2mile.py`、Python/Rust 孪生与 `rss_pipeline_v6.py`
+- **配置** — `m_sConfigVersion` / ConfigManager → **6.0.0**；Params +CP/W′/sprint cap
+
+## v5.0.0 版本更新 / v5.0.0 Updates
+
+**2026-06-04**（详见 [CHANGELOG.md](CHANGELOG.md) **[5.0.0]** / **[5.0.0-dev]**）
+
+- **双池语义** — 有氧主条 + 无氧/W′ 前身语义；命名统一 `SCR_RSS_*`
+- **归档** — v3.23.1 脚本归档后清理；Integration 拆分 `PlayerBase_UpdateLoop.c`
+- **冲刺门禁 / 联机 / HUD** — 见 CHANGELOG；为 v6 CP–W′ 铺路
 
 ## v3.23.1 版本更新 / v3.23.1 Updates
 
 **2026-05-28**（详见 [CHANGELOG.md](CHANGELOG.md) **[3.23.1]**）
 
-- **1.7 灌木丛减速** — 新增 `SCR_RSS_CharacterSpeedBridge`，RSS 体力限速与原生 Foliage 减速合并，穿灌木不再被 RSS 覆盖。
+- **1.7 灌木丛减速** — 新增 `SCR_RSS_SpeedBridge`，RSS 体力限速与原生 Foliage 减速合并，穿灌木不再被 RSS 覆盖。
 - **HUD / 配置** — 回满 ETA 分段积分估算；`willpower_threshold` / `sprint_enable_threshold` / 蹲姿恢复可按预设配置。
 - **稳定版预设** — 三档参数锁定 v3.23.0 基线；`CURRENT_VERSION` **3.23.1**。
 
@@ -297,17 +319,17 @@ RealisticStaminaSystem/
 
 #### ⚡ 性能优化
 
-- **Pandolf 调用减少** - `CalculateLandBaseDrainRate` 中 T1 阻尼结果提升为外层变量复用，努力补偿分支在速度差 < 0.01 时跳过重复调用，最坏情况 4 次→3 次，常见情况降至 2 次（`SCR_StaminaUpdateCoordinator.c`）。
-- **消除运行时除法** - `ShouldSync` / `AcceptClientReport` 新增三个预计算间隔常量替换 `1.0 / Hz` 浮点除法（`SCR_NetworkSync.c`）。
+- **Pandolf 调用减少** - `CalculateLandBaseDrainRate` 中 T1 阻尼结果提升为外层变量复用，努力补偿分支在速度差 < 0.01 时跳过重复调用，最坏情况 4 次→3 次，常见情况降至 2 次（`SCR_RSS_UpdateCoordinator.c`）。
+- **消除运行时除法** - `ShouldSync` / `AcceptClientReport` 新增三个预计算间隔常量替换 `1.0 / Hz` 浮点除法（`SCR_RSS_NetworkSyncManager.c`）。
 
 #### 🔧 修复
 
-- **网络速度插值实际无效** - `SMOOTH_TRANSITION_DURATION` 从 `0.05s` 提升至 `0.15s`，50ms 间隔下 lerpSpeed ≈ 0.33，插值真正生效，消除速度突变感（`SCR_NetworkSync.c`）。
-- **死代码清理** - 删除 `CalculateBaseDrainRate` 中计算后从未使用的 `loadFactor` 等三行（`SCR_StaminaUpdateCoordinator.c`）。
+- **网络速度插值实际无效** - `SMOOTH_TRANSITION_DURATION` 从 `0.05s` 提升至 `0.15s`，50ms 间隔下 lerpSpeed ≈ 0.33，插值真正生效，消除速度突变感（`SCR_RSS_NetworkSyncManager.c`）。
+- **死代码清理** - 删除 `CalculateBaseDrainRate` 中计算后从未使用的 `loadFactor` 等三行（`SCR_RSS_UpdateCoordinator.c`）。
 
 #### 🏗️ 重构
 
-- **提取 `BuildRecoveryContext`** - 新增 `RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_StaminaUpdateCoordinator.c`）。
+- **提取 `BuildRecoveryContext`** - 新增 `RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_RSS_UpdateCoordinator.c`）。
 
 ---
 
@@ -320,7 +342,7 @@ RealisticStaminaSystem/
 - **战术冲刺爆发与冷却** - Sprint 前 8 秒爆发期内负重对速度惩罚降至 20%；8～13 秒缓冲区内线性过渡到正常惩罚；爆发结束或松开冲刺后 15 秒冷却内再次冲刺不触发爆发。
 - **室内楼梯负重速度减免** - 室内且原始坡度 &gt; 0 时判定为楼梯，负重速度惩罚乘 0.4；新增 `GetRawSlopeAngle` 供室内楼梯判定使用。
 - **坡度速度过渡立即提速** - 目标速度比当前平滑值高出 ≥ 0.08 时取消 5 秒平滑、立即提速，避免上坡中细微缓坡频繁加速。
-- **镜头惯性与头部物理** - 第一人称下：起步滞后/前倾、急停前冲（随负重非线性）、步伐垂直颠簸与上坡左右摇摆；冲刺 FOV 与战术爆发联动（Burst +5° / Cruise +3° / Limp -2°）。见 [CharacterCamera1stPerson.c](scripts/Game/Character/CharacterCamera1stPerson.c)、[SCR_StaminaConstants.c](scripts/Game/Components/Stamina/SCR_StaminaConstants.c)。
+- **镜头惯性与头部物理** - 第一人称下：起步滞后/前倾、急停前冲（随负重非线性）、步伐垂直颠簸与上坡左右摇摆；冲刺 FOV 与战术爆发联动（Burst +5° / Cruise +3° / Limp -2°）。见 [CharacterCamera1stPerson.c](scripts/Game/RSS/Presentation/CharacterCamera1stPerson.c)、[SCR_RSS_Constants.c](scripts/Game/RSS/Core/SCR_RSS_Constants.c)。
 
 ### 🔁 变更
 
@@ -339,24 +361,24 @@ RealisticStaminaSystem/
 本版本仅记录 C 脚本层面的变化。
 
 ### ✅ 新增
-- **环境温度物理模型** - 新增温度步进、短波/长波与云量修正、太阳/日出日落与月相推断，支持引擎温度或模组模型切换（scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c）
-- **室内检测增强** - 增加向上射线与水平封闭检测，降低开放屋顶/天窗误判（scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c）
-- **配置变更同步链路** - 新增监听器注册、变更检测、全量参数/设置数组同步与广播（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c、scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/PlayerBase.c）
-- **网络校验与平滑** - 客户端上报体力/负重，服务器权威校验并下发速度倍率，含重连延迟同步（scripts/Game/PlayerBase.c、scripts/Game/Components/Stamina/SCR_NetworkSync.c）
-- **日志节流工具** - 统一 Debug/Verbose 日志节流接口（scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
+- **环境温度物理模型** - 新增温度步进、短波/长波与云量修正、太阳/日出日落与月相推断，支持引擎温度或模组模型切换（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **室内检测增强** - 增加向上射线与水平封闭检测，降低开放屋顶/天窗误判（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **配置变更同步链路** - 新增监听器注册、变更检测、全量参数/设置数组同步与广播（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/Integration/PlayerBase.c）
+- **网络校验与平滑** - 客户端上报体力/负重，服务器权威校验并下发速度倍率，含重连延迟同步（scripts/Game/Integration/PlayerBase.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_NetworkSyncManager.c）
+- **日志节流工具** - 统一 Debug/Verbose 日志节流接口（scripts/Game/RSS/Core/SCR_RSS_Constants.c）
 
 ### 🔁 变更
-- **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c）
-- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf 路径，并提供服务端权威速度倍数计算接口（scripts/Game/Components/Stamina/SCR_StaminaUpdateCoordinator.c）。Givoni模型已弃用。
-- **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c、scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
-- **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（scripts/Game/Components/Stamina/SCR_RSS_Settings.c）
-- **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（scripts/Game/Components/Stamina/SCR_RSS_Settings.c、scripts/Game/Components/Stamina/SCR_StaminaConstants.c）
-- **体重参与消耗** - 体力消耗输入改为“装备+身体”的总重，并优化调试输出（scripts/Game/PlayerBase.c）
+- **服务器权威配置** - 客户端不再写入 JSON，仅内存默认值等待同步；服务器写盘并增加备份/修复流程（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c）
+- **移动相位驱动消耗** - 优先以移动相位/冲刺状态决定 Pandolf 路径，并提供服务端权威速度倍数计算接口（scripts/Game/RSS/Core/SCR_RSS_UpdateCoordinator.c）。Givoni模型已弃用。
+- **负重参数约束** - 新增负重惩罚指数/上限并对预设进行 clamp（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c、scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/RSS/Core/SCR_RSS_Constants.c）
+- **预设参数刷新** - Elite/Standard/Tactical 预设全面更新，并补充天气模型顶层默认值（scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c）
+- **冲刺消耗默认值** - Sprint 消耗倍数默认改为 3.5，支持配置覆盖（scripts/Game/RSS/NetworkConfig/SCR_RSS_Settings.c、scripts/Game/RSS/Core/SCR_RSS_Constants.c）
+- **体重参与消耗** - 体力消耗输入改为“装备+身体”的总重，并优化调试输出（scripts/Game/Integration/PlayerBase.c）
 
 ### 🐞 修复
-- **室内判定误报** - 通过屋顶射线与水平封闭检测降低开放屋顶/天窗误判（scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c）
-- **引擎温度极值退化** - 当日最小/最大温度趋同会回退到物理/模拟估算，避免温度异常（scripts/Game/Components/Stamina/SCR_EnvironmentFactor.c）
-- **客户端写盘覆盖** - 客户端不再写入本地 JSON，避免覆盖服务器配置（scripts/Game/Components/Stamina/SCR_RSS_ConfigManager.c）
+- **室内判定误报** - 通过屋顶射线与水平封闭检测降低开放屋顶/天窗误判（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **引擎温度极值退化** - 当日最小/最大温度趋同会回退到物理/模拟估算，避免温度异常（scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c）
+- **客户端写盘覆盖** - 客户端不再写入本地 JSON，避免覆盖服务器配置（scripts/Game/RSS/NetworkConfig/SCR_RSS_ConfigManager.c）
 
 ## v3.11.1 版本更新 / v3.11.1 Updates
 
@@ -411,28 +433,32 @@ RealisticStaminaSystem/
 ### 模型架构
 
 本项目采用**精确的医学/生理学模型**，包括：
-- **[Pandolf 能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**：完整的能量消耗计算公式
-- **双稳态-应激性能模型**：模拟意志力克服早期疲劳
-- **[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)**：健康状态、累积疲劳和代谢适应
-- **多维交互模型**：速度、负重、坡度的综合影响
+- **[Pandolf 能量消耗模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**：步行/负重/坡度代谢
+- **ACSM 跑/冲模型 + Critical Power–W′**【v6】：可持续功率与无氧焦耳储备
+- **双稳态-应激性能模型**（历史）：曾用于意志力平台期；**【v6 玩家主路径已移除平台期】**
+- **[个性化运动建模](https://doi.org/10.1371/journal.pcbi.1006073)**：健康状态、累积疲劳和代谢适应等参数化思想
+- **多维交互模型**：速度、负重、坡度、环境的综合影响
 
 ### 实现方式
 
-- 使用 `modded class SCR_CharacterStaminaComponent` 扩展体力组件
-- 使用 `modded class SCR_CharacterControllerComponent` 显示状态信息
-- 通过 `OverrideMaxSpeed(fraction)` 动态设置最大速度倍数
-- 每 0.2 秒更新一次速度，确保实时响应体力变化
-- **使用精确的数学模型**：所有计算都基于精确的数学函数，不使用近似
-- **使用完整的 [Pandolf 模型](https://journals.physiology.org/doi/abs/10.1152/jappl.1977.43.4.577)**：始终使用 Pandolf 能量消耗模型（包含坡度项）
-- **说明**：已同时支持 **陆地（Walk/Run/Sprint）** 与 **游泳体力管理（v2.9.0）**。游泳使用独立的 3D 物理消耗模型（阻力/浮力/踩水），不套用陆地的坡度/地形逻辑。
+- 使用 `modded class SCR_CharacterStaminaComponent`（`SCR_StaminaOverride`）拦截引擎体力条
+- 使用 `modded class SCR_CharacterControllerComponent`（`PlayerBase.c` + `PlayerBase_UpdateLoop.c`）驱动主循环
+- **【v6】** 通过 `SCR_RSS_SpeedBridge` → `SetSpeedLimit(source, limit)` 写入限速，与灌木/铁丝网取 **min**；禁止单独 `OverrideMaxSpeed` 盖掉 Foliage
+- 约每 0.2 秒结算体力相关逻辑，确保实时响应
+- **使用精确的数学模型**：陆地低速 **Pandolf**，跑/冲 **ACSM**，中间 C¹ 混合；功率经 **CP–W′** 预算后再反解限速
+- **说明**：已同时支持 **陆地（Walk/Run/Sprint）** 与 **游泳体力管理**。游泳使用独立的 3D 物理消耗模型（阻力/浮力/踩水），不套用陆地的坡度/地形逻辑。
 
 ### 速度计算逻辑
 
-#### 1. 体力-速度关系模型（精确数学模型）
+#### 1. 体力-速度关系模型
 
-基于 **双稳态-应激性能模型（Dual-State Stress Performance Model）**（见 `scripts/Game/RSS/Core/SCR_RealisticStaminaSystem.c`）：
+**【v6 当前】**：玩家主曲线为相位行军档 `CalculateV6PhaseSpeedMultiplier`（Walk/Run/Sprint 目标 m/s × 负重修正；STA &lt; ~5% 跛行）。`CalculateSpeedMultiplierByStamina` 仅作兼容转发。撞墙阻尼见 `SCR_RSS_CollapseTransition`（阈值 = `SMOOTH_TRANSITION_END`）。
 
-- **意志力平台期（25% - 100%）**：只要体力 ≥ 25%，速度维持在目标 Run 速度  
+**【历史 v3/v4 双稳态模型说明】**（下列平台期逻辑 **已从玩家主路径移除**，保留便于理解旧文档与部分 fallback 常量）：
+
+基于 **双稳态-应激性能模型（Dual-State Stress Performance Model）**（历史实现曾在体力核心中）：
+
+- **意志力平台期（25% - 100%）**（历史）：只要体力 ≥ 25%，速度维持在目标 Run 速度  
   - `TARGET_RUN_SPEED = 3.7 m/s`  
   - `TARGET_RUN_SPEED_MULTIPLIER = 3.7 / 5.2 ≈ 0.7115`
 - **平滑衰减期（5% - 25%）**：使用 `SmoothStep` 在目标速度与跛行速度之间平滑过渡（避免“撞墙”突变）  
@@ -449,7 +475,7 @@ RealisticStaminaSystem/
 **精确数学模型**：
 **速度惩罚 = β × (负重百分比)^γ**
 
-其中（当前实现以“负重占体重比例”为基础，见 `SCR_StaminaConstants.c`）：
+其中（当前实现以“负重占体重比例”为基础，见 `SCR_RSS_Constants.c`）：
 - β = `ENCUMBRANCE_SPEED_PENALTY_COEFF = 0.20`
 - γ = `ENCUMBRANCE_SPEED_EXPONENT = 1.0`
 - 负重百分比 = `负重(kg) / CHARACTER_WEIGHT(kg)`（默认 `CHARACTER_WEIGHT = 90.0kg`）
@@ -595,7 +621,7 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 
 ### 关键参数
 
-**体力-速度核心参数（当前版本以 `SCR_StaminaConstants.c` 为准）：**
+**体力-速度核心参数（当前版本以 `SCR_RSS_Constants.c` 为准）：**
 - `TARGET_RUN_SPEED = 3.7`（m/s）：平台期目标 Run 速度
 - `SMOOTH_TRANSITION_START = 0.25`：平台期下界（25%）
 - `SMOOTH_TRANSITION_END = 0.05`：平滑过渡终点（5%）
@@ -622,17 +648,16 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 
 系统会根据体力百分比动态调整速度，实现以下效果：
 
-1. **意志力平台期（25%-100%）**：
-   - 速度保持目标 Run（3.7 m/s，对应倍率约 0.7115），并叠加坡度自适应
-   - 适合长时间行军/战斗推进（“意志力维持性能”）
+1. **【v6】行军档维持（STA 高于跛行阈值）**：
+   - 按 Walk/Run/Sprint 配置 m/s 目标限速，并叠负重/坡度/功率预算
+   - **不再**使用 25%–100% 意志力恒速平台期
 
-2. **平滑衰减期（5%-25%）**：
-   - 使用 SmoothStep 平滑下降到跛行（避免“撞墙”突变）
-   - 建议开始控速/找机会恢复体力
+2. **【历史】平滑衰减期（曾为 5%-25%）**：
+   - 旧双稳态用 SmoothStep；现主要由跛行阈值 + Collapse 5 s 阻尼承担“撞墙”手感
 
-3. **生理崩溃期（0%-5%）**：
+3. **生理崩溃 / 跛行期（约 0%-5%）**：
    - 速度快速下降，并由最低速度保护兜底
-   - Sprint 会被禁用（体力过低无法爆发）
+   - Sprint 会被门禁禁用（有氧过低或 W′ 不足）
 
 ### 负重-速度关系
 
@@ -818,6 +843,25 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
   - **室内状态**：室内/室外
   - **游泳湿重**：当前游泳湿重（kg，上岸后30秒内衰减）
 
+## 外部模组 API
+
+```c
+IEntity player = SCR_PlayerController.GetLocalControlledEntity();
+if (!player)
+    return;
+
+RSS_PlayerInfo info = SCR_RSS_API.GetPlayerInfo(player);
+if (info.isValid)
+{
+    PrintFormat("STA=%1 W'=%2 sprintAllowed=%3",
+        info.staminaPercent,
+        info.wPrimePool01,
+        info.sprintAllowed);
+}
+```
+
+完整字段见 [docs/RSS_API.md](docs/RSS_API.md)。请优先使用 **`wPrimePool01`**。
+
 ## 安装方法
 
 1. 将整个 `RealisticStaminaSystem` 文件夹复制到 Arma Reforger 工作台的 `addons` 目录
@@ -837,21 +881,22 @@ Walk：S_walk = S_base × 0.70（并限制在 0.20-0.80）
 
 ## 调整系统参数
 
-当前版本的核心参数集中在 `scripts/Game/RSS/Core/SCR_StaminaConstants.c` 中：
+玩法参数优先通过 **设置 UI / 服务器 JSON / 预设** 调整（`SCR_RSS_Settings` + `SCR_RSS_Params`，平面数组序列化）。系统预设数值在 `SCR_RSS_SettingsPresetBake`；可用 `tools/embed_json_to_c.py` 从 `optimized_rss_config_*_v6.json` 重新嵌入。
 
-- **体力-速度（双稳态模型）**
-  - `TARGET_RUN_SPEED`（默认 3.7 m/s）
-  - `SMOOTH_TRANSITION_START` / `SMOOTH_TRANSITION_END`（默认 0.25 / 0.05）
-  - `EXHAUSTION_LIMP_SPEED`、`MIN_SPEED_MULTIPLIER`
-- **Sprint**
-  - `SPRINT_SPEED_BOOST`（默认 +30%）
-  - `SPRINT_STAMINA_DRAIN_MULTIPLIER`（默认 ×3.0）
-  - `SPRINT_ENABLE_THRESHOLD`（默认 15%）
+硬常量与 fallback 仍集中在 `scripts/Game/RSS/Core/SCR_RSS_Constants.c` / `SCR_RSS_ConfigBridge.c`，例如：
+
+- **体力-速度**【v6】
+  - 行军档：`GetMarchWalk/Run/SprintSpeedMs`（经 ConfigBridge / Params）
+  - `SMOOTH_TRANSITION_END`（跛行阈值，约 0.05）、`EXHAUSTION_LIMP_SPEED`、`MIN_SPEED_MULTIPLIER`
+  - `willpower_threshold` 等字段保留兼容，**不再驱动玩家主速度平台期**
+- **Sprint / CP–W′**
+  - `critical_power_watts`、`w_prime_max_joules`、`w_prime_recovery_w_per_s`、`sprint_power_cap_watts`
+  - `sprint_enable_threshold`、`SPRINT_SPEED_BOOST`、`sprint_stamina_drain_multiplier` 等
 - **负重**
-  - `CHARACTER_WEIGHT`（默认 90kg）
-  - `ENCUMBRANCE_SPEED_PENALTY_COEFF`、`ENCUMBRANCE_STAMINA_DRAIN_COEFF`
+  - `CHARACTER_WEIGHT`（默认约 90kg）
+  - `encumbrance_speed_penalty_*`、`encumbrance_stamina_drain_coeff`、`load_metabolic_dampening`
 
-更新频率在 `scripts/Game/Integration/PlayerBase.c` 内通过 Callqueue 调度：
+更新频率在 `scripts/Game/Integration/PlayerBase_UpdateLoop.c` / `PlayerBase.c` 内通过 Callqueue 等调度（约 0.2 s 体力结算）：
 
 ```c
 GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
@@ -898,15 +943,13 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ### 代码结构
 
-**`scripts/Game/RSS/Core/SCR_RealisticStaminaSystem.c`** - 体力-速度系统核心（数学计算）：
-- `CalculateSpeedMultiplierByStamina()`: 双稳态-应激性能模型（25%-100%平台期；5%-25% SmoothStep；0%-5%崩溃 + 最低速度保护）
-- `CalculateEncumbranceSpeedPenalty()`: 负重速度惩罚（当前以“负重/体重”为基准：`0.20 × (loadKg/90.0)^1.0`）
-- `CalculateActionCost()`: 计算爆发性动作的体力消耗（v2.6.0新增）
-  - 使用动态负重倍率：`实际消耗 = 基础消耗 × (currentWeight / 90.0) ^ 1.5`
-  - 用于跳跃和翻越动作的消耗计算
-- `CalculateEncumbrancePercent()`: 计算负重百分比
-- `CalculateCombatEncumbrancePercent()`: 计算战斗负重百分比
-- `IsOverCombatEncumbrance()`: 检查是否超过战斗负重阈值
+**`scripts/Game/RSS/Core/SCR_RSS_SpeedCalculator.c` / `SCR_RSS_MetabolismMath.c` / `SCR_RSS_MetabolismModel.c` / `SCR_RSS_CriticalPowerModel.c`** — v6 核心：
+- `CalculateV6PhaseSpeedMultiplier()`：相位行军档速度（**【v6】无意志力平台期**；低 STA 跛行）
+- `CalculateSpeedMultiplierByStamina()`：兼容转发到上述 v6 相位曲线
+- `SCR_RSS_MetabolismModel`：Pandolf + ACSM 混合代谢功率；`InvertSpeedForPowerWatts`
+- `SCR_RSS_CriticalPowerModel`：动态 CP、W′ 焦耳放电/再填充、Sprint 门禁相关状态
+- `SCR_RSS_CollapseTransition`：5 s 撞墙阻尼（阈值 = 跛行点）
+- 负重速度惩罚 / 动作成本 / 战斗负重百分比等：见 `EncumbranceCache`、`ConfigBridge`、Environment 跳跃检测
 
 **`scripts/Game/Integration/SCR_StaminaOverride.c`** - 体力系统覆盖（拦截原生系统）：
 - `OnStaminaDrain()`: 覆盖体力变化事件，拦截原生系统修改
@@ -971,9 +1014,14 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
      - **代谢适应系统**：根据运动强度动态调整能量效率（有氧区效率高，无氧区效率低但功率高）
    - **说明**：这些机制使体力系统能够更真实地模拟个体的生理响应
 
+3. **Critical Power / W′ 与 Skiba 再填充**（运动生理学）
+   - **应用**【v6】：`SCR_RSS_CriticalPowerModel` 动态 CP、W′ 焦耳池与 Elite 双指数再填充；详见 [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)
+
 ## 版本历史
 
-- **v3.2.0** (当前版本) - 时间单位错误修复
+- **v6.0.0** (当前版本) - CP–W′ 拟真重构（见上文 v6.0.0 章节与 CHANGELOG）
+
+- **v3.2.0** - 时间单位错误修复（历史）
   - **游泳湿重系统修复（Swimming Wet Weight Fix）**
     - 修复 `SCR_EnvironmentFactor.UpdateEnvironmentFactors()` 方法没有接收游泳湿重参数的问题
     - 修复前：总湿重计算只考虑降雨湿重，完全忽略游泳湿重
@@ -988,10 +1036,10 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
     - 修复后：所有时间计算正确使用秒作为单位
     - 影响范围：
       - `PlayerBase.c`: 6 处修复（FatigueSystem、SwimmingStateManager、EPOC延迟）
-      - `SCR_JumpVaultDetection.c`: 1 处修复（连续跳跃检测）
+      - `SCR_RSS_JumpVaultDetection.c`: 1 处修复（连续跳跃检测）
       - `SCR_RSS_ConfigManager.c`: 1 处修复（配置重载冷却）
-      - `SCR_DebugDisplay.c`: 3 处修复（调试日志时间检查）
-      - `SCR_StaminaUpdateCoordinator.c`: 1 处修复（速度计算时间）
+      - `SCR_RSS_DebugDisplay.c`: 3 处修复（调试日志时间检查）
+      - `SCR_RSS_UpdateCoordinator.c`: 1 处修复（速度计算时间）
 
   - **ExerciseTracker 时间单位修复**
     - 修复 `ExerciseTracker` 期望接收毫秒但传入了秒的问题
@@ -1049,7 +1097,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 调试日志门禁系统：零开销门禁、时间间隔控制、工作台模式自动开启调试
   - 配置管理器（SCR_RSS_ConfigManager）：单例模式，自动加载/保存配置
   - 配置类（SCR_RSS_Settings）：包含所有可配置参数（调试、体力、移动、环境、高级、性能）
-  - 常量桥接方法（SCR_StaminaConstants.c）：15个静态方法用于获取配置值
+  - 常量桥接方法（SCR_RSS_Constants.c）：15个静态方法用于获取配置值
 - **v2.14.1** - 室内检测系统
   - 使用建筑物边界框检测角色是否在室内
   - 检测逻辑：检查角色位置是否在建筑物的世界坐标边界框内
@@ -1060,7 +1108,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 路面泥泞度系统：基于积水程度计算泥泞惩罚
   - 实时气温热应激模型：使用GetTemperatureAirMinOverride()API
   - 地表湿度和静态恢复惩罚：趴下时受地表湿度影响
-  - SCR_EnvironmentFactor.c - 高级环境因子模块（约1250行）
+  - SCR_RSS_EnvironmentFactor.c - 高级环境因子模块（约1250行）
 - **v2.13.0** - 深度生理压制恢复系统
   - 核心概念：从"净增加"改为"代谢净值"
   - 最终恢复率 = (基础恢复率 × 姿态修正) - (负重压制 + 氧债惩罚)
@@ -1078,9 +1126,9 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
   - 创建深度生理压制恢复系统测试脚本
 - **v2.11.0** - 进一步模块化重构和调试信息优化
   - 代码精简：PlayerBase.c 减少 40%（1362行 → 817行）
-  - 新增游泳状态管理模块（SCR_SwimmingState.c）
-  - 新增体力更新协调器模块（SCR_StaminaUpdateCoordinator.c）
-  - 扩展调试显示模块（SCR_DebugDisplay.c）
+  - 新增游泳状态管理模块（SCR_RSS_SwimmingState.c）
+  - 新增体力更新协调器模块（SCR_RSS_UpdateCoordinator.c）
+  - 扩展调试显示模块（SCR_RSS_DebugDisplay.c）
   - 统一调试信息输出接口
 - **v2.10.0** - 环境因子系统（热应激和降雨湿重）
 - **v2.9.0** - 游泳体力管理完善与游泳速度检测修复
