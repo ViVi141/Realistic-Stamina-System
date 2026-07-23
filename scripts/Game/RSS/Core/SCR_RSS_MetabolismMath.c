@@ -90,7 +90,6 @@ class SCR_RSS_MetabolismMath
     static const float SLOPE_DOWNHILL_COEFF = SCR_RSS_Constants.SLOPE_DOWNHILL_COEFF;
     static const float ENCUMBRANCE_SLOPE_INTERACTION_COEFF = SCR_RSS_Constants.ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
     static const float CHARACTER_AGE = SCR_RSS_Constants.CHARACTER_AGE;
-    static const float COMBAT_LOAD_WEIGHT = SCR_RSS_Constants.COMBAT_LOAD_WEIGHT;
     static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = SCR_RSS_Constants.SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
     // Tobler 平地参考值：W(0)=6·e^(-0.175)≈5.039 km/h，用于坡度速度归一化使平地=1.0
     static const float TOBLER_W_AT_FLAT_KMH = 5.039;

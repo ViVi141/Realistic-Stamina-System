@@ -226,12 +226,7 @@ class SCR_RSS_Params
     [Attribute(defvalue: "0.35", desc: "Willpower threshold.\nStamina threshold above which target speed remains constant.\nHigher = fatigue kicks in earlier, more realistic.\n范围: 0.15-0.50，Hardcore默认0.35（原0.25）。\n意志力平台期阈值。\n体力高于此值时保持恒定速度。\n值越大越早出现疲劳感、拟真度越高。")]
     float willpower_threshold;
 
-    // 冲刺最小体力阈值（Hardcore 新增）
-    // 体力低于此值时禁止冲刺
-    // Hardcore 默认 0.25，原 0.18
-    // 说明：值越大，冲刺越早被限制
-    [Attribute(defvalue: "0.25", desc: "Sprint enable threshold.\nMinimum stamina required to sprint.\nHigher = sprint restricted earlier.\n范围: 0.10-0.40，Hardcore默认0.25（原0.18）。\n冲刺最小体力阈值。\n体力低于此值时禁止冲刺。\n值越大，冲刺越早被限制。")]
-    // 有氧 Sprint 最低体力（0–1）。与 anaerobic_sprint_enable_threshold（W′ 池）分工不同。
+    // 有氧 Sprint 最低体力（0-1）。与 anaerobic_sprint_enable_threshold（W' 池）分工不同。
     [Attribute(defvalue: "0.25", desc: "Aerobic sprint min stamina (0-1). Separate from W' gate anaerobic_sprint_enable_threshold. | 有氧冲刺最低体力")]
     float sprint_enable_threshold;
 
