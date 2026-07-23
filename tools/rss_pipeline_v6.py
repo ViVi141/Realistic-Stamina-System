@@ -60,6 +60,7 @@ from rss_pipeline_v4 import (
 )
 from rss_sim_backend import (
     evaluate_hard_constraints,
+    log_backend_once,
     run_mission_suite as run_mission_suite_backend,
     simulate_ideal_march_aerobic_end,
     sustain_run_observed_pct,
@@ -616,9 +617,12 @@ class RSSOptimizerV6:
             f"[V6] optimize (MO): {self.n_trials} trials × "
             f"{len(all_missions_v6(self.fast_mode))} missions"
         )
+        log_backend_once()
+        if self.fast_mode:
+            print("[V6] fast_mode=ON (shorter missions / coarse dt)")
         print(
             f"[V6] sampler={self.sampler} population={self.population_size} "
-            f"feasibility_seeds={len(seeds)}"
+            f"feasibility_seeds={len(seeds)} n_jobs={self.n_jobs}"
         )
         print("[V6] hard: physio anchors + mobility (prune on fail)")
         print("[V6] soft minimize: sustain, mobility, combat, recovery, param_drift")
@@ -913,7 +917,7 @@ def _maybe_embed_c(embed: bool) -> int:
     if not embed_script.exists():
         print("[V6] embed_json_to_c.py not found, skip --embed-c")
         return 0
-    print("[V6] embedding presets into SCR_RSS_Settings.c ...")
+    print("[V6] embedding presets into SCR_RSS_SettingsPresetBake.c ...")
     return int(subprocess.call([sys.executable, str(embed_script)]))
 
 

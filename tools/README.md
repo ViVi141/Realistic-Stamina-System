@@ -21,7 +21,7 @@ Rust CLI 入口（Phase-A）：`rust_pipeline_v6/`。
 | `compare_presets.py` | v4 vs v6 关键参数对比 |
 | **`wb_compile_telemetry.py`** | Workbench 编译崩溃遥测（盯日志/进程，输出时间线报告） |
 | `Run-WbCompileTelemetry.ps1` | 上述遥测的一键启动器 |
-| `embed_json_to_c.py` | JSON → `SCR_RSS_Settings.c`（可选） |
+| `embed_json_to_c.py` | JSON → `SCR_RSS_SettingsPresetBake.c`（可选） |
 | `rss_sim/` | **PyO3 仿真核**（`game_player_tick` / `simulate_mission` / 硬约束） |
 | `rss_sim_backend.py` | 优化管线仿真后端：Rust 优先（summary_only + 并行），Python 回退 |
 | `test_rss_sim_parity.py` | Rust vs Python 数值 parity 门禁 |

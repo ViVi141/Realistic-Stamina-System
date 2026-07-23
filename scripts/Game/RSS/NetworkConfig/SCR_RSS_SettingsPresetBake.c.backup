@@ -415,13 +415,13 @@ class SCR_RSS_SettingsPresetBake
         }
         else
         {
-            p.critical_power_watts = 393.89572712038523;
-            p.w_prime_max_joules = 1.7990579564370368e+04;
-            p.w_prime_recovery_w_per_s = 13.631201163332449;
-            p.sprint_power_cap_watts = 1350.284589376701;
-            p.v5_walk_speed_ms = 1.4;
-            p.v5_run_speed_ms = 2.8;
-            p.v5_sprint_speed_ms = 4.0;
+            p.critical_power_watts = 480.0;
+            p.w_prime_max_joules = 28000.0;
+            p.w_prime_recovery_w_per_s = 18.0;
+            p.sprint_power_cap_watts = 1500.0;
+            p.v5_walk_speed_ms = 1.6;
+            p.v5_run_speed_ms = 3.2;
+            p.v5_sprint_speed_ms = 4.5;
             p.burst_cooldown_full_seconds = 90.0;
             p.burst_cooldown_short_seconds = 45.0;
         }

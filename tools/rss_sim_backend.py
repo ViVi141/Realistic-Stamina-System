@@ -3,19 +3,124 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional
+
+_RSS_SIM_MOD = None
+_RSS_SIM_LOAD_ATTEMPTED = False
+
+
+def _load_rss_sim_native():
+    """Load compiled rss_sim extension, bypassing tools/rss_sim source namespace."""
+    global _RSS_SIM_MOD, _RSS_SIM_LOAD_ATTEMPTED
+    if _RSS_SIM_LOAD_ATTEMPTED:
+        return _RSS_SIM_MOD
+    _RSS_SIM_LOAD_ATTEMPTED = True
+
+    existing = sys.modules.get("rss_sim")
+    if existing is not None and hasattr(existing, "is_available"):
+        _RSS_SIM_MOD = existing
+        return _RSS_SIM_MOD
+
+    search_dirs = []
+    try:
+        import site
+
+        search_dirs.extend(site.getsitepackages())
+        us = site.getusersitepackages()
+        if us:
+            search_dirs.append(us)
+    except Exception:
+        pass
+    for p in sys.path:
+        if p:
+            search_dirs.append(p)
+
+    candidates = []
+    for d in search_dirs:
+        try:
+            root = Path(d)
+        except Exception:
+            continue
+        if not root.is_dir():
+            continue
+        # Skip the Rust crate source tree (has Cargo.toml, no extension).
+        if (root / "Cargo.toml").is_file() and root.name == "rss_sim":
+            continue
+        if root.name == "rss_sim" and (root.parent / "rss_pipeline_v6.py").is_file():
+            continue
+        for pat in ("rss_sim*.so", "rss_sim*.pyd", "rss_sim/*.so", "rss_sim/*.pyd"):
+            candidates.extend(root.glob(pat))
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        # Ignore source-dir accidents
+        if "tools" in path.parts and "rss_sim" in path.parts and path.suffix == "":
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location("rss_sim", str(path))
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["rss_sim"] = mod
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "is_available"):
+                _RSS_SIM_MOD = mod
+                return _RSS_SIM_MOD
+        except Exception:
+            sys.modules.pop("rss_sim", None)
+            continue
+
+    # Last resort: normal import (works if no source shadow).
+    try:
+        if "rss_sim" in sys.modules and not hasattr(sys.modules["rss_sim"], "is_available"):
+            del sys.modules["rss_sim"]
+        import rss_sim  # type: ignore
+
+        if hasattr(rss_sim, "is_available"):
+            _RSS_SIM_MOD = rss_sim
+            return _RSS_SIM_MOD
+    except Exception:
+        pass
+
+    _RSS_SIM_MOD = None
+    return None
 
 
 def use_rust_backend() -> bool:
-    try:
-        import rss_sim  # type: ignore
-    except Exception:
+    mod = _load_rss_sim_native()
+    if mod is None:
         return False
     try:
-        return bool(rss_sim.is_available())
+        return bool(mod.is_available())
     except Exception:
         return False
+
+
+def get_rss_sim():
+    return _load_rss_sim_native()
+
+
+_RUST_BACKEND_LOGGED = False
+
+
+def log_backend_once() -> None:
+    global _RUST_BACKEND_LOGGED
+    if _RUST_BACKEND_LOGGED:
+        return
+    _RUST_BACKEND_LOGGED = True
+    if use_rust_backend():
+        print("[V6] sim backend: Rust (rss_sim)")
+    else:
+        print(
+            "[V6] sim backend: Python twin (SLOW). "
+            "rss_sim native extension not loaded; build with maturin "
+            "(AppLocker may block local Windows builds)."
+        )
 
 
 def _phase_to_dict(phase) -> Dict:
@@ -87,10 +192,9 @@ def _params_json(params: Optional[Dict]) -> str:
 
 def evaluate_hard_constraints(params: Optional[Dict] = None):
     """硬约束门禁：Rust 优先，失败回退 Python。"""
-    if use_rust_backend():
+    rss_sim = get_rss_sim()
+    if rss_sim is not None and use_rust_backend():
         try:
-            import rss_sim  # type: ignore
-
             pj = _params_json(params)
             data = rss_sim.evaluate_hard_constraints(pj if pj else None)
             return _dict_to_constraint_report(data)
@@ -108,10 +212,9 @@ def simulate_ideal_march_aerobic_end(
     dt_sec: float = 2.0,
     params: Optional[Dict] = None,
 ) -> float:
-    if use_rust_backend():
+    rss_sim = get_rss_sim()
+    if rss_sim is not None and use_rust_backend():
         try:
-            import rss_sim  # type: ignore
-
             return float(
                 rss_sim.simulate_ideal_march_aerobic_end(
                     _params_json(params),
@@ -136,10 +239,9 @@ def simulate_ideal_march_aerobic_end(
 
 
 def sustain_run_observed_pct(params: Dict, duration_s: float = 90.0, fast_mode: bool = False) -> float:
-    if use_rust_backend():
+    rss_sim = get_rss_sim()
+    if rss_sim is not None and use_rust_backend():
         try:
-            import rss_sim  # type: ignore
-
             mission = {
                 "name": "35kg稳态跑步",
                 "load_kg": 35.0,
@@ -215,10 +317,9 @@ def run_mission_suite(
     summary_only: bool = True,
     parallel: bool = True,
 ) -> List:
-    if use_rust_backend():
+    rss_sim = get_rss_sim()
+    if rss_sim is not None and use_rust_backend():
         try:
-            import rss_sim  # type: ignore
-
             missions_json = json.dumps([_mission_to_dict(m) for m in missions], ensure_ascii=False)
             rust_results = rss_sim.run_mission_suite(
                 params,
