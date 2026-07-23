@@ -1,8 +1,54 @@
-//! v6 代谢功率模型：Pandolf + ACSM 混合 + 功率反解
+//! v6 代谢功率模型：Walk=LCDA 背包式；Run/Sprint=Pandolf+ACSM；功率反解
 //! 与 Python rss_digital_twin_fix.py 保持同形
 
 class SCR_RSS_MetabolismModel
 {
+    //! LCDA backpacking + graded walking（W）；body-mass specific × CHARACTER_WEIGHT
+    //! 适用范围：站立 / Walk，v ≤ LCDA_MAX_SPEED_MS；坡度项已含缓/陡下坡，不再叠 Santee
+    static float CalculateLcdaBackpackPowerWatts(
+        float velocityMs,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor)
+    {
+        float bodyKg = SCR_RSS_Constants.CHARACTER_WEIGHT;
+        bodyKg = Math.Max(bodyKg, 1.0);
+        totalWeightKg = Math.Max(totalWeightKg, 0.0);
+        terrainFactor = Math.Clamp(terrainFactor, 0.5, 3.0);
+
+        float loadKg = Math.Max(totalWeightKg - bodyKg, 0.0);
+        float loadRatio = loadKg / bodyKg;
+        float loadMult = 1.0 + SCR_RSS_Constants.LCDA_LOAD_COEFF
+            * Math.Pow(loadRatio, SCR_RSS_Constants.LCDA_LOAD_EXP);
+
+        float speedMs = Math.Max(velocityMs, 0.0);
+        float walkNet = 0.0;
+        if (speedMs >= 0.1)
+        {
+            float fracTerm = SCR_RSS_Constants.LCDA_SPEED_FRAC_COEFF
+                * Math.Pow(speedMs, SCR_RSS_Constants.LCDA_SPEED_FRAC_EXP);
+            float speedSq = speedMs * speedMs;
+            float quarticTerm = SCR_RSS_Constants.LCDA_SPEED_QUARTIC_COEFF
+                * speedSq * speedSq;
+            walkNet = terrainFactor * (fracTerm + quarticTerm);
+        }
+
+        float gradeDecimal = gradePercent * 0.01;
+        float gradeTerm = 0.0;
+        if (speedMs >= 0.1 && Math.AbsFloat(gradeDecimal) > 0.0001)
+        {
+            float gradeExp = 100.0 * gradeDecimal + SCR_RSS_Constants.LCDA_GRADE_OFFSET;
+            float inner = Math.Pow(SCR_RSS_Constants.LCDA_GRADE_BASE_B, gradeExp);
+            float outer = Math.Pow(SCR_RSS_Constants.LCDA_GRADE_BASE_A, 1.0 - inner);
+            gradeTerm = SCR_RSS_Constants.LCDA_GRADE_COEFF * speedMs * gradeDecimal
+                * (1.0 - outer);
+        }
+
+        float mPerKg = SCR_RSS_Constants.LCDA_REST_W_PER_KG
+            + (SCR_RSS_Constants.LCDA_STAND_NET_W_PER_KG + walkNet + gradeTerm) * loadMult;
+        return Math.Max(mPerKg * bodyKg, 0.0);
+    }
+
     //! 纯 Pandolf 功率（W），不含 ACSM 混合
     static float CalculatePandolfPowerWatts(
         float velocityMs,
@@ -106,14 +152,21 @@ class SCR_RSS_MetabolismModel
         bool useSanteeCorrection,
         int movementPhase)
     {
-        float pandolfW = CalculatePandolfPowerWatts(
-            velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection);
-
         bool preferAcsm = false;
         if (movementPhase == 2 || movementPhase == 3)
             preferAcsm = true;
         if (velocityMs >= SCR_RSS_Constants.V6_ACSM_BLEND_END_MS)
             preferAcsm = true;
+
+        // Walk / Idle：LCDA 背包式（含坡度）；不叠 Santee
+        if (!preferAcsm && velocityMs <= SCR_RSS_Constants.LCDA_MAX_SPEED_MS)
+        {
+            return CalculateLcdaBackpackPowerWatts(
+                velocityMs, totalWeightKg, gradePercent, terrainFactor);
+        }
+
+        float pandolfW = CalculatePandolfPowerWatts(
+            velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection);
 
         if (!preferAcsm && velocityMs < SCR_RSS_Constants.V6_ACSM_BLEND_START_MS)
             return pandolfW;

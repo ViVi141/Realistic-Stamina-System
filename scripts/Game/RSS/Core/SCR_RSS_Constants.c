@@ -309,7 +309,8 @@ class SCR_RSS_Constants
     // 战术冲刺爆发时长：Sprint 前 N 秒内减轻负重对速度的惩罚，实现短时全速爆发体感
     static const float TACTICAL_SPRINT_BURST_DURATION = 8.0;   // 秒
     static const float TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0; // 爆发结束后 5 秒缓冲区，负重惩罚从爆发系数线性过渡到 1.0，再进入平稳期
-    static const float TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 0.2; // 爆发期内负重惩罚乘数（0.2 = 明显拉开与平稳期差距，29kg 下爆发更快）
+    // 爆发期负重惩罚乘数：1.0 = 不减免（对齐 21.6 kg / 30 m 冲刺文献）；旧值 0.2 会使短冲刺几乎无负重感
+    static const float TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 1.0;
     static const float TACTICAL_SPRINT_COOLDOWN = 15.0;        // 爆发+缓冲区结束或松开冲刺后冷却秒数，期间再次冲刺直接进入平稳期，防止利用机制
     static const float INDOOR_STAIRS_ENCUMBRANCE_SPEED_FACTOR = 0.4; // 楼梯上负重速度惩罚乘数（0.4 = 降至40%）
     // 上坡/下坡速度倍率（在 Tobler 结果上再乘，玩家反馈：上坡再快一点、下坡更快更省力）
@@ -537,8 +538,8 @@ class SCR_RSS_Constants
 
     //! 允许冲刺时，Sprint 相对（已负重缩放的）Run 的最低倍率——保档位身份
     static const float SPRINT_GAIT_MIN_OVER_RUN_RATIO = 1.25;
-    //! 冲刺负重惩罚放大（相对 Run）。1.0=与 Run 同罚，避免抹平步态差
-    static const float SPRINT_ENCUMBRANCE_PENALTY_MULT = 1.0;
+    //! 冲刺负重惩罚放大（相对 Run）。2.2 ≈ 21.6 kg 战斗装 30 m 用时相对空载 +32%（军事冲刺文献）
+    static const float SPRINT_ENCUMBRANCE_PENALTY_MULT = 2.2;
     static const float V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.20;
     static const float V5_BURST_COOLDOWN_FULL_DEFAULT = 180.0;
     static const float V5_BURST_COOLDOWN_SHORT_DEFAULT = 75.0;
@@ -554,7 +555,23 @@ class SCR_RSS_Constants
     static const float V6_INVERT_SPEED_MAX_MS = 6.0;
     static const float V6_STANDING_REST_WATTS = 100.0;
 
-    //! CP-W' 默认：与 Pandolf 代谢瓦同尺度（约支撑 38kg@1.7m/s 巡航不扣 W′）
+    // LCDA backpacking + graded walking（Looney et al. 2019/2022；Walk/站立，v≤1.97）
+    // M(W/kg_body) = M_rest + (0.19 + η*(1.78*S^0.58 + 0.27*S^4) + M_grade) * (1 + 1.96*L_bp^1.36)
+    // M_grade = 34*S*G*(1 - 1.05^(1 - 1.1^(100*G+32)))，G=rise/run
+    static const float LCDA_REST_W_PER_KG = 1.05;
+    static const float LCDA_STAND_NET_W_PER_KG = 0.19;
+    static const float LCDA_SPEED_FRAC_COEFF = 1.78;
+    static const float LCDA_SPEED_FRAC_EXP = 0.58;
+    static const float LCDA_SPEED_QUARTIC_COEFF = 0.27;
+    static const float LCDA_LOAD_COEFF = 1.96;
+    static const float LCDA_LOAD_EXP = 1.36;
+    static const float LCDA_GRADE_COEFF = 34.0;
+    static const float LCDA_GRADE_BASE_A = 1.05;
+    static const float LCDA_GRADE_BASE_B = 1.1;
+    static const float LCDA_GRADE_OFFSET = 32.0;
+    static const float LCDA_MAX_SPEED_MS = 1.97;
+
+    //! CP-W' 默认：与 LCDA Walk 巡航同尺度（约支撑 38kg@1.7m/s 不扣 W′）
     static const float V6_CRITICAL_POWER_WATTS_DEFAULT = 780.0;
     static const float V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0;
     static const float V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0;

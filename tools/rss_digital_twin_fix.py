@@ -170,7 +170,7 @@ class RSSConstants:
 
     TACTICAL_SPRINT_BURST_DURATION = 8.0
     TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0
-    TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 0.2
+    TACTICAL_SPRINT_BURST_ENCUMBRANCE_FACTOR = 1.0
     TACTICAL_SPRINT_COOLDOWN = 15.0
 
     FATIGUE_START_TIME_MINUTES = 5.0
@@ -1997,13 +1997,25 @@ V6_ACSM_LINEAR_W_PER_MS = 200.0
 V6_ACSM_QUAD_W_PER_MS2 = 80.0
 V6_ACSM_BLEND_START_MS = 2.0
 V6_ACSM_BLEND_END_MS = 2.4
+LCDA_REST_W_PER_KG = 1.05
+LCDA_STAND_NET_W_PER_KG = 0.19
+LCDA_SPEED_FRAC_COEFF = 1.78
+LCDA_SPEED_FRAC_EXP = 0.58
+LCDA_SPEED_QUARTIC_COEFF = 0.27
+LCDA_LOAD_COEFF = 1.96
+LCDA_LOAD_EXP = 1.36
+LCDA_GRADE_COEFF = 34.0
+LCDA_GRADE_BASE_A = 1.05
+LCDA_GRADE_BASE_B = 1.1
+LCDA_GRADE_OFFSET = 32.0
+LCDA_MAX_SPEED_MS = 1.97
 V6_INVERT_SPEED_MAX_MS = 6.0
 V6_CRITICAL_POWER_WATTS_DEFAULT = 780.0
 V6_W_PRIME_MAX_JOULES_DEFAULT = 20000.0
 V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT = 12.0
 V6_SPRINT_POWER_CAP_WATTS_DEFAULT = 2400.0
 SPRINT_GAIT_MIN_OVER_RUN_RATIO = 1.25
-SPRINT_ENCUMBRANCE_PENALTY_MULT = 1.0
+SPRINT_ENCUMBRANCE_PENALTY_MULT = 2.2
 V6_STAMINA_DRAIN_CALIBRATION = 0.72
 V6_CP_LOAD_REF_KG = 10.0
 V6_CP_LOAD_DECAY_PER_KG = 0.002
@@ -2151,6 +2163,41 @@ class TwinFatigueSystem:
             self.last_rest_start_time = -1.0
 
 
+def calculate_lcda_backpack_power_watts(
+    velocity_ms: float,
+    total_weight_kg: float,
+    grade_percent: float = 0.0,
+    terrain_factor: float = 1.0,
+) -> float:
+    """与 SCR_RSS_MetabolismModel.CalculateLcdaBackpackPowerWatts 同形。"""
+    body_kg = max(90.0, 1.0)
+    w = max(total_weight_kg, 0.0)
+    terrain_factor = float(np.clip(terrain_factor, 0.5, 3.0))
+    load_kg = max(w - body_kg, 0.0)
+    load_ratio = load_kg / body_kg
+    load_mult = 1.0 + LCDA_LOAD_COEFF * (load_ratio ** LCDA_LOAD_EXP)
+
+    speed_ms = max(velocity_ms, 0.0)
+    walk_net = 0.0
+    if speed_ms >= 0.1:
+        frac_term = LCDA_SPEED_FRAC_COEFF * (speed_ms ** LCDA_SPEED_FRAC_EXP)
+        quartic_term = LCDA_SPEED_QUARTIC_COEFF * (speed_ms ** 4)
+        walk_net = terrain_factor * (frac_term + quartic_term)
+
+    grade_decimal = grade_percent * 0.01
+    grade_term = 0.0
+    if speed_ms >= 0.1 and abs(grade_decimal) > 0.0001:
+        grade_exp = 100.0 * grade_decimal + LCDA_GRADE_OFFSET
+        inner = LCDA_GRADE_BASE_B ** grade_exp
+        outer = LCDA_GRADE_BASE_A ** (1.0 - inner)
+        grade_term = LCDA_GRADE_COEFF * speed_ms * grade_decimal * (1.0 - outer)
+
+    m_per_kg = LCDA_REST_W_PER_KG + (
+        LCDA_STAND_NET_W_PER_KG + walk_net + grade_term
+    ) * load_mult
+    return max(m_per_kg * body_kg, 0.0)
+
+
 def calculate_pandolf_power_watts(
     velocity_ms: float,
     total_weight_kg: float,
@@ -2214,18 +2261,22 @@ def metabolism_power_watts(
     movement_phase: int = 2,
     load_metabolic_dampening: float = 0.70,
 ) -> float:
-    """Pandolf + ACSM 混合（与 SCR_RSS_MetabolismModel.MetabolismPowerWatts 同形）。"""
-    pandolf_w = calculate_pandolf_power_watts(
-        velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+    """LCDA(Walk) / Pandolf+ACSM(Run)（与 SCR_RSS_MetabolismModel.MetabolismPowerWatts 同形）。"""
     prefer_acsm = movement_phase in (2, 3) or velocity_ms >= V6_ACSM_BLEND_END_MS
-    if not prefer_acsm and velocity_ms < V6_ACSM_BLEND_START_MS:
-        blended = pandolf_w
+    if not prefer_acsm and velocity_ms <= LCDA_MAX_SPEED_MS:
+        blended = calculate_lcda_backpack_power_watts(
+            velocity_ms, total_weight_kg, grade_percent, terrain_factor)
     else:
-        acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
-        blend = get_acsm_blend_weight(velocity_ms)
-        if movement_phase == 3:
-            blend = max(blend, 0.85)
-        blended = pandolf_w * (1.0 - blend) + acsm_w * blend
+        pandolf_w = calculate_pandolf_power_watts(
+            velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+        if not prefer_acsm and velocity_ms < V6_ACSM_BLEND_START_MS:
+            blended = pandolf_w
+        else:
+            acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
+            blend = get_acsm_blend_weight(velocity_ms)
+            if movement_phase == 3:
+                blend = max(blend, 0.85)
+            blended = pandolf_w * (1.0 - blend) + acsm_w * blend
 
     body_weight = 90.0
     if total_weight_kg <= body_weight + 0.5:

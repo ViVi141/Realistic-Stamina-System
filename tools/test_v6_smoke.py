@@ -166,11 +166,67 @@ def _tier_scalar_gradients_ok() -> bool:
     return sampler is not None
 
 
+
+def _sprint_load_30m_ok() -> bool:
+    """21.6 kg 战斗装 30 m 冲刺：稳态用时接近军事文献 ~8.2 s（空载步态 4.5 m/s）。"""
+    from rss_digital_twin_fix import (
+        encumbrance_speed_penalty_base,
+        RSSConstants,
+        merge_game_aligned_params,
+        RSSDigitalTwin,
+        MovementType,
+        SPRINT_ENCUMBRANCE_PENALTY_MULT,
+    )
+    from rss_constraints_v6 import _load_elite_preset_params
+
+    if abs(SPRINT_ENCUMBRANCE_PENALTY_MULT - 2.2) > 1e-6:
+        return False
+    c = RSSConstants(**merge_game_aligned_params(_load_elite_preset_params()))
+    twin = RSSDigitalTwin(c)
+    game_max = 5.5
+    v_sprint0 = 4.5
+    enc = encumbrance_speed_penalty_base(c, 90.0 + 21.6)
+    v = v_sprint0
+    pen = 0.0
+    for _ in range(40):
+        sr = min(1.0, max(0.0, v / game_max))
+        pen = enc * (1.0 + sr) * SPRINT_ENCUMBRANCE_PENALTY_MULT
+        if pen > 0.75:
+            pen = 0.75
+        if pen < 0.0:
+            pen = 0.0
+        v_new = twin.get_v5_absolute_speed_ms(MovementType.SPRINT, True, 1.0, pen, 1.0)
+        if abs(v_new - v) < 1e-5:
+            v = v_new
+            break
+        v = 0.5 * v + 0.5 * v_new
+    t30 = 30.0 / v
+    return 7.8 <= t30 <= 8.6
+
+
+def _lcda_walk_30kg_ok() -> bool:
+    """Walk@1.34 m/s + 30 kg：LCDA 平地功率应明显高于旧 Pandolf，并落在文献带。"""
+    p_damped = metabolism_power_watts(1.34, 120.0, 0.0, 1.0, MovementType.WALK, 0.70)
+    p_full = metabolism_power_watts(1.34, 120.0, 0.0, 1.0, MovementType.WALK, 1.0)
+    if p_full < 480.0 or p_full > 540.0:
+        return False
+    if p_damped < 430.0 or p_damped > 510.0:
+        return False
+    p_down = metabolism_power_watts(1.34, 120.0, -10.0, 1.0, MovementType.WALK, 1.0)
+    p_up = metabolism_power_watts(1.34, 120.0, 10.0, 1.0, MovementType.WALK, 1.0)
+    if p_down >= p_full:
+        return False
+    if p_up <= p_full:
+        return False
+    return True
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 4.0),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),
+    ("lcda_walk_30kg_level", lambda: _lcda_walk_30kg_ok()),
     ("invert_speed_monotonic", lambda: invert_speed_for_power_watts(500.0, 125.0, movement_phase=2) > 0.8),
     ("cp_load_penalty", lambda: compute_cp_watts(400.0, 35.0, 0.0) < 400.0),
     ("wprime_discharge", lambda: _wprime_discharge_ok()),
@@ -179,6 +235,7 @@ SCENARIOS = [
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
     ("mobility_run_speed", lambda: _mobility_ok()),
+    ("sprint_load_30m", lambda: _sprint_load_30m_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
 ]

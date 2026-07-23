@@ -115,7 +115,7 @@ class SCR_RSS_SettingsPresetBake
 	s.m_EliteStandard.willpower_threshold = 0.37783623819185075;
 	s.m_EliteStandard.sprint_enable_threshold = 0.19152747147808097;
 	ApplyV6TierCpDefaults(s.m_EliteStandard, 0);
-	s.m_EliteStandard.critical_power_watts = 740.0;
+	s.m_EliteStandard.critical_power_watts = 770.0;
 	s.m_EliteStandard.sprint_power_cap_watts = 2500.0;
 	s.m_EliteStandard.v5_run_speed_ms = 2.8;
 	s.m_EliteStandard.v5_sprint_speed_ms = 4.5;
@@ -391,7 +391,7 @@ class SCR_RSS_SettingsPresetBake
         ApplyV5ParamsDefaults(p);
         if (tier == 0)
         {
-            p.critical_power_watts = 740.0;
+            p.critical_power_watts = 770.0;
             p.w_prime_max_joules = 1.6235553376256164e+04;
             p.w_prime_recovery_w_per_s = 8.85635389034267;
             p.sprint_power_cap_watts = 2500.0;

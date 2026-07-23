@@ -17,7 +17,7 @@
   "max_recovery_per_tick": 0.0002001262862557992,
   "willpower_threshold": 0.37783623819185075,
   "sprint_enable_threshold": 0.19152747147808097,
-  "critical_power_watts": 740.0,
+  "critical_power_watts": 770.0,
   "w_prime_max_joules": 16235.553376256164,
   "w_prime_recovery_w_per_s": 8.85635389034267,
   "sprint_power_cap_watts": 2500.0,

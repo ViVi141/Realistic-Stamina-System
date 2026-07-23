@@ -117,7 +117,7 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 10.0,
         "energy_to_stamina_coeff": 1.05e-7,
         "base_recovery_rate": 9.0e-5,
-        "critical_power_watts": 740.0,
+        "critical_power_watts": 770.0,
         "w_prime_max_joules": 16500.0,
     },
     "StandardMilsim": {
