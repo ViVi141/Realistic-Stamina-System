@@ -401,6 +401,10 @@ class SCR_RSS_Constants
     static const float EPOC_MAX_POWER_EXCESS_RATIO = 0.5;
     //! 运动中峰值功率向当前功率衰减（W/s），避免一次冲刺污染后续停步罚
     static const float EPOC_PEAK_DECAY_WATTS_PER_SEC = 100.0;
+    //! 当前采样功率已明显低于峰值时的快衰减（W/s）：下坡跑飞→巡航后尽快脱高峰值
+    static const float EPOC_PEAK_DECAY_FAST_WATTS_PER_SEC = 400.0;
+    //! 当前 < 峰值×此比值时启用快衰减
+    static const float EPOC_PEAK_FAST_DECAY_RATIO = 0.75;
     //! 峰值 ≤ CP×此比值视为有氧巡航：只用弱 EPOC，不加超额
     static const float EPOC_AEROBIC_CP_RATIO = 1.08;
     static const float EPOC_AEROBIC_DRAIN_MULT = 0.25;
@@ -542,7 +546,9 @@ class SCR_RSS_Constants
     //! 冲刺负重惩罚放大（相对 Run）。2.2 ≈ 21.6 kg 战斗装 30 m 用时相对空载 +32%（军事冲刺文献）
     static const float SPRINT_ENCUMBRANCE_PENALTY_MULT = 2.2;
     static const float V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.20;
+    //! @deprecated 冲刺时间 CD 已停用（门禁改 W′）；预设字段仍可读，运行时不再施加
     static const float V5_BURST_COOLDOWN_FULL_DEFAULT = 180.0;
+    //! @deprecated 同上
     static const float V5_BURST_COOLDOWN_SHORT_DEFAULT = 75.0;
     static const float V5_ANAEROBIC_RECOVERY_PER_SEC_DEFAULT = 0.08;
 

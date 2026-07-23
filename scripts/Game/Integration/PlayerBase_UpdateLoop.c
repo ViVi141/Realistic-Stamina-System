@@ -662,14 +662,39 @@ modded class SCR_CharacterControllerComponent
                 m_pAnaerobicBurst.TickPower(powerW, loc.isSprintActive, loc.currentTime, loc.timeDeltaSec, loc.currentSpeed);
                 if (m_pEpocState)
                 {
-                    // EPOC 峰值采代谢功率；超额倍率仍有 EPOC_MAX_POWER_EXCESS_RATIO 封顶
-                    float powerForEpoc = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+                    // EPOC：限速内意图功率；无 W′ 超速记账时再钳到 CP（与有氧 P_bill 对齐，避免下坡跑飞停步暴罚）
+                    float cpForEpoc = -1.0;
+                    if (cpModel)
+                        cpForEpoc = cpModel.GetEffectiveCriticalPowerWatts();
+                    float powerForEpoc = SCR_RSS_DrainCalculator.GetEpocSamplePowerWatts(
                         loc.currentSpeed,
                         m_fAppliedSpeedLimitMs,
                         loc.totalWeightWithWetAndBody,
                         loc.gradePercent,
                         loc.terrainFactor,
-                        loc.phaseNow);
+                        loc.phaseNow,
+                        cpForEpoc);
+                    bool overspeedNow = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+                        loc.currentSpeed, m_fAppliedSpeedLimitMs);
+                    bool overspeedArmed = false;
+                    if (cpModel)
+                        overspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel);
+                    bool billAboveCp = false;
+                    if (loc.isSprintActive)
+                        billAboveCp = true;
+                    else if (overspeedNow)
+                    {
+                        if (overspeedArmed)
+                            billAboveCp = true;
+                    }
+                    if (!billAboveCp)
+                    {
+                        if (cpForEpoc > 1.0)
+                        {
+                            if (powerForEpoc > cpForEpoc)
+                                powerForEpoc = cpForEpoc;
+                        }
+                    }
                     m_pEpocState.UpdateExercisePowerSample(
                         powerForEpoc, loc.currentSpeed, loc.timeDeltaSec);
                 }

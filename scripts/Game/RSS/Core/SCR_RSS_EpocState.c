@@ -60,7 +60,7 @@ class SCR_RSS_EpocState
     }
 
     //! 运动 tick：跟踪近期峰值（供 EPOC ∝ P_peak）
-    //! 必须传限速内功率（v_drain）；峰值只在运动中衰减，避免一次冲刺污染后续 CP 慢跑停步。
+    //! 调用方须传 GetEpocSamplePowerWatts（限速内意图功率）；峰值只在运动中衰减。
     void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs, float timeDeltaSec = 0.0)
     {
         m_fLastPowerWatts = Math.Max(powerWatts, 0.0);
@@ -76,7 +76,12 @@ class SCR_RSS_EpocState
         if (timeDeltaSec <= 0.0)
             return;
 
-        float decay = SCR_RSS_Constants.EPOC_PEAK_DECAY_WATTS_PER_SEC * timeDeltaSec;
+        float decayRate = SCR_RSS_Constants.EPOC_PEAK_DECAY_WATTS_PER_SEC;
+        float fastFloor = m_fPeakPowerWatts * SCR_RSS_Constants.EPOC_PEAK_FAST_DECAY_RATIO;
+        if (powerWatts < fastFloor)
+            decayRate = SCR_RSS_Constants.EPOC_PEAK_DECAY_FAST_WATTS_PER_SEC;
+
+        float decay = decayRate * timeDeltaSec;
         float decayed = m_fPeakPowerWatts - decay;
         if (decayed < powerWatts)
             decayed = powerWatts;

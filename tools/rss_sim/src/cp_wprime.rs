@@ -224,19 +224,13 @@ impl V6CriticalPowerState {
         burst_duration_sec: f64,
         reserve_at_end01: f64,
     ) {
-        if reserve_at_end01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT {
-            self.cooldown_until_sec = world_time_sec + V5_BURST_COOLDOWN_FULL_DEFAULT;
-            return;
-        }
-        if burst_duration_sec <= V5_TACTICAL_SHORT_BURST_SEC {
-            self.cooldown_until_sec = world_time_sec + V5_BURST_COOLDOWN_SHORT_DEFAULT;
+        // v6: no timer CD; sprint gated by W' threshold. Short-burst timestamp only.
+        self.cooldown_until_sec = -1.0;
+        if burst_duration_sec <= V5_TACTICAL_SHORT_BURST_SEC
+            && reserve_at_end01 > V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT
+        {
             self.last_short_burst_release_sec = world_time_sec;
-            return;
         }
-        let mut scaled =
-            V5_BURST_COOLDOWN_FULL_DEFAULT * (1.0 - V5_BURST_EARLY_RELEASE_BONUS * reserve_at_end01);
-        scaled = scaled.max(V5_BURST_COOLDOWN_SHORT_DEFAULT);
-        self.cooldown_until_sec = world_time_sec + scaled;
     }
 
     pub fn tick(
@@ -276,7 +270,7 @@ impl V6CriticalPowerState {
                 self.apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01());
                 self.sprint_start_sec = -1.0;
             }
-            if !self.is_on_cooldown(world_time_sec) && power_watts <= cp + 5.0 {
+            if power_watts <= cp + 5.0 {
                 self.apply_w_prime_recovery(power_watts, cp, dt);
             }
         }

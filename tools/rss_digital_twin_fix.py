@@ -188,6 +188,8 @@ class RSSConstants:
     EPOC_DRAIN_RATE = 0.001
     EPOC_MAX_POWER_EXCESS_RATIO = 0.5
     EPOC_PEAK_DECAY_WATTS_PER_SEC = 100.0
+    EPOC_PEAK_DECAY_FAST_WATTS_PER_SEC = 400.0
+    EPOC_PEAK_FAST_DECAY_RATIO = 0.75
     EPOC_AEROBIC_CP_RATIO = 1.08
     EPOC_AEROBIC_DRAIN_MULT = 0.25
 
@@ -2534,24 +2536,11 @@ class V6CriticalPowerState:
 
     # ── Sprint 结束冷却 ──
     def _apply_cooldown_on_sprint_end(self, world_time_sec: float, burst_duration_sec: float, reserve_at_end01: float):
-        full_cd = V5_BURST_COOLDOWN_FULL_DEFAULT
-        short_cd = V5_BURST_COOLDOWN_SHORT_DEFAULT
-
-        if reserve_at_end01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
-            # 耗尽 → 满冷却
-            self.cooldown_until_sec = world_time_sec + full_cd
-            return
-
+        # v6：不上时间 CD；短冲仅记录时间戳。Sprint 由 W′ 阈值门禁。
+        self.cooldown_until_sec = -1.0
         if burst_duration_sec <= V5_TACTICAL_SHORT_BURST_SEC:
-            # 短爆发 → 短冷却
-            self.cooldown_until_sec = world_time_sec + short_cd
-            self.last_short_burst_release_sec = world_time_sec
-            return
-
-        # 中等爆发 → 按剩余池缩放冷却
-        scaled = full_cd * (1.0 - V5_BURST_EARLY_RELEASE_BONUS * reserve_at_end01)
-        scaled = max(scaled, short_cd)
-        self.cooldown_until_sec = world_time_sec + scaled
+            if reserve_at_end01 > V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+                self.last_short_burst_release_sec = world_time_sec
 
     # ── 主 Tick ──
     def tick(self, power_watts: float, sprint_intent: bool, world_time_sec: float,
@@ -2572,7 +2561,7 @@ class V6CriticalPowerState:
             if not self.was_sprinting:
                 self.sprint_start_sec = world_time_sec
 
-            # 池耗尽时标记冷却（持续 sprint 中仅触发一次）
+            # 池耗尽时标记（持续 sprint 中仅触发一次）；不再上时间 CD
             if self.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
                 if not self.depletion_cooldown_applied:
                     burst_dur = world_time_sec - self.sprint_start_sec
@@ -2588,8 +2577,8 @@ class V6CriticalPowerState:
                 self._apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01)
                 self.sprint_start_sec = -1.0
 
-            # 非冷却 + P <= CP+5 → W′ 恢复
-            if not self.is_on_cooldown(world_time_sec) and power_watts <= cp + 5.0:
+            # P <= CP+5 → W′ 恢复（不再被时间 CD 挡住）
+            if power_watts <= cp + 5.0:
                 self._apply_w_prime_recovery(power_watts, cp, dt)
 
         self.was_sprinting = sprint_intent

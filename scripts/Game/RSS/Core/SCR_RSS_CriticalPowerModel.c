@@ -290,34 +290,24 @@ class SCR_RSS_CriticalPowerModel
                 m_fSprintStartSec = -1.0;
             }
 
-            if (!IsOnCooldown(worldTimeSec) && powerWatts <= cp + 5.0)
+            if (powerWatts <= cp + 5.0)
                 ApplyWPrimeRecovery(powerWatts, cp, timeDeltaSec);
         }
 
         m_bWasSprinting = sprintIntent;
     }
 
+    //! 松键/耗尽时的冲刺时间 CD：v6 生理门禁只看 W′ 与有氧，不再因短冲锁死剩余 W′。
+    //! burst_cooldown_* 预设保留作兼容字段；负重爆发减免仍用 TACTICAL_SPRINT_COOLDOWN。
     protected void ApplyCooldownOnSprintEnd(float worldTimeSec, float burstDurationSec, float reserveAtEnd01)
     {
-        float fullCd = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
-        float shortCd = SCR_RSS_ConfigBridge.GetBurstCooldownShortSeconds();
-
-        if (reserveAtEnd01 <= SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
-        {
-            m_fCooldownUntilSec = worldTimeSec + fullCd;
-            return;
-        }
+        // 有剩余 W′ 或已耗尽：均不上时间 CD；耗尽后由 IsSprintAllowed 的池阈值挡住，P≤CP 时恢复
+        m_fCooldownUntilSec = -1.0;
 
         if (burstDurationSec <= SCR_RSS_Constants.V5_TACTICAL_SHORT_BURST_SEC)
         {
-            m_fCooldownUntilSec = worldTimeSec + shortCd;
-            m_fLastShortBurstReleaseSec = worldTimeSec;
-            return;
+            if (reserveAtEnd01 > SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
+                m_fLastShortBurstReleaseSec = worldTimeSec;
         }
-
-        float scaled = fullCd * (1.0 - SCR_RSS_Constants.V5_BURST_EARLY_RELEASE_BONUS * reserveAtEnd01);
-        if (scaled < shortCd)
-            scaled = shortCd;
-        m_fCooldownUntilSec = worldTimeSec + scaled;
     }
 }

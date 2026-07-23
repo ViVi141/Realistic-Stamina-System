@@ -54,6 +54,43 @@ class SCR_RSS_DrainCalculator
             vDrain, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
     }
 
+    //! EPOC 峰值采样速度：限速内意图速度（硬钳关时 v_meas 可远超 v_limit，不能按跑飞速度记氧债）
+    static float GetEpocSampleVelocityMs(float measuredSpeedMs, float appliedSpeedLimitMs)
+    {
+        float v = measuredSpeedMs;
+        if (v < 0.0)
+            v = 0.0;
+        if (appliedSpeedLimitMs > 0.05)
+        {
+            if (v > appliedSpeedLimitMs)
+                v = appliedSpeedLimitMs;
+        }
+        return v;
+    }
+
+    //! EPOC 峰值采样功率（W）：按意图速度，可选再钳到 CP×(1+超额上限)
+    static float GetEpocSamplePowerWatts(
+        float measuredSpeedMs,
+        float appliedSpeedLimitMs,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        int movementPhase,
+        float criticalPowerWatts = -1.0)
+    {
+        float vEpoc = GetEpocSampleVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
+        float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+            vEpoc, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+        if (criticalPowerWatts > 1.0)
+        {
+            float storeCap = criticalPowerWatts
+                * (1.0 + SCR_RSS_Constants.EPOC_MAX_POWER_EXCESS_RATIO);
+            if (powerW > storeCap)
+                powerW = storeCap;
+        }
+        return powerW;
+    }
+
     static bool IsMetabolicOverspeedAccounting(float measuredSpeedMs, float appliedSpeedLimitMs)
     {
         if (appliedSpeedLimitMs <= 0.05)
