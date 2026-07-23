@@ -43,8 +43,11 @@ class SCR_RSS_UpdateCoordinator
                 capMs = SCR_RSS_DrainCalculator.GetTheoreticalMaxSpeedMs(
                     currentMovementPhase, encumbranceSpeedPenalty);
             }
+            bool isSprinting = false;
+            if (currentMovementPhase == 3)
+                isSprinting = true;
             speedForPowerMs = SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs(
-                measuredSpeedMs, capMs, wPrimePool01);
+                measuredSpeedMs, capMs, wPrimePool01, isSprinting);
         }
 
         int phase = currentMovementPhase;

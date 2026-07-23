@@ -59,13 +59,30 @@ class SCR_RSS_EpocState
         return m_fLastPowerWatts;
     }
 
-    //! 运动 tick 调用：记录会话峰值功率（供 EPOC ∝ P_peak）
-    //! 必须传入「限速内」功率（v_drain / FatiguePower），禁止用超速记账功率，否则停步 EPOC 会被 P_raw 打爆。
-    void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs)
+    //! 运动 tick：跟踪近期峰值（供 EPOC ∝ P_peak）
+    //! 必须传限速内功率（v_drain）；峰值只在运动中衰减，避免一次冲刺污染后续 CP 慢跑停步。
+    void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs, float timeDeltaSec = 0.0)
     {
         m_fLastPowerWatts = Math.Max(powerWatts, 0.0);
-        if (currentSpeedMs > 0.05 && powerWatts > m_fPeakPowerWatts)
+        if (currentSpeedMs <= 0.05)
+            return;
+
+        if (powerWatts > m_fPeakPowerWatts)
+        {
             m_fPeakPowerWatts = powerWatts;
+            return;
+        }
+
+        if (timeDeltaSec <= 0.0)
+            return;
+
+        float decay = SCR_RSS_Constants.EPOC_PEAK_DECAY_WATTS_PER_SEC * timeDeltaSec;
+        float decayed = m_fPeakPowerWatts - decay;
+        if (decayed < powerWatts)
+            decayed = powerWatts;
+        if (decayed < 0.0)
+            decayed = 0.0;
+        m_fPeakPowerWatts = decayed;
     }
 
     void ResetPeakPowerForNewRest()

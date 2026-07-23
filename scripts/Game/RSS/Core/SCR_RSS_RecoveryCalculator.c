@@ -59,7 +59,7 @@ class SCR_RSS_RecoveryCalculator
         return epocState.IsInEpocDelay();
     }
     
-    // 计算EPOC延迟期间的消耗（v6：与峰值「限速内」代谢功率成正比，并封顶）
+    // 计算EPOC延迟期间的消耗（v6：与近期峰值限速内功率成正比；CP 巡航弱罚）
     static float CalculateEpocDrainRate(float speedBeforeStop, float peakPowerWatts = -1.0)
     {
         float epocDrainRate = SCR_RSS_Constants.EPOC_DRAIN_PER_TICK;
@@ -68,7 +68,17 @@ class SCR_RSS_RecoveryCalculator
             float cp = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
             if (cp <= 1.0)
                 cp = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
-            float excess = Math.Max(peakPowerWatts - cp, 0.0);
+
+            float aerobicCeil = cp * SCR_RSS_Constants.EPOC_AEROBIC_CP_RATIO;
+            if (peakPowerWatts <= aerobicCeil)
+            {
+                epocDrainRate = epocDrainRate * SCR_RSS_Constants.EPOC_AEROBIC_DRAIN_MULT;
+                return epocDrainRate;
+            }
+
+            float excess = peakPowerWatts - cp;
+            if (excess < 0.0)
+                excess = 0.0;
             float ratio = excess / cp;
             if (ratio > SCR_RSS_Constants.EPOC_MAX_POWER_EXCESS_RATIO)
                 ratio = SCR_RSS_Constants.EPOC_MAX_POWER_EXCESS_RATIO;

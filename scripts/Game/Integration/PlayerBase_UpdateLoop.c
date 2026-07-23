@@ -527,7 +527,8 @@ modded class SCR_CharacterControllerComponent
                     loc.gradePercent,
                     loc.terrainFactor,
                     loc.effectivePhase,
-                    pool01BeforeTick);
+                    pool01BeforeTick,
+                    loc.isSprintActive);
 
                 if (cpModel)
                 {
@@ -564,7 +565,8 @@ modded class SCR_CharacterControllerComponent
                         loc.gradePercent,
                         loc.terrainFactor,
                         loc.phaseNow);
-                    m_pEpocState.UpdateExercisePowerSample(powerForEpoc, loc.currentSpeed);
+                    m_pEpocState.UpdateExercisePowerSample(
+                        powerForEpoc, loc.currentSpeed, loc.timeDeltaSec);
                 }
                 if (m_pStaminaState)
                 {
@@ -627,6 +629,9 @@ modded class SCR_CharacterControllerComponent
                 m_fLastRssSpeedMultiplierApplied = hardMult;
                 loc.finalSpeedMultiplier = hardMult;
                 m_fAppliedSpeedLimitMs = hardMult * engineBase;
+                // 仅 W′ 不可用时物理钳速；W′ 仍在时允许惯性，避免全程被拖成 CP 爬行
+                if (!wPrimeAllowsOverspeed)
+                    SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, m_fAppliedSpeedLimitMs);
             }
         }
 
@@ -641,13 +646,21 @@ modded class SCR_CharacterControllerComponent
                 loc.gradePercent,
                 loc.terrainFactor,
                 loc.phaseNow);
+            float fatigueCpWatts = -1.0;
+            if (m_pAnaerobicBurst)
+            {
+                SCR_RSS_CriticalPowerModel cpForFatigue = m_pAnaerobicBurst.GetCpModel();
+                if (cpForFatigue)
+                    fatigueCpWatts = cpForFatigue.GetEffectiveCriticalPowerWatts();
+            }
             m_pFatigueSystem.ProcessFatigueIntegral(
                 powerFat,
                 loc.currentWeight,
                 loc.gradePercent,
                 loc.terrainFactor,
                 loc.timeDeltaSec,
-                loc.currentSpeed);
+                loc.currentSpeed,
+                fatigueCpWatts);
 
             m_fLastCapRatchetPerTick = capBeforeFatigue - m_pFatigueSystem.GetMaxStaminaCap();
         }

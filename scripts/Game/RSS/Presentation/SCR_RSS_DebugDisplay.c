@@ -951,14 +951,15 @@ class SCR_RSS_DebugDisplay
         float drainVelMs = SCR_RSS_DrainCalculator.GetDrainVelocityMs(
             tick.currentSpeed, tick.appliedSpeedLimitMs);
         float acctVelMs = SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs(
-            tick.currentSpeed, tick.appliedSpeedLimitMs, tick.wPrimePool01);
+            tick.currentSpeed, tick.appliedSpeedLimitMs, tick.wPrimePool01, tick.isSprinting);
 
         string overspeedStr = "off";
-        if (SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
-            tick.currentSpeed, tick.appliedSpeedLimitMs))
+        if (tick.isSprinting
+            && SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+                tick.currentSpeed, tick.appliedSpeedLimitMs)
+            && SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
         {
-            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
-                overspeedStr = "on";
+            overspeedStr = "on";
         }
 
         string line3Head = string.Format(

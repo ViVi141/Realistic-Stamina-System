@@ -19,17 +19,21 @@ class SCR_RSS_DrainCalculator
         return measuredSpeedMs;
     }
 
-    //! 代谢记账速度：未超 v_limit 同 GetDrainVelocityMs；超限时按 v_meas（W′ 放电）
+    //! 代谢记账速度：未超 v_limit 同 GetDrainVelocityMs；
+    //! 超限且正在 Sprint 且 W′ 可用时才用 v_meas（Run 下坡滑行不得烧 W′）
     static float GetMetabolicAccountingVelocityMs(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
-        float wPrimePool01 = 1.0)
+        float wPrimePool01 = 1.0,
+        bool isSprinting = false)
     {
         if (measuredSpeedMs < 0.0)
             measuredSpeedMs = 0.0;
 
         if (appliedSpeedLimitMs > 0.05 && measuredSpeedMs > appliedSpeedLimitMs + SCR_RSS_Constants.V6_OVERSPEED_ACCOUNTING_EPS_MPS)
         {
+            if (!isSprinting)
+                return GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
             if (!IsWPrimePoolAvailableForOverspeed(wPrimePool01))
                 return GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
             return measuredSpeedMs;
@@ -46,9 +50,11 @@ class SCR_RSS_DrainCalculator
         float gradePercent,
         float terrainFactor,
         int movementPhase,
-        float wPrimePool01 = 1.0)
+        float wPrimePool01 = 1.0,
+        bool isSprinting = false)
     {
-        float vAcct = GetMetabolicAccountingVelocityMs(measuredSpeedMs, appliedSpeedLimitMs, wPrimePool01);
+        float vAcct = GetMetabolicAccountingVelocityMs(
+            measuredSpeedMs, appliedSpeedLimitMs, wPrimePool01, isSprinting);
         return SCR_RSS_MetabolismModel.MetabolismPowerWatts(
             vAcct, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
     }
@@ -162,7 +168,9 @@ class SCR_RSS_DrainCalculator
         return ratio;
     }
 
-    //! v6：代谢功率超 CP 时，将绝对速度上限压至 invert(P=CP)
+    //! v6：代谢功率超可用功率时压速。
+    //! Walk/Run：W′ 仍可用时不硬压到 CP（步态速度优先，超额由 W′/有氧承担）；
+    //! W′ 耗尽后才反解到 CP。Sprint 仍用 availableP（含 W′ 预算）。
     static float GetMetabolicSpeedCapMs(
         float currentSpeedMs,
         int movementPhase,
@@ -185,15 +193,25 @@ class SCR_RSS_DrainCalculator
         float powerW = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
             currentSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
 
+        bool isSprintPhase = false;
+        if (movementPhase == 3)
+            isSprintPhase = true;
+
+        if (!isSprintPhase && cpModel)
+        {
+            if (IsWPrimePoolAvailableForOverspeed(cpModel.GetPool01()))
+                return -1.0;
+        }
+
         float availableP = cp;
         if (cpModel)
-            availableP = cpModel.GetAvailablePowerWatts(movementPhase == 3, 0.017, worldTimeSec);
+            availableP = cpModel.GetAvailablePowerWatts(isSprintPhase, 0.017, worldTimeSec);
 
         if (powerW <= availableP + 1.0)
             return -1.0;
 
         float targetP = availableP;
-        if (powerW > cp && movementPhase != 3)
+        if (powerW > cp && !isSprintPhase)
             targetP = cp;
 
         return SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(

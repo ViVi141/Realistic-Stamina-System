@@ -16,7 +16,7 @@ pub const SPRINT_BURST_MAX_SEC: f64 = 15.0;
 pub const SPRINT_COOLDOWN_MIN_SEC: f64 = 120.0;
 pub const DRAIN_VEL_TOLERANCE: f64 = 0.001;
 pub const OVERSPEED_EXPECTED: f64 = 0.5;
-pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.80;
+pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.40;
 pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 2.60;
 pub const SUSTAIN_OBS_HARD: bool = true;
 

@@ -29,14 +29,15 @@ class SCR_RSS_FatigueSystem
         }
     }
 
-    //! v6 积分疲劳：dI/dt = w·P − R
+    //! v6 积分疲劳：仅对超过有效 CP 的功率积分；上坡才加坡度权（下坡 g² 不再灌满 If）
     void ProcessFatigueIntegral(
         float powerWatts,
         float loadKg,
         float gradePercent,
         float terrainFactor,
         float timeDeltaSec,
-        float currentSpeedMs)
+        float currentSpeedMs,
+        float effectiveCpWatts = -1.0)
     {
         if (timeDeltaSec <= 0.0)
             return;
@@ -47,22 +48,36 @@ class SCR_RSS_FatigueSystem
             loadRatio = loadKg / bodyW;
 
         float g = gradePercent * 0.01;
+        float slopeTerm = 0.0;
+        if (g > 0.0)
+            slopeTerm = SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g;
+
         float w = 1.0
             + SCR_RSS_Constants.V6_FATIGUE_K_LOAD * loadRatio
-            + SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g
+            + slopeTerm
             + SCR_RSS_Constants.V6_FATIGUE_K_TERRAIN * (terrainFactor - 1.0);
         if (w < 0.5)
             w = 0.5;
 
+        float cpRef = effectiveCpWatts;
+        if (cpRef <= 1.0)
+            cpRef = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+        if (cpRef <= 1.0)
+            cpRef = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+
+        float driveP = powerWatts - cpRef;
+        if (driveP < 0.0)
+            driveP = 0.0;
+
         float iNorm = GetFatigueIntegralNorm();
         float r = 0.0;
-        if (currentSpeedMs < 0.05 || powerWatts < SCR_RSS_ConfigBridge.GetCriticalPowerWatts() * 0.5)
+        if (currentSpeedMs < 0.05 || powerWatts < cpRef * 0.5)
         {
             float oneMinus = 1.0 - iNorm;
             r = SCR_RSS_Constants.V6_FATIGUE_K_RECOVERY * oneMinus * oneMinus * powerWatts;
         }
 
-        float dI = (w * powerWatts - r) * timeDeltaSec * SCR_RSS_Constants.V6_FATIGUE_INTEGRAL_SCALE;
+        float dI = (w * driveP - r) * timeDeltaSec * SCR_RSS_Constants.V6_FATIGUE_INTEGRAL_SCALE;
         m_fFatigueIntegral = Math.Clamp(m_fFatigueIntegral + dI, 0.0, SCR_RSS_Constants.V6_FATIGUE_I_MAX);
 
         float legacyFromI = m_fFatigueIntegral * MAX_FATIGUE_PENALTY;
@@ -144,7 +159,8 @@ class SCR_RSS_FatigueSystem
         float loadKg,
         float gradePercent,
         float terrainFactor,
-        float currentSpeedMs)
+        float currentSpeedMs,
+        float effectiveCpWatts = -1.0)
     {
         if (m_fFatigueAccumulation >= MAX_FATIGUE_PENALTY - 0.000001)
             return 0.0;
@@ -160,22 +176,36 @@ class SCR_RSS_FatigueSystem
             loadRatio = loadKg / bodyW;
 
         float g = gradePercent * 0.01;
+        float slopeTerm = 0.0;
+        if (g > 0.0)
+            slopeTerm = SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g;
+
         float w = 1.0
             + SCR_RSS_Constants.V6_FATIGUE_K_LOAD * loadRatio
-            + SCR_RSS_Constants.V6_FATIGUE_K_SLOPE * g * g
+            + slopeTerm
             + SCR_RSS_Constants.V6_FATIGUE_K_TERRAIN * (terrainFactor - 1.0);
         if (w < 0.5)
             w = 0.5;
 
+        float cpRef = effectiveCpWatts;
+        if (cpRef <= 1.0)
+            cpRef = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+        if (cpRef <= 1.0)
+            cpRef = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
+
+        float driveP = powerWatts - cpRef;
+        if (driveP < 0.0)
+            driveP = 0.0;
+
         float iNorm = GetFatigueIntegralNorm();
         float r = 0.0;
-        if (currentSpeedMs < 0.05 || powerWatts < SCR_RSS_ConfigBridge.GetCriticalPowerWatts() * 0.5)
+        if (currentSpeedMs < 0.05 || powerWatts < cpRef * 0.5)
         {
             float oneMinus = 1.0 - iNorm;
             r = SCR_RSS_Constants.V6_FATIGUE_K_RECOVERY * oneMinus * oneMinus * powerWatts;
         }
 
-        float dIPerSec = (w * powerWatts - r) * 0.0001;
+        float dIPerSec = (w * driveP - r) * SCR_RSS_Constants.V6_FATIGUE_INTEGRAL_SCALE;
         if (dIPerSec <= 0.0)
             return 0.0;
 

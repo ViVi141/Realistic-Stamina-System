@@ -396,8 +396,13 @@ class SCR_RSS_Constants
     static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
     static const float EPOC_DRAIN_PER_TICK = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
     static const float EPOC_DRAIN_RATE = EPOC_DRAIN_PER_TICK; // @deprecated 请用 EPOC_DRAIN_PER_TICK
-    //! EPOC 相对 CP 的超额倍率上限：1.0 → 最多 2× 基础 EPOC（避免超速 P_raw 把停步罚打爆）
-    static const float EPOC_MAX_POWER_EXCESS_RATIO = 1.0;
+    //! EPOC 相对 CP 的超额倍率上限：0.5 → 最多 1.5× 基础 EPOC（约 0.75%/s）
+    static const float EPOC_MAX_POWER_EXCESS_RATIO = 0.5;
+    //! 运动中峰值功率向当前功率衰减（W/s），避免一次冲刺污染后续停步罚
+    static const float EPOC_PEAK_DECAY_WATTS_PER_SEC = 100.0;
+    //! 峰值 ≤ CP×此比值视为有氧巡航：只用弱 EPOC，不加超额
+    static const float EPOC_AEROBIC_CP_RATIO = 1.08;
+    static const float EPOC_AEROBIC_DRAIN_MULT = 0.25;
 
     // 生理学依据：不同姿态对体力的消耗不同
     // 参考：Knapik et al., 1996; Pandolf et al., 1977

@@ -1,6 +1,7 @@
 use crate::constants::{
-    RSS_IDLE_SPEED_THRESHOLD_MPS, V6_CP_FATIGUE_K, V6_FATIGUE_I_MAX, V6_FATIGUE_K_LOAD,
-    V6_FATIGUE_K_RECOVERY, V6_FATIGUE_K_SLOPE, V6_FATIGUE_K_TERRAIN, V6_MAX_FATIGUE_PENALTY,
+    RSS_IDLE_SPEED_THRESHOLD_MPS, V6_CP_FATIGUE_K, V6_FATIGUE_I_MAX, V6_FATIGUE_INTEGRAL_SCALE,
+    V6_FATIGUE_K_LOAD, V6_FATIGUE_K_RECOVERY, V6_FATIGUE_K_SLOPE, V6_FATIGUE_K_TERRAIN,
+    V6_MAX_FATIGUE_PENALTY,
 };
 use crate::math::clip_f64;
 
@@ -68,20 +69,32 @@ impl TwinFatigueSystem {
         let body_w = 90.0;
         let load_ratio = if body_w > 0.0 { load_kg / body_w } else { 0.0 };
         let g = grade_percent * 0.01;
+        let mut slope_term = 0.0;
+        if g > 0.0 {
+            slope_term = V6_FATIGUE_K_SLOPE * g * g;
+        }
         let mut w = 1.0
             + V6_FATIGUE_K_LOAD * load_ratio
-            + V6_FATIGUE_K_SLOPE * g * g
+            + slope_term
             + V6_FATIGUE_K_TERRAIN * (terrain_factor - 1.0);
         if w < 0.5 {
             w = 0.5;
         }
+        let mut cp_ref = critical_power_watts;
+        if cp_ref <= 1.0 {
+            cp_ref = 780.0;
+        }
+        let mut drive_p = power_watts - cp_ref;
+        if drive_p < 0.0 {
+            drive_p = 0.0;
+        }
         let i_norm = self.get_fatigue_integral_norm();
         let mut r = 0.0;
-        if current_speed_ms < 0.05 || power_watts < critical_power_watts * 0.5 {
+        if current_speed_ms < 0.05 || power_watts < cp_ref * 0.5 {
             let one_minus = 1.0 - i_norm;
             r = V6_FATIGUE_K_RECOVERY * one_minus * one_minus * power_watts;
         }
-        let d_i = (w * power_watts - r) * time_delta_sec * 0.0001;
+        let d_i = (w * drive_p - r) * time_delta_sec * V6_FATIGUE_INTEGRAL_SCALE;
         self.fatigue_integral = clip_f64(self.fatigue_integral + d_i, 0.0, V6_FATIGUE_I_MAX);
 
         let legacy_from_i = self.fatigue_integral * V6_MAX_FATIGUE_PENALTY;

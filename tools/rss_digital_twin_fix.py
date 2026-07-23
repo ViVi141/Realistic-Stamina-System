@@ -186,7 +186,10 @@ class RSSConstants:
 
     EPOC_DELAY_SECONDS = 2.0
     EPOC_DRAIN_RATE = 0.001
-    EPOC_MAX_POWER_EXCESS_RATIO = 1.0
+    EPOC_MAX_POWER_EXCESS_RATIO = 0.5
+    EPOC_PEAK_DECAY_WATTS_PER_SEC = 100.0
+    EPOC_AEROBIC_CP_RATIO = 1.08
+    EPOC_AEROBIC_DRAIN_MULT = 0.25
 
     ENERGY_TO_STAMINA_COEFF = 9.5e-07  # Hardcore：原7.17e-07
 
@@ -1341,7 +1344,9 @@ class RSSDigitalTwin:
         if cap_ms <= 0.05:
             cap_ms = engine_original_ms
 
-        return get_metabolic_accounting_velocity_ms(measured, cap_ms)
+        return get_metabolic_accounting_velocity_ms(
+            measured, cap_ms, self.v6_cp_state.pool01, is_sprinting
+        )
 
     def _resolve_current_speed_ms(self, theoretical_ms: float) -> float:
         measured = max(0.0, self._measured_velocity_ms)
@@ -1383,6 +1388,7 @@ class RSSDigitalTwin:
             exhausted,
             engine_base_ms,
             effective_cp,
+            self.v6_cp_state.pool01,
         )
 
     def compute_speed_limit_multiplier(
@@ -1784,6 +1790,7 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
+V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05
 V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.2
 
 
@@ -1799,10 +1806,13 @@ def get_metabolic_accounting_velocity_ms(
     measured_ms: float,
     applied_limit_ms: float,
     w_prime_pool01: float = 1.0,
+    is_sprinting: bool = False,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicAccountingVelocityMs 一致。"""
     measured_ms = max(0.0, measured_ms)
     if applied_limit_ms > 0.05 and measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS:
+        if not is_sprinting:
+            return get_drain_velocity_ms(measured_ms, applied_limit_ms)
         if not is_wprime_pool_available_for_overspeed(w_prime_pool01):
             return get_drain_velocity_ms(measured_ms, applied_limit_ms)
         return measured_ms
@@ -1817,8 +1827,11 @@ def get_metabolic_accounting_power_watts(
     terrain_factor: float,
     movement_phase: int,
     w_prime_pool01: float = 1.0,
+    is_sprinting: bool = False,
 ) -> float:
-    v_acct = get_metabolic_accounting_velocity_ms(measured_ms, applied_limit_ms, w_prime_pool01)
+    v_acct = get_metabolic_accounting_velocity_ms(
+        measured_ms, applied_limit_ms, w_prime_pool01, is_sprinting
+    )
     return metabolism_power_watts(
         v_acct, total_weight_kg, grade_percent, terrain_factor, movement_phase
     )
@@ -1889,11 +1902,16 @@ def get_metabolic_speed_cap_ms(
     terrain_factor: float,
     is_exhausted: bool,
     effective_cp_watts: float,
+    w_prime_pool01: float = 1.0,
 ) -> float:
-    """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形（孪生不含 W' 瞬时加成）。"""
+    """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形。"""
     if is_exhausted:
         return -1.0
     if movement_phase < 1:
+        return -1.0
+
+    is_sprint = movement_phase == MovementType.SPRINT
+    if (not is_sprint) and is_wprime_pool_available_for_overspeed(w_prime_pool01):
         return -1.0
 
     power_w = metabolism_power_watts(
@@ -1908,7 +1926,7 @@ def get_metabolic_speed_cap_ms(
         return -1.0
 
     target_p = effective_cp_watts
-    if power_w > effective_cp_watts and movement_phase != MovementType.SPRINT:
+    if power_w > effective_cp_watts and (not is_sprint):
         target_p = effective_cp_watts
 
     return invert_speed_for_power_watts(
@@ -1930,6 +1948,7 @@ def get_metabolic_corrected_speed_multiplier(
     is_exhausted: bool,
     engine_base_ms: float,
     effective_cp_watts: float,
+    w_prime_pool01: float = 1.0,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier 同形。"""
     cap_ms = get_metabolic_speed_cap_ms(
@@ -1940,6 +1959,7 @@ def get_metabolic_corrected_speed_multiplier(
         terrain_factor,
         is_exhausted,
         effective_cp_watts,
+        w_prime_pool01,
     )
     if cap_ms < 0.0:
         return applied_speed_multiplier
@@ -2066,22 +2086,33 @@ class TwinFatigueSystem:
             load_ratio = load_kg / body_w
 
         g = grade_percent * 0.01
+        slope_term = 0.0
+        if g > 0.0:
+            slope_term = V6_FATIGUE_K_SLOPE * g * g
         w = (
             1.0
             + V6_FATIGUE_K_LOAD * load_ratio
-            + V6_FATIGUE_K_SLOPE * g * g
+            + slope_term
             + V6_FATIGUE_K_TERRAIN * (terrain_factor - 1.0)
         )
         if w < 0.5:
             w = 0.5
 
+        cp_ref = critical_power_watts
+        if cp_ref <= 1.0:
+            cp_ref = V6_CRITICAL_POWER_WATTS_DEFAULT
+
+        drive_p = power_watts - cp_ref
+        if drive_p < 0.0:
+            drive_p = 0.0
+
         i_norm = self.get_fatigue_integral_norm()
         r = 0.0
-        if current_speed_ms < 0.05 or power_watts < critical_power_watts * 0.5:
+        if current_speed_ms < 0.05 or power_watts < cp_ref * 0.5:
             one_minus = 1.0 - i_norm
             r = V6_FATIGUE_K_RECOVERY * one_minus * one_minus * power_watts
 
-        d_i = (w * power_watts - r) * time_delta_sec * 0.0001
+        d_i = (w * drive_p - r) * time_delta_sec * V6_FATIGUE_INTEGRAL_SCALE
         self.fatigue_integral = float(np.clip(
             self.fatigue_integral + d_i, 0.0, V6_FATIGUE_I_MAX))
 

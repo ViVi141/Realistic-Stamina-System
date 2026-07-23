@@ -71,7 +71,8 @@ modded class SCR_CharacterControllerComponent
                 loc.gradePercent,
                 loc.terrainFactor,
                 loc.effectiveMovementPhase,
-                loc.wPrimePool01Dbg);
+                loc.wPrimePool01Dbg,
+                loc.isSprintActive);
         }
 
         loc.needLocalDebugBatch = false;
@@ -272,7 +273,8 @@ modded class SCR_CharacterControllerComponent
                     loc.currentWeight,
                     loc.gradePercent,
                     loc.terrainFactor,
-                    loc.currentSpeed);
+                    loc.currentSpeed,
+                    loc.effectiveCriticalPowerWattsDbg);
             }
         }
         loc.epocActiveDbg = false;

@@ -90,22 +90,31 @@ def _sustain_run_observed_ok() -> bool:
 
 
 def _overspeed_accounting_ok() -> bool:
-    if get_metabolic_accounting_velocity_ms(3.55, 1.15) != 3.55:
+    # Run 超速不得按 v_meas 记账
+    if get_metabolic_accounting_velocity_ms(3.55, 1.15) != 1.15:
         return False
     if get_metabolic_accounting_velocity_ms(1.0, 1.15) != 1.0:
         return False
-    if get_metabolic_accounting_velocity_ms(3.55, 1.15, w_prime_pool01=0.1) != 1.15:
+    # Sprint + W′ 可用才按 v_meas
+    if get_metabolic_accounting_velocity_ms(3.55, 1.15, is_sprinting=True) != 3.55:
+        return False
+    if get_metabolic_accounting_velocity_ms(3.55, 1.15, w_prime_pool01=0.1, is_sprinting=True) != 1.15:
         return False
     if not is_metabolic_overspeed_accounting(3.55, 1.15):
         return False
     if is_metabolic_overspeed_accounting(1.0, 1.15):
         return False
     p_drain = metabolism_power_watts(get_drain_velocity_ms(3.55, 1.15), 125.0, 9.1, 2.24, 2)
-    p_acct = get_metabolic_accounting_power_watts(3.55, 1.15, 125.0, 9.1, 2.24, 2)
+    p_acct = get_metabolic_accounting_power_watts(
+        3.55, 1.15, 125.0, 9.1, 2.24, 2, is_sprinting=True
+    )
+    p_acct_run = get_metabolic_accounting_power_watts(3.55, 1.15, 125.0, 9.1, 2.24, 2)
     p_acct_empty = get_metabolic_accounting_power_watts(
-        3.55, 1.15, 125.0, 9.1, 2.24, 2, w_prime_pool01=0.1
+        3.55, 1.15, 125.0, 9.1, 2.24, 2, w_prime_pool01=0.1, is_sprinting=True
     )
     if abs(p_acct_empty - p_drain) > 1.0:
+        return False
+    if abs(p_acct_run - p_drain) > 1.0:
         return False
     return p_acct > p_drain * 1.5
 

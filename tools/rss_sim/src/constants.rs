@@ -7,7 +7,8 @@ pub const RSS_PLAYER_TICK_SEC: f64 = 0.017;
 pub const VELOCITY_HORIZ_CAP_MS: f64 = 7.0;
 
 pub const V6_OVERSPEED_ACCOUNTING_EPS_MPS: f64 = 0.12;
-pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 1.0;
+pub const V6_WPRIME_OVERSPEED_HYSTERESIS: f64 = 0.05;
+pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
 pub const V6_ACSM_REST_W: f64 = 50.0;
 pub const V6_ACSM_LINEAR_W_PER_MS: f64 = 200.0;
@@ -29,6 +30,7 @@ pub const V6_W_PRIME_K_FAST: f64 = 0.15;
 pub const V6_W_PRIME_K_SLOW: f64 = 0.008;
 pub const V6_W_PRIME_LIM_RATIO: f64 = 0.5;
 pub const V6_FATIGUE_I_MAX: f64 = 1.0;
+pub const V6_FATIGUE_INTEGRAL_SCALE: f64 = 0.000055;
 pub const V6_FATIGUE_K_RECOVERY: f64 = 0.0008;
 pub const V6_FATIGUE_K_LOAD: f64 = 0.15;
 pub const V6_FATIGUE_K_SLOPE: f64 = 8.0;

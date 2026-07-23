@@ -68,4 +68,32 @@ class SCR_RSS_SpeedBridge
         if (ctrl)
             ctrl.OverrideMaxSpeed(Math.Clamp(limit, 0.01, 1.0));
     }
+
+    //! 下坡重力/惯性仍高于限速时，钳水平速度（保留竖直分量）
+    static void ClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs)
+    {
+        if (!owner)
+            return;
+        if (maxHorizMs < 0.1)
+            return;
+
+        Physics physics = owner.GetPhysics();
+        if (!physics)
+            return;
+
+        vector velocity = physics.GetVelocity();
+        float horizSq = velocity[0] * velocity[0] + velocity[2] * velocity[2];
+        float slackMs = 0.08;
+        float slackSq = (maxHorizMs + slackMs) * (maxHorizMs + slackMs);
+        if (horizSq <= slackSq)
+            return;
+        if (horizSq <= 0.0001)
+            return;
+
+        float speed = Math.Sqrt(horizSq);
+        float scale = maxHorizMs / speed;
+        velocity[0] = velocity[0] * scale;
+        velocity[2] = velocity[2] * scale;
+        physics.SetVelocity(velocity);
+    }
 }

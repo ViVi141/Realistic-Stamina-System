@@ -25,8 +25,8 @@ SPRINT_COOLDOWN_MIN_SEC = 120.0
 DRAIN_VEL_TOLERANCE = 0.001
 OVERSPEED_EXPECTED = 0.5
 
-# 35 kg Run 稳态观测掉条（%/s；CP 代谢对齐后限速不再假性压速，疲劳 cap 早期掉条更高）
-SUSTAIN_OBS_MIN_PCT_PER_S = 0.80
+# 35 kg Run 稳态：W′ 可用时保持步态速度，超额消耗应落在可玩 band
+SUSTAIN_OBS_MIN_PCT_PER_S = 0.40
 SUSTAIN_OBS_MAX_PCT_PER_S = 2.60
 SUSTAIN_OBS_HARD = True
 

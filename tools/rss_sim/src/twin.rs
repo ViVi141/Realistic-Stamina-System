@@ -1033,6 +1033,7 @@ impl RSSDigitalTwin {
             exhausted,
             engine_base_ms,
             effective_cp,
+            self.v6_cp_state.pool01(),
         )
     }
 
