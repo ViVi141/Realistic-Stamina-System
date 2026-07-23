@@ -165,7 +165,7 @@ class SCR_RSS_DataExport
         if (exportData.players.Count() == 0)
             return;
 
-        SCR_JsonSaveContext saveContext = new SCR_JsonSaveContext();
+        JsonSaveContext saveContext = new JsonSaveContext();
         saveContext.WriteValue("", exportData);
         saveContext.SaveToFile(EXPORT_PATH);
     }

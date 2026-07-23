@@ -31,29 +31,25 @@ class SCR_RSS_Settings
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
     string m_sSelectedPreset;
 
-    // ==================== 预设参数包 ====================
-    // 每个预设都有自己的参数包，包含 40 个由 Optuna 优化的参数
-    // 管理员可以直接修改这些参数，或者选择使用预设
-    
-    // EliteStandard 预设参数包（精英拟真 / 最硬核）
-    // v4 管线：Pareto 前沿上 combat_endurance + recovery_efficiency 联合最小的解（无独立 Hardcore 预设）
-    [Attribute(desc: "EliteStandard preset parameters.\nV4 optimizer: minimize combat+recovery on Pareto front (most realistic).\nEliteStandard 预设。\nv4：三目标优化中 combat 与 recovery 联合最小，最拟真。")]
+    // ==================== 预设参数包（运行时对象，无 Attribute，避免 ICE）====================
+    // JSON 持久化见下方 m_aParams* 平面数组；数值由 Bake / ApplyParamsFromArray 填充。
     ref SCR_RSS_Params m_EliteStandard;
-
-    // StandardMilsim 预设参数包（标准军事模拟）
-    // 适用于标准军事模拟服务器，追求平衡的游戏体验
-    [Attribute(desc: "StandardMilsim preset parameters.\nStandard military simulation, balanced experience.\nStandardMilsim 预设参数包。\n标准军事模拟，平衡体验。")]
     ref SCR_RSS_Params m_StandardMilsim;
-
-    // TacticalAction 预设参数包（战术动作）
-    // 适用于动作导向的服务器，追求更流畅的游戏体验
-    [Attribute(desc: "TacticalAction preset parameters.\nMore fluid gameplay configuration optimized for action-oriented servers.\nTacticalAction 预设参数包。\n更流畅的游戏体验配置，为动作导向的服务器优化。")]
     ref SCR_RSS_Params m_TacticalAction;
-
-    // Custom 预设参数包（自定义）
-    // 管理员可以手动调整所有参数
-    [Attribute(desc: "Custom preset parameters.\nManually adjust all parameters to your liking.\nCustom 预设参数包。\n手动调整所有参数以适应您的需求。")]
     ref SCR_RSS_Params m_Custom;
+
+    // 平面数组：Attribute 仅 4 个，替代 Params 内 63×Attribute 的编译压力
+    [Attribute(desc: "EliteStandard params flat (PARAMS_ARRAY_SIZE). Auto-managed. | Elite 预设平面数组，自动维护")]
+    ref array<float> m_aParamsElite;
+
+    [Attribute(desc: "StandardMilsim params flat. Auto-managed. | Standard 预设平面数组")]
+    ref array<float> m_aParamsStandard;
+
+    [Attribute(desc: "TacticalAction params flat. Auto-managed. | Tactical 预设平面数组")]
+    ref array<float> m_aParamsTactical;
+
+    [Attribute(desc: "Custom params flat (edit this array or use tools). | Custom 预设平面数组，可手改")]
+    ref array<float> m_aParamsCustom;
 
     // ==================== 初始化预设默认值（实现见 SCR_RSS_SettingsPresetBake）====================
     void InitPresets(bool forceRefreshSystemPresets = false)
@@ -245,5 +241,15 @@ class SCR_RSS_Settings
     static void ApplySettingsFromArrays(SCR_RSS_Settings s, array<float> floats, array<int> ints, array<bool> bools)
     {
         SCR_RSS_SettingsSync.ApplySettingsFromArrays(s, floats, ints, bools);
+    }
+
+    void PackParamsToFlatArrays()
+    {
+        SCR_RSS_SettingsSync.PackAllParamsToFlatArrays(this);
+    }
+
+    bool ApplyFlatArraysToParams()
+    {
+        return SCR_RSS_SettingsSync.ApplyFlatArraysToAllParams(this);
     }
 }

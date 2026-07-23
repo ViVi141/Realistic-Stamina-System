@@ -113,7 +113,7 @@ class SCR_RSS_ConfigManager
         
         // 尝试从磁盘读取
         // 使用官方的JsonLoadContext
-        SCR_JsonLoadContext loadContext = new SCR_JsonLoadContext();
+        JsonLoadContext loadContext = new JsonLoadContext();
         if (loadContext.LoadFromFile(CONFIG_PATH))
         {
             loadContext.ReadValue("", m_Settings);
@@ -151,6 +151,9 @@ class SCR_RSS_ConfigManager
                 else
                 {
                     m_Settings.InitPresets(false);
+                    // Custom：平面数组覆盖 Bake 默认（Attribute-free Params 后的持久化路径）
+                    if (!m_Settings.ApplyFlatArraysToParams())
+                        Print("[RSS_ConfigManager] Custom: no flat params arrays yet; using bake/field defaults.");
                 }
                 
                 // --- 核心修复逻辑结束 ---
@@ -158,6 +161,7 @@ class SCR_RSS_ConfigManager
             else
             {
                 m_Settings.InitPresets(false);
+                m_Settings.ApplyFlatArraysToParams();
             }
             
             // 版本号与模组不一致时静默写回当前版本
@@ -369,7 +373,8 @@ class SCR_RSS_ConfigManager
         CreateConfigBackup();
         
         // 写入临时文件
-        SCR_JsonSaveContext saveContext = new SCR_JsonSaveContext();
+        JsonSaveContext saveContext = new JsonSaveContext();
+        m_Settings.PackParamsToFlatArrays();
         saveContext.WriteValue("", m_Settings);
         saveContext.SaveToFile(temp_path);
         
@@ -840,7 +845,7 @@ class SCR_RSS_ConfigManager
         }
         
         // 尝试加载配置文件
-        SCR_JsonLoadContext loadContext = new SCR_JsonLoadContext();
+        JsonLoadContext loadContext = new JsonLoadContext();
         if (!loadContext.LoadFromFile(CONFIG_PATH))
         {
             Print("[RSS_ConfigManager] Config file is corrupted: " + CONFIG_PATH);
@@ -962,6 +967,8 @@ class SCR_RSS_ConfigManager
             PrintFormat("[RSS_ConfigManager] Admin changed preset: %1 -> %2", s.m_sSelectedPreset, preset);
             s.m_sSelectedPreset = preset;
             s.InitPresets(preset != "Custom");
+            if (preset == "Custom")
+                s.ApplyFlatArraysToParams();
         }
 
         // 应用开关

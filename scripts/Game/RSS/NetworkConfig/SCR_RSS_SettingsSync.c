@@ -391,4 +391,56 @@ class SCR_RSS_SettingsSync
             s.m_bDataExportEnabled = false;
         }
     }
+
+    //! Runtime Params → JSON flat arrays (call before JsonSave).
+    static void PackAllParamsToFlatArrays(SCR_RSS_Settings s)
+    {
+        if (!s)
+            return;
+
+        if (!s.m_aParamsElite)
+            s.m_aParamsElite = new array<float>();
+        if (!s.m_aParamsStandard)
+            s.m_aParamsStandard = new array<float>();
+        if (!s.m_aParamsTactical)
+            s.m_aParamsTactical = new array<float>();
+        if (!s.m_aParamsCustom)
+            s.m_aParamsCustom = new array<float>();
+
+        WriteParamsToArray(s.m_EliteStandard, s.m_aParamsElite);
+        WriteParamsToArray(s.m_StandardMilsim, s.m_aParamsStandard);
+        WriteParamsToArray(s.m_TacticalAction, s.m_aParamsTactical);
+        WriteParamsToArray(s.m_Custom, s.m_aParamsCustom);
+    }
+
+    //! JSON flat arrays → runtime Params (call after JsonLoad + InitPresets).
+    //! Returns true if at least one preset array was applied.
+    static bool ApplyFlatArraysToAllParams(SCR_RSS_Settings s)
+    {
+        if (!s)
+            return false;
+
+        bool applied = false;
+        if (s.m_aParamsElite && s.m_aParamsElite.Count() > 0 && s.m_EliteStandard)
+        {
+            ApplyParamsFromArray(s.m_EliteStandard, s.m_aParamsElite);
+            applied = true;
+        }
+        if (s.m_aParamsStandard && s.m_aParamsStandard.Count() > 0 && s.m_StandardMilsim)
+        {
+            ApplyParamsFromArray(s.m_StandardMilsim, s.m_aParamsStandard);
+            applied = true;
+        }
+        if (s.m_aParamsTactical && s.m_aParamsTactical.Count() > 0 && s.m_TacticalAction)
+        {
+            ApplyParamsFromArray(s.m_TacticalAction, s.m_aParamsTactical);
+            applied = true;
+        }
+        if (s.m_aParamsCustom && s.m_aParamsCustom.Count() > 0 && s.m_Custom)
+        {
+            ApplyParamsFromArray(s.m_Custom, s.m_aParamsCustom);
+            applied = true;
+        }
+        return applied;
+    }
 }

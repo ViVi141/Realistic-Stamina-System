@@ -134,4 +134,76 @@ class SCR_RSS_UpdateLoopDebugOutput
         if (needHintOutput)
             SCR_RSS_DebugDisplay.OutputHintInfo(debugParams);
     }
+
+    //! AI tick debug (kept out of modded PlayerBase fragments for link reliability)
+    static void LogAiStaminaTick(
+        IEntity owner,
+        float staminaPercent,
+        float currentWeight,
+        float finalSpeedMultiplier,
+        float currentSpeed,
+        bool isSprinting,
+        int currentMovementPhase,
+        SCR_RSS_AIManager aiManager,
+        SCR_RSS_FatigueSystem fatigueSystem,
+        string speedSource)
+    {
+        if (!owner || !SCR_PlayerBaseConfigHelper.IsRssDebugEnabled())
+            return;
+        if (owner == SCR_PlayerController.GetLocalControlledEntity())
+            return;
+
+        float nowMs = GetGame().GetWorld().GetWorldTime();
+        float aiDebugLastPrint = -1.0;
+        if (aiManager)
+            aiDebugLastPrint = aiManager.GetDebugLastPrintTime();
+        if (aiDebugLastPrint >= 0.0 && (nowMs - aiDebugLastPrint) < 30000.0)
+            return;
+
+        if (aiManager)
+            aiManager.SetDebugLastPrintTime(nowMs);
+
+        string movementStr = SCR_RSS_DebugDisplay.FormatMovementType(isSprinting, currentMovementPhase);
+        ERSS_AIStaminaState aiState = ERSS_AIStaminaState.FRESH;
+        if (aiManager)
+            aiState = aiManager.GetStaminaState();
+        string stateStr = SCR_RSS_AIStaminaState.StateToString(aiState);
+        float fatigueVal = 0.0;
+        if (fatigueSystem)
+            fatigueVal = fatigueSystem.GetFatigueAccumulation();
+
+        PrintFormat("[RSS] AI: %1 | 状态=%2 体力=%3%% 疲劳=%4% 负重=%5kg 速度倍=%6 速度=%7m/s %8 | %9",
+            owner.GetName(),
+            stateStr,
+            Math.Round(staminaPercent * 100.0).ToString(),
+            Math.Round(fatigueVal * 100.0).ToString(),
+            Math.Round(currentWeight * 10.0) / 10.0,
+            Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
+            Math.Round(currentSpeed * 10.0) / 10.0,
+            movementStr,
+            speedSource);
+
+        if (!Replication.IsServer())
+            return;
+
+        AIControlComponent aiCtrl = AIControlComponent.Cast(owner.FindComponent(AIControlComponent));
+        if (!aiCtrl)
+            return;
+        AIAgent agent = aiCtrl.GetAIAgent();
+        if (!agent)
+            return;
+        AIGroup parentGroup = agent.GetParentGroup();
+        if (!parentGroup)
+            return;
+        SCR_AIGroup scrGrp = SCR_AIGroup.Cast(parentGroup);
+        if (!scrGrp)
+            return;
+        float spread = SCR_RSS_AIUpdateInterval.CalcAiGroupSpreadM(scrGrp);
+        if (spread <= 0.0)
+            return;
+        PrintFormat("[RSS] Group: id=%1 分散=%2m 成员=%3",
+            scrGrp.GetGroupID().ToString(),
+            Math.Round(spread * 10.0) / 10.0,
+            SCR_RSS_AIUpdateInterval.GetAliveMemberCount(scrGrp).ToString());
+    }
 }

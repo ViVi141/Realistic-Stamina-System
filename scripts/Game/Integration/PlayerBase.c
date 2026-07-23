@@ -1,5 +1,351 @@
 modded class SCR_CharacterControllerComponent
 {
+    // --- ICE: stamina tick phase C (kept out of UpdateLoop for size) ---
+    bool RSS_StaminaTickPhaseC(RSS_StaminaTickLocals loc)
+    {
+        loc.drainParams = new StaminaDrainTickParams();
+        loc.drainParams.useSwimmingModel = loc.useSwimmingModel;
+        loc.drainParams.currentSpeed = loc.currentSpeed;
+        loc.drainParams.gearWeightKg = loc.currentWeight;
+        loc.drainParams.encumbranceSpeedPenalty = loc.encumbranceSpeedPenalty;
+        loc.drainParams.bodyPlusGearWeightKg = loc.totalWeight;
+        loc.drainParams.totalWeightWithWetAndBody = loc.totalWeightWithWetAndBody;
+        loc.drainParams.gradePercent = loc.gradePercent;
+        loc.drainParams.terrainFactor = loc.terrainFactor;
+        loc.drainParams.velocityForDrain = loc.velocityForDrain;
+        loc.drainParams.swimmingVelocityDebugPrinted = m_bSwimmingVelocityDebugPrinted;
+        loc.drainParams.owner = loc.owner;
+        loc.drainParams.controller = this;
+        loc.drainParams.environmentFactor = m_pEnvironmentFactor;
+        loc.drainParams.isSprinting = loc.isSprinting;
+        loc.drainParams.currentMovementPhase = loc.effectiveMovementPhase;
+        loc.drainParams.speedRatio = loc.speedRatio;
+        loc.drainParams.heatStressMultiplier = loc.heatStressMultiplier;
+        loc.drainParams.isSprintActive = loc.isSprintActive;
+        loc.drainParams.staminaPercent = loc.staminaPercent;
+        loc.drainParams.combatStimActive = loc.combatStimActive;
+        loc.drainParams.encumbranceCache = m_pEncumbranceCache;
+        loc.drainParams.fatigueSystem = m_pFatigueSystem;
+        loc.drainParams.exerciseTracker = m_pExerciseTracker;
+        loc.drainParams.epocState = m_pEpocState;
+        loc.drainParams.currentTimeSec = loc.currentTime;
+        loc.drainParams.currentTimeForExerciseMs = loc.currentTimeForExerciseMs;
+        loc.drainParams.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
+        loc.drainParams.effectiveCriticalPowerWatts = -1.0;
+        loc.drainParams.wPrimePool01 = 1.0;
+        if (m_pAnaerobicBurst)
+        {
+            SCR_RSS_CriticalPowerModel cpForDrain = m_pAnaerobicBurst.GetCpModel();
+            if (cpForDrain)
+            {
+                loc.drainParams.effectiveCriticalPowerWatts = cpForDrain.GetEffectiveCriticalPowerWatts();
+                loc.drainParams.wPrimePool01 = cpForDrain.GetPool01();
+            }
+        }
+        else
+        {
+            float cpFallback = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
+            if (cpFallback > 1.0)
+                loc.drainParams.effectiveCriticalPowerWatts = cpFallback;
+        }
+
+        loc.drainTick = SCR_RSS_UpdateCoordinator.CalculateTotalDrainRate(loc.drainParams);
+        loc.totalDrainRate = loc.drainTick.totalDrainRate;
+        loc.baseDrainRateByVelocity = loc.drainTick.baseDrainRateByVelocity;
+        loc.baseDrainRateByVelocityForModule = loc.drainTick.baseDrainRateByVelocityForModule;
+        m_bSwimmingVelocityDebugPrinted = loc.drainTick.swimmingVelocityDebugPrinted;
+
+        loc.effectiveCriticalPowerWattsDbg = loc.drainParams.effectiveCriticalPowerWatts;
+        loc.environmentMultDbg = 1.0;
+        if (m_pEnvironmentFactor)
+            loc.environmentMultDbg = m_pEnvironmentFactor.GetQuickEnvironmentMultiplier();
+
+        loc.powerWattsDbg = 0.0;
+        loc.wPrimePool01Dbg = loc.drainParams.wPrimePool01;
+        if (!loc.useSwimmingModel)
+        {
+            loc.powerWattsDbg = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
+                loc.currentSpeed,
+                m_fAppliedSpeedLimitMs,
+                loc.totalWeightWithWetAndBody,
+                loc.gradePercent,
+                loc.terrainFactor,
+                loc.effectiveMovementPhase,
+                loc.wPrimePool01Dbg);
+        }
+
+        loc.needLocalDebugBatch = false;
+        if (loc.owner == SCR_PlayerController.GetLocalControlledEntity() && IsPlayerControlled())
+        {
+            if (IsRssDebugEnabled())
+                loc.needLocalDebugBatch = true;
+            else
+            {
+                SCR_RSS_Settings batchSettings = SCR_RSS_ConfigManager.GetSettings();
+                if (batchSettings && batchSettings.m_bHintDisplayEnabled)
+                    loc.needLocalDebugBatch = true;
+            }
+        }
+        if (loc.needLocalDebugBatch)
+            SCR_RSS_DebugBatchManager.StartDebugBatch();
+
+        loc.staminaBeforeUpdate = loc.staminaPercent;
+        loc.maxStaCapDbg = 1.0;
+        loc.fatigueNormDbg = 0.0;
+        if (m_pFatigueSystem)
+        {
+            loc.maxStaCapDbg = m_pFatigueSystem.GetMaxStaminaCap();
+            loc.fatigueNormDbg = m_pFatigueSystem.GetFatigueIntegralNorm();
+        }
+
+        loc.metabPowerDbg = -1.0;
+        loc.metabPowerMetDbg = -1.0;
+        loc.metabPowerRawDbg = -1.0;
+        loc.metabCpDbg = loc.drainParams.effectiveCriticalPowerWatts;
+        loc.metabAerobicDbg = -1.0;
+        SCR_RSS_UpdateLoopMetabDebug.ComputeMetabDebugPowers(
+            loc.useSwimmingModel,
+            loc.currentSpeed,
+            m_fAppliedSpeedLimitMs,
+            loc.totalWeightWithWetAndBody,
+            loc.gradePercent,
+            loc.terrainFactor,
+            loc.effectiveMovementPhase,
+            loc.encumbranceSpeedPenalty,
+            loc.drainParams.effectiveCriticalPowerWatts,
+            loc.metabPowerDbg,
+            loc.metabPowerMetDbg,
+            loc.metabPowerRawDbg,
+            loc.metabCpDbg,
+            loc.metabAerobicDbg);
+
+        loc.finalDrainDbg = SCR_RSS_StaminaNetRate.ComputeFinalDrainRatePerTick(
+            loc.useSwimmingModel,
+            loc.currentSpeed,
+            loc.totalDrainRate,
+            m_pEpocState,
+            false);
+        loc.metabolicNetDbg = SCR_RSS_StaminaNetRate.GetNetStaminaRatePerSecond(
+            loc.staminaBeforeUpdate,
+            loc.useSwimmingModel,
+            loc.currentSpeed,
+            loc.totalDrainRate,
+            loc.baseDrainRateByVelocity,
+            loc.baseDrainRateByVelocityForModule,
+            loc.heatStressMultiplier,
+            m_pEpocState,
+            m_pEncumbranceCache,
+            m_pExerciseTracker,
+            this,
+            m_pEnvironmentFactor,
+            false) / 5.0;
+        
+        loc.overspeedExtraPerSec = 0.0;
+        if (!loc.useSwimmingModel && m_fAppliedSpeedLimitMs > 0.05)
+        {
+            loc.overspeedExtraPerSec = SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond(
+                loc.currentSpeed,
+                m_fAppliedSpeedLimitMs,
+                loc.drainParams.wPrimePool01,
+                loc.totalWeightWithWetAndBody,
+                loc.gradePercent,
+                loc.terrainFactor,
+                loc.effectiveMovementPhase,
+                loc.drainParams.effectiveCriticalPowerWatts);
+        }
+
+        if (m_pStaminaComponent)
+        {
+            float newTargetStamina = SCR_RSS_UpdateCoordinator.UpdateStaminaValue(
+                m_pStaminaComponent,
+                loc.staminaPercent,
+                loc.useSwimmingModel,
+                loc.currentSpeed,
+                loc.totalDrainRate,
+                loc.baseDrainRateByVelocity,
+                loc.baseDrainRateByVelocityForModule,
+                loc.heatStressMultiplier,
+                m_pEpocState,
+                m_pEncumbranceCache,
+                m_pExerciseTracker,
+                m_pFatigueSystem,
+                this,
+                m_pEnvironmentFactor,
+                loc.timeDeltaSec);
+            
+            if (loc.overspeedExtraPerSec > 0.000001)
+                newTargetStamina = newTargetStamina - loc.overspeedExtraPerSec * loc.timeDeltaSec;
+            newTargetStamina = Math.Clamp(newTargetStamina, 0.0, 1.0);
+
+            m_pStaminaComponent.SetTargetStamina(newTargetStamina);
+            if (m_pStaminaState)
+                m_pStaminaState.SetAerobic(newTargetStamina);
+            m_fLastStaminaUpdateTime = loc.currentTime;
+
+            bool sprintIntentAfterUpdate = loc.isSprintActive || GetIsSprintingToggle();
+            RSS_PokeEngineStaminaForSprintBlock(sprintIntentAfterUpdate);
+            
+            if (!m_bSprintGateEnginePokeActive)
+            {
+                float verifyStamina = m_pStaminaComponent.GetStamina();
+                if (Math.AbsFloat(verifyStamina - newTargetStamina) > 0.005)
+                {
+                    if (SCR_RSS_DebugBatchManager.IsDebugBatchActive())
+                    {
+                        string intLine = string.Format("[RSS] 原生干扰: 目标=%1%% 实际=%2%% 偏差=%3%%",
+                            Math.Round(newTargetStamina * 100.0).ToString(),
+                            Math.Round(verifyStamina * 100.0).ToString(),
+                            Math.Round(Math.AbsFloat(verifyStamina - newTargetStamina) * 10000.0) / 100.0);
+                        SCR_RSS_DebugBatchManager.AddDebugBatchLine(intLine);
+                    }
+                    m_pStaminaComponent.SetTargetStamina(newTargetStamina);
+                    if (m_pStaminaState)
+                        m_pStaminaState.SetAerobic(newTargetStamina);
+                }
+            }
+            
+            loc.staminaPercent = newTargetStamina;
+        }
+
+        if (loc.isPlayer && m_pUISignalBridge)
+        {
+            m_pUISignalBridge.UpdateUISignal(loc.staminaPercent, loc.isExhausted, loc.currentSpeed, loc.totalDrainRate, false);
+        }
+        
+        m_fLastStaminaPercent = loc.staminaPercent;
+        m_fLastSpeedMultiplier = loc.finalSpeedMultiplier;
+
+        loc.netStaminaTickDbg = loc.staminaPercent - loc.staminaBeforeUpdate;
+
+        loc.metabSnap = new RSS_StatusMetabLogSnapshot();
+        loc.metabSnap.metabolismPowerW = loc.metabPowerDbg;
+        loc.metabSnap.metabolismPowerMetW = loc.metabPowerMetDbg;
+        loc.metabSnap.metabolismPowerRawW = loc.metabPowerRawDbg;
+        loc.metabSnap.effectiveCpW = loc.metabCpDbg;
+        loc.metabSnap.aerobicPowerW = loc.metabAerobicDbg;
+        loc.metabSnap.finalDrainPerTick = loc.finalDrainDbg;
+        loc.metabSnap.metabolicNetPerTick = loc.metabolicNetDbg;
+        loc.metabSnap.capRatchetPerTick = m_fLastCapRatchetPerTick;
+        loc.metabSnap.netStaminaPerTick = loc.netStaminaTickDbg;
+
+        RSS_UpdateStatusLogSnapshot(
+            loc.currentSpeed,
+            loc.staminaPercent,
+            loc.finalSpeedMultiplier,
+            loc.isSprinting,
+            loc.phaseNow,
+            loc.effectivePhase,
+            loc.maxStaCapDbg,
+            GetRssAnaerobicPercent(),
+            loc.fatigueNormDbg,
+            loc.metabSnap);
+
+        SCR_RSS_UpdateLoopDebugOutput.LogAiStaminaTick(
+            loc.owner,
+            loc.staminaPercent,
+            loc.currentWeight,
+            loc.finalSpeedMultiplier,
+            loc.currentSpeed,
+            loc.isSprinting,
+            loc.currentMovementPhase,
+            m_pAIManager,
+            m_pFatigueSystem,
+            m_sLastSpeedSource);
+
+        loc.debugTick = new RSS_StaminaDebugOutputParams();
+        loc.targetStaCapDbg = 1.0;
+        loc.capShrinkDbg = 0.0;
+        if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
+        {
+            loc.targetStaCapDbg = m_pFatigueSystem.GetMaxStaminaCap();
+            if (!loc.useSwimmingModel && loc.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            {
+                float powerFat = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
+                    loc.currentSpeed,
+                    m_fAppliedSpeedLimitMs,
+                    loc.totalWeightWithWetAndBody,
+                    loc.gradePercent,
+                    loc.terrainFactor,
+                    loc.phaseNow);
+                loc.capShrinkDbg = m_pFatigueSystem.EstimateCapShrinkPerSecond(
+                    powerFat,
+                    loc.currentWeight,
+                    loc.gradePercent,
+                    loc.terrainFactor,
+                    loc.currentSpeed);
+            }
+        }
+        loc.epocActiveDbg = false;
+        if (m_pEpocState)
+            loc.epocActiveDbg = m_pEpocState.IsInEpocDelay();
+        SCR_RSS_UpdateLoopMetabDebug.FillDebugTickCore(
+            loc.debugTick,
+            loc.staminaPercent,
+            loc.useSwimmingModel,
+            loc.currentSpeed,
+            loc.totalDrainRate,
+            loc.baseDrainRateByVelocity,
+            loc.baseDrainRateByVelocityForModule,
+            loc.heatStressMultiplier,
+            loc.baseSpeedMultiplier,
+            loc.encumbranceSpeedPenalty,
+            loc.finalSpeedMultiplier,
+            loc.gradePercent,
+            loc.slopeAngleDegrees,
+            loc.isSwimming,
+            loc.isSprinting,
+            loc.isSprintActive);
+        SCR_RSS_UpdateLoopMetabDebug.FillDebugTickMetab(
+            loc.debugTick,
+            loc.currentMovementPhase,
+            loc.effectiveMovementPhase,
+            loc.rainWeight,
+            loc.maxStaCapDbg,
+            loc.fatigueNormDbg,
+            loc.metabPowerDbg,
+            loc.metabPowerMetDbg,
+            loc.metabPowerRawDbg,
+            loc.metabCpDbg,
+            loc.metabAerobicDbg,
+            loc.finalDrainDbg,
+            loc.metabolicNetDbg,
+            m_fLastCapRatchetPerTick,
+            loc.netStaminaTickDbg,
+            loc.terrainFactor);
+        SCR_RSS_UpdateLoopMetabDebug.FillDebugTickExtras(
+            loc.debugTick,
+            m_fAppliedSpeedLimitMs,
+            loc.effectiveCriticalPowerWattsDbg,
+            loc.timeDeltaSec,
+            loc.totalWeightWithWetAndBody,
+            loc.powerWattsDbg,
+            loc.wPrimePool01Dbg,
+            m_fLandPositionDeltaSpeedMs,
+            loc.overspeedExtraPerSec,
+            loc.environmentMultDbg,
+            loc.targetStaCapDbg,
+            loc.capShrinkDbg,
+            loc.epocActiveDbg);
+        SCR_RSS_UpdateLoopDebugOutput.OutputPlayerStaminaAndHints(
+            this,
+            loc.owner,
+            loc.debugTick,
+            m_pEncumbranceCache,
+            m_pFatigueSystem,
+            m_pEpocState,
+            m_pExerciseTracker,
+            m_pEnvironmentFactor,
+            m_pTerrainDetector,
+            m_pStanceTransitionManager,
+            m_fCurrentWetWeight,
+            m_sLastSpeedSource,
+            GetRssWPrimePool01(),
+            GetRssSprintCooldownRemainingSec());
+        
+        SCR_RSS_DebugBatchManager.FlushDebugBatch();
+        return true;
+    }
+
     protected float m_fLastSecondSpeed = 0.0;
     protected float m_fCurrentSecondSpeed = 0.0;
     protected bool m_bHasPreviousSpeed = false;
