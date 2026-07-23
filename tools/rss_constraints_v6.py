@@ -122,6 +122,28 @@ def check_drain_velocity_contract() -> ConstraintCheck:
     )
 
 
+def check_downhill_same_speed_savings() -> ConstraintCheck:
+    """同速下坡功率须低于平地（Walk 高速走 Pandolf；禁止无坡 ACSM 假 kW）。"""
+    from rss_digital_twin_fix import calculate_acsm_power_watts, metabolism_power_watts
+
+    total_w = 121.0  # ~31 kg 装备
+    v = 3.25
+    p_flat = metabolism_power_watts(v, total_w, 0.0, 1.0, 1)
+    p_down = metabolism_power_watts(v, total_w, -5.0, 1.0, 1)
+    # 至少省 8%；且不得接近旧 ACSM 平跑 ~1.5–2 kW
+    ok_save = p_down < p_flat * 0.92
+    ok_scale = p_down < 1500.0
+    ok_vs_acsm = p_down < calculate_acsm_power_watts(v, total_w) * 0.75
+    ok = ok_save and ok_scale and ok_vs_acsm and p_flat > 200.0
+    return ConstraintCheck(
+        "downhill_same_speed_savings",
+        ok,
+        f"Walk@3.25: flat={p_flat:.0f}W down5%={p_down:.0f}W "
+        f"(need down<0.92*flat, <1500W, <0.75*ACSM)",
+        hard=True,
+    )
+
+
 def check_metabolic_overspeed_contract() -> ConstraintCheck:
     f = get_metabolic_overspeed_factor(800.0, sustainable_watts=400.0)
     ok = abs(f - OVERSPEED_EXPECTED) <= DRAIN_VEL_TOLERANCE
@@ -457,6 +479,7 @@ def evaluate_physio_anchors(
 
     checks = [
         check_drain_velocity_contract(),
+        check_downhill_same_speed_savings(),
         check_metabolic_overspeed_contract(),
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),

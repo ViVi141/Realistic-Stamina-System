@@ -45,7 +45,8 @@
 
 | ID | 条件 | 说明 |
 |----|------|------|
-| `drain_velocity_clamp` | `get_drain_velocity_ms(5.5, 4.0) == 4.0` | 与 C 端代谢限速一致 |
+| `drain_velocity_meas` | `get_drain_velocity_ms` 返回 `v_meas` | 不再钳到 v_limit |
+| `downhill_same_speed_savings` | Walk@3.25 下坡 5%：`<0.92×平地`、`<1500W`、`<0.75×无坡ACSM` | 禁无坡 ACSM 假 kW；Walk 下坡有重力辅助 |
 | `metabolic_overspeed_factor` | 800 W @ 400 W sustainable → 0.5 | 超速代谢折减 |
 | `v5_sprint_burst_duration` | 满池抽干 ≤ 15 s | 无氧池（legacy） |
 | `v5_sprint_cooldown` | 抽干后冷却 ≥ 120 s | |

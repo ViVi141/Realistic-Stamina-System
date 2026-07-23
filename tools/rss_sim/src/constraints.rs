@@ -100,6 +100,30 @@ pub fn check_drain_velocity_contract() -> ConstraintCheck {
     }
 }
 
+pub fn check_downhill_same_speed_savings() -> ConstraintCheck {
+    use crate::metabolism::{calculate_acsm_power_watts, metabolism_power_watts};
+    let total_w = 121.0;
+    let v = 3.25;
+    let p_flat = metabolism_power_watts(v, total_w, 0.0, 1.0, 1);
+    let p_down = metabolism_power_watts(v, total_w, -5.0, 1.0, 1);
+    let p_acsm = calculate_acsm_power_watts(v, total_w);
+    let ok_save = p_down < p_flat * 0.92;
+    let ok_scale = p_down < 1500.0;
+    let ok_vs_acsm = p_down < p_acsm * 0.75;
+    let ok = ok_save && ok_scale && ok_vs_acsm && p_flat > 200.0;
+    make_check(
+        "downhill_same_speed_savings",
+        ok,
+        format!(
+            "Walk@3.25: flat={:.0}W down5%={:.0}W (need down<0.92*flat, <1500W, <0.75*ACSM)",
+            p_flat, p_down
+        ),
+        true,
+        p_flat * 0.92 - p_down,
+        String::new(),
+    )
+}
+
 fn make_check(
     name: &str,
     passed: bool,
@@ -590,6 +614,7 @@ pub fn evaluate_physio_anchors(
     let trial_ref = trial_params.as_ref();
     let checks = vec![
         check_drain_velocity_contract(),
+        check_downhill_same_speed_savings(),
         check_metabolic_overspeed_contract(),
         check_v5_sprint_burst_duration(),
         check_v5_sprint_cooldown(),

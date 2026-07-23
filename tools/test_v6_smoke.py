@@ -265,6 +265,12 @@ SCENARIOS = [
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),
+    (
+        "downhill_same_speed_savings",
+        lambda: __import__("rss_constraints_v6", fromlist=["check_downhill_same_speed_savings"])
+        .check_downhill_same_speed_savings()
+        .passed,
+    ),
     ("lcda_walk_30kg_level", lambda: _lcda_walk_30kg_ok()),
     ("anchors_batch_feasibility", lambda: _anchors_and_batch_ok()),
     ("invert_speed_monotonic", lambda: invert_speed_for_power_watts(500.0, 125.0, movement_phase=2) > 0.8),

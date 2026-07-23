@@ -1,7 +1,7 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
 记录日期：2026-07-24  
-更新：2026-07-24 — 关水平硬钳后速画匹配；同日删除 `v_drain=min(v_meas,v_limit)` 补丁，代谢一律按 `v_meas`，数值交孪生/Rust 标定。
+更新：2026-07-24 — 关水平硬钳后速画匹配；删除 `v_drain=min(v_meas,v_limit)`；完善下坡数学模型（Walk 不进无坡 ACSM + 下坡重力辅助 + 硬约束）。
 
 相关试跑开关（`SCR_RSS_Constants`）：
 

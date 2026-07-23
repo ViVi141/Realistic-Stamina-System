@@ -129,6 +129,63 @@ class SCR_RSS_MetabolismModel
         return (velocityMs - startMs) / (endMs - startMs);
     }
 
+    //! Walk 高速下坡：在 Pandolf 坡度项之外再乘「滑行/重力辅助」系数（意图仍是 Walk）
+    static float ApplyWalkDownhillCoastFactor(float powerWatts, float gradePercent)
+    {
+        if (powerWatts <= 0.0)
+            return 0.0;
+        if (gradePercent >= -0.05)
+            return powerWatts;
+
+        float factor = 1.0 + SCR_RSS_Constants.V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT * gradePercent;
+        if (gradePercent < -SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD)
+        {
+            float absGrade = Math.AbsFloat(gradePercent);
+            float ramp = (absGrade - SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD) / 15.0;
+            if (ramp > 1.0)
+                ramp = 1.0;
+            // 陡下坡制动：把过度省力往回拉
+            factor = factor + ramp * (1.0 - factor) * 0.55;
+        }
+        if (factor < SCR_RSS_Constants.V6_WALK_DOWNHILL_COAST_FACTOR_MIN)
+            factor = SCR_RSS_Constants.V6_WALK_DOWNHILL_COAST_FACTOR_MIN;
+        if (factor > 1.0)
+            factor = 1.0;
+        return Math.Max(powerWatts * factor, 0.0);
+    }
+
+    //! ACSM 为平跑模型：用倍率补坡度（缓下坡省力、陡下坡制动、上坡加耗）
+    static float ApplyAcsmGradeFactor(float acsmPowerWatts, float gradePercent)
+    {
+        if (acsmPowerWatts <= 0.0)
+            return 0.0;
+        if (Math.AbsFloat(gradePercent) < 0.05)
+            return acsmPowerWatts;
+
+        float factor = 1.0;
+        if (gradePercent > 0.0)
+        {
+            factor = 1.0 + SCR_RSS_Constants.V6_ACSM_UPHILL_PER_GRADE_PCT * gradePercent;
+            if (factor > SCR_RSS_Constants.V6_ACSM_UPHILL_FACTOR_MAX)
+                factor = SCR_RSS_Constants.V6_ACSM_UPHILL_FACTOR_MAX;
+        }
+        else
+        {
+            factor = 1.0 + SCR_RSS_Constants.V6_ACSM_DOWNHILL_PER_GRADE_PCT * gradePercent;
+            if (gradePercent < -SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD)
+            {
+                float absGrade = Math.AbsFloat(gradePercent);
+                float ramp = (absGrade - SCR_RSS_Constants.STEEP_DOWNHILL_GRADE_THRESHOLD) / 15.0;
+                if (ramp > 1.0)
+                    ramp = 1.0;
+                factor = factor + ramp * SCR_RSS_Constants.V6_ACSM_STEEP_BRAKE_EXTRA;
+            }
+            if (factor < SCR_RSS_Constants.V6_ACSM_DOWNHILL_FACTOR_MIN)
+                factor = SCR_RSS_Constants.V6_ACSM_DOWNHILL_FACTOR_MIN;
+        }
+        return Math.Max(acsmPowerWatts * factor, 0.0);
+    }
+
     //! 综合代谢功率（W），含负重代谢阻尼（与 Rust twin 对齐）
     static float MetabolismPowerWatts(
         float velocityMs,
@@ -152,18 +209,33 @@ class SCR_RSS_MetabolismModel
         bool useSanteeCorrection,
         int movementPhase)
     {
+        // Walk/Idle：始终坡度感知模型（LCDA 或 Pandolf）。禁止因高速落入无坡 ACSM，
+        // 否则下坡 Walk@~3 m/s 会被当成平跑 kW 级功率。
+        bool walkLike = false;
+        if (movementPhase == 0 || movementPhase == 1)
+            walkLike = true;
+
+        if (walkLike)
+        {
+            float walkPower;
+            if (velocityMs <= SCR_RSS_Constants.LCDA_MAX_SPEED_MS)
+            {
+                walkPower = CalculateLcdaBackpackPowerWatts(
+                    velocityMs, totalWeightKg, gradePercent, terrainFactor);
+            }
+            else
+            {
+                walkPower = CalculatePandolfPowerWatts(
+                    velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection);
+            }
+            return ApplyWalkDownhillCoastFactor(walkPower, gradePercent);
+        }
+
         bool preferAcsm = false;
         if (movementPhase == 2 || movementPhase == 3)
             preferAcsm = true;
         if (velocityMs >= SCR_RSS_Constants.V6_ACSM_BLEND_END_MS)
             preferAcsm = true;
-
-        // Walk / Idle：LCDA 背包式（含坡度）；不叠 Santee
-        if (!preferAcsm && velocityMs <= SCR_RSS_Constants.LCDA_MAX_SPEED_MS)
-        {
-            return CalculateLcdaBackpackPowerWatts(
-                velocityMs, totalWeightKg, gradePercent, terrainFactor);
-        }
 
         float pandolfW = CalculatePandolfPowerWatts(
             velocityMs, totalWeightKg, gradePercent, terrainFactor, useSanteeCorrection);
@@ -171,7 +243,8 @@ class SCR_RSS_MetabolismModel
         if (!preferAcsm && velocityMs < SCR_RSS_Constants.V6_ACSM_BLEND_START_MS)
             return pandolfW;
 
-        float acsmW = CalculateAcsmPowerWatts(velocityMs, totalWeightKg);
+        float acsmW = ApplyAcsmGradeFactor(
+            CalculateAcsmPowerWatts(velocityMs, totalWeightKg), gradePercent);
         float blend = GetAcsmBlendWeight(velocityMs);
         if (movementPhase == 3)
             blend = Math.Max(blend, 0.85);

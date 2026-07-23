@@ -1989,6 +1989,13 @@ V6_ACSM_LINEAR_W_PER_MS = 200.0
 V6_ACSM_QUAD_W_PER_MS2 = 80.0
 V6_ACSM_BLEND_START_MS = 2.0
 V6_ACSM_BLEND_END_MS = 2.4
+V6_ACSM_UPHILL_PER_GRADE_PCT = 0.035
+V6_ACSM_UPHILL_FACTOR_MAX = 2.5
+V6_ACSM_DOWNHILL_PER_GRADE_PCT = 0.04
+V6_ACSM_DOWNHILL_FACTOR_MIN = 0.50
+V6_ACSM_STEEP_BRAKE_EXTRA = 0.35
+V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT = 0.09
+V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
 LCDA_REST_W_PER_KG = 1.05
 LCDA_STAND_NET_W_PER_KG = 0.19
@@ -2256,6 +2263,41 @@ def calculate_acsm_power_watts(velocity_ms: float, total_weight_kg: float) -> fl
     return max(pref * mass_scale, 0.0)
 
 
+def apply_acsm_grade_factor(acsm_power_watts: float, grade_percent: float) -> float:
+    """与 SCR_RSS_MetabolismModel.ApplyAcsmGradeFactor 同形。"""
+    if acsm_power_watts <= 0.0:
+        return 0.0
+    if abs(grade_percent) < 0.05:
+        return acsm_power_watts
+    if grade_percent > 0.0:
+        factor = 1.0 + V6_ACSM_UPHILL_PER_GRADE_PCT * grade_percent
+        factor = min(factor, V6_ACSM_UPHILL_FACTOR_MAX)
+    else:
+        factor = 1.0 + V6_ACSM_DOWNHILL_PER_GRADE_PCT * grade_percent
+        if grade_percent < -15.0:
+            abs_g = abs(grade_percent)
+            ramp = min((abs_g - 15.0) / 15.0, 1.0)
+            factor = factor + ramp * V6_ACSM_STEEP_BRAKE_EXTRA
+        factor = max(factor, V6_ACSM_DOWNHILL_FACTOR_MIN)
+    return max(acsm_power_watts * factor, 0.0)
+
+
+def apply_walk_downhill_coast_factor(power_watts: float, grade_percent: float) -> float:
+    """与 SCR_RSS_MetabolismModel.ApplyWalkDownhillCoastFactor 同形。"""
+    if power_watts <= 0.0:
+        return 0.0
+    if grade_percent >= -0.05:
+        return power_watts
+    factor = 1.0 + V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT * grade_percent
+    if grade_percent < -15.0:
+        abs_g = abs(grade_percent)
+        ramp = min((abs_g - 15.0) / 15.0, 1.0)
+        factor = factor + ramp * (1.0 - factor) * 0.55
+    factor = max(factor, V6_WALK_DOWNHILL_COAST_FACTOR_MIN)
+    factor = min(factor, 1.0)
+    return max(power_watts * factor, 0.0)
+
+
 def get_acsm_blend_weight(velocity_ms: float) -> float:
     if velocity_ms <= V6_ACSM_BLEND_START_MS:
         return 0.0
@@ -2272,18 +2314,25 @@ def metabolism_power_watts(
     movement_phase: int = 2,
     load_metabolic_dampening: float = 0.70,
 ) -> float:
-    """LCDA(Walk) / Pandolf+ACSM(Run)（与 SCR_RSS_MetabolismModel.MetabolismPowerWatts 同形）。"""
-    prefer_acsm = movement_phase in (2, 3) or velocity_ms >= V6_ACSM_BLEND_END_MS
-    if not prefer_acsm and velocity_ms <= LCDA_MAX_SPEED_MS:
-        blended = calculate_lcda_backpack_power_watts(
-            velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+    """LCDA/Pandolf(Walk) / Pandolf+ACSM(Run)（与 SCR_RSS_MetabolismModel 同形）。"""
+    walk_like = movement_phase in (0, 1)
+    if walk_like:
+        if velocity_ms <= LCDA_MAX_SPEED_MS:
+            blended = calculate_lcda_backpack_power_watts(
+                velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+        else:
+            blended = calculate_pandolf_power_watts(
+                velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+        blended = apply_walk_downhill_coast_factor(blended, grade_percent)
     else:
+        prefer_acsm = movement_phase in (2, 3) or velocity_ms >= V6_ACSM_BLEND_END_MS
         pandolf_w = calculate_pandolf_power_watts(
             velocity_ms, total_weight_kg, grade_percent, terrain_factor)
         if not prefer_acsm and velocity_ms < V6_ACSM_BLEND_START_MS:
             blended = pandolf_w
         else:
-            acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg)
+            acsm_w = apply_acsm_grade_factor(
+                calculate_acsm_power_watts(velocity_ms, total_weight_kg), grade_percent)
             blend = get_acsm_blend_weight(velocity_ms)
             if movement_phase == 3:
                 blend = max(blend, 0.85)

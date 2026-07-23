@@ -2,9 +2,12 @@ use crate::constants::{
     LCDA_GRADE_BASE_A, LCDA_GRADE_BASE_B, LCDA_GRADE_COEFF, LCDA_GRADE_OFFSET, LCDA_LOAD_COEFF,
     LCDA_LOAD_EXP, LCDA_MAX_SPEED_MS, LCDA_REST_W_PER_KG, LCDA_SPEED_FRAC_COEFF,
     LCDA_SPEED_FRAC_EXP, LCDA_SPEED_QUARTIC_COEFF, LCDA_STAND_NET_W_PER_KG, TOBLER_W_AT_FLAT_KMH,
-    V6_ACSM_BLEND_END_MS, V6_ACSM_BLEND_START_MS, V6_ACSM_LINEAR_W_PER_MS, V6_ACSM_QUAD_W_PER_MS2,
-    V6_ACSM_REST_W, V6_CP_FATIGUE_K, V6_CP_LOAD_DECAY_PER_KG, V6_CP_LOAD_REF_KG, V6_CP_SLOPE_K_UP,
-    V6_INVERT_SPEED_MAX_MS,
+    V6_ACSM_BLEND_END_MS, V6_ACSM_BLEND_START_MS, V6_ACSM_DOWNHILL_FACTOR_MIN,
+    V6_ACSM_DOWNHILL_PER_GRADE_PCT, V6_ACSM_LINEAR_W_PER_MS, V6_ACSM_QUAD_W_PER_MS2,
+    V6_ACSM_REST_W, V6_ACSM_STEEP_BRAKE_EXTRA, V6_ACSM_UPHILL_FACTOR_MAX,
+    V6_ACSM_UPHILL_PER_GRADE_PCT, V6_CP_FATIGUE_K, V6_CP_LOAD_DECAY_PER_KG, V6_CP_LOAD_REF_KG,
+    V6_CP_SLOPE_K_UP, V6_INVERT_SPEED_MAX_MS, V6_WALK_DOWNHILL_COAST_FACTOR_MIN,
+    V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT,
 };
 use crate::math::clip_f64;
 
@@ -138,6 +141,44 @@ pub fn calculate_acsm_power_watts(velocity_ms: f64, total_weight_kg: f64) -> f64
     (pref * mass_scale).max(0.0)
 }
 
+pub fn apply_acsm_grade_factor(acsm_power_watts: f64, grade_percent: f64) -> f64 {
+    if acsm_power_watts <= 0.0 {
+        return 0.0;
+    }
+    if grade_percent.abs() < 0.05 {
+        return acsm_power_watts;
+    }
+    let factor = if grade_percent > 0.0 {
+        (1.0 + V6_ACSM_UPHILL_PER_GRADE_PCT * grade_percent).min(V6_ACSM_UPHILL_FACTOR_MAX)
+    } else {
+        let mut f = 1.0 + V6_ACSM_DOWNHILL_PER_GRADE_PCT * grade_percent;
+        if grade_percent < -15.0 {
+            let abs_g = grade_percent.abs();
+            let ramp = ((abs_g - 15.0) / 15.0).min(1.0);
+            f += ramp * V6_ACSM_STEEP_BRAKE_EXTRA;
+        }
+        f.max(V6_ACSM_DOWNHILL_FACTOR_MIN)
+    };
+    (acsm_power_watts * factor).max(0.0)
+}
+
+pub fn apply_walk_downhill_coast_factor(power_watts: f64, grade_percent: f64) -> f64 {
+    if power_watts <= 0.0 {
+        return 0.0;
+    }
+    if grade_percent >= -0.05 {
+        return power_watts;
+    }
+    let mut factor = 1.0 + V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT * grade_percent;
+    if grade_percent < -15.0 {
+        let abs_g = grade_percent.abs();
+        let ramp = ((abs_g - 15.0) / 15.0).min(1.0);
+        factor += ramp * (1.0 - factor) * 0.55;
+    }
+    factor = factor.max(V6_WALK_DOWNHILL_COAST_FACTOR_MIN).min(1.0);
+    (power_watts * factor).max(0.0)
+}
+
 pub fn get_acsm_blend_weight(velocity_ms: f64) -> f64 {
     if velocity_ms <= V6_ACSM_BLEND_START_MS {
         return 0.0;
@@ -173,22 +214,31 @@ pub fn metabolism_power_watts_damped(
     movement_phase: i32,
     load_metabolic_dampening: f64,
 ) -> f64 {
-    let prefer_acsm =
-        movement_phase == 2 || movement_phase == 3 || velocity_ms >= V6_ACSM_BLEND_END_MS;
-    let blended = if !prefer_acsm && velocity_ms <= LCDA_MAX_SPEED_MS {
-        calculate_lcda_backpack_power_watts(
-            velocity_ms,
-            total_weight_kg,
-            grade_percent,
-            terrain_factor,
-        )
+    let walk_like = movement_phase == 0 || movement_phase == 1;
+    let blended = if walk_like {
+        let base = if velocity_ms <= LCDA_MAX_SPEED_MS {
+            calculate_lcda_backpack_power_watts(
+                velocity_ms,
+                total_weight_kg,
+                grade_percent,
+                terrain_factor,
+            )
+        } else {
+            calculate_pandolf_power_watts(velocity_ms, total_weight_kg, grade_percent, terrain_factor)
+        };
+        apply_walk_downhill_coast_factor(base, grade_percent)
     } else {
+        let prefer_acsm =
+            movement_phase == 2 || movement_phase == 3 || velocity_ms >= V6_ACSM_BLEND_END_MS;
         let pandolf_w =
             calculate_pandolf_power_watts(velocity_ms, total_weight_kg, grade_percent, terrain_factor);
         if !prefer_acsm && velocity_ms < V6_ACSM_BLEND_START_MS {
             pandolf_w
         } else {
-            let acsm_w = calculate_acsm_power_watts(velocity_ms, total_weight_kg);
+            let acsm_w = apply_acsm_grade_factor(
+                calculate_acsm_power_watts(velocity_ms, total_weight_kg),
+                grade_percent,
+            );
             let mut blend = get_acsm_blend_weight(velocity_ms);
             if movement_phase == 3 {
                 blend = blend.max(0.85);

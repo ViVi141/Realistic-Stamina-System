@@ -567,6 +567,16 @@ class SCR_RSS_Constants
     static const float V6_ACSM_QUAD_W_PER_MS2 = 80.0;
     static const float V6_ACSM_BLEND_START_MS = 2.0;
     static const float V6_ACSM_BLEND_END_MS = 2.4;
+    //! ACSM 平跑功率的坡度倍率（每 1% 坡）：上坡加耗、缓下坡减耗
+    static const float V6_ACSM_UPHILL_PER_GRADE_PCT = 0.035;
+    static const float V6_ACSM_UPHILL_FACTOR_MAX = 2.5;
+    static const float V6_ACSM_DOWNHILL_PER_GRADE_PCT = 0.04;
+    static const float V6_ACSM_DOWNHILL_FACTOR_MIN = 0.50;
+    //! 陡下坡在 ACSM 倍率上额外制动（叠加在已减耗的 factor 上）
+    static const float V6_ACSM_STEEP_BRAKE_EXTRA = 0.35;
+    //! Walk 意图 + 下坡：额外重力辅助系数（每 1% 坡，作用于 LCDA/Pandolf 结果）
+    static const float V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT = 0.09;
+    static const float V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42;
     static const float V6_INVERT_SPEED_MAX_MS = 6.0;
     static const float V6_STANDING_REST_WATTS = 100.0;
 
