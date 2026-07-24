@@ -1,0 +1,37 @@
+RSS v6.0.0 Change Notes
+=======================
+From stable 3.23.1 → 6.0.0 (config 6.0.0). No automatic cross-major migration.
+Re-select Elite / Standard / Tactical in Settings, or use tools/optimized_rss_config_*_v6.json.
+Keep server & clients on the same mod build.
+
+[EN]
+• NEW: Critical Power–W′ power budget (Pandolf + ACSM → dynamic CP → W′ joules)
+• NEW: Sprint = invert(available power); aerobic threshold + W′ Schmitt latch (not short-burst time CD)
+• NEW: Phase march gears (Walk/Run/Sprint m/s); collapse SmoothStep near empty STA (~5%)
+• NEW: v_drain closed loop — drain uses min(measured speed, applied speed limit)
+• NEW: Fatigue integral I(t) + EPOC (oxygen debt ∝ peak intended power)
+• NEW: Elite Skiba W′ refill; Standard/Tactical linear W′ recovery
+• NEW: v6 optimize pipeline (NSGA-II/III + TPE tiers) + digital twin; presets baked in
+• KEEP: 1.7+ foliage/wire speed merge (SpeedBridge min), environment, swim, mud (toggle), HUD, admin Settings, CSB, API
+• REMOVED: 25%/35% willpower speed plateau; fake Sprint×fixed drain on main path; legacy Givoni stubs
+• API: prefer wPrimePool01 (anaerobicPercent deprecated)
+• AI: speed cap aligned with player v6 phase curve (SCR_RSS_AIManager)
+• FIX: Mod compatibility — some third-party character prefabs disabled SCR_CharacterStaminaComponent (Enabled 0), which made RSS never take effect; now re-activates / resolves the component so stamina works alongside those mods
+
+[中文]
+• 新增：Critical Power–W′ 功率预算（Pandolf + ACSM → 动态 CP → W′ 焦耳池）
+• 新增：冲刺按可用功率反演限速；有氧阈值 + W′ 施密特闩锁（非短冲时间 CD）
+• 新增：相位行军档 Walk/Run/Sprint；极低 STA 约 5% SmoothStep 撞墙阻尼
+• 新增：v_drain 闭环 — 消耗按 min(实测速度, 已应用限速)
+• 新增：积分疲劳 I(t) + EPOC（氧债 ∝ 峰值意图功率）
+• 新增：Elite Skiba 双指数再填充；Standard/Tactical 线性 W′ 恢复
+• 新增：v6 优化管线（NSGA-II/III + TPE 分档）与数字孪生；预设 Bake 嵌入
+• 保留：1.7+ 灌木/铁丝网限速合并、环境/游泳/泥泞（可关）、HUD、管理员 Settings、CSB、外部 API
+• 移除：意志力平台期；主路径 Sprint×固定倍数假消耗；旧 Givoni 等遗留桩
+• API：请用 wPrimePool01（anaerobicPercent 已弃用）
+• AI：限速与玩家 v6 相位曲线同源（SCR_RSS_AIManager）
+• 修复：模组兼容性 — 此前叠加部分第三方角色预制体（将体力组件 Enabled 设为 0）会导致 RSS 体力系统完全不生效；现会重新激活/解析组件，与这类模组共存时体力可正常工作
+
+Upgrade tip: Custom JSON from 3.x is not a drop-in for 6.0 — start from a baked preset.
+Full log: CHANGELOG.md [6.0.0] / [5.0.0] / [3.23.1]
+Author: ViVi141 | License: AGPL-3.0

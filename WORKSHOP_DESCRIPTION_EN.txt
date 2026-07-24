@@ -1,0 +1,50 @@
+[English Version] Realistic Stamina System (RSS) v6 — The Pinnacle of Physiological Hardcore
+
+Medical-grade hardcore stamina v6. Pandolf/ACSM metabolism, Critical Power–W′, rain weight & heat stress. The ultimate physiological trial.
+
+I. Functional Description: Not a Mod, but a Medical-Grade Trial
+
+RSS replaces arcade stamina bars with a real-time metabolic power budget for Arma Reforger. Every tick roughly follows:
+
+  measured speed → metabolic power P(v) → dynamic Critical Power & W′ (joules)
+                → invert(P_available) speed limit → SetSpeedLimit
+                (merged with native foliage / obstacle caps)
+
+Walk uses Pandolf (Pandolf et al., 1977) with downhill corrections; run/sprint blend into ACSM-style power. Above Critical Power you burn the anaerobic W′ reserve; Sprint speed is power-limited, not a fake drain multiplier. Unless you live in exercise physiology, the depth is deliberately unforgiving.
+
+II. Main Features: Breath-taking Realism
+
+Critical Power–W′ Dual Pool (v6): Aerobic STA still drives the engine bar; W′ is a joule reservoir for work above CP (Elite: Skiba double-exponential refill; Standard/Tactical: linear refill). Sprint gating uses aerobic thresholds plus a W′ Schmitt latch—no willpower “flat speed” plateau. The old 25% grit platform is gone.
+
+Phase March Gears & Collapse: Walk/Run/Sprint track configured m/s targets under load and grade. Near empty STA (~5%), SmoothStep collapse damping makes legs feel like lead—not an instant engine cut.
+
+v_drain Closed Loop: Drain uses min(measured speed, applied speed limit), so what you spend matches what the limiter allows. Overspeed excess can hit W′ first.
+
+Real-time Status HUD: Compact, color-coded metrics (stamina, W′, speed, load, movement, slope, air temp, wind, indoor/outdoor, terrain, wet weight, and more). Toggle via in-game Settings / server config (not a mystery-only JSON ritual). Dedicated servers: server is authoritative; clients wait for replicated preset/Custom params.
+
+Tactical Recovery & Oxygen Deficit (EPOC): After hard work you pay oxygen debt—no instant guerrilla topping-off. Load penalizes recovery; heavy kits recover faster prone. Marginal decay and minimum rest thresholds keep “stop-go cheese” in check.
+
+3D Swimming & Wet Weight: Horizontal drag, vertical power, and treading baseline. Rain and swimming add evaporating wet mass (capped). Jump/vault costs scale with load and consecutive-effort debt.
+
+Advanced Environmental Sensors:
+
+- Wind & rain: live aerodynamic drag; rain can raise breathing cost.
+- Mud & slipping: wet surfaces add resistance; sprinting on mud risks slips (admin-toggleable).
+- Thermal stress & astronomy temperature: diurnal curves with shortwave/longwave/cloud correction, or engine temperature; indoor roof/enclosure rays blunt heat drain when you truly have cover.
+- 1.7+ foliage: RSS speed limits merge with native bush/wire caps (min wins)—we do not stomp Reforger’s foliage slowdown.
+
+Server-Authoritative Config: Named presets (EliteStandard / StandardMilsim / TacticalAction) sync by name and rebuild from baked defaults on clients; Custom syncs the full parameter array. Config version 6.0.0—no silent cross-major migration. Keep server and clients on the same mod build.
+
+III. Optimization: Powered by Constraint-First Search
+
+Optuna pipelines (NSGA-II / NSGA-III multi-objective; TPE for per-tier scalar search) plus a digital twin. Hard physiological anchors prune bad trials before they enter the Pareto set. Three presets: EliteStandard (ultra-hardcore), StandardMilsim (balanced default), TacticalAction (faster-paced)—switch in admin Settings.
+
+Low overhead when debug/HUD extras are off; AI can be fully disabled or stamina-calc-only disabled for large servers.
+
+IV. Calibration
+
+ACFT Standards: Anchored to US Army Combat Fitness Test references for a fit soldier (fitness 1.0)—including 2-mile run scoring bands used in the tool chain. Pack light. Plan your route. Manage aerobic vs W′. Or collapse.
+
+From 3.23.1 → 6.0.0: CP–W′ replaces the willpower plateau; Power-budget sprint; v_drain closed loop; fatigue integral + EPOC; same environmental DNA, new metabolic spine. See README / CHANGELOG for the full jump notes.
+
+Author: ViVi141 | License: AGPL-3.0
