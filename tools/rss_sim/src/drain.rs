@@ -1,6 +1,6 @@
 use crate::constants::{
-    MOVEMENT_SPRINT, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
-    V6_STAMINA_DRAIN_CALIBRATION,
+    MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+    V6_OVERSPEED_ACCOUNTING_EPS_MPS, V6_STAMINA_DRAIN_CALIBRATION,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{
@@ -131,6 +131,8 @@ pub fn get_metabolic_speed_cap_ms(
     is_exhausted: bool,
     effective_cp_watts: f64,
     w_prime_pool01: f64,
+    available_power_watts: f64,
+    speed_for_power_eval_ms: f64,
 ) -> f64 {
     if is_exhausted {
         return -1.0;
@@ -147,27 +149,46 @@ pub fn get_metabolic_speed_cap_ms(
     {
         return -1.0;
     }
+    let mut eval_speed = current_speed_ms;
+    if speed_for_power_eval_ms >= 0.0 {
+        eval_speed = speed_for_power_eval_ms;
+    }
     let power_w = metabolism_power_watts(
-        current_speed_ms.max(0.0),
+        eval_speed.max(0.0),
         total_weight_kg,
         grade_percent,
         terrain_factor,
         movement_phase,
     );
-    let available_p = effective_cp_watts;
+    let mut available_p = effective_cp_watts;
+    if available_power_watts >= 0.0 {
+        available_p = available_power_watts;
+    }
     if power_w <= available_p + 1.0 {
         return -1.0;
     }
-    let mut target_p = effective_cp_watts;
+    let mut target_p = available_p;
     if power_w > effective_cp_watts && !is_sprint {
         target_p = effective_cp_watts;
+    }
+    let mut invert_phase = movement_phase;
+    if !is_sprint
+        && !is_wprime_pool_available_for_overspeed(
+            w_prime_pool01,
+            V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
+        )
+    {
+        invert_phase = MOVEMENT_RUN;
+        if movement_phase == MOVEMENT_WALK {
+            invert_phase = MOVEMENT_WALK;
+        }
     }
     invert_speed_for_power_watts(
         target_p,
         total_weight_kg,
         grade_percent,
         terrain_factor,
-        movement_phase,
+        invert_phase,
     )
 }
 
@@ -182,7 +203,18 @@ pub fn get_metabolic_corrected_speed_multiplier(
     engine_base_ms: f64,
     effective_cp_watts: f64,
     w_prime_pool01: f64,
+    available_power_watts: f64,
+    applied_speed_limit_ms: f64,
 ) -> f64 {
+    let mut engine_base_ms = engine_base_ms;
+    if engine_base_ms <= 0.05 {
+        engine_base_ms = 5.5;
+    }
+    // 功率判定用意图/本帧限速，禁止用 v_meas 追着压
+    let mut speed_for_eval = applied_speed_multiplier * engine_base_ms;
+    if applied_speed_limit_ms > 0.05 {
+        speed_for_eval = applied_speed_limit_ms;
+    }
     let cap_ms = get_metabolic_speed_cap_ms(
         current_speed_ms,
         movement_phase,
@@ -192,13 +224,11 @@ pub fn get_metabolic_corrected_speed_multiplier(
         is_exhausted,
         effective_cp_watts,
         w_prime_pool01,
+        available_power_watts,
+        speed_for_eval,
     );
     if cap_ms < 0.0 {
         return applied_speed_multiplier;
-    }
-    let mut engine_base_ms = engine_base_ms;
-    if engine_base_ms <= 0.05 {
-        engine_base_ms = 5.5;
     }
     let applied_ms = applied_speed_multiplier * engine_base_ms;
     if applied_ms <= cap_ms + 0.01 {

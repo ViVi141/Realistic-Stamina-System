@@ -322,12 +322,10 @@ class SCR_RSS_DrainCalculator
         if (engineBaseMs <= 0.05)
             engineBaseMs = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
-        float speedForEval = currentSpeedMs;
+        // 功率判定用意图/本帧限速，禁止用 v_meas 追着压（否则 Sprint/限速自激 Bang-Bang）
+        float speedForEval = appliedSpeedMultiplier * engineBaseMs;
         if (appliedSpeedLimitMs > 0.05)
-        {
-            if (currentSpeedMs > appliedSpeedLimitMs)
-                speedForEval = appliedSpeedLimitMs;
-        }
+            speedForEval = appliedSpeedLimitMs;
 
         float capMs = GetMetabolicSpeedCapMs(
             currentSpeedMs,

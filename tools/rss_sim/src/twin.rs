@@ -748,6 +748,16 @@ impl RSSDigitalTwin {
         clip_f64(scaled_run_multiplier / run_ref_mult, 0.15, 1.0)
     }
 
+    fn encumbrance_intent_speed_ratio(&self, phase: i32, is_sprinting: bool) -> f64 {
+        let mut ref_ms = self.constants.v5_run_speed_ms;
+        if is_sprinting || phase == MOVEMENT_SPRINT {
+            ref_ms = self.constants.v5_sprint_speed_ms;
+        } else if phase == MOVEMENT_WALK {
+            ref_ms = self.constants.v5_walk_speed_ms;
+        }
+        clip_f64(ref_ms / self.constants.game_max_speed, 0.0, 1.0)
+    }
+
     fn get_v5_absolute_speed_ms(
         &self,
         movement_phase: i32,
@@ -909,7 +919,8 @@ impl RSSDigitalTwin {
         let speed_scale_factor = slope_adjusted_mult / slope_run_ref_mult;
         let scaled_run = run_base_mult * speed_scale_factor;
 
-        let speed_ratio = clip_f64(last_speed / game_max, 0.0, 1.0);
+        // 负重速罚用相位意图顶速，禁止 last_speed/v_meas（否则 Sprint 自激 Bang-Bang）
+        let speed_ratio = self.encumbrance_intent_speed_ratio(phase, is_sprinting);
         let mut enc_penalty = base_penalty * (1.0 + speed_ratio);
         if is_sprinting || phase == MOVEMENT_SPRINT {
             enc_penalty *= SPRINT_ENCUMBRANCE_PENALTY_MULT;
@@ -1061,6 +1072,11 @@ impl RSSDigitalTwin {
         } else {
             movement_phase
         };
+        let mut available_p = effective_cp;
+        if metab_phase == MOVEMENT_SPRINT {
+            available_p = self.v6_cp_state.get_available_power_watts(true, 0.017, self.current_time);
+        }
+        let applied_limit_ms = speed_limit_mult * engine_base_ms;
         get_metabolic_corrected_speed_multiplier(
             speed_limit_mult,
             current_speed_ms,
@@ -1072,6 +1088,8 @@ impl RSSDigitalTwin {
             engine_base_ms,
             effective_cp,
             self.v6_cp_state.pool01(),
+            available_p,
+            applied_limit_ms,
         )
     }
 

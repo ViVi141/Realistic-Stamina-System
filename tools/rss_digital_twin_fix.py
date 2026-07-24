@@ -1063,6 +1063,16 @@ class RSSDigitalTwin:
     # 闭环仿真：体力→速度→消耗，与 C 端 UpdateSpeedBasedOnStamina 一致
     # -------------------------------------------------------------------------
 
+    def _encumbrance_intent_speed_ratio(self, phase: int, is_sprinting: bool) -> float:
+        """负重速罚用的速度比：相位意图顶速 / GAME_MAX，禁用 v_meas 反馈。"""
+        game_max = float(getattr(self.constants, 'GAME_MAX_SPEED', 5.5))
+        ref_ms = self._v5_run_speed_ms()
+        if is_sprinting or phase == MovementType.SPRINT:
+            ref_ms = self._v5_sprint_speed_ms()
+        elif phase == MovementType.WALK:
+            ref_ms = self._v5_walk_speed_ms()
+        return float(np.clip(ref_ms / game_max, 0.0, 1.0))
+
     def _v5_walk_speed_ms(self) -> float:
         return float(getattr(self.constants, 'V5_WALK_SPEED_MS', V5_WALK_SPEED_MS_DEFAULT))
 
@@ -1246,7 +1256,8 @@ class RSSDigitalTwin:
         speed_scale_factor = slope_adjusted_mult / slope_run_ref_mult
         scaled_run = run_base_mult * speed_scale_factor
 
-        speed_ratio = float(np.clip(last_speed / game_max, 0.0, 1.0))
+        # 负重速罚用相位意图顶速，禁止 last_speed/v_meas（否则 Sprint 自激 Bang-Bang）
+        speed_ratio = self._encumbrance_intent_speed_ratio(phase, is_sprinting)
         enc_penalty = base_penalty * (1.0 + speed_ratio)
         if is_sprinting or phase == MovementType.SPRINT:
             enc_penalty *= SPRINT_ENCUMBRANCE_PENALTY_MULT
@@ -1375,6 +1386,13 @@ class RSSDigitalTwin:
         if metab_phase < MovementType.WALK:
             metab_phase = MovementType.RUN
 
+        available_p = effective_cp
+        if metab_phase == MovementType.SPRINT:
+            available_p = self.v6_cp_state.get_available_power_watts(
+                True, RSS_PLAYER_TICK_SEC, getattr(self, 'current_time', 0.0)
+            )
+
+        applied_limit_ms = speed_limit_mult * engine_base_ms
         return get_metabolic_corrected_speed_multiplier(
             speed_limit_mult,
             current_speed_ms,
@@ -1386,6 +1404,8 @@ class RSSDigitalTwin:
             engine_base_ms,
             effective_cp,
             self.v6_cp_state.pool01,
+            available_power_watts=available_p,
+            applied_speed_limit_ms=applied_limit_ms,
         )
 
     def compute_speed_limit_multiplier(
@@ -1897,6 +1917,8 @@ def get_metabolic_speed_cap_ms(
     is_exhausted: bool,
     effective_cp_watts: float,
     w_prime_pool01: float = 1.0,
+    available_power_watts: float = -1.0,
+    speed_for_power_eval_ms: float = -1.0,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形。"""
     if is_exhausted:
@@ -1908,27 +1930,39 @@ def get_metabolic_speed_cap_ms(
     if (not is_sprint) and is_wprime_pool_available_for_overspeed(w_prime_pool01):
         return -1.0
 
+    eval_speed = current_speed_ms
+    if speed_for_power_eval_ms >= 0.0:
+        eval_speed = speed_for_power_eval_ms
+
     power_w = metabolism_power_watts(
-        max(0.0, current_speed_ms),
+        max(0.0, eval_speed),
         total_weight_kg,
         grade_percent,
         terrain_factor,
         movement_phase,
     )
     available_p = effective_cp_watts
+    if available_power_watts >= 0.0:
+        available_p = available_power_watts
     if power_w <= available_p + 1.0:
         return -1.0
 
-    target_p = effective_cp_watts
+    target_p = available_p
     if power_w > effective_cp_watts and (not is_sprint):
         target_p = effective_cp_watts
+
+    invert_phase = movement_phase
+    if (not is_sprint) and (not is_wprime_pool_available_for_overspeed(w_prime_pool01)):
+        invert_phase = MovementType.RUN
+        if movement_phase == MovementType.WALK:
+            invert_phase = MovementType.WALK
 
     return invert_speed_for_power_watts(
         target_p,
         total_weight_kg,
         grade_percent,
         terrain_factor,
-        movement_phase,
+        invert_phase,
     )
 
 
@@ -1943,8 +1977,18 @@ def get_metabolic_corrected_speed_multiplier(
     engine_base_ms: float,
     effective_cp_watts: float,
     w_prime_pool01: float = 1.0,
+    available_power_watts: float = -1.0,
+    applied_speed_limit_ms: float = -1.0,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier 同形。"""
+    if engine_base_ms <= 0.05:
+        engine_base_ms = 5.5
+
+    # 功率判定用意图/本帧限速，禁止用 v_meas 追着压
+    speed_for_eval = applied_speed_multiplier * engine_base_ms
+    if applied_speed_limit_ms > 0.05:
+        speed_for_eval = applied_speed_limit_ms
+
     cap_ms = get_metabolic_speed_cap_ms(
         current_speed_ms,
         movement_phase,
@@ -1954,11 +1998,11 @@ def get_metabolic_corrected_speed_multiplier(
         is_exhausted,
         effective_cp_watts,
         w_prime_pool01,
+        available_power_watts=available_power_watts,
+        speed_for_power_eval_ms=speed_for_eval,
     )
     if cap_ms < 0.0:
         return applied_speed_multiplier
-    if engine_base_ms <= 0.05:
-        engine_base_ms = 5.5
 
     applied_ms = applied_speed_multiplier * engine_base_ms
     if applied_ms <= cap_ms + 0.01:

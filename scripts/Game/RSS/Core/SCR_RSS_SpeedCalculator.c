@@ -80,6 +80,17 @@ class SCR_RSS_SpeedCalculator
         return encumbrancePenalty;
     }
 
+    //! 负重速罚用的速度比：按相位意图顶速，禁止用 v_meas/上帧速度（否则 Sprint 罚重↔限速自激抖）。
+    static float GetEncumbranceIntentSpeedRatio(int movementPhase, bool isSprinting)
+    {
+        float refMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        if (isSprinting || movementPhase == 3)
+            refMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
+        else if (movementPhase == 1)
+            refMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        return Math.Clamp(refMs / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
+    }
+
     //! 状态/HUD：引擎 Idle + 惯性时标注为「Run惯性」等
     static string FormatMovementTypeForDisplay(
         bool isSprinting,
@@ -330,8 +341,8 @@ class SCR_RSS_SpeedCalculator
         
         float finalAbsoluteSpeed = 0.0;
 
-        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）
-        float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
+        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）；速比用相位意图，禁用 v_meas 反馈
+        float speedRatio = GetEncumbranceIntentSpeedRatio(currentMovementPhase, isSprinting);
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
             encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);
@@ -391,8 +402,8 @@ class SCR_RSS_SpeedCalculator
         
         float finalSpeedMultiplier = 0.0;
 
-        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）
-        float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
+        // 负重速度惩罚（含速度相关项与Sprint额外惩罚）；速比用相位意图，禁用 v_meas 反馈
+        float speedRatio = GetEncumbranceIntentSpeedRatio(currentMovementPhase, isSprinting);
         float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
         if (isSprinting || currentMovementPhase == 3)
             encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);

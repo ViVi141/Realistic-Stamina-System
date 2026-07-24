@@ -249,8 +249,9 @@ class SCR_RSS_UpdateCoordinator
         
         if (finalAbsoluteSpeedWithEnc > 0.0)
         {
-            // 负重惩罚（供 Sprint 功率反解与 Run CP 封顶；勿再乘 (1-enc)，GetMarch 已计入）
-            float speedRatio = Math.Clamp(currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
+            // 负重惩罚：按相位意图速比（勿用 currentSpeed，否则 Sprint 限速自激）
+            float speedRatio = SCR_RSS_SpeedCalculator.GetEncumbranceIntentSpeedRatio(
+                currentMovementPhase, isSprinting);
             float encumbrancePenalty = encumbranceSpeedPenalty * (1.0 + speedRatio);
             if (isSprinting || currentMovementPhase == 3)
                 encumbrancePenalty = SCR_RSS_SpeedCalculator.ScaleSprintEncumbrancePenalty(encumbrancePenalty);
