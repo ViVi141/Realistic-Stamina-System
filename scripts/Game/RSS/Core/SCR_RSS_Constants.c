@@ -557,6 +557,10 @@ class SCR_RSS_Constants
     static const bool V6_APPLY_STAMINA_SPEED_LIMIT = true;
     //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
     static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
+    //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度（SetSpeedLimit 压不住时）
+    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = true;
+    //! 超过限速多少 m/s 才触发上项纠偏
+    static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.20;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! false：只保留负重+坡度等机械限速；超代谢功率只烧 W′/体力，不压速。
     static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
@@ -565,7 +569,8 @@ class SCR_RSS_Constants
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
     //! 引擎 Walk 顶速回退（m/s）；与实机空载 Walk 顶接近
     static const float ENGINE_WALK_TOP_MS = 1.45;
-    //! 有氧巡航硬顶（m/s）：W′ 不可用时 Run 不得超过；超过必须吃 W′。Walk 不套此帽。
+    //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。
+    //! 下坡不套此帽（只按 CP 反解），否则 v_limit 远低于重力可达速，限速与物理互殴抖动。
     static const float V6_AEROBIC_CRUISE_MAX_MS = 2.4;
     //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
     static const float V6_ACSM_REST_W = 50.0;
@@ -644,10 +649,12 @@ class SCR_RSS_Constants
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
     //! 超速判定阈值（调试 / CP 压速纠偏）；记账已不再 min 到 v_limit
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
-    //! 超速关闭阈值：池 ≤ 冲刺阈值 + 此值时解除超速武装（CP 巡航）
+    //! W′ 施密特关闭带偏移：池 ≤ 冲刺阈值 + 此值时解除超速/Sprint 武装（默认阈 0.20 → ≈25%）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
-    //! 超速再武装：池须回到 冲刺阈值 + 此值，避免 W′≈关闭带附近抖动把均速抬到精英级
+    //! W′ 施密特再开带偏移：池须回到 冲刺阈值 + 此值才再允许超速/Sprint（默认 → ≈60%），避免阈值附近速度震荡
     static const float V6_WPRIME_OVERSPEED_REARM = 0.40;
+    //! 低于此焦耳视为 W′ 已空（GetAvailablePowerWatts 不再用 ε/Δt 虚高冲刺功率）
+    static const float V6_WPRIME_EMPTY_FLOOR_JOULES = 5.0;
     //! 限速倍率斜率（1/s）：W′ 耗尽后 CP/坡度反解噪声不致每 tick 拧 SetSpeedLimit
     static const float V6_SPEED_LIMIT_SLEW_FRAC_PER_SEC = 1.25;
     //! 限速倍率死区：变化小于此值不重写限速源

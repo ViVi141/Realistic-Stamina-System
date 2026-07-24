@@ -353,6 +353,7 @@ modded class SCR_CharacterControllerComponent
         {
             bool sprintAllowed = GetRssSprintAllowed();
             // 过渡与落盘限速必须共用同一 engineBase（按有效相位，Walk 不可再用 Run 分母）
+            // 禁 Sprint 但引擎仍停在 phase 3 时仍用 Sprint 分母，否则 SetSpeedLimit 会按冲刺顶速放大
             float engineBaseForLimit = GetOriginalEngineMaxSpeed_Run();
             if (loc.isSprintingNow || loc.phaseNow == 3)
                 engineBaseForLimit = GetOriginalEngineMaxSpeed_Sprint();
@@ -442,6 +443,23 @@ modded class SCR_CharacterControllerComponent
             if (m_fLastRssSpeedMultiplierApplied < 0.01)
                 m_fLastRssSpeedMultiplierApplied = 0.01;
             SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
+
+            // CP 巡航：SetSpeedLimit 只改指令速，物理仍可跑飞 → 超速时钳水平速度
+            bool cruiseDisarmed = false;
+            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            {
+                if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    m_pAnaerobicBurst.GetCpModel()))
+                    cruiseDisarmed = true;
+            }
+            if (cruiseDisarmed)
+            {
+                float clampDt = GetSpeedUpdateIntervalMs() / 1000.0;
+                if (clampDt < 0.01)
+                    clampDt = 0.05;
+                SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
+                    loc.owner, safeCap, loc.currentSpeed, clampDt);
+            }
         }
         else
         {
@@ -578,11 +596,19 @@ modded class SCR_CharacterControllerComponent
             if (m_pAnaerobicBurst)
                 cpModel = m_pAnaerobicBurst.GetCpModel();
 
+            // 禁 Sprint 时按 Run 相位做代谢压速，避免 phase=3 + W′≈0 走冲刺功率悬崖
+            int metabPhase = loc.phaseNow;
+            if (!GetRssSprintAllowed())
+            {
+                if (metabPhase == 3)
+                    metabPhase = 2;
+            }
+
             float gradeForCap = RSS_SmoothGradePercentForSpeed(loc.gradePercent, loc.currentTime);
             float correctedSpeed = SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier(
                 m_fLastRssSpeedMultiplierApplied,
                 loc.currentSpeed,
-                loc.phaseNow,
+                metabPhase,
                 loc.encumbranceSpeedPenalty,
                 loc.totalWeightWithWetAndBody,
                 gradeForCap,
@@ -660,6 +686,17 @@ modded class SCR_CharacterControllerComponent
                     else
                     {
                         cpModel.SetFatigueCpMultiplier(1.0);
+                    }
+
+                    // 解除武装且非冲刺：W′ 放电功率钳到 CP，避免下坡 v_meas≫v_limit 时无氧池被重力超速抽干
+                    if (!loc.isSprintActive)
+                    {
+                        if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
+                        {
+                            float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
+                            if (cpClamp > 1.0 && powerW > cpClamp)
+                                powerW = cpClamp;
+                        }
                     }
                 }
 

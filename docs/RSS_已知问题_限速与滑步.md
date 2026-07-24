@@ -1,7 +1,7 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
 记录日期：2026-07-24  
-更新：2026-07-24 — 关水平硬钳后速画匹配；删除 `v_drain=min(v_meas,v_limit)`；完善下坡数学模型；**EPOC 改回限速内意图功率采样**（避免下坡 `v_meas≫v_limit` 停步暴罚）。
+更新：2026-07-24 — 下坡 W′ 耗尽抖动：平路 `V6_AEROBIC_CRUISE_MAX_MS=2.4` 在下坡不套；解除武装后 W′ 放电钳到 CP（避免 `v_meas≫v_limit` 抽干）。此前：关水平硬钳；EPOC 限速内采样。
 
 相关试跑开关（`SCR_RSS_Constants`）：
 
@@ -85,19 +85,25 @@
 
 ---
 
-## 4. 后期（W′ 耗尽后）移动速度抖动（已缓）
+## 4. 后期（W′ 耗尽后）移动速度抖动
 
 ### 现象
 
-- 跑一段后 `W'` 落到开门阈值附近、CP 压速开启时，手感速度发颤；日志里 `v_meas`/`v_pos` 与 `P_met` 同跳，`v_limit` 钉在 ~1.8。
+- 上/下坡 Run：`最终倍`/`v_limit` 钉死（如 0.50 / 1.82），但 `v_meas` 在 2.5↔3.5 抖，`P_met` 上千瓦；`超速记账=off`。
 
 ### 原因
 
-- W′ 不可用后每 tick 用**瞬时坡度**做 `InvertSpeed(CP)` 写 `SetSpeedLimit`，坡度噪声 → 限速抖。
-- 代谢纠偏曾用跑飞的 `v_meas` 判超功率，进一步追着拧限速。
+1. `SetSpeedLimit` → `OverrideMaxSpeed` 只压**指令**速度；物理水平速度仍可跑飞。
+2. 测引擎顶速曾每 2s `SetSpeedLimit(1.0)`：Chimera 在提速时**瞬间** `OverrideMaxSpeed(1)` → 尖峰。
+3. 平路 `V6_AEROBIC_CRUISE_MAX_MS=2.4` 在下坡过紧（已改为下坡不套）。
 
 ### 处置
 
-- 坡度 EMA（`RSS_SmoothGradePercentForSpeed`）再反解 CP 顶。
-- 玩家 `SetSpeedLimit` 倍率斜率限制 + 死区（`V6_SPEED_LIMIT_SLEW_*`）。
-- 代谢纠偏功率按 **意图限速** 评估，不再被 `v_meas` 尖峰牵着走。
+- 引擎顶速**只测一次**，禁止周期抬限。
+- W′ 解除武装后若 `v_meas > v_limit + 0.2`：`EnforceCpCruisePhysicsCap` 强制软/硬钳物理（`V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP`）。
+- 下坡不套 2.4 平路巡航帽；解除武装后 W′ 放电钳到 CP。
+
+### 复测
+
+- 同坡 Run、`W'<25%`（解除武装）：`v_meas` 应贴近 `v_limit`（±0.3），不再 2.5↔3.5 振荡。
+- 若出现明显滑步：可关 `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP`。

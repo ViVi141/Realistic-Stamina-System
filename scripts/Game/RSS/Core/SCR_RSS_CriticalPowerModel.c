@@ -207,6 +207,10 @@ class SCR_RSS_CriticalPowerModel
         if (!sprintIntent)
             return cp;
 
+        // 解除武装后禁止再用 W′/Δt 虚高功率（否则 W′≈0 时 0↔ε 会在 CP↔冲刺顶之间跳）
+        if (!RefreshAndGetOverspeedArmed())
+            return cp;
+
         if (IsOnCooldown(worldTimeSec))
             return cp;
 
@@ -214,7 +218,9 @@ class SCR_RSS_CriticalPowerModel
         if (cap <= cp)
             cap = cp + SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT * 0.5;
 
-        if (m_fWPrimeJoules <= 0.0)
+        // 残余焦耳按空池处理，避免 ε/Δt 突然顶满 sprint_power_cap
+        float emptyFloorJ = SCR_RSS_Constants.V6_WPRIME_EMPTY_FLOOR_JOULES;
+        if (m_fWPrimeJoules <= emptyFloorJ)
             return cp;
 
         float burstBudget = m_fWPrimeJoules / Math.Max(timeDeltaSec, 0.01);
@@ -231,8 +237,8 @@ class SCR_RSS_CriticalPowerModel
         if (aerobicStamina < SCR_RSS_ConfigBridge.GetSprintEnableThreshold())
             return false;
 
-        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
-        if (GetPool01() <= threshold)
+        // 与超速武装共用施密特：耗尽带关闭后须回到 rearm，避免 W′≈20–25% 按住冲刺时快慢震荡
+        if (!RefreshAndGetOverspeedArmed())
             return false;
 
         if (IsOnCooldown(worldTimeSec))
@@ -255,7 +261,7 @@ class SCR_RSS_CriticalPowerModel
             {
                 float drainJ = (powerWatts - cp) * timeDeltaSec;
                 m_fWPrimeJoules = m_fWPrimeJoules - drainJ;
-                if (m_fWPrimeJoules < 0.0)
+                if (m_fWPrimeJoules < SCR_RSS_Constants.V6_WPRIME_EMPTY_FLOOR_JOULES)
                     m_fWPrimeJoules = 0.0;
             }
         }

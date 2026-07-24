@@ -30,12 +30,12 @@
 
 本模组根据玩家的体力值和负重动态调整移动速度，实现更真实的游戏体验。当体力充沛时，玩家可以全速移动；当体力下降时，移动速度会逐渐减慢。同时，负重也会影响移动速度。
 
-**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试100分用时15分27秒。
+**体力标准参考**：本模组的体力标准引用自 **ACFT (Army Combat Fitness Test)** 美国陆军战斗体能测试中22-26岁男性2英里测试。
 
 ## 主要特性
 
 - ✅ **v6 CP–W′ 功率预算**：Pandolf/ACSM 代谢 → 动态 CP → W′ 焦耳；Sprint = `invert(P_available)`
-- ✅ **相位行军档速度**【v6】：Walk/Run/Sprint 按配置 m/s；**无 25% 意志力平台期**
+- ✅ **相位行军档速度**【v6】：Walk/Run/Sprint 按配置 m/s；
 - ✅ **Elite Skiba W′ 再填充**；Standard/Tactical 线性恢复 + 分层 cooldown
 - ✅ **v_drain 闭环**：消耗与 `SetSpeedLimit` 共用 `m_fAppliedSpeedLimitMs`
 - ✅ **坡度自适应步幅逻辑**：上坡时自动降低目标速度（坡度-速度负反馈）

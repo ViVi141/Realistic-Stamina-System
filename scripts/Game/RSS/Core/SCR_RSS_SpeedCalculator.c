@@ -201,11 +201,16 @@ class SCR_RSS_SpeedCalculator
         if (!cpModel)
             return gaitSprintMs;
 
-        float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
-        if (cpModel.GetPool01() <= threshold)
+        // 与 CP 施密特闩锁对齐（勿用裸池阈值，否则会在开门点附近 Sprint↔Run 跳变）
+        if (!cpModel.RefreshAndGetOverspeedArmed())
             return runMs;
 
         float availableP = cpModel.GetAvailablePowerWatts(true, timeDeltaSec, worldTimeSec);
+        float cpOnly = cpModel.GetEffectiveCriticalPowerWatts();
+        // 可用功率已落到 CP：按 Run 处理，避免功率软顶在耗尽点抖
+        if (availableP <= cpOnly + 1.0)
+            return runMs;
+
         float powerMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             availableP, totalWeightKg, gradePercent, terrainFactor, 3);
         powerMs = powerMs * encMult;

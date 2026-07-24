@@ -313,7 +313,8 @@ class SCR_RSS_UpdateCoordinator
                         {
                             GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
                                 controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
-                            gradePct = gradeRes.gradePercent;
+                            gradePct = controller.RSS_SmoothGradePercentForSpeed(
+                                gradeRes.gradePercent, currentWorldTime);
                         }
                         float runTerrain = terrainFactor;
                         if (runTerrain < 0.5)
@@ -330,8 +331,17 @@ class SCR_RSS_UpdateCoordinator
                             gradePct,
                             runTerrain,
                             runPhase);
-                        if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
-                            cruiseCapMs = cpCapMs;
+                        if (gradePct < 0.0)
+                        {
+                            // 下坡：只按 CP 反解，不套平路 2.4 帽（否则 v_limit≪重力可达速 → 限速与物理互殴抖动）
+                            if (cpCapMs > 0.05)
+                                cruiseCapMs = cpCapMs;
+                        }
+                        else
+                        {
+                            if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
+                                cruiseCapMs = cpCapMs;
+                        }
                         if (theoreticalTargetSpeed > cruiseCapMs)
                             theoreticalTargetSpeed = cruiseCapMs;
                     }

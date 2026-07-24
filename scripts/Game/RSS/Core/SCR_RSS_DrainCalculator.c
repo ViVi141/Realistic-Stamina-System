@@ -153,9 +153,12 @@ class SCR_RSS_DrainCalculator
                 cp, totalWeightKg, gradePercent, terrainFactor, movementPhase);
         }
 
-        // Walk 不套有氧巡航硬顶；Run 在 W′ 耗尽时不得超过 2.4
-        if (movementPhase != 1 && capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
-            capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+        // Walk 不套有氧巡航硬顶；平路/上坡 Run 在 W′ 耗尽时不得超过 2.4；下坡不套平路帽
+        if (movementPhase != 1 && gradePercent >= 0.0)
+        {
+            if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
+                capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+        }
         if (capMs > 0.05)
             return capMs;
         return -1.0;
@@ -239,9 +242,16 @@ class SCR_RSS_DrainCalculator
         if (movementPhase == 3)
             isSprintPhase = true;
 
+        // 解除武装后一律按 Run/CP 巡航压速，忽略引擎仍停在 Sprint 相位（按住 Shift 门禁时常见）
+        bool overspeedArmed = true;
+        if (cpModel)
+            overspeedArmed = IsWPrimePoolAvailableForOverspeed(cpModel);
+        if (!overspeedArmed)
+            isSprintPhase = false;
+
         if (!isSprintPhase && cpModel)
         {
-            if (IsWPrimePoolAvailableForOverspeed(cpModel))
+            if (overspeedArmed)
                 return -1.0;
         }
 
@@ -256,13 +266,24 @@ class SCR_RSS_DrainCalculator
         if (powerW > cp && !isSprintPhase)
             targetP = cp;
 
-        float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
-            targetP, totalWeightKg, gradePercent, terrainFactor, movementPhase);
-        // Walk 不套有氧巡航硬顶；Run 在 W′ 不可用时不得超过 2.4
-        if (!isSprintPhase && movementPhase != 1)
+        int invertPhase = movementPhase;
+        if (!overspeedArmed)
         {
-            if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
-                capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+            invertPhase = 2;
+            if (movementPhase == 1)
+                invertPhase = 1;
+        }
+
+        float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            targetP, totalWeightKg, gradePercent, terrainFactor, invertPhase);
+        // Walk 不套有氧巡航硬顶；平路/上坡 Run 在 W′ 不可用时不得超过 2.4；下坡只按 CP 反解
+        if (!isSprintPhase && invertPhase != 1)
+        {
+            if (gradePercent >= 0.0)
+            {
+                if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
+                    capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+            }
         }
         return capMs;
     }

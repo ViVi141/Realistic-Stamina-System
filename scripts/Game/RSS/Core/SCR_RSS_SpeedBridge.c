@@ -129,8 +129,17 @@ class SCR_RSS_SpeedBridge
 
     static void ClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs)
     {
-        if (!IsHorizontalSpeedClampEnabled())
-            return;
+        ClampOwnerHorizontalSpeed(owner, maxHorizMs, false);
+    }
+
+    //! @param forceIgnoreGlobalFlag true：无视 V6_APPLY_HORIZONTAL_SPEED_CLAMP（仅用于 CP 巡航超速纠偏）
+    static void ClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs, bool forceIgnoreGlobalFlag)
+    {
+        if (!forceIgnoreGlobalFlag)
+        {
+            if (!IsHorizontalSpeedClampEnabled())
+                return;
+        }
         if (!owner)
             return;
         if (maxHorizMs < 0.1)
@@ -159,8 +168,16 @@ class SCR_RSS_SpeedBridge
     //! 软钳；超额大时硬钳（控制器每帧回灌时软钳不够）
     static void SoftClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs, float dtSec)
     {
-        if (!IsHorizontalSpeedClampEnabled())
-            return;
+        SoftClampOwnerHorizontalSpeed(owner, maxHorizMs, dtSec, false);
+    }
+
+    static void SoftClampOwnerHorizontalSpeed(IEntity owner, float maxHorizMs, float dtSec, bool forceIgnoreGlobalFlag)
+    {
+        if (!forceIgnoreGlobalFlag)
+        {
+            if (!IsHorizontalSpeedClampEnabled())
+                return;
+        }
         if (!owner)
             return;
         if (maxHorizMs < 0.1)
@@ -186,7 +203,7 @@ class SCR_RSS_SpeedBridge
 
         if (speed > maxHorizMs + 0.35)
         {
-            ClampOwnerHorizontalSpeed(owner, maxHorizMs);
+            ClampOwnerHorizontalSpeed(owner, maxHorizMs, forceIgnoreGlobalFlag);
             return;
         }
 
@@ -197,5 +214,18 @@ class SCR_RSS_SpeedBridge
         velocity[0] = velocity[0] * scale;
         velocity[2] = velocity[2] * scale;
         physics.SetVelocity(velocity);
+    }
+
+    //! CP 巡航 / W′ 解除武装后：SetSpeedLimit 压不住物理速度时纠偏（仅超速时）
+    static void EnforceCpCruisePhysicsCap(IEntity owner, float appliedLimitMs, float measuredSpeedMs, float dtSec)
+    {
+        if (!SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
+            return;
+        if (appliedLimitMs < 0.1)
+            return;
+        float eps = SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_EPS_MPS;
+        if (measuredSpeedMs <= appliedLimitMs + eps)
+            return;
+        SoftClampOwnerHorizontalSpeed(owner, appliedLimitMs, dtSec, true);
     }
 }

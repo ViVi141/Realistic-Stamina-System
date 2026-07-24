@@ -674,11 +674,10 @@ modded class SCR_CharacterControllerComponent
     }
 
     //! 缓存各相位顶速；禁止每 tick 临时 SetSpeedLimit(1.0)，否则控制器会趁机加速成滑步
+    //! 只测一次：周期性抬限到 1.0 会经 Chimera 瞬间 OverrideMaxSpeed(1) → 速度尖峰/抖动
     protected float m_fCachedEngineMaxWalkMs = -1.0;
     protected float m_fCachedEngineMaxRunMs = -1.0;
     protected float m_fCachedEngineMaxSprintMs = -1.0;
-    protected float m_fEngineMaxCacheTimeSec = -1.0;
-    protected static const float ENGINE_MAX_CACHE_TTL_SEC = 2.0;
 
     protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
     {
@@ -688,29 +687,17 @@ modded class SCR_CharacterControllerComponent
         else if (movementPhase == 1)
             fallback = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
 
+        if (movementPhase == 3 && m_fCachedEngineMaxSprintMs > 0.5)
+            return m_fCachedEngineMaxSprintMs;
+        if (movementPhase == 1 && m_fCachedEngineMaxWalkMs > 0.5)
+            return m_fCachedEngineMaxWalkMs;
+        if (movementPhase == 2 && m_fCachedEngineMaxRunMs > 0.5)
+            return m_fCachedEngineMaxRunMs;
+        if (movementPhase != 1 && movementPhase != 3 && m_fCachedEngineMaxRunMs > 0.5)
+            return m_fCachedEngineMaxRunMs;
+
         if (!m_pAnimComponent)
             return fallback;
-
-        float nowSec = -1.0;
-        if (GetGame() && GetGame().GetWorld())
-            nowSec = GetGame().GetWorld().GetWorldTime() * 0.001;
-
-        bool cacheFresh = false;
-        if (m_fEngineMaxCacheTimeSec >= 0.0 && nowSec >= 0.0)
-        {
-            if ((nowSec - m_fEngineMaxCacheTimeSec) <= ENGINE_MAX_CACHE_TTL_SEC)
-                cacheFresh = true;
-        }
-
-        if (cacheFresh)
-        {
-            if (movementPhase == 3 && m_fCachedEngineMaxSprintMs > 0.5)
-                return m_fCachedEngineMaxSprintMs;
-            if (movementPhase == 1 && m_fCachedEngineMaxWalkMs > 0.5)
-                return m_fCachedEngineMaxWalkMs;
-            if (movementPhase == 2 && m_fCachedEngineMaxRunMs > 0.5)
-                return m_fCachedEngineMaxRunMs;
-        }
 
         IEntity ownerEnt = GetOwner();
         float restoreMult = m_fLastRssSpeedMultiplierApplied;
@@ -726,7 +713,6 @@ modded class SCR_CharacterControllerComponent
         m_fCachedEngineMaxRunMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
         m_fCachedEngineMaxSprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
         SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, restoreMult);
-        m_fEngineMaxCacheTimeSec = nowSec;
 
         if (movementPhase == 3)
         {
