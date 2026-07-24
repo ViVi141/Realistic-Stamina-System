@@ -296,7 +296,9 @@ class SCR_RSS_CriticalPowerModel
                 m_fSprintStartSec = -1.0;
             }
 
-            if (powerWatts <= cp + 5.0)
+            // Morin–Petit / Skiba：仅 P 明显低于 CP 才再填充（禁止 CP 巡航回充 → 再武装）
+            float recoveryCeil = cp - SCR_RSS_Constants.V6_W_PRIME_RECOVERY_POWER_MARGIN_W;
+            if (powerWatts < recoveryCeil)
                 ApplyWPrimeRecovery(powerWatts, cp, timeDeltaSec);
         }
 

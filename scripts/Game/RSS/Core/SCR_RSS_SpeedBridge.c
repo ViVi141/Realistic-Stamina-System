@@ -216,7 +216,7 @@ class SCR_RSS_SpeedBridge
         physics.SetVelocity(velocity);
     }
 
-    //! CP 巡航 / W′ 解除武装后：SetSpeedLimit 压不住物理速度时纠偏（仅超速时）
+    //! CP 巡航 / W′ 解除武装后超速纠偏（默认关：禁止直接改 Physics，只靠 SetSpeedLimit）
     static void EnforceCpCruisePhysicsCap(IEntity owner, float appliedLimitMs, float measuredSpeedMs, float dtSec)
     {
         if (!SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)

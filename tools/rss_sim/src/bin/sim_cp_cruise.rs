@@ -4,13 +4,13 @@
 //! 1. W′ 施密特：≤25% 解除武装，须回 >60% 再武装
 //! 2. 解除武装后 Run 套 CP∩2.4 巡航限速（下坡不套 2.4）
 //! 3. 解除武装且非冲刺：W′ 放电功率钳到 CP（重力/物理超速不再抽 W′）
-//! 4. 物理：v_meas > v_limit+0.2 时软/硬钳（V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP）
+//! 4. 物理钳默认关（只走 SetSpeedLimit；V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=false）
 //!
 //! 运行：
 //!   cargo run --manifest-path tools/rss_sim/Cargo.toml --bin sim_cp_cruise --no-default-features --release
 
 use rss_sim::constants::{
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
     V6_WPRIME_OVERSPEED_HYSTERESIS, V6_WPRIME_OVERSPEED_REARM,
 };
 use rss_sim::cp_wprime::V6CriticalPowerState;
@@ -44,12 +44,17 @@ fn cruise_cap_ms(
     downhill_skip: bool,
 ) -> f64 {
     let cp_cap = invert_speed_for_power_watts(cp_eff, total_kg, grade_pct, terrain, MOVEMENT_RUN);
+    let mut cap;
     if grade_pct < 0.0 && downhill_skip {
-        return cp_cap.max(0.05);
+        cap = cp_cap.max(0.05);
+    } else {
+        cap = V6_AEROBIC_CRUISE_MAX_MS;
+        if cp_cap > 0.05 && cp_cap < cap {
+            cap = cp_cap;
+        }
     }
-    let mut cap = V6_AEROBIC_CRUISE_MAX_MS;
-    if cp_cap > 0.05 && cp_cap < cap {
-        cap = cp_cap;
+    if cap > 0.05 && cap < V6_RUN_GAIT_FLOOR_MS {
+        cap = V6_RUN_GAIT_FLOOR_MS;
     }
     cap
 }

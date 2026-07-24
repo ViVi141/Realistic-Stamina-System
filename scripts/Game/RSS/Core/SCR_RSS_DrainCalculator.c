@@ -159,9 +159,23 @@ class SCR_RSS_DrainCalculator
             if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
                 capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
         }
+        capMs = ApplyRunGaitFloorToCruiseCapMs(capMs, movementPhase);
         if (capMs > 0.05)
             return capMs;
         return -1.0;
+    }
+
+    //! Run 意图：CP 巡航不得压进 Walk 动画带（否则限速+物理钳 → 滑步/假 Walk）
+    static float ApplyRunGaitFloorToCruiseCapMs(float capMs, int movementPhase)
+    {
+        if (movementPhase == 1)
+            return capMs;
+        if (capMs <= 0.05)
+            return capMs;
+        float floorMs = SCR_RSS_Constants.V6_RUN_GAIT_FLOOR_MS;
+        if (capMs < floorMs)
+            return floorMs;
+        return capMs;
     }
 
     //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
@@ -284,6 +298,7 @@ class SCR_RSS_DrainCalculator
                 if (capMs > SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS)
                     capMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
             }
+            capMs = ApplyRunGaitFloorToCruiseCapMs(capMs, invertPhase);
         }
         return capMs;
     }

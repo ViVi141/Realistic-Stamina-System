@@ -557,9 +557,11 @@ class SCR_RSS_Constants
     static const bool V6_APPLY_STAMINA_SPEED_LIMIT = true;
     //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
     static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
-    //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度（SetSpeedLimit 压不住时）
-    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = true;
-    //! 超过限速多少 m/s 才触发上项纠偏
+    //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度。
+    //! **默认 false**：与水平硬钳同一原则——只走 SetSpeedLimit，禁止直接改 Physics 速度（会滑步）。
+    //! 仅调试「限速压不住物理」时临时打开；正式玩法保持关。
+    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false;
+    //! 超过限速多少 m/s 才触发上项纠偏（仅上项为 true 时有效）
     static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.20;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! false：只保留负重+坡度等机械限速；超代谢功率只烧 W′/体力，不压速。
@@ -572,6 +574,9 @@ class SCR_RSS_Constants
     //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。
     //! 下坡不套此帽（只按 CP 反解），否则 v_limit 远低于重力可达速，限速与物理互殴抖动。
     static const float V6_AEROBIC_CRUISE_MAX_MS = 2.4;
+    //! Run 意图 CP 巡航地板（m/s）。CP 反解若低于此值会落入 Walk 动画带。
+    //! 须 > ENGINE_WALK_TOP，且 ≤ V6_AEROBIC_CRUISE_MAX_MS。
+    static const float V6_RUN_GAIT_FLOOR_MS = 2.2;
     //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
     static const float V6_ACSM_REST_W = 50.0;
     static const float V6_ACSM_LINEAR_W_PER_MS = 200.0;
@@ -628,6 +633,8 @@ class SCR_RSS_Constants
     static const float V6_W_PRIME_K_FAST = 0.15;
     static const float V6_W_PRIME_K_SLOW = 0.008;
     static const float V6_W_PRIME_LIM_RATIO = 0.5;
+    //! W′ 再填充仅当 P < CP − 此裕度（禁止 P≈CP 巡航时 Skiba 回充 → 再武装震荡）
+    static const float V6_W_PRIME_RECOVERY_POWER_MARGIN_W = 40.0;
 
     // 积分疲劳 I(t)
     static const float V6_FATIGUE_I_MAX = 1.0;

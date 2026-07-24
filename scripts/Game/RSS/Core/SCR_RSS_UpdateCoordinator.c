@@ -342,6 +342,9 @@ class SCR_RSS_UpdateCoordinator
                             if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
                                 cruiseCapMs = cpCapMs;
                         }
+                        // Run 地板：避免 CP 反解落到 Walk 带（~1.8）→ Walk 动画 + 滑步
+                        cruiseCapMs = SCR_RSS_DrainCalculator.ApplyRunGaitFloorToCruiseCapMs(
+                            cruiseCapMs, runPhase);
                         if (theoreticalTargetSpeed > cruiseCapMs)
                             theoreticalTargetSpeed = cruiseCapMs;
                     }

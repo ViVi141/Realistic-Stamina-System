@@ -1,20 +1,23 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
 记录日期：2026-07-24  
-更新：2026-07-24 — 下坡 W′ 耗尽抖动：平路 `V6_AEROBIC_CRUISE_MAX_MS=2.4` 在下坡不套；解除武装后 W′ 放电钳到 CP（避免 `v_meas≫v_limit` 抽干）。此前：关水平硬钳；EPOC 限速内采样。
+更新：2026-07-24 — **关死 CP 巡航物理钳**（`V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=false`）：与水平硬钳同原则，只走 `SetSpeedLimit`。另：**Run 步态地板** `V6_RUN_GAIT_FLOOR_MS=2.2`。此前：下坡不套 2.4；解除武装后 W′ 钳到 CP；EPOC 限速内采样。
 
 相关试跑开关（`SCR_RSS_Constants`）：
 
 - `V6_APPLY_STAMINA_SPEED_LIMIT = true`（负重/坡度仍写 `SetSpeedLimit`）
 - `V6_APPLY_HORIZONTAL_SPEED_CLAMP = false`（**关**物理水平硬/软钳）
-- `V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（CP/有氧硬顶关）
+- `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false`（**关** CP 巡航物理旁路钳）
+- `V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（CP/有氧巡航顶；经 SetSpeedLimit）
 - `V6_USE_MARCH_GAIT_SPEEDS = false`（March 档关，目标改引擎顶）
+- `V6_RUN_GAIT_FLOOR_MS = 2.2`（Run 意图 CP 巡航下限）
 
 ### 结论（滑步）
 
 - **根因倾向**：`ClampOwnerHorizontalSpeed` / `PrepareControls` 每帧拧 `Physics` 水平速度，使位移与相位动画顶速脱节 → 滑步。
-- **有效做法**：只保留 `SetSpeedLimit` 合并限速（接近 v3.23.1），**不要**再硬钳水平速度。
-- 问题 2 状态：**缓解 / 当前配置下可接受**（勿再默认打开水平硬钳，除非有新证据）。
+- **原则**：**只** `SetSpeedLimit` 合并限速；**禁止**直接改 `Physics` 速度（含曾加的 `EnforceCpCruisePhysicsCap`）。
+- **Run 地板**：W′ 解除武装后 CP 反解若把 Run 压到 ≤~1.9 m/s，引擎易播 Walk 动画 → 用 `V6_RUN_GAIT_FLOOR_MS` 托住。
+- 问题 2 状态：**按原则关闭物理钳**；`v_meas` 偶发高于 `v_limit` 属 `SetSpeedLimit` 只压指令速的引擎限制，用代谢记账吸收，不以物理钳强压。
 
 ---
 
@@ -100,10 +103,11 @@
 ### 处置
 
 - 引擎顶速**只测一次**，禁止周期抬限。
-- W′ 解除武装后若 `v_meas > v_limit + 0.2`：`EnforceCpCruisePhysicsCap` 强制软/硬钳物理（`V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP`）。
+- **不**用 `EnforceCpCruisePhysicsCap` / 水平硬钳压 `v_meas`（默认关）。
 - 下坡不套 2.4 平路巡航帽；解除武装后 W′ 放电钳到 CP。
+- Run：`V6_RUN_GAIT_FLOOR_MS` 防止 CP 反解落入 Walk 带。
 
 ### 复测
 
-- 同坡 Run、`W'<25%`（解除武装）：`v_meas` 应贴近 `v_limit`（±0.3），不再 2.5↔3.5 振荡。
-- 若出现明显滑步：可关 `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP`。
+- 同坡 Run、`W'<25%`（解除武装）：`v_limit` ≥ 2.2，动画为 Run；偶发 `v_meas` 略高于限速可接受（勿开物理钳）。
+- 若 Walk 感仍重：略抬 `V6_RUN_GAIT_FLOOR_MS`（上限 2.4）。

@@ -4,6 +4,7 @@ use crate::constants::{
     V6_CP_ENV_FLOOR, V6_CRITICAL_POWER_WATTS_DEFAULT, V6_SKIBA_ELITE_CP_THRESHOLD_W,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, V6_W_PRIME_K_FAST, V6_W_PRIME_K_SLOW,
     V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT, V6_W_PRIME_LIM_RATIO,
+    V6_W_PRIME_RECOVERY_POWER_MARGIN_W, V6_WPRIME_EMPTY_FLOOR_JOULES,
 };
 use crate::drain::{
     get_drain_velocity_ms, is_metabolic_overspeed_accounting, is_wprime_pool_available_for_overspeed,
@@ -182,6 +183,10 @@ impl V6CriticalPowerState {
         if !sprint_intent {
             return cp;
         }
+        // Caller should refresh schmitt; use latched armed flag here (&self path).
+        if !self.overspeed_armed {
+            return cp;
+        }
         if self.is_on_cooldown(world_time_sec) {
             return cp;
         }
@@ -189,7 +194,7 @@ impl V6CriticalPowerState {
         if cap <= cp {
             cap = cp + V6_SPRINT_POWER_CAP_WATTS_DEFAULT * 0.5;
         }
-        if self.w_prime_joules <= 0.0 {
+        if self.w_prime_joules <= V6_WPRIME_EMPTY_FLOOR_JOULES {
             return cp;
         }
         let burst_budget = self.w_prime_joules / dt.max(0.01);
@@ -198,7 +203,7 @@ impl V6CriticalPowerState {
     }
 
     pub fn is_sprint_allowed(
-        &self,
+        &mut self,
         aerobic_stamina: f64,
         collapse_state: bool,
         world_time_sec: f64,
@@ -209,7 +214,7 @@ impl V6CriticalPowerState {
         if aerobic_stamina < 0.25 {
             return false;
         }
-        if self.pool01() <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT {
+        if !self.refresh_and_get_overspeed_armed() {
             return false;
         }
         if self.is_on_cooldown(world_time_sec) {
@@ -270,7 +275,7 @@ impl V6CriticalPowerState {
                 self.apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01());
                 self.sprint_start_sec = -1.0;
             }
-            if power_watts <= cp + 5.0 {
+            if power_watts < cp - V6_W_PRIME_RECOVERY_POWER_MARGIN_W {
                 self.apply_w_prime_recovery(power_watts, cp, dt);
             }
         }

@@ -9,6 +9,8 @@ pub const VELOCITY_HORIZ_CAP_MS: f64 = 7.0;
 pub const V6_OVERSPEED_ACCOUNTING_EPS_MPS: f64 = 0.12;
 pub const V6_WPRIME_OVERSPEED_HYSTERESIS: f64 = 0.05;
 pub const V6_WPRIME_OVERSPEED_REARM: f64 = 0.40;
+/// Joules below this count as empty for AvailableP (match game V6_WPRIME_EMPTY_FLOOR_JOULES).
+pub const V6_WPRIME_EMPTY_FLOOR_JOULES: f64 = 5.0;
 pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
 pub const V6_ACSM_REST_W: f64 = 50.0;
@@ -25,6 +27,8 @@ pub const V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT: f64 = 0.09;
 pub const V6_WALK_DOWNHILL_COAST_FACTOR_MIN: f64 = 0.42;
 // Aerobic cruise hard cap (m/s): when W' unavailable, Run cannot exceed this. Walk exempt.
 pub const V6_AEROBIC_CRUISE_MAX_MS: f64 = 2.4;
+/// Run-intent CP-cruise floor: keep above Walk anim band (match game V6_RUN_GAIT_FLOOR_MS).
+pub const V6_RUN_GAIT_FLOOR_MS: f64 = 2.2;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;
 pub const LCDA_SPEED_FRAC_COEFF: f64 = 1.78;
@@ -54,6 +58,8 @@ pub const V6_SKIBA_ELITE_CP_THRESHOLD_W: f64 = 2000.0;
 pub const V6_W_PRIME_K_FAST: f64 = 0.15;
 pub const V6_W_PRIME_K_SLOW: f64 = 0.008;
 pub const V6_W_PRIME_LIM_RATIO: f64 = 0.5;
+/// W′ recovery only when P < CP − margin (no refill while holding CP cruise).
+pub const V6_W_PRIME_RECOVERY_POWER_MARGIN_W: f64 = 40.0;
 pub const V6_FATIGUE_I_MAX: f64 = 1.0;
 pub const V6_FATIGUE_INTEGRAL_SCALE: f64 = 0.000055;
 pub const V6_FATIGUE_K_RECOVERY: f64 = 0.0008;

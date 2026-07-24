@@ -4,7 +4,7 @@ use crate::constants::{
     MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
     RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
     SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
     V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
 };
@@ -965,8 +965,16 @@ impl RSSDigitalTwin {
                 tf,
                 run_phase,
             );
-            if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
+            if grade_percent < 0.0 {
+                // Match game: downhill skips flat 2.4 cruise ceiling
+                if cp_cap_ms > 0.05 {
+                    cruise_cap = cp_cap_ms;
+                }
+            } else if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
                 cruise_cap = cp_cap_ms;
+            }
+            if cruise_cap > 0.05 && cruise_cap < V6_RUN_GAIT_FLOOR_MS {
+                cruise_cap = V6_RUN_GAIT_FLOOR_MS;
             }
             if theoretical_target > cruise_cap {
                 theoretical_target = cruise_cap;
