@@ -29,6 +29,9 @@ pub const V6_WALK_DOWNHILL_COAST_FACTOR_MIN: f64 = 0.42;
 pub const V6_AEROBIC_CRUISE_MAX_MS: f64 = 2.4;
 /// Run-intent CP-cruise floor: keep above Walk anim band (match game V6_RUN_GAIT_FLOOR_MS).
 pub const V6_RUN_GAIT_FLOOR_MS: f64 = 2.2;
+/// Match game: do not clamp Physics velocity; only SetSpeedLimit.
+pub const V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP: bool = false;
+pub const V6_APPLY_HORIZONTAL_SPEED_CLAMP: bool = false;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;
 pub const LCDA_SPEED_FRAC_COEFF: f64 = 1.78;

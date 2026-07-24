@@ -1,9 +1,9 @@
-//! 模拟「目前现状」完整链路（对齐 2026-07-24 修复后游戏侧行为）
+//! 模拟「目前现状」完整链路（对齐 2026-07-24 游戏侧行为）
 //!
 //! 现状规则摘要：
 //! 1. W′ 施密特：≤25% 解除武装，须回 >60% 再武装
-//! 2. 解除武装后 Run 套 CP∩2.4 巡航限速（下坡不套 2.4）
-//! 3. 解除武装且非冲刺：W′ 放电功率钳到 CP（重力/物理超速不再抽 W′）
+//! 2. 解除武装后 Run 套 CP∩2.4 巡航限速，且不低于 V6_RUN_GAIT_FLOOR（2.2）
+//! 3. 解除武装且非冲刺：W′ 放电功率钳到 CP
 //! 4. 物理钳默认关（只走 SetSpeedLimit；V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=false）
 //!
 //! 运行：
@@ -233,18 +233,18 @@ fn main() {
     println!();
 
     run_scenario(Scenario {
-        name: "修前（无物理钳、超速仍抽 W′）",
+        name: "对比（曾开物理钳，已废弃）",
         intent_run_ms: 3.50,
-        physics_clamp: false,
-        wprime_cp_clamp: false,
+        physics_clamp: true,
+        wprime_cp_clamp: true,
         downhill_skip_cruise_max: true,
     });
     println!();
 
     run_scenario(Scenario {
-        name: "现状（物理钳 + W′放电钳CP）← 当前游戏",
+        name: "现状（无物理钳 + W′放电钳CP + Run地板2.2）← 当前游戏",
         intent_run_ms: 3.50,
-        physics_clamp: true,
+        physics_clamp: false,
         wprime_cp_clamp: true,
         downhill_skip_cruise_max: true,
     });
@@ -252,7 +252,8 @@ fn main() {
     println!();
     println!("解读:");
     println!("  • 武装阶段 v≈3.5，P≫CP → W′ 下降");
-    println!("  • 穿过 ≤25% 解除武装 → v_limit 落到 Invert(CP)≈1.8");
-    println!("  • 现状: v_meas 被拉回≈1.8，P_tick=CP → W′ 不再被跑飞抽干");
-    println!("  • 修前: v_meas 仍≈3.5，P_tick≫CP → W′ 继续掉到 0，且速度抖");
+    println!("  • 穿过 ≤25% 解除武装 → v_limit = max(Invert(CP), {V6_RUN_GAIT_FLOOR_MS})");
+    println!("  • 现状: 只写 SetSpeedLimit，不改 Physics；v_meas 可能略高于 v_limit");
+    println!("  • W′ 放电钳到 CP → 巡航不再被跑飞抽干");
+    println!("  • 对比档仅作历史：物理钳会压 v_meas 但实机会滑步，已默认关闭");
 }
