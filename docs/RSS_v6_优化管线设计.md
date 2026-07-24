@@ -136,7 +136,7 @@ python tools/test_v6_smoke.py
 ### Phase D — CI 与实机
 
 - [ ] pre-commit / CI：`validate` + `test_v6_smoke` + `check_script_size`  
-- [ ] Workbench 签核清单写入 `BIGBANG_READINESS.md`  
+- [ ] Workbench 实机签核：行军节奏、短冲 vs 抽干、代谢降速可读  
 
 ---
 
@@ -156,7 +156,7 @@ v4 管线 **保留** 作回归对照，新预设以 v6 为准。
 
 ## 8. 参考
 
-- `docs/RSS_v5_体力系统修改计划.md` Phase 3 约束表  
 - `tools/schemas/rss_params_v5.schema.json`  
 - `docs/RSS_v6_计算逻辑权威版.md`  
+- `tools/README.md`  
 - 实机诊断：`[RSS][Drain]` 的 `capRate` / `有效` / `观测`

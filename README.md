@@ -14,8 +14,6 @@
 - 完整中文说明（含历史版本记录与系统特性细则）：[README_CN.md](README_CN.md)
 - English overview：[README_EN.md](README_EN.md)
 
-> 【v6】主模型：Pandolf/ACSM → 动态 CP → W′ → `SCR_RSS_SpeedBridge`（与灌木减速取 min）。**已移除**意志力平台期。详情见中文 README「核心闭环」与 [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)。
-
 ## 作者信息
 
 - **作者**: ViVi141

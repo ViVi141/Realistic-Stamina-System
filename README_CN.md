@@ -149,7 +149,6 @@ Realistic-Stamina-System/
 ├── README.md / README_CN.md / README_EN.md
 ├── AUTHORS.md / CONTRIBUTING.md / CHANGELOG.md
 ├── addon.gproj                           # GUID 68649101601CC93D
-├── WORKSHOP_CHANGENOTE_*.txt
 ├── Assets/                               # 资源
 ├── Configs/EntityCatalog/                # 军火库条目登记
 ├── Prefabs/
@@ -350,7 +349,7 @@ Realistic-Stamina-System/
 
 ### 📚 文档
 
-- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) 补充战术冲刺、室内楼梯、坡度过渡、镜头与头部物理等小节与常量表。
+- 战术冲刺、室内楼梯、坡度过渡、镜头与头部物理等说明已并入现行源码与 [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)（旧版计算逻辑归档已删除）。
 
 ---
 
@@ -421,12 +420,11 @@ Realistic-Stamina-System/
 
 ## 技术文档 / Technical Documentation
 
-**配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。详见 [docs/config_sync_summary.md](docs/config_sync_summary.md)。
+**配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。
 
 - **[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)** - v6.0.0 CP–W′ 计算逻辑（权威）
-- **[docs/体力系统计算逻辑文档.md](docs/体力系统计算逻辑文档.md)** - 历史归档（v3/v5）
-- **[docs/数字孪生优化器计算逻辑文档.md](docs/数字孪生优化器计算逻辑文档.md)** - 数字孪生仿真器公式与决策树
-- **[tools/README.md](tools/README.md)** - 工具集完整文档
+- **[docs/RSS_v6_优化管线设计.md](docs/RSS_v6_优化管线设计.md)** - v6 优化管线与约束
+- **[tools/README.md](tools/README.md)** - 工具集与数字孪生入口
 
 ## 技术实现
 

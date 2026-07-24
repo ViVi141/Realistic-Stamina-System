@@ -88,7 +88,7 @@ CP–W′ rewrite; remove willpower plateau; unified metabolism; SpeedBridge fol
 
 ### 📚 Docs
 
-- [体力系统计算逻辑文档](docs/体力系统计算逻辑文档.md) updated with tactical sprint, indoor stairs, slope transition, camera/head bob sections and constant tables.
+- Tactical sprint, indoor stairs, slope transition, and camera/head bob notes now live in source and `docs/RSS_v6_计算逻辑权威版.md` (legacy stamina-logic archives removed).
 
 ## v3.12.0 Updates
 
