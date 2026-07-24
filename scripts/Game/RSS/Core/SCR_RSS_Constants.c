@@ -645,9 +645,10 @@ class SCR_RSS_Constants
     //! dI/dt 缩放（原 0.0001 过快顶满 70% cap）
     static const float V6_FATIGUE_INTEGRAL_SCALE = 0.000055;
 
-    //! Sprint 有氧 STA 扣减校准（W′ 放电时叠加 WPRIME 系数）
-    static const float V6_SPRINT_AEROBIC_DRAIN_FACTOR = 0.72;
-    static const float V6_SPRINT_WPRIME_STA_RELIEF = 0.65;
+    //! Sprint 有氧 STA：1.0 = 无减免（与 Run 同功率→同有氧扣减；勿再人为让连续冲刺更耐耗）
+    static const float V6_SPRINT_AEROBIC_DRAIN_FACTOR = 1.0;
+    //! W′ 放电时 Sprint STA 附加系数：1.0 = 无额外减免
+    static const float V6_SPRINT_WPRIME_STA_RELIEF = 1.0;
 
     //! @deprecated v6 玩家速度不再使用 Minetti 指数；AI 迁移后删除
     static const float STAMINA_EXPONENT_LEGACY = 0.6;
