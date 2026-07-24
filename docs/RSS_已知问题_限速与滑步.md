@@ -17,7 +17,12 @@
 - **根因倾向**：`ClampOwnerHorizontalSpeed` / `PrepareControls` 每帧拧 `Physics` 水平速度，使位移与相位动画顶速脱节 → 滑步。
 - **原则**：**只** `SetSpeedLimit` 合并限速；**禁止**直接改 `Physics` 速度（含曾加的 `EnforceCpCruisePhysicsCap`）。
 - **Run 地板**：W′ 解除武装后 CP 反解若把 Run 压到 ≤~1.9 m/s，引擎易播 Walk 动画 → 用 `V6_RUN_GAIT_FLOOR_MS` 托住。
-- 问题 2 状态：**按原则关闭物理钳**；`v_meas` 偶发高于 `v_limit` 属 `SetSpeedLimit` 只压指令速的引擎限制，用代谢记账吸收，不以物理钳强压。
+- **引擎顶速分母（试跑）**：`V6_ENGINE_TOP_LIVE_SAMPLE=true` 时每 tick `GetMaxSpeed` **不解限**取相位顶，再算 `frac`；首次仍解限标定一次。若 live ≪ 标定（&lt;`V6_ENGINE_TOP_LIVE_MIN_RATIO`）则回退标定，避免 `GetMaxSpeed` 被 `OverrideMaxSpeed` 缩放导致 frac→1。改回 `false` 即旧「只缓存一次」路径。
+- **MovementMaxSpeed（试跑）**：`V6_TRY_MOVEMENT_MAX_SPEED` **默认 false**（实机无效：v_meas 仍≈引擎 Run 顶）。保留代码路径供复测。
+- **Run 有氧巡航压速**：平路/上坡 Run（含「有 W′ 但不冲刺」）一律 `min(意图, CP反解, V6_AEROBIC_CRUISE_MAX_MS)` + Run 地板；**仅真 Sprint+W′ 武装**可超巡航顶。修复前：W′ 武装时跳过巡航 → 日志常见 `v_limit≈3.2` 狂烧 W′。
+- **日志语义**：`超速记账=on(phys)` = `v_meas > v_limit+ε`（物理跑飞）；`on(sprint)` = 冲刺且 W′ 可超速记账。旧版仅在冲刺时显示 on，Run 跑飞会误显示 off。
+- **非冲刺 W′**：纯 Run 时 `TickPower` 功率钳到 CP，避免物理仍 ~3.1 时靠烧 W′ 维持引擎顶。
+- 问题 2 状态：**按原则关闭物理钳**；`v_limit≈2.2` 而 `v_meas≈3.1` 属指令限速已生效、物理未贴限；要贴测速只能再开物理钳（滑步风险）。
 
 ---
 

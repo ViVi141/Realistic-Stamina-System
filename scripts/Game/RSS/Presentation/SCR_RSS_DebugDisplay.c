@@ -954,12 +954,14 @@ class SCR_RSS_DebugDisplay
             tick.currentSpeed, tick.appliedSpeedLimitMs, tick.wPrimePool01, tick.isSprinting);
 
         string overspeedStr = "off";
-        if (tick.isSprinting
-            && SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
-                tick.currentSpeed, tick.appliedSpeedLimitMs)
-            && SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
+        if (SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+            tick.currentSpeed, tick.appliedSpeedLimitMs))
         {
-            overspeedStr = "on";
+            if (tick.isSprinting
+                && SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
+                overspeedStr = "on(sprint)";
+            else
+                overspeedStr = "on(phys)";
         }
 
         string line3Head = string.Format(

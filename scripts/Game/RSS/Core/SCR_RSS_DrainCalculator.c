@@ -221,8 +221,7 @@ class SCR_RSS_DrainCalculator
     }
 
     //! v6：代谢功率超可用功率时压速。
-    //! Walk/Run：W′ 仍可用时不硬压到 CP（步态速度优先，超额由 W′/有氧承担）；
-    //! W′ 耗尽后才反解到 CP。Sprint 仍用 availableP（含 W′ 预算）。
+    //! Walk/Run：一律按 CP∩有氧巡航顶压速（W′ 不得用来维持引擎 Run 顶）；Sprint+武装才用 availableP。
     //! @param speedForPowerEvalMs 用于判断是否超功率的速度；应优先用意图限速，避免 v_meas 噪声追着压速
     static float GetMetabolicSpeedCapMs(
         float currentSpeedMs,
@@ -264,25 +263,29 @@ class SCR_RSS_DrainCalculator
         if (!overspeedArmed)
             isSprintPhase = false;
 
-        if (!isSprintPhase && cpModel)
-        {
-            if (overspeedArmed)
-                return -1.0;
-        }
-
         float availableP = cp;
-        if (cpModel)
-            availableP = cpModel.GetAvailablePowerWatts(isSprintPhase, 0.017, worldTimeSec);
+        if (cpModel && isSprintPhase)
+            availableP = cpModel.GetAvailablePowerWatts(true, 0.017, worldTimeSec);
 
         if (powerW <= availableP + 1.0)
+        {
+            // 即使功率未超 availableP，非冲刺仍须钳在有氧巡航顶以下（防引擎 Run 顶 ~3.8）
+            if (!isSprintPhase && movementPhase != 1 && gradePercent >= 0.0)
+            {
+                float cruiseOnly = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+                cruiseOnly = ApplyRunGaitFloorToCruiseCapMs(cruiseOnly, 2);
+                if (evalSpeed > cruiseOnly + 0.05)
+                    return cruiseOnly;
+            }
             return -1.0;
+        }
 
         float targetP = availableP;
         if (powerW > cp && !isSprintPhase)
             targetP = cp;
 
         int invertPhase = movementPhase;
-        if (!overspeedArmed)
+        if (!isSprintPhase)
         {
             invertPhase = 2;
             if (movementPhase == 1)
@@ -291,7 +294,7 @@ class SCR_RSS_DrainCalculator
 
         float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             targetP, totalWeightKg, gradePercent, terrainFactor, invertPhase);
-        // Walk 不套有氧巡航硬顶；平路/上坡 Run 在 W′ 不可用时不得超过 2.4；下坡只按 CP 反解
+        // Walk 不套有氧巡航硬顶；平路/上坡 Run 不得超过 2.4；下坡只按 CP 反解
         if (!isSprintPhase && invertPhase != 1)
         {
             if (gradePercent >= 0.0)

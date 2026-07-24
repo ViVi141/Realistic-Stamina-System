@@ -569,6 +569,15 @@ class SCR_RSS_Constants
     //! true：步态目标用 March 档（Walk/Run/Sprint ≈ 1.4/2.8/4.5，可经预设改）。
     //! false：步态目标用引擎空载顶（Walk/Run/Sprint ≈ 1.45/3.8/5.5），仍乘负重与坡度。
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
+    //! true：每帧用 GetMaxSpeed 实时取相位顶速算 SetSpeedLimit 因数（不抬限到 1.0）。
+    //! false：沿用「解限测一次后缓存」旧路径。
+    //! 若实测限速失效（frac 趋近 1），说明 GetMaxSpeed 已被 OverrideMaxSpeed 缩放，应改回 false。
+    static const bool V6_ENGINE_TOP_LIVE_SAMPLE = true;
+    //! 实时读数相对「一次解限标定」低于此比例时，视为被限速污染，回退标定缓存。
+    static const float V6_ENGINE_TOP_LIVE_MIN_RATIO = 0.90;
+    //! true：试跑 CharacterMovementComponent.SetMovementMaxSpeed(绝对 m/s)，与 SetSpeedLimit 并行。
+    //! 单位若非 m/s 或导致滑步/锁死，改 false。销毁/关限速时恢复原生 GetMovementMaxSpeed。
+    static const bool V6_TRY_MOVEMENT_MAX_SPEED = false;
     //! 引擎 Walk 顶速回退（m/s）；与实机空载 Walk 顶接近
     static const float ENGINE_WALK_TOP_MS = 1.45;
     //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。

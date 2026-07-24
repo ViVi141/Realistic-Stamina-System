@@ -46,6 +46,69 @@ class SCR_RSS_SpeedBridge
         return SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS;
     }
 
+    //! 是否试跑 MovementComponent 绝对顶速（见 V6_TRY_MOVEMENT_MAX_SPEED）。
+    static bool IsMovementMaxSpeedTrialEnabled()
+    {
+        return SCR_RSS_Constants.V6_TRY_MOVEMENT_MAX_SPEED;
+    }
+
+    static CharacterMovementComponent ResolveCharacterMovement(IEntity owner)
+    {
+        if (!owner)
+            return null;
+
+        CharacterEntity charEnt = CharacterEntity.Cast(owner);
+        if (charEnt)
+        {
+            CharacterMovementComponent fromEnt = charEnt.GetMovementComponent();
+            if (fromEnt)
+                return fromEnt;
+        }
+
+        return CharacterMovementComponent.Cast(owner.FindComponent(CharacterMovementComponent));
+    }
+
+    //! 将绝对 m/s 写入 MovementMaxSpeed；首次调用应先 CaptureNativeMovementMaxSpeed。
+    static void ApplyAbsoluteMovementMaxSpeed(IEntity owner, float absMs)
+    {
+        if (!IsMovementMaxSpeedTrialEnabled())
+            return;
+        if (!owner)
+            return;
+        if (absMs < 0.1)
+            absMs = 0.1;
+        if (absMs > SCR_RSS_MetabolismMath.GAME_MAX_SPEED)
+            absMs = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+
+        CharacterMovementComponent move = ResolveCharacterMovement(owner);
+        if (!move)
+            return;
+
+        move.SetMovementMaxSpeed(absMs);
+    }
+
+    static float CaptureNativeMovementMaxSpeed(IEntity owner)
+    {
+        CharacterMovementComponent move = ResolveCharacterMovement(owner);
+        if (!move)
+            return -1.0;
+        return move.GetMovementMaxSpeed();
+    }
+
+    static void RestoreNativeMovementMaxSpeed(IEntity owner, float nativeMs)
+    {
+        if (!owner)
+            return;
+        if (nativeMs < 0.0)
+            return;
+
+        CharacterMovementComponent move = ResolveCharacterMovement(owner);
+        if (!move)
+            return;
+
+        move.SetMovementMaxSpeed(nativeMs);
+    }
+
     //! 将 RSS 体力速度倍率写入角色限速图（与灌木/铁丝网等取全局最小值）。
     //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)

@@ -447,6 +447,9 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
     protected float m_fLastRssEngineBaseForLimit = 0.0;
     protected float m_fAppliedSpeedLimitMs = -1.0;
+    //! V6_TRY_MOVEMENT_MAX_SPEED：首次采样的原生 MovementMaxSpeed，用于恢复
+    protected float m_fRssNativeMovementMaxSpeed = -1.0;
+    protected bool m_bRssNativeMovementMaxSpeedCaptured = false;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected float m_fLastSpeedSlewTimeSec = -1.0;
     protected float m_fSmoothedGradePercentForSpeed = 0.0;
@@ -521,6 +524,7 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
             m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+            RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
         }
 
         m_bRssStaminaLoopActive = false;
@@ -634,6 +638,62 @@ modded class SCR_CharacterControllerComponent
         return m_pEnvironmentFactor;
     }
 
+    //! V6_TRY_MOVEMENT_MAX_SPEED：按绝对 m/s 写 MovementMaxSpeed
+    protected void RSS_ApplyTrialMovementMaxSpeed(IEntity owner, float absMs)
+    {
+        if (!SCR_RSS_SpeedBridge.IsMovementMaxSpeedTrialEnabled())
+            return;
+        if (!owner)
+            return;
+
+        if (!m_bRssNativeMovementMaxSpeedCaptured)
+        {
+            float nativeMs = SCR_RSS_SpeedBridge.CaptureNativeMovementMaxSpeed(owner);
+            if (nativeMs >= 0.0)
+            {
+                m_fRssNativeMovementMaxSpeed = nativeMs;
+                m_bRssNativeMovementMaxSpeedCaptured = true;
+            }
+        }
+
+        // 原生若像「倍率」(≤1.5) 而非 m/s，则按相位顶换算，避免把顶速写成 0.8 这种假绝对值
+        float writeMs = absMs;
+        if (m_bRssNativeMovementMaxSpeedCaptured && m_fRssNativeMovementMaxSpeed > 0.0
+            && m_fRssNativeMovementMaxSpeed <= 1.5)
+        {
+            float phaseTop = m_fLastRssEngineBaseForLimit;
+            if (phaseTop < 0.1)
+                phaseTop = GetRssSpeedLimitEngineBaseMs();
+            if (phaseTop < 0.1)
+                phaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+            float frac = absMs / phaseTop;
+            if (frac > 1.0)
+                frac = 1.0;
+            if (frac < 0.01)
+                frac = 0.01;
+            writeMs = m_fRssNativeMovementMaxSpeed * frac;
+        }
+        else if (m_bRssNativeMovementMaxSpeedCaptured && m_fRssNativeMovementMaxSpeed > 1.5)
+        {
+            if (writeMs > m_fRssNativeMovementMaxSpeed)
+                writeMs = m_fRssNativeMovementMaxSpeed;
+        }
+
+        SCR_RSS_SpeedBridge.ApplyAbsoluteMovementMaxSpeed(owner, writeMs);
+    }
+
+    protected void RSS_RestoreNativeMovementMaxSpeed(IEntity owner)
+    {
+        if (!m_bRssNativeMovementMaxSpeedCaptured)
+            return;
+        if (!owner)
+            return;
+
+        SCR_RSS_SpeedBridge.RestoreNativeMovementMaxSpeed(owner, m_fRssNativeMovementMaxSpeed);
+        m_bRssNativeMovementMaxSpeedCaptured = false;
+        m_fRssNativeMovementMaxSpeed = -1.0;
+    }
+
     float GetOriginalEngineMaxSpeed_Run()
     {
         return GetDynamicOriginalEngineMaxSpeed(2);
@@ -673,31 +733,60 @@ modded class SCR_CharacterControllerComponent
         return GetOriginalEngineMaxSpeed_Run();
     }
 
-    //! 缓存各相位顶速；禁止每 tick 临时 SetSpeedLimit(1.0)，否则控制器会趁机加速成滑步
-    //! 只测一次：周期性抬限到 1.0 会经 Chimera 瞬间 OverrideMaxSpeed(1) → 速度尖峰/抖动
+    //! 一次解限标定的相位顶速（不随 OverrideMaxSpeed 缩小的参考）
+    //! 禁止周期性 SetSpeedLimit(1.0)：会瞬间 OverrideMaxSpeed(1) → 尖峰/滑步
     protected float m_fCachedEngineMaxWalkMs = -1.0;
     protected float m_fCachedEngineMaxRunMs = -1.0;
     protected float m_fCachedEngineMaxSprintMs = -1.0;
+    protected bool m_bEngineTopUncappedCalibrated = false;
 
-    protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
+    protected float GetEngineTopFallbackMs(int movementPhase)
     {
-        float fallback = SCR_RSS_MetabolismMath.GAME_MAX_SPEED * SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
         if (movementPhase == 3)
-            fallback = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-        else if (movementPhase == 1)
-            fallback = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+            return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        if (movementPhase == 1)
+            return SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        return SCR_RSS_MetabolismMath.GAME_MAX_SPEED * SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+    }
 
-        if (movementPhase == 3 && m_fCachedEngineMaxSprintMs > 0.5)
+    protected float GetCachedEngineTopMs(int movementPhase)
+    {
+        if (movementPhase == 3)
             return m_fCachedEngineMaxSprintMs;
-        if (movementPhase == 1 && m_fCachedEngineMaxWalkMs > 0.5)
+        if (movementPhase == 1)
             return m_fCachedEngineMaxWalkMs;
-        if (movementPhase == 2 && m_fCachedEngineMaxRunMs > 0.5)
-            return m_fCachedEngineMaxRunMs;
-        if (movementPhase != 1 && movementPhase != 3 && m_fCachedEngineMaxRunMs > 0.5)
-            return m_fCachedEngineMaxRunMs;
+        return m_fCachedEngineMaxRunMs;
+    }
 
+    //! 不解限读取动画相位顶速（可每 tick 调用）
+    protected void SampleLiveEngineTops(out float walkMs, out float runMs, out float sprintMs)
+    {
+        walkMs = -1.0;
+        runMs = -1.0;
+        sprintMs = -1.0;
         if (!m_pAnimComponent)
-            return fallback;
+            return;
+        walkMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 1);
+        runMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
+        sprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
+    }
+
+    protected float PickLiveEngineTopMs(int movementPhase, float walkMs, float runMs, float sprintMs)
+    {
+        if (movementPhase == 3)
+            return sprintMs;
+        if (movementPhase == 1)
+            return walkMs;
+        return runMs;
+    }
+
+    //! 仅首次：短暂抬限到 1.0 标定真实顶速（之后实时路径用此缓存做污染检测）
+    protected void CalibrateUncappedEngineTopsOnce()
+    {
+        if (m_bEngineTopUncappedCalibrated)
+            return;
+        if (!m_pAnimComponent)
+            return;
 
         IEntity ownerEnt = GetOwner();
         float restoreMult = m_fLastRssSpeedMultiplierApplied;
@@ -713,21 +802,63 @@ modded class SCR_CharacterControllerComponent
         m_fCachedEngineMaxRunMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
         m_fCachedEngineMaxSprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
         SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, restoreMult);
+        m_bEngineTopUncappedCalibrated = true;
+    }
 
-        if (movementPhase == 3)
+    protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
+    {
+        float fallback = GetEngineTopFallbackMs(movementPhase);
+
+        if (!m_pAnimComponent)
         {
-            if (m_fCachedEngineMaxSprintMs > 0.5)
-                return m_fCachedEngineMaxSprintMs;
+            float cachedOnly = GetCachedEngineTopMs(movementPhase);
+            if (cachedOnly > 0.5)
+                return cachedOnly;
             return fallback;
         }
-        if (movementPhase == 1)
+
+        // 实时路径：不解限 GetMaxSpeed → 算 OverrideMaxSpeed 因数分母
+        if (SCR_RSS_Constants.V6_ENGINE_TOP_LIVE_SAMPLE)
         {
-            if (m_fCachedEngineMaxWalkMs > 0.5)
-                return m_fCachedEngineMaxWalkMs;
+            CalibrateUncappedEngineTopsOnce();
+
+            float liveWalk;
+            float liveRun;
+            float liveSprint;
+            SampleLiveEngineTops(liveWalk, liveRun, liveSprint);
+            float live = PickLiveEngineTopMs(movementPhase, liveWalk, liveRun, liveSprint);
+            float uncapped = GetCachedEngineTopMs(movementPhase);
+
+            if (live > 0.5)
+            {
+                // live 接近解限标定 → API 不受 OverrideMaxSpeed 影响，可用实时值（含姿态变化）
+                if (uncapped <= 0.5)
+                    return live;
+
+                float minRatio = SCR_RSS_Constants.V6_ENGINE_TOP_LIVE_MIN_RATIO;
+                if (minRatio < 0.5)
+                    minRatio = 0.5;
+                if (live >= uncapped * minRatio)
+                    return live;
+
+                // live 明显低于标定 → 多半已被当前限速缩放，回退解限缓存避免 frac→1
+                return uncapped;
+            }
+
+            if (uncapped > 0.5)
+                return uncapped;
             return fallback;
         }
-        if (m_fCachedEngineMaxRunMs > 0.5)
-            return m_fCachedEngineMaxRunMs;
+
+        // 旧路径：缓存命中则直接返回；否则解限测一次
+        float cached = GetCachedEngineTopMs(movementPhase);
+        if (cached > 0.5)
+            return cached;
+
+        CalibrateUncappedEngineTopsOnce();
+        cached = GetCachedEngineTopMs(movementPhase);
+        if (cached > 0.5)
+            return cached;
         return fallback;
     }
 
@@ -1195,6 +1326,7 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
             m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+            RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
         }
 
         RSS_RemoveScheduledCallbacks();

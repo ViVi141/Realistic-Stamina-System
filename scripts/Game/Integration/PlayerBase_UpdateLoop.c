@@ -419,6 +419,7 @@ modded class SCR_CharacterControllerComponent
         {
             // 试跑：清掉体力限速源，不硬钳；代谢用 v_meas（applied=-1）
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, 1.0);
+            RSS_RestoreNativeMovementMaxSpeed(loc.owner);
             m_fAppliedSpeedLimitMs = -1.0;
             m_fLastRssSpeedMultiplierApplied = 1.0;
         }
@@ -443,6 +444,7 @@ modded class SCR_CharacterControllerComponent
             if (m_fLastRssSpeedMultiplierApplied < 0.01)
                 m_fLastRssSpeedMultiplierApplied = 0.01;
             SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
+            RSS_ApplyTrialMovementMaxSpeed(loc.owner, safeCap);
 
             // CP 巡航：SetSpeedLimit 只改指令速，物理仍可跑飞 → 超速时钳水平速度
             bool cruiseDisarmed = false;
@@ -689,14 +691,12 @@ modded class SCR_CharacterControllerComponent
                     }
 
                     // 解除武装且非冲刺：W′ 放电功率钳到 CP，避免下坡 v_meas≫v_limit 时无氧池被重力超速抽干
+                    // 非冲刺（纯 Run）：即使 W′ 武装也不按跑飞 v_meas 烧 W′——W′ 只服务真冲刺
                     if (!loc.isSprintActive)
                     {
-                        if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
-                        {
-                            float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
-                            if (cpClamp > 1.0 && powerW > cpClamp)
-                                powerW = cpClamp;
-                        }
+                        float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
+                        if (cpClamp > 1.0 && powerW > cpClamp)
+                            powerW = cpClamp;
                     }
                 }
 
