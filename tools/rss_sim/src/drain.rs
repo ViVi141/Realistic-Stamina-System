@@ -37,7 +37,16 @@ pub fn is_wprime_pool_available_for_overspeed(
     w_prime_pool01: f64,
     threshold: f64,
 ) -> bool {
-    w_prime_pool01 > threshold + crate::constants::V6_WPRIME_OVERSPEED_HYSTERESIS
+    // Stateless approx: match game float overload (rearm band, not disarm+hysteresis).
+    w_prime_pool01 > threshold + crate::constants::V6_WPRIME_OVERSPEED_REARM
+}
+
+pub fn get_epoc_sample_velocity_ms(measured_ms: f64, applied_limit_ms: f64) -> f64 {
+    let mut v = measured_ms.max(0.0);
+    if applied_limit_ms > 0.05 && v > applied_limit_ms {
+        v = applied_limit_ms;
+    }
+    v
 }
 
 pub fn get_metabolic_accounting_velocity_ms(

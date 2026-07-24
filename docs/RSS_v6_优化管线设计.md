@@ -120,9 +120,18 @@ python tools/test_v6_smoke.py
 ### Phase C — 标定与分档
 
 - [x] Elite `energy_to_stamina_coeff` 联合标定：4h Walk `aerobic_end ≥ 0.20` + Run obs band（`rss_pipeline_v6.py calibrate`）
-- [ ] 其余 preset 按比例或独立标定；`optimize` NSGA-II 微调 combat/recovery  
-- [ ] 三档 v6 JSON → `embed_json_to_c.py` + `SCR_RSS_Params`  
-- [ ] `bench_35kg_presets.py` 改用 v6 metrics 报告  
+- [x] 三档 `optimize-tiers`（300 trials/档 + repair）→ `optimized_rss_config_*_v6.json`（及配套 v4）
+- [x] `embed_json_to_c.py` → `SCR_RSS_SettingsPresetBake.c`（2026-07-24）
+- [ ] `bench_35kg_presets.py` 改用 v6 metrics 报告（可选）
+- [ ] 软指标 combat/recovery 严格单调仍可能 WARN；以 **硬约束 + enc/w_rec 阶梯** 为准，实机签核
+
+正式导出命令：
+
+```bash
+python tools/rss_pipeline_v6.py optimize-tiers --trials 300 --jobs 4 --output tools/ --embed-c
+python tools/rss_pipeline_v6.py validate
+python tools/test_v6_smoke.py
+```
 
 ### Phase D — CI 与实机
 

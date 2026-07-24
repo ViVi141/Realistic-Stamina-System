@@ -1,7 +1,7 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
 记录日期：2026-07-24  
-更新：2026-07-24 — **关死 CP 巡航物理钳**（`V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=false`）：与水平硬钳同原则，只走 `SetSpeedLimit`。另：**Run 步态地板** `V6_RUN_GAIT_FLOOR_MS=2.2`。此前：下坡不套 2.4；解除武装后 W′ 钳到 CP；EPOC 限速内采样。
+更新：2026-07-24 — **疲劳/无状态门**：`P_fat` 改用意速（同 EPOC）；float 超速门改再武装带。关死 CP 巡航物理钳；Run 步态地板 2.2。
 
 相关试跑开关（`SCR_RSS_Constants`）：
 

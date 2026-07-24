@@ -208,10 +208,97 @@ fn main() {
         }
     }
 
+    // ── BUG8: 无物理钳时疲劳不得按跑飞 v_meas 积分 ──
+    {
+        let cp_eff = compute_cp_watts(941.7, load, grade, 1.0, 1.0);
+        let v_lim = cruise_v(cp_eff, total, grade, true);
+        let v_runaway = 3.50;
+        let p_intent = rss_sim::cp_wprime::fatigue_power_for_integral(
+            v_runaway, v_lim, total, grade, 1.0, RUN,
+        );
+        let p_raw = metabolism_power_watts(v_runaway, total, grade, 1.0, RUN);
+        println!(
+            "[用例8] 疲劳采样: v_meas={v_runaway:.2} v_lim={v_lim:.2}  P_fat意图={p_intent:.0}  若用v_meas={p_raw:.0}  CP={cp_eff:.0}"
+        );
+        if p_intent > cp_eff * 1.35 && (p_intent - p_raw).abs() < 50.0 {
+            bugs.push(Bug {
+                id: "FATIGUE_USES_RUNAWAY_VMEAS",
+                severity: "高",
+                detail: format!(
+                    "解除武装后 v_meas≫v_limit 时 P_fat 仍按跑飞={p_raw:.0}W（意图应≈{:.0}），If 虚高压 CP",
+                    metabolism_power_watts(v_lim, total, grade, 1.0, RUN)
+                ),
+            });
+        }
+        if (p_intent - metabolism_power_watts(v_lim, total, grade, 1.0, RUN)).abs() > 30.0 {
+            bugs.push(Bug {
+                id: "FATIGUE_INTENT_MISMATCH",
+                severity: "中",
+                detail: format!("P_fat={p_intent:.0} 应贴近限速功率"),
+            });
+        }
+    }
+
+    // ── BUG9: 无状态超速门须对齐再武装带（非 disarm+0.05）──
+    {
+        let pool = 0.29;
+        let float_ok = rss_sim::drain::is_wprime_pool_available_for_overspeed(pool, thresh);
+        let armed = refresh_wprime_overspeed_armed(pool, false, thresh);
+        println!(
+            "[用例9] 无状态超速门: pool={:.0}% float_ok={float_ok} schmitt_armed={armed}  (期望均 false)",
+            pool * 100.0
+        );
+        if float_ok || armed {
+            bugs.push(Bug {
+                id: "FLOAT_OVERSPEED_GATE_IGNORES_SCHMITT",
+                severity: "中",
+                detail: format!(
+                    "池 29% 时 float_ok={float_ok} armed={armed}，调试/回退路径会误判仍可超速记账"
+                ),
+            });
+        }
+    }
+
+    // ── BUG10: 步态地板处 P>CP 但解除武装不抽 W′（设计核对）──
+    {
+        let cp_eff = compute_cp_watts(941.7, load, grade, 1.0, 1.0);
+        let v_floor = V6_RUN_GAIT_FLOOR_MS;
+        let p_floor = metabolism_power_watts(v_floor, total, grade, 1.0, RUN);
+        let mut cp = elite_cp_state(load, grade, 1.0);
+        cp.w_prime_joules = cp.w_prime_max_joules * 0.24;
+        cp.overspeed_armed = false;
+        let pool0 = cp.pool01();
+        let p_tick = cp_eff.min(p_floor);
+        for i in 0..100 {
+            cp.tick(p_tick, false, i as f64 * DT, DT, v_floor);
+        }
+        let d = (cp.pool01() - pool0) * 100.0;
+        println!(
+            "[用例10] 地板巡航: v={v_floor} P_met={p_floor:.0}>CP={cp_eff:.0}  P_tick={p_tick:.0}  ΔW'={d:+.2}%  (期望≈0)"
+        );
+        if d < -1.0 {
+            bugs.push(Bug {
+                id: "GAIT_FLOOR_DRAINS_WPRIME",
+                severity: "中",
+                detail: format!("地板速度下 W′ 仍被抽 {d:.1}%"),
+            });
+        }
+    }
+
+    // ── 注记: Skiba 快相渐近 50% < 再武装 60% ──
+    {
+        println!(
+            "[注记] Skiba lim=50% < rearm={:.0}%：休息快相到不了再武装，须慢相爬升（非回归失败）",
+            rearm_at * 100.0
+        );
+    }
+
     println!();
     if bugs.is_empty() {
         println!("========== 拟真回归：未发现未修复问题 ==========");
-        println!("已验证: P=CP 不回充 W′ / 施密特禁 Sprint / 空池 AvailableP=CP / 下坡跳过 2.4 / Run 步态地板");
+        println!(
+            "已验证: P≈CP 不回充 / 施密特 / 空池 AvailableP / 下坡2.4 / Run地板 / 疲劳意图速 / 无状态门"
+        );
     } else {
         println!("========== 发现 {} 个问题 ==========", bugs.len());
         for (i, b) in bugs.iter().enumerate() {

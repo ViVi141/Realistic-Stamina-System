@@ -40,7 +40,8 @@ class SCR_RSS_DrainCalculator
             vAcct, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
     }
 
-    //! 疲劳积分功率（W）：与记账同用 v_meas
+    //! 疲劳积分功率（W）：与 EPOC 相同，用限速内意图速度。
+    //! 硬钳关时 v_meas 可远超 v_limit；若按跑飞速度积 If，会在解除武装巡航时虚高疲劳、压低 CP。
     static float GetMetabolicFatiguePowerWatts(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
@@ -49,9 +50,9 @@ class SCR_RSS_DrainCalculator
         float terrainFactor,
         int movementPhase)
     {
-        float vDrain = GetDrainVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
+        float vFat = GetEpocSampleVelocityMs(measuredSpeedMs, appliedSpeedLimitMs);
         return SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            vDrain, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+            vFat, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
     }
 
     //! EPOC 峰值采样速度：限速内意图速度（硬钳关时 v_meas 可远超 v_limit，不能按跑飞速度记氧债）
@@ -99,12 +100,12 @@ class SCR_RSS_DrainCalculator
     }
 
     //! W′ 池是否仍可支撑「超限速按 v_meas 记账」
-    //! 无 CP 模型时的无状态近似；有模型时请用带 cpModel 的重载（施密特闩锁）
+    //! 无 CP 模型时的无状态近似：须过再武装带（非 disarm 线），避免 25–60% 误判仍可超速
     static bool IsWPrimePoolAvailableForOverspeed(float wPrimePool01)
     {
         float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
-        float enableAt = threshold + SCR_RSS_Constants.V6_WPRIME_OVERSPEED_HYSTERESIS;
-        return wPrimePool01 > enableAt;
+        float rearmAt = threshold + SCR_RSS_Constants.V6_WPRIME_OVERSPEED_REARM;
+        return wPrimePool01 > rearmAt;
     }
 
     //! 施密特：关闭带 disarm，再武装带 rearm，避免阈值附近均速被抬高

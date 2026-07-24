@@ -10,7 +10,7 @@ use crate::constants::{
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
-    get_drain_velocity_ms, get_metabolic_corrected_speed_multiplier,
+    get_drain_velocity_ms, get_epoc_sample_velocity_ms, get_metabolic_corrected_speed_multiplier,
 };
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
@@ -1221,7 +1221,7 @@ impl RSSDigitalTwin {
         if current_speed_ms >= RSS_IDLE_SPEED_THRESHOLD_MPS {
             let load_kg = (current_weight - self.constants.character_weight).max(0.0);
             let mov_phase = self._movement_phase_from_type(engine_movement_phase);
-            let fatigue_v = get_drain_velocity_ms(current_speed_ms, limit_for_power_ms);
+            let fatigue_v = get_epoc_sample_velocity_ms(current_speed_ms, limit_for_power_ms);
             let power_fat = metabolism_power_watts_damped(
                 fatigue_v,
                 current_weight,

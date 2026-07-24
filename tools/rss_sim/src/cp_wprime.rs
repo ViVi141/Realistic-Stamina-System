@@ -1,14 +1,13 @@
 use crate::constants::{
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_BURST_COOLDOWN_FULL_DEFAULT,
-    V5_BURST_COOLDOWN_SHORT_DEFAULT, V5_BURST_EARLY_RELEASE_BONUS, V5_TACTICAL_SHORT_BURST_SEC,
-    V6_CP_ENV_FLOOR, V6_CRITICAL_POWER_WATTS_DEFAULT, V6_SKIBA_ELITE_CP_THRESHOLD_W,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_TACTICAL_SHORT_BURST_SEC, V6_CP_ENV_FLOOR,
+    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_SKIBA_ELITE_CP_THRESHOLD_W,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, V6_W_PRIME_K_FAST, V6_W_PRIME_K_SLOW,
     V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT, V6_W_PRIME_LIM_RATIO,
     V6_W_PRIME_RECOVERY_POWER_MARGIN_W, V6_WPRIME_EMPTY_FLOOR_JOULES,
 };
 use crate::drain::{
-    get_drain_velocity_ms, is_metabolic_overspeed_accounting, is_wprime_pool_available_for_overspeed,
-    refresh_wprime_overspeed_armed,
+    get_epoc_sample_velocity_ms, is_metabolic_overspeed_accounting,
+    is_wprime_pool_available_for_overspeed, refresh_wprime_overspeed_armed,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{compute_cp_watts, invert_speed_for_power_watts};
@@ -361,7 +360,8 @@ pub fn fatigue_power_for_integral(
     terrain_factor: f64,
     movement_phase: i32,
 ) -> f64 {
-    let fatigue_v = get_drain_velocity_ms(current_speed_ms, limit_for_power_ms);
+    // Match game GetMetabolicFatiguePowerWatts: intent speed (EPOC sample), not runaway v_meas.
+    let fatigue_v = get_epoc_sample_velocity_ms(current_speed_ms, limit_for_power_ms);
     crate::metabolism::metabolism_power_watts(
         fatigue_v,
         total_weight_kg,
