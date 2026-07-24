@@ -10,6 +10,14 @@ cd tools/rss_sim
 maturin develop --release
 ```
 
+### CP 巡航场景复现（对齐实机 v_limit≈1.8 日志）
+
+```bash
+cargo run --manifest-path tools/rss_sim/Cargo.toml --bin sim_cp_cruise --no-default-features --release
+```
+
+模拟 Elite + 37.64 kg + 4.2% 上坡 + If=100% + W′=50%（解除武装）下的 `Invert(CP)` / 巡航帽。
+
 ## Python API
 
 ```python
