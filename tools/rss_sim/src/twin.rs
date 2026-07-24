@@ -4,7 +4,7 @@ use crate::constants::{
     MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
     RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
     SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
+    V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
     V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
 };
@@ -823,7 +823,7 @@ impl RSSDigitalTwin {
     }
 
     fn get_v6_sprint_speed_ms(
-        &self,
+        &mut self,
         encumbrance_penalty: f64,
         total_weight_kg: f64,
         grade_percent: f64,
@@ -837,12 +837,16 @@ impl RSSDigitalTwin {
         }
         let run_ms = self.constants.v5_run_speed_ms * enc_mult;
         let gait_sprint_ms = self.ensured_march_sprint_speed_ms() * enc_mult;
-        if self.v6_cp_state.pool01() <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT {
+        if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
             return run_ms;
         }
         let available_p = self
             .v6_cp_state
             .get_available_power_watts(true, time_delta_sec, world_time_sec);
+        let cp_only = self.v6_cp_state.get_effective_critical_power_watts();
+        if available_p <= cp_only + 1.0 {
+            return run_ms;
+        }
         let mut power_ms = invert_speed_for_power_watts(
             available_p,
             total_weight_kg,
@@ -871,7 +875,14 @@ impl RSSDigitalTwin {
         let game_max = self.constants.game_max_speed;
         let max_pen = self.constants.encumbrance_speed_penalty_max;
         let exhausted = stamina_percent <= self.constants.exhaustion_threshold;
-        let can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
+        let mut can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
+        if can_sprint {
+            if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+                can_sprint = false;
+            } else if current_time >= 0.0 && self.v6_cp_state.is_on_cooldown(current_time) {
+                can_sprint = false;
+            }
+        }
 
         let mut phase = movement_phase;
         let mut is_sprinting = phase == MOVEMENT_SPRINT;
@@ -962,6 +973,30 @@ impl RSSDigitalTwin {
                 dt,
                 current_time,
             );
+            if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+                let run_phase = MOVEMENT_RUN;
+                let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
+                let cp_cap_ms = invert_speed_for_power_watts(
+                    self.v6_cp_state.get_effective_critical_power_watts(),
+                    current_weight,
+                    grade_percent,
+                    tf,
+                    run_phase,
+                );
+                if grade_percent < 0.0 {
+                    if cp_cap_ms > 0.05 {
+                        cruise_cap = cp_cap_ms;
+                    }
+                } else if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
+                    cruise_cap = cp_cap_ms;
+                }
+                if cruise_cap > 0.05 && cruise_cap < V6_RUN_GAIT_FLOOR_MS {
+                    cruise_cap = V6_RUN_GAIT_FLOOR_MS;
+                }
+                if theoretical_target > cruise_cap {
+                    theoretical_target = cruise_cap;
+                }
+            }
         } else if phase != MOVEMENT_WALK && !self.v6_cp_state.refresh_and_get_overspeed_armed() {
             // Run only: CP ∩ aerobic cruise max; Walk exempt
             let mut run_phase = phase;
@@ -1067,11 +1102,14 @@ impl RSSDigitalTwin {
         let effective_cp = self.v6_cp_state.get_effective_critical_power_watts();
 
         let exhausted = self.stamina <= self.constants.exhaustion_threshold;
-        let metab_phase = if movement_phase < MOVEMENT_WALK {
+        let mut metab_phase = if movement_phase < MOVEMENT_WALK {
             MOVEMENT_RUN
         } else {
             movement_phase
         };
+        if !self.v6_cp_state.refresh_and_get_overspeed_armed() && metab_phase == MOVEMENT_SPRINT {
+            metab_phase = MOVEMENT_RUN;
+        }
         let mut available_p = effective_cp;
         if metab_phase == MOVEMENT_SPRINT {
             available_p = self.v6_cp_state.get_available_power_watts(true, 0.017, self.current_time);
@@ -1102,9 +1140,21 @@ impl RSSDigitalTwin {
         clip_f64(mult, 0.01, 3.0)
     }
 
-    fn resolve_movement_state(&self, intent_phase: i32, stamina_percent: f64) -> (bool, i32, bool, bool) {
+    fn resolve_movement_state(
+        &mut self,
+        intent_phase: i32,
+        stamina_percent: f64,
+        world_time_sec: f64,
+    ) -> (bool, i32, bool, bool) {
         let exhausted = stamina_percent <= self.constants.exhaustion_threshold;
-        let can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
+        let mut can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
+        if can_sprint {
+            if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+                can_sprint = false;
+            } else if world_time_sec >= 0.0 && self.v6_cp_state.is_on_cooldown(world_time_sec) {
+                can_sprint = false;
+            }
+        }
         let mut is_sprinting = intent_phase == MOVEMENT_SPRINT;
         let mut effective_phase = intent_phase;
         if exhausted || !can_sprint {
@@ -1160,7 +1210,8 @@ impl RSSDigitalTwin {
         wind_drag: f64,
         enable_randomness: bool,
     ) -> f64 {
-        let (_, effective_phase, _, _) = self.resolve_movement_state(intent_phase, self.stamina);
+        let (_, effective_phase, _, _) =
+            self.resolve_movement_state(intent_phase, self.stamina, current_time);
 
         if intent_phase == MOVEMENT_SPRINT && self.sprint_start_time < 0.0 {
             if self.sprint_cooldown_until < 0.0 || current_time >= self.sprint_cooldown_until {

@@ -1,6 +1,7 @@
 use crate::constants::{
     MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
-    V6_OVERSPEED_ACCOUNTING_EPS_MPS, V6_STAMINA_DRAIN_CALIBRATION,
+    V6_AEROBIC_CRUISE_MAX_MS, V6_OVERSPEED_ACCOUNTING_EPS_MPS, V6_RUN_GAIT_FLOOR_MS,
+    V6_STAMINA_DRAIN_CALIBRATION,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{
@@ -183,13 +184,22 @@ pub fn get_metabolic_speed_cap_ms(
             invert_phase = MOVEMENT_WALK;
         }
     }
-    invert_speed_for_power_watts(
+    let mut cap_ms = invert_speed_for_power_watts(
         target_p,
         total_weight_kg,
         grade_percent,
         terrain_factor,
         invert_phase,
-    )
+    );
+    if !is_sprint && invert_phase != MOVEMENT_WALK {
+        if grade_percent >= 0.0 && cap_ms > V6_AEROBIC_CRUISE_MAX_MS {
+            cap_ms = V6_AEROBIC_CRUISE_MAX_MS;
+        }
+        if cap_ms > 0.05 && cap_ms < V6_RUN_GAIT_FLOOR_MS {
+            cap_ms = V6_RUN_GAIT_FLOOR_MS;
+        }
+    }
+    cap_ms
 }
 
 pub fn get_metabolic_corrected_speed_multiplier(

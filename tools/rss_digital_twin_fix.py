@@ -1161,11 +1161,15 @@ class RSSDigitalTwin:
             enc_mult = 0.5
         run_ms = self._v5_run_speed_ms() * enc_mult
         gait_sprint = self._ensured_march_sprint_speed_ms() * enc_mult
-        if self.v6_cp_state.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+        # 与 CP 施密特闩锁对齐（勿用裸池阈值）
+        if not self.v6_cp_state.refresh_and_get_overspeed_armed():
             return float(run_ms)
         available_p = self.v6_cp_state.get_available_power_watts(
             True, time_delta_sec, world_time_sec
         )
+        cp_only = self.v6_cp_state.get_effective_critical_power_watts()
+        if available_p <= cp_only + 1.0:
+            return float(run_ms)
         power_ms = invert_speed_for_power_watts(
             available_p,
             total_weight_kg,
@@ -1217,10 +1221,15 @@ class RSSDigitalTwin:
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
-        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.25)
 
         phase = movement_phase
         is_sprinting = phase == MovementType.SPRINT
+        can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.25)
+        if can_sprint:
+            if not self.v6_cp_state.refresh_and_get_overspeed_armed():
+                can_sprint = False
+            elif current_time >= 0.0 and self.v6_cp_state.is_on_cooldown(current_time):
+                can_sprint = False
         if exhausted or not can_sprint:
             if is_sprinting or phase == MovementType.SPRINT:
                 phase = MovementType.RUN
@@ -1289,6 +1298,28 @@ class RSSDigitalTwin:
                 dt,
                 current_time,
             )
+            # 空 W′ / 解除武装：与 Run 同走 CP 巡航，避免假冲刺代谢压得比 Run 更慢再上跳
+            if not self.v6_cp_state.refresh_and_get_overspeed_armed():
+                run_phase = MovementType.RUN
+                cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
+                cp_cap_ms = invert_speed_for_power_watts(
+                    self.v6_cp_state.get_effective_critical_power_watts(),
+                    current_weight,
+                    grade_percent,
+                    tf,
+                    run_phase,
+                )
+                if grade_percent >= 0.0:
+                    if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
+                        cruise_cap = cp_cap_ms
+                else:
+                    if cp_cap_ms > 0.05:
+                        cruise_cap = cp_cap_ms
+                floor_ms = float(getattr(self.constants, 'V6_RUN_GAIT_FLOOR_MS', 2.2))
+                if cruise_cap < floor_ms:
+                    cruise_cap = floor_ms
+                if theoretical_target > cruise_cap:
+                    theoretical_target = cruise_cap
         elif phase != MovementType.WALK and not self.v6_cp_state.refresh_and_get_overspeed_armed():
             # Run only: CP intersect aerobic cruise max; Walk exempt
             run_phase = phase
@@ -1304,6 +1335,9 @@ class RSSDigitalTwin:
             )
             if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
                 cruise_cap = cp_cap_ms
+            floor_ms = float(getattr(self.constants, 'V6_RUN_GAIT_FLOOR_MS', 2.2))
+            if cruise_cap < floor_ms:
+                cruise_cap = floor_ms
             if theoretical_target > cruise_cap:
                 theoretical_target = cruise_cap
 
@@ -1385,6 +1419,10 @@ class RSSDigitalTwin:
         metab_phase = movement_phase
         if metab_phase < MovementType.WALK:
             metab_phase = MovementType.RUN
+        # 空 W′ / 解除武装：按 Run 代谢压速，避免假冲刺相位把限速压得低于 Run 巡航
+        if not self.v6_cp_state.refresh_and_get_overspeed_armed():
+            if metab_phase == MovementType.SPRINT:
+                metab_phase = MovementType.RUN
 
         available_p = effective_cp
         if metab_phase == MovementType.SPRINT:
@@ -1424,11 +1462,17 @@ class RSSDigitalTwin:
         self,
         intent_phase: int,
         stamina_percent: float,
+        world_time_sec: float = -1.0,
     ):
-        """解析冲刺意图、有效阶段与 can_sprint（与 UpdateSpeed / PlayerBase 一致）。"""
+        """解析冲刺意图、有效阶段与 can_sprint（与 IsSprintAllowed / UpdateSpeed 一致）。"""
         c = self.constants
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
         can_sprint = stamina_percent >= getattr(c, 'SPRINT_ENABLE_THRESHOLD', 0.25)
+        if can_sprint:
+            if not self.v6_cp_state.refresh_and_get_overspeed_armed():
+                can_sprint = False
+            elif world_time_sec >= 0.0 and self.v6_cp_state.is_on_cooldown(world_time_sec):
+                can_sprint = False
         is_sprinting = intent_phase == MovementType.SPRINT
         effective_phase = intent_phase
         if exhausted or not can_sprint:
@@ -1458,7 +1502,7 @@ class RSSDigitalTwin:
         返回本帧用于消耗的测速 (m/s)。
         """
         is_sprinting, effective_phase, can_sprint, _ = self.resolve_movement_state(
-            intent_phase, self.stamina
+            intent_phase, self.stamina, world_time_sec=current_time
         )
 
         if intent_phase == MovementType.SPRINT and self._sprint_start_time < 0.0:
@@ -1957,13 +2001,22 @@ def get_metabolic_speed_cap_ms(
         if movement_phase == MovementType.WALK:
             invert_phase = MovementType.WALK
 
-    return invert_speed_for_power_watts(
+    cap_ms = invert_speed_for_power_watts(
         target_p,
         total_weight_kg,
         grade_percent,
         terrain_factor,
         invert_phase,
     )
+    # 与游戏 GetMetabolicSpeedCapMs：非 Sprint 套有氧巡航顶 + Run 地板
+    if (not is_sprint) and invert_phase != MovementType.WALK:
+        if grade_percent >= 0.0:
+            if cap_ms > V6_AEROBIC_CRUISE_MAX_MS:
+                cap_ms = V6_AEROBIC_CRUISE_MAX_MS
+        if invert_phase != MovementType.WALK and cap_ms > 0.05:
+            if cap_ms < V6_RUN_GAIT_FLOOR_MS:
+                cap_ms = V6_RUN_GAIT_FLOOR_MS
+    return float(cap_ms)
 
 
 def get_metabolic_corrected_speed_multiplier(
@@ -2043,6 +2096,7 @@ V6_ACSM_STEEP_BRAKE_EXTRA = 0.35
 V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT = 0.09
 V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
+V6_RUN_GAIT_FLOOR_MS = 2.2
 LCDA_REST_W_PER_KG = 1.05
 LCDA_STAND_NET_W_PER_KG = 0.19
 LCDA_SPEED_FRAC_COEFF = 1.78

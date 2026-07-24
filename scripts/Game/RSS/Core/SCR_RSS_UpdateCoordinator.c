@@ -296,10 +296,19 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
 
-            // Run：W′ 不足时套 CP∩有氧巡航顶；Walk 不套。试跑可关代谢压速，只留负重/坡度。
+            // Run / 空 W′ 假冲刺：套 CP∩有氧巡航顶；真 Sprint（武装）不套。Walk 不套。
             bool isWalkPhase = (currentMovementPhase == 1);
+            bool sprintOverspeedArmed = false;
+            if (isSprinting || currentMovementPhase == 3)
+            {
+                SCR_RSS_AnaerobicBurst anaArm = controller.RSS_GetWPrimeBurst();
+                if (anaArm && anaArm.GetCpModel())
+                    sprintOverspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                        anaArm.GetCpModel());
+            }
+            bool applyRunCpCruise = !(isSprinting || currentMovementPhase == 3) || !sprintOverspeedArmed;
             if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()
-                && !(isSprinting || currentMovementPhase == 3) && !isWalkPhase)
+                && applyRunCpCruise && !isWalkPhase)
             {
                 SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
                 if (anaRun && anaRun.GetCpModel())
@@ -323,7 +332,7 @@ class SCR_RSS_UpdateCoordinator
                         if (runTerrain > 3.0)
                             runTerrain = 3.0;
                         int runPhase = currentMovementPhase;
-                        if (runPhase < 2)
+                        if (runPhase < 2 || runPhase == 3)
                             runPhase = 2;
                         float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
                         float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
@@ -359,8 +368,8 @@ class SCR_RSS_UpdateCoordinator
                     theoreticalTargetSpeed = theoreticalTargetSpeed * (1.0 - mudSprintPenalty);
             }
 
-            // 泥地等后处理仍须保住 Sprint 相对 Run 的最低拉开（禁冲刺时不保）
-            if ((isSprinting || currentMovementPhase == 3) && canSprint)
+            // 仅真冲刺（可冲且 W′ 武装）保 Sprint/Run 拉开；空池假冲刺不抬速
+            if ((isSprinting || currentMovementPhase == 3) && canSprint && sprintOverspeedArmed)
             {
                 float encMultFloor = 1.0 - encumbrancePenalty;
                 if (encMultFloor < 0.5)
