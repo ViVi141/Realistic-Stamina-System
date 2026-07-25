@@ -147,11 +147,43 @@ class SCR_RSS_CriticalPowerModel
         return false;
     }
 
+    //! 欠 CP 越深回充越快：P→0 为满速率，P→(CP−margin) 收敛到 floor。
+    protected float ComputeUnderCpRecoveryDepth01(float powerWatts, float cp)
+    {
+        float recoveryCeil = cp - SCR_RSS_Constants.V6_W_PRIME_RECOVERY_POWER_MARGIN_W;
+        if (recoveryCeil < 1.0)
+            recoveryCeil = 1.0;
+        if (powerWatts >= recoveryCeil)
+            return 0.0;
+
+        float slack = recoveryCeil - powerWatts;
+        float depth = slack / recoveryCeil;
+        if (depth > 1.0)
+            depth = 1.0;
+        if (depth < 0.0)
+            depth = 0.0;
+
+        float depthFloor = SCR_RSS_Constants.V6_W_PRIME_RECOVERY_DEPTH_FLOOR;
+        if (depthFloor < 0.0)
+            depthFloor = 0.0;
+        if (depthFloor > 1.0)
+            depthFloor = 1.0;
+        return depthFloor + (1.0 - depthFloor) * depth;
+    }
+
     protected void ApplyWPrimeRecovery(float powerWatts, float cp, float timeDeltaSec)
     {
+        float depth = ComputeUnderCpRecoveryDepth01(powerWatts, cp);
+        if (depth <= 0.0)
+            return;
+
         if (UsesSkibaRecovery())
         {
             float wLim = m_fWPrimeMaxJoules * SCR_RSS_Constants.V6_W_PRIME_LIM_RATIO;
+            float phaseGate = wLim - m_fWPrimeMaxJoules * SCR_RSS_Constants.V6_W_PRIME_SKIBA_PHASE_EPS_RATIO;
+            if (phaseGate < 0.0)
+                phaseGate = 0.0;
+
             float kFast = SCR_RSS_Constants.V6_W_PRIME_K_FAST * (1.0 - 0.3 * m_fContextFatigueNorm);
             float kSlow = SCR_RSS_Constants.V6_W_PRIME_K_SLOW * (1.0 - 0.5 * m_fContextFatigueNorm);
             if (kFast < 0.01)
@@ -159,18 +191,18 @@ class SCR_RSS_CriticalPowerModel
             if (kSlow < 0.0001)
                 kSlow = 0.0001;
 
-            float fastTerm = 0.0;
-            if (m_fWPrimeJoules < wLim)
-                fastTerm = kFast * (wLim - m_fWPrimeJoules);
-            float slowTerm = 0.0;
-            if (m_fWPrimeJoules >= wLim)
-                slowTerm = kSlow * (m_fWPrimeMaxJoules - m_fWPrimeJoules);
-            m_fWPrimeJoules = m_fWPrimeJoules + (fastTerm + slowTerm) * timeDeltaSec;
+            float dWdt = 0.0;
+            if (m_fWPrimeJoules < phaseGate)
+                dWdt = kFast * (wLim - m_fWPrimeJoules);
+            else
+                dWdt = kSlow * (m_fWPrimeMaxJoules - m_fWPrimeJoules);
+
+            m_fWPrimeJoules = m_fWPrimeJoules + dWdt * depth * timeDeltaSec;
         }
         else
         {
             float recoveryW = SCR_RSS_ConfigBridge.GetWPrimeRecoveryWPerSec();
-            m_fWPrimeJoules = m_fWPrimeJoules + recoveryW * timeDeltaSec;
+            m_fWPrimeJoules = m_fWPrimeJoules + recoveryW * depth * timeDeltaSec;
         }
 
         if (m_fWPrimeJoules > m_fWPrimeMaxJoules)

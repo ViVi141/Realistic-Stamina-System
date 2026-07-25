@@ -230,6 +230,24 @@ modded class SCR_CharacterControllerComponent
             loc.staminaPercent = newTargetStamina;
         }
 
+        if (loc.isPlayer && m_pCardioDrive)
+        {
+            float cardioCp = loc.drainParams.effectiveCriticalPowerWatts;
+            float cardioWPrime = loc.drainParams.wPrimePool01;
+            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            {
+                SCR_RSS_CriticalPowerModel cardioCpModel = m_pAnaerobicBurst.GetCpModel();
+                cardioCp = cardioCpModel.GetEffectiveCriticalPowerWatts();
+                cardioWPrime = cardioCpModel.GetPool01();
+            }
+            m_pCardioDrive.SetMetabolicSample(
+                loc.powerWattsDbg,
+                cardioCp,
+                cardioWPrime,
+                loc.staminaPercent);
+            m_pCardioDrive.Tick(loc.currentTime);
+        }
+
         if (loc.isPlayer && m_pUISignalBridge)
         {
             m_pUISignalBridge.UpdateUISignal(
@@ -440,6 +458,7 @@ modded class SCR_CharacterControllerComponent
     protected ref SCR_RSS_UISignalBridge m_pUISignalBridge;
     protected ref SCR_RSS_BreathSoundDriver m_pBreathSoundDriver;
     protected ref SCR_RSS_HeartbeatSoundDriver m_pHeartbeatSoundDriver;
+    protected ref SCR_RSS_CardioDrive m_pCardioDrive;
     
     protected ref SCR_RSS_EpocState m_pEpocState;
     
@@ -541,6 +560,7 @@ modded class SCR_CharacterControllerComponent
             m_pUISignalBridge = null;
             m_pBreathSoundDriver = null;
             m_pHeartbeatSoundDriver = null;
+            m_pCardioDrive = null;
             m_pEpocState = null;
             m_pNetworkSyncManager = null;
             return;
@@ -582,6 +602,8 @@ modded class SCR_CharacterControllerComponent
             m_pBreathSoundDriver.Cleanup();
         if (m_pHeartbeatSoundDriver)
             m_pHeartbeatSoundDriver.Cleanup();
+        if (m_pCardioDrive)
+            m_pCardioDrive.Reset();
 
         m_pCachedOwnerCharacter = null;
         m_pStaminaComponent = null;
@@ -602,6 +624,7 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = null;
         m_pBreathSoundDriver = null;
         m_pHeartbeatSoundDriver = null;
+        m_pCardioDrive = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
         if (m_pAIManager)
@@ -1394,6 +1417,8 @@ modded class SCR_CharacterControllerComponent
             m_pBreathSoundDriver.Cleanup();
         if (m_pHeartbeatSoundDriver)
             m_pHeartbeatSoundDriver.Cleanup();
+        if (m_pCardioDrive)
+            m_pCardioDrive.Reset();
         
         m_pCachedOwnerCharacter = null;
         m_pStaminaComponent = null;
@@ -1415,6 +1440,7 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = null;
         m_pBreathSoundDriver = null;
         m_pHeartbeatSoundDriver = null;
+        m_pCardioDrive = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
     }
@@ -1550,6 +1576,7 @@ modded class SCR_CharacterControllerComponent
 
         m_pBreathSoundDriver = new SCR_RSS_BreathSoundDriver();
         m_pHeartbeatSoundDriver = new SCR_RSS_HeartbeatSoundDriver();
+        m_pCardioDrive = new SCR_RSS_CardioDrive();
         
         m_pEpocState = new SCR_RSS_EpocState();
         
@@ -1718,26 +1745,84 @@ modded class SCR_CharacterControllerComponent
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 
-    //! 引擎条 transient：冲刺门禁 poke + W′→晃动/呼吸/Exhaustion；有氧权威仍在 StaminaState。
+    //! RSS-CPCR 推进 + 呼吸/心跳采样
     protected void RSS_UpdatePresentationSoundDrivers()
     {
-        float aerobic01 = GetRssAerobicPercent();
-        if (m_pStaminaComponent)
-            aerobic01 = m_pStaminaComponent.GetTargetStamina();
-        float presentation01 = SCR_RSS_SprintGate.ComputeEnginePresentationDisplay(
-            aerobic01,
-            GetRssWPrimePool01(),
-            true,
-            false);
-
         float worldTimeSec = 0.0;
         if (GetGame() && GetGame().GetWorld())
             worldTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
 
-        if (m_pBreathSoundDriver)
-            m_pBreathSoundDriver.Update(worldTimeSec, presentation01);
+        if (m_pCardioDrive)
+        {
+            RSS_RefreshCardioDriveSampleLive();
+            m_pCardioDrive.Tick(worldTimeSec);
+        }
+
+        float cardiac01 = 0.0;
+        float respiratory01 = 0.0;
+        if (m_pCardioDrive)
+        {
+            cardiac01 = m_pCardioDrive.GetCardiac01();
+            respiratory01 = m_pCardioDrive.GetRespiratory01();
+        }
+
         if (m_pHeartbeatSoundDriver)
-            m_pHeartbeatSoundDriver.Update(worldTimeSec, presentation01);
+            m_pHeartbeatSoundDriver.Update(worldTimeSec, cardiac01);
+        if (m_pBreathSoundDriver)
+            m_pBreathSoundDriver.Update(worldTimeSec, respiratory01);
+    }
+
+    //! PrepareControls 间补采样，使冲刺起停时心/肺轴更跟手
+    protected void RSS_RefreshCardioDriveSampleLive()
+    {
+        if (!m_pCardioDrive)
+            return;
+
+        float aerobic01 = GetRssAerobicPercent();
+        if (m_pStaminaComponent)
+            aerobic01 = m_pStaminaComponent.GetTargetStamina();
+
+        float wPrime01 = GetRssWPrimePool01();
+        float cpWatts = 400.0;
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+        {
+            SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
+            cpWatts = cpModel.GetEffectiveCriticalPowerWatts();
+            wPrime01 = cpModel.GetPool01();
+        }
+
+        float powerW = 0.0;
+        IEntity owner = GetOwner();
+        if (owner && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+        {
+            vector velocity = GetVelocity();
+            float speedMs = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
+            float loadKg = 0.0;
+            if (m_pEncumbranceCache)
+                loadKg = m_pEncumbranceCache.GetCurrentWeight();
+            float totalKg = loadKg + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+            int phase = GetCurrentMovementPhase();
+            bool sprint = false;
+            if (IsSprinting() || phase == 3)
+                sprint = true;
+            float terrain = 1.0;
+            float nowSec = 0.0;
+            if (GetGame() && GetGame().GetWorld())
+                nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            if (m_pTerrainDetector)
+                terrain = m_pTerrainDetector.GetTerrainFactor(owner, nowSec, speedMs);
+            powerW = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
+                speedMs,
+                m_fAppliedSpeedLimitMs,
+                totalKg,
+                0.0,
+                terrain,
+                phase,
+                wPrime01,
+                sprint);
+        }
+
+        m_pCardioDrive.SetMetabolicSample(powerW, cpWatts, wPrime01, aerobic01);
     }
 
     protected void RSS_PokeEngineStaminaForSprintBlock(bool sprintIntent)

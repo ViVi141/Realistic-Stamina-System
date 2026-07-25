@@ -658,10 +658,15 @@ class SCR_RSS_Constants
     // Skiba W′ 双指数再填充（CP ≤ 此阈值启用；代谢尺度 CP≈700–850 仍走 Skiba）
     static const float V6_SKIBA_ELITE_CP_THRESHOLD_W = 2000.0;
     static const float V6_W_PRIME_K_FAST = 0.15;
-    static const float V6_W_PRIME_K_SLOW = 0.008;
+    //! 慢相：约 3–4 min（深度=1）从半池补到接近满池
+    static const float V6_W_PRIME_K_SLOW = 0.010;
     static const float V6_W_PRIME_LIM_RATIO = 0.5;
+    //! 快相在达到 wLim 前此比例处切慢相，避免 Euler 渐近卡在 50%
+    static const float V6_W_PRIME_SKIBA_PHASE_EPS_RATIO = 0.02;
     //! W′ 再填充仅当 P < CP − 此裕度（禁止 P≈CP 巡航时 Skiba 回充 → 再武装震荡）
     static const float V6_W_PRIME_RECOVERY_POWER_MARGIN_W = 40.0;
+    //! 欠 CP 深度调制：rate *= floor+(1-floor)*((CP−margin−P)/(CP−margin))
+    static const float V6_W_PRIME_RECOVERY_DEPTH_FLOOR = 0.12;
 
     // 积分疲劳 I(t)
     static const float V6_FATIGUE_I_MAX = 1.0;
@@ -703,18 +708,43 @@ class SCR_RSS_Constants
     static const float V6_WPRIME_ENGINE_FX_START = 0.50;
     //! W′ 空时引擎条地板（须低于原生模糊阈 ~0.55 剩余 / Exhaustion>0.45）
     static const float V6_WPRIME_ENGINE_FX_FLOOR = 0.12;
-    //! 手动呼吸采样：表现体力低于 START 开始喘；HARD 以下接近连喘
+    //! 呼吸/心跳采样开关（节奏由 CardioDrive 驱动）
     static const bool V6_BREATH_SOUND_ENABLED = true;
-    static const float V6_BREATH_SOUND_PRESENTATION_START = 0.55;
-    static const float V6_BREATH_SOUND_PRESENTATION_HARD = 0.18;
-    //! 手动心跳：Slow/Mid/Fast 采样；START 起搏，HARD 偏 Fast
-    static const bool V6_HEARTBEAT_SOUND_ENABLED = true;
-    static const float V6_HEARTBEAT_SOUND_PRESENTATION_START = 0.60;
-    static const float V6_HEARTBEAT_SOUND_PRESENTATION_HARD = 0.16;
+    static const bool V6_HEARTBEAT_SOUND_ENABLED = false;
+    //! 心跳分档滞回（相对 Cardiac 轴）
     static const float V6_HEARTBEAT_TIER_MID_ENTER = 0.38;
     static const float V6_HEARTBEAT_TIER_MID_EXIT = 0.28;
     static const float V6_HEARTBEAT_TIER_FAST_ENTER = 0.72;
     static const float V6_HEARTBEAT_TIER_FAST_EXIT = 0.58;
+
+    //! RSS-CPCR（CP–W′ 耦合心肺响应正演）总开关
+    static const bool V6_CARDIO_DRIVE_ENABLED = true;
+    //! 超额功率归一：excessNorm=(P-CP)/CP 达到此值 → 超额分量≈1
+    static const float V6_CARDIO_EXCESS_REF = 0.40;
+    static const float V6_CARDIO_AEROBIC_STRAIN_START = 0.55;
+    static const float V6_CARDIO_W_EXCESS = 0.45;
+    static const float V6_CARDIO_W_WPRIME = 0.35;
+    static const float V6_CARDIO_W_AEROBIC = 0.20;
+    //! 心负荷上升快、下降慢；呼吸跟随再滞后一层
+    static const float V6_CARDIO_CARDIAC_TAU_UP_SEC = 4.0;
+    static const float V6_CARDIO_CARDIAC_TAU_DOWN_SEC = 32.0;
+    //! 呼吸轴跟心：更激进（升更快、降仍慢于升）
+    static const float V6_CARDIO_BREATH_TAU_UP_SEC = 5.0;
+    static const float V6_CARDIO_BREATH_TAU_DOWN_SEC = 28.0;
+    //! 可闻门限：心跳刻意更高，避免轻喘就 thrub
+    static const float V6_CARDIO_HEART_AUDIBLE = 0.22;
+    static const float V6_CARDIO_BREATH_AUDIBLE = 0.06;
+    //! 表现音量（PlaySound + SoundManager.SetVolume）；心跳整体压低
+    static const float V6_PRESENTATION_VOL_SMOOTH = 0.14;
+    static const float V6_BREATH_VOL_MIN = 0.28;
+    static const float V6_BREATH_VOL_MAX = 0.95;
+    static const float V6_HEARTBEAT_VOL_MIN = 0.10;
+    static const float V6_HEARTBEAT_VOL_MAX = 0.38;
+    //! 心跳提醒式：爆发后长冷却（秒）；越累冷却越短但仍稀疏
+    static const float V6_HEARTBEAT_COOLDOWN_MAX_SEC = 16.0;
+    static const float V6_HEARTBEAT_COOLDOWN_MIN_SEC = 6.5;
+    static const float V6_HEARTBEAT_ARM_DELAY_SEC = 1.8;
+    static const float V6_HEARTBEAT_INTRA_BURST_GAP_SEC = 0.12;
     //! 限速倍率斜率（1/s）：W′ 耗尽后 CP/坡度反解噪声不致每 tick 拧 SetSpeedLimit
     static const float V6_SPEED_LIMIT_SLEW_FRAC_PER_SEC = 1.25;
     //! 限速倍率死区：变化小于此值不重写限速源

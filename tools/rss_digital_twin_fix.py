@@ -2470,8 +2470,10 @@ V6_CP_SLOPE_K_UP = 0.015
 V6_CP_FATIGUE_K = 0.18
 V6_SKIBA_ELITE_CP_THRESHOLD_W = 2000.0
 V6_W_PRIME_K_FAST = 0.15
-V6_W_PRIME_K_SLOW = 0.008
+V6_W_PRIME_K_SLOW = 0.010
 V6_W_PRIME_LIM_RATIO = 0.5
+V6_W_PRIME_SKIBA_PHASE_EPS_RATIO = 0.02
+V6_W_PRIME_RECOVERY_DEPTH_FLOOR = 0.12
 V6_FATIGUE_K_LOAD = 0.10
 V6_FATIGUE_K_TERRAIN = 0.18
 V6_FATIGUE_INTEGRAL_SCALE = 0.000055
@@ -2926,25 +2928,43 @@ class V6CriticalPowerState:
     def _uses_skiba_recovery(self) -> bool:
         return self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W
 
-    # ── W′ 恢复（Skiba 双指数 or 线性）─与 C ApplyWPrimeRecovery 同形──
+    # ── 欠 CP 深度：P→0 满速，P→(CP−margin) → floor（与 C 同形）──
+    def _compute_under_cp_recovery_depth01(self, power_watts: float, cp: float) -> float:
+        recovery_ceil = cp - V6_W_PRIME_RECOVERY_POWER_MARGIN_W
+        if recovery_ceil < 1.0:
+            recovery_ceil = 1.0
+        if power_watts >= recovery_ceil:
+            return 0.0
+        slack = recovery_ceil - power_watts
+        depth = slack / recovery_ceil
+        depth = max(0.0, min(1.0, depth))
+        depth_floor = max(0.0, min(1.0, V6_W_PRIME_RECOVERY_DEPTH_FLOOR))
+        return depth_floor + (1.0 - depth_floor) * depth
+
+    # ── W′ 恢复（Skiba 双指数 or 线性）× 欠 CP 深度 ─与 C ApplyWPrimeRecovery 同形──
     def _apply_w_prime_recovery(self, power_watts: float, cp: float, dt: float):
+        depth = self._compute_under_cp_recovery_depth01(power_watts, cp)
+        if depth <= 0.0:
+            return
+
         if self._uses_skiba_recovery():
             w_lim = self.w_prime_max_joules * V6_W_PRIME_LIM_RATIO
+            phase_gate = w_lim - self.w_prime_max_joules * V6_W_PRIME_SKIBA_PHASE_EPS_RATIO
+            if phase_gate < 0.0:
+                phase_gate = 0.0
             k_fast = V6_W_PRIME_K_FAST * (1.0 - 0.3 * self.fatigue_norm)
             k_slow = V6_W_PRIME_K_SLOW * (1.0 - 0.5 * self.fatigue_norm)
             k_fast = max(k_fast, 0.01)
             k_slow = max(k_slow, 0.0001)
 
-            fast_term = 0.0
-            if self.w_prime_joules < w_lim:
-                fast_term = k_fast * (w_lim - self.w_prime_joules)
-            slow_term = 0.0
-            if self.w_prime_joules >= w_lim:
-                slow_term = k_slow * (self.w_prime_max_joules - self.w_prime_joules)
-            self.w_prime_joules += (fast_term + slow_term) * dt
+            if self.w_prime_joules < phase_gate:
+                d_w_dt = k_fast * (w_lim - self.w_prime_joules)
+            else:
+                d_w_dt = k_slow * (self.w_prime_max_joules - self.w_prime_joules)
+            self.w_prime_joules += d_w_dt * depth * dt
         else:
             recovery_w = V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT  # simplified; C uses ConfigBridge
-            self.w_prime_joules += recovery_w * dt
+            self.w_prime_joules += recovery_w * depth * dt
 
         self.w_prime_joules = min(self.w_prime_joules, self.w_prime_max_joules)
 
