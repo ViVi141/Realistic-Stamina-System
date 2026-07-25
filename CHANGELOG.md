@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [6.1.1] - 2026-07-26
+
+### 修复 / 清理
+
+- **Walk + 滚轮调速** — 移除每 tick 强清 `DynamicSpeed≤0.52` 的「假 Walk」残留（`ClearStuckWalkDynamicSpeed`）；滚轮与 Walk 键共用原生 `DynamicSpeed`，松 Walk 仍由原版 `OnEndWalk` 恢复
+- **死路径清理** — drain-only 默认下门控 Clamp / CP 代谢伺服 / TrialMaxSpeed / W′ 耗尽硬顶；删除战术冲刺时间 CD 空壳（`UpdateTacticalSprintState`、未写入的 `m_fSprintStartTime`）、未调用的 `GetMetabolicOverspeedFactor` / `ApplyRunGaitFloorToCruiseCapMs` / `IsMarchGaitSpeedEnabled`；CP 模型时间 CD API 恒空；心跳关时不构造 driver
+- 配置版本 / ConfigManager → **6.1.1**
+
 ## [6.1.0] - 2026-07-26
 
 ### 策略默认：drain-only（不伺服速度）

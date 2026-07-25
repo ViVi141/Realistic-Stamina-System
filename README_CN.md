@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.1.0
+# Realistic Stamina System (RSS) v6.1.1
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.1.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.1.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.0**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.1**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -225,6 +225,13 @@ Realistic-Stamina-System/
     └── README.md
 ```
 
+
+## v6.1.1 版本更新 / v6.1.1 Updates
+
+**2026-07-26**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.1.1]**）
+
+- **修复 Walk + 滚轮调速**：去掉每 tick 强清 `DynamicSpeed` 的假 Walk 残留
+- **死路径清理**：drain-only 门控、战术冲刺时间 CD 空壳、未调用辅助；配置版本 **6.1.1**
 
 ## v6.1.0 版本更新 / v6.1.0 Updates
 
@@ -1025,7 +1032,8 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.1.0** (当前版本) - drain-only / W′ 深度回充 / RSS-CPCR（见上文 v6.1.0 与 CHANGELOG）
+- **v6.1.1** (当前版本) - Walk/滚轮 DynamicSpeed 修复 + 死路径清理（见上文 v6.1.1 与 CHANGELOG）
+- **v6.1.0** - drain-only / W′ 深度回充 / RSS-CPCR（见上文 v6.1.0 与 CHANGELOG）
 - **v6.0.0** - CP–W′ 拟真重构（见上文 v6.0.0 章节与 CHANGELOG）
 
 - **v3.2.0** - 时间单位错误修复（历史）

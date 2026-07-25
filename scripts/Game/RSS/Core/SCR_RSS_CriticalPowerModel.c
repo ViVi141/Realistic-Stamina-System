@@ -5,11 +5,8 @@ class SCR_RSS_CriticalPowerModel
 {
     protected float m_fWPrimeJoules;
     protected float m_fWPrimeMaxJoules;
+    //! 网络兼容字段；v6 不上时间 CD，恒为 -1
     protected float m_fCooldownUntilSec;
-    protected float m_fSprintStartSec;
-    protected bool m_bWasSprinting;
-    protected float m_fLastShortBurstReleaseSec;
-    protected bool m_bDepletionCooldownApplied;
     protected float m_fFatigueCpMultiplier;
     //! Run/Sprint 超速武装（施密特）：耗尽后钉在 CP，直到 W′ 明显回升
     protected bool m_bOverspeedArmed;
@@ -34,10 +31,6 @@ class SCR_RSS_CriticalPowerModel
         m_fWPrimeMaxJoules = SCR_RSS_ConfigBridge.GetWPrimeMaxJoules();
         m_fWPrimeJoules = m_fWPrimeMaxJoules;
         m_fCooldownUntilSec = -1.0;
-        m_fSprintStartSec = -1.0;
-        m_bWasSprinting = false;
-        m_fLastShortBurstReleaseSec = -1.0;
-        m_bDepletionCooldownApplied = false;
         m_bOverspeedArmed = true;
     }
 
@@ -99,9 +92,10 @@ class SCR_RSS_CriticalPowerModel
         return Math.Clamp(m_fWPrimeJoules / m_fWPrimeMaxJoules, 0.0, 1.0);
     }
 
+    //! @deprecated 时间 CD 已停用；恒 -1（复制协议仍带该槽）
     float GetCooldownUntilSec()
     {
-        return m_fCooldownUntilSec;
+        return -1.0;
     }
 
     //! 动态 CP：load / slope / env（疲劳经 GetEffectiveCriticalPowerWatts × m_fFatigueCpMultiplier）
@@ -215,22 +209,20 @@ class SCR_RSS_CriticalPowerModel
             m_fWPrimeMaxJoules = wPrimeMaxJoules;
         m_fWPrimeJoules = Math.Clamp(pool01, 0.0, 1.0) * m_fWPrimeMaxJoules;
         RefreshAndGetOverspeedArmed();
-        m_fCooldownUntilSec = cooldownUntilSec;
+        // 忽略远端时间 CD；门禁只看 W′ / 有氧
+        m_fCooldownUntilSec = -1.0;
     }
 
+    //! @deprecated 时间 CD 已停用
     float GetCooldownRemainingSec(float worldTimeSec)
     {
-        if (m_fCooldownUntilSec < 0.0)
-            return 0.0;
-        float rem = m_fCooldownUntilSec - worldTimeSec;
-        if (rem < 0.0)
-            return 0.0;
-        return rem;
+        return 0.0;
     }
 
+    //! @deprecated 时间 CD 已停用
     bool IsOnCooldown(float worldTimeSec)
     {
-        return GetCooldownRemainingSec(worldTimeSec) > 0.0;
+        return false;
     }
 
     float GetAvailablePowerWatts(bool sprintIntent, float timeDeltaSec, float worldTimeSec)
@@ -241,9 +233,6 @@ class SCR_RSS_CriticalPowerModel
 
         // 解除武装后禁止再用 W′/Δt 虚高功率（否则 W′≈0 时 0↔ε 会在 CP↔冲刺顶之间跳）
         if (!RefreshAndGetOverspeedArmed())
-            return cp;
-
-        if (IsOnCooldown(worldTimeSec))
             return cp;
 
         float cap = SCR_RSS_ConfigBridge.GetSprintPowerCapWatts();
@@ -273,9 +262,6 @@ class SCR_RSS_CriticalPowerModel
         if (!RefreshAndGetOverspeedArmed())
             return false;
 
-        if (IsOnCooldown(worldTimeSec))
-            return false;
-
         return true;
     }
 
@@ -298,56 +284,12 @@ class SCR_RSS_CriticalPowerModel
             }
         }
 
-        if (sprintIntent)
+        if (!sprintIntent)
         {
-            if (!m_bWasSprinting)
-                m_fSprintStartSec = worldTimeSec;
-
-            float threshold = SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold();
-            if (GetPool01() <= threshold)
-            {
-                if (!m_bDepletionCooldownApplied)
-                {
-                    float burstDuration = worldTimeSec - m_fSprintStartSec;
-                    if (burstDuration < 0.0)
-                        burstDuration = 0.0;
-                    ApplyCooldownOnSprintEnd(worldTimeSec, burstDuration, GetPool01());
-                    m_bDepletionCooldownApplied = true;
-                }
-            }
-        }
-        else
-        {
-            m_bDepletionCooldownApplied = false;
-            if (m_bWasSprinting)
-            {
-                float burstDuration = worldTimeSec - m_fSprintStartSec;
-                if (burstDuration < 0.0)
-                    burstDuration = 0.0;
-                ApplyCooldownOnSprintEnd(worldTimeSec, burstDuration, GetPool01());
-                m_fSprintStartSec = -1.0;
-            }
-
             // Morin–Petit / Skiba：仅 P 明显低于 CP 才再填充（禁止 CP 巡航回充 → 再武装）
             float recoveryCeil = cp - SCR_RSS_Constants.V6_W_PRIME_RECOVERY_POWER_MARGIN_W;
             if (powerWatts < recoveryCeil)
                 ApplyWPrimeRecovery(powerWatts, cp, timeDeltaSec);
-        }
-
-        m_bWasSprinting = sprintIntent;
-    }
-
-    //! 松键/耗尽时的冲刺时间 CD：v6 生理门禁只看 W′ 与有氧，不再因短冲锁死剩余 W′。
-    //! burst_cooldown_* 预设保留作兼容字段；负重爆发减免仍用 TACTICAL_SPRINT_COOLDOWN。
-    protected void ApplyCooldownOnSprintEnd(float worldTimeSec, float burstDurationSec, float reserveAtEnd01)
-    {
-        // 有剩余 W′ 或已耗尽：均不上时间 CD；耗尽后由 IsSprintAllowed 的池阈值挡住，P≤CP 时恢复
-        m_fCooldownUntilSec = -1.0;
-
-        if (burstDurationSec <= SCR_RSS_Constants.V5_TACTICAL_SHORT_BURST_SEC)
-        {
-            if (reserveAtEnd01 > SCR_RSS_ConfigBridge.GetWPrimeSprintEnableThreshold())
-                m_fLastShortBurstReleaseSec = worldTimeSec;
         }
     }
 }

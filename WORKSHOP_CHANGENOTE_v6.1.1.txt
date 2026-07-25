@@ -1,0 +1,24 @@
+RSS v6.1.1 Change Notes
+=======================
+From 6.1.0 → 6.1.1 (config 6.1.1). Same drain-only play feel; maintenance + Walk/scroll fix.
+Keep server & clients on the same mod build.
+
+[EN]
+• FIX: Walk + mouse-wheel speed — removed leftover per-tick DynamicSpeed clear
+  (old “fake Walk” hack). Wheel / Walk key share native DynamicSpeed again;
+  releasing Walk still restores pre-Walk speed via vanilla OnEndWalk; SetSpeedLimit
+  remains a max cap only.
+• CLEANUP: Gate unused physics clamp / CP metabolic servo / trial MaxSpeed / W′ hard-cap
+  paths when drain-only defaults are on; remove dead tactical-sprint time-CD chain and
+  unused helpers; heartbeat driver not constructed when disabled; CP time-CD APIs stubbed.
+
+[中文]
+• 修复：Walk + 滚轮调速 — 去掉每 tick 强清 DynamicSpeed 的旧「假 Walk」残留；
+  滚轮与 Walk 键重新共用原生 DynamicSpeed；松 Walk 仍由原版 OnEndWalk 恢复；
+  SetSpeedLimit 只作上限。
+• 清理：drain-only 默认下门控未用物理钳 / CP 代谢伺服 / TrialMaxSpeed / W′ 硬顶；
+  删除战术冲刺时间 CD 死链与未调用辅助；心跳关时不构造；CP 时间 CD API 恒空。
+
+Full log: CHANGELOG.md [6.1.1] / [6.1.0] / [6.0.0]
+
+Author: ViVi141 | License: AGPL-3.0

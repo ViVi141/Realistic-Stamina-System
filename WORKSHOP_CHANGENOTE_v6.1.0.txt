@@ -30,13 +30,17 @@ Current play feel (6.1.0 defaults)
 • FIX: Third-party prefabs that set SCR_CharacterStaminaComponent Enabled=0 — RSS re-activates / resolves it
 • FIX: Schmitt band avoids W′+STA double-tax; fake sprint not slower than Run
 
-Known limitation (engine)
--------------------------
-In a strict CP–W′ model, once W′ is empty you cannot sustain the same supra-CP effort —
-speed should drop. In Reforger, forcing a large speed cut while the animation stays in
-the same gait (esp. Run) desyncs feet vs displacement (sliding). To avoid that, 6.1.0
-keeps the current movement state where possible and bills the excess to STA instead of
-hard-clamping Physics to a much lower v.
+Known limitations (engine)
+--------------------------
+• W′ empty vs speed: In a strict CP–W′ model, once W′ is empty you cannot sustain the
+  same supra-CP effort — speed should drop. In Reforger, forcing a large speed cut while
+  the animation stays in the same gait (esp. Run) desyncs feet vs displacement (sliding).
+  To avoid that, 6.1.0 keeps the current movement state where possible and bills the
+  excess to STA instead of hard-clamping Physics to a much lower v.
+• Walk + scroll speed: Native wheel / Walk key share DynamicSpeed. 6.1.0 no longer
+  force-clears DynamicSpeed each tick (that was leftover from old “fake Walk” hacks).
+  Releasing Walk still restores pre-Walk speed via vanilla OnEndWalk; SetSpeedLimit
+  remains a max cap only.
 
 [中文]
 • 新增：Critical Power–W′ 双池预算（Pandolf + ACSM → 动态 CP → W′ 焦耳池）
@@ -58,10 +62,12 @@ hard-clamping Physics to a much lower v.
 
 已知限制（引擎）
 --------------
-按严格 CP–W′：W′ 耗尽后无法以相同强度持续高于 CP 的运动，现实表现应为降速。
-但在 Reforger 中，若强行把速度拉低很多而动画仍停在同一相位（尤其 Run），脚部与位移
-会不同步（滑步）。为避免该问题，6.1.0 在可行范围内保持当前运动状态，超额改为消耗
-STA，而不是用物理硬钳把 v 压到远低于动画带。
+• W′ 耗尽 vs 降速：按严格 CP–W′，W′ 空后无法以相同强度持续高于 CP 的运动，现实应为
+  降速。但在 Reforger 中强行大幅压速而动画仍停在同一相位（尤其 Run）会滑步。6.1.0
+  在可行范围内保持当前运动状态，超额改消耗 STA，而非物理硬钳到远低于动画带。
+• Walk + 滚轮调速：原生滚轮与 Walk 键共用 DynamicSpeed。6.1.0 已去掉每 tick 强清
+  DynamicSpeed（旧「假 Walk」残留）。松 Walk 仍由原版 OnEndWalk 恢复按键前速度；
+  SetSpeedLimit 只作上限。
 
 Upgrade tip: Custom JSON from 3.x is not a drop-in for 6.x — start from a baked preset.
 If you briefly tried 6.0.0: re-select a preset after updating so 6.1.0 defaults apply.

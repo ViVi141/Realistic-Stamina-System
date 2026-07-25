@@ -233,12 +233,6 @@ class SCR_RSS_DrainCalculator
         return walkCapMs;
     }
 
-    //! @deprecated 请用 ResolveRunCruiseCapMs；保留：无体重/CP 上下文时的步态对齐
-    static float ApplyRunGaitFloorToCruiseCapMs(float capMs, int movementPhase)
-    {
-        return ResolveRunCruiseCapMs(capMs, movementPhase, 0.0, 0.0, 1.0, -1.0);
-    }
-
     //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
     static float GetTheoreticalMaxSpeedMs(int movementPhase, float encumbranceSpeedPenalty)
     {
@@ -261,23 +255,6 @@ class SCR_RSS_DrainCalculator
         if (movementPhase == 1)
             return walk;
         return walk;
-    }
-
-    //! @deprecated v6 使用 GetEffectiveCriticalPowerWatts；保留作过渡
-    static float GetMetabolicOverspeedFactor(float powerWatts)
-    {
-        float sustainable = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
-        if (sustainable <= 1.0)
-            sustainable = SCR_RSS_ConfigBridge.GetSustainableWatts();
-        if (sustainable <= 1.0)
-            sustainable = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
-        if (powerWatts <= sustainable)
-            return 1.0;
-
-        float ratio = sustainable / powerWatts;
-        if (ratio < SCR_RSS_Constants.V5_MIN_METABOLIC_SPEED_FACTOR)
-            ratio = SCR_RSS_Constants.V5_MIN_METABOLIC_SPEED_FACTOR;
-        return ratio;
     }
 
     //! v6：代谢功率超可用功率时压速。

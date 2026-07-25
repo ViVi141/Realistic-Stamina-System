@@ -481,9 +481,6 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastAnimCompensationUpdateTime = -1.0;
     protected static const float ANIM_COMPENSATION_UPDATE_INTERVAL = 2.0;
     
-    protected float m_fSprintStartTime = -1.0;
-    protected bool m_bLastWasSprinting = false;
-    protected float m_fSprintCooldownUntil = -1.0;
 
     protected int m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
     protected float m_fCombatStimPhaseEndsAt = -1.0;
@@ -504,9 +501,6 @@ modded class SCR_CharacterControllerComponent
     protected float m_fSmoothedGradePercentForSpeed = 0.0;
     protected float m_fLastGradeSmoothTimeSec = -1.0;
     protected bool m_bGradeSmoothInitialized = false;
-    //! 目标绝对速落入 Walk 带时 RSS 强制 DynamicSpeed=0.5（真切 Walk）
-    protected bool m_bRssGaitWalkActive = false;
-    protected float m_fRssSavedDynamicSpeed = 1.0;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
     
@@ -573,8 +567,6 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
-            m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
             RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
         }
@@ -637,14 +629,16 @@ modded class SCR_CharacterControllerComponent
     protected int m_iAiLoopRetryCount = 0;
     protected const int AI_LOOP_MAX_RETRIES = 5;
 
+    //! @deprecated 战术冲刺时间 CD / 爆发起点已停用；保留 API 恒返回 -1
     float GetSprintStartTime()
     {
-        return m_fSprintStartTime;
+        return -1.0;
     }
 
+    //! @deprecated 同上
     float GetSprintCooldownUntil()
     {
-        return m_fSprintCooldownUntil;
+        return -1.0;
     }
 
 
@@ -1345,7 +1339,8 @@ modded class SCR_CharacterControllerComponent
             if (limitFrac > 1.0)
                 limitFrac = 1.0;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, limitFrac);
-            SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(owner, m_fAppliedSpeedLimitMs);
+            if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
+                SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(owner, m_fAppliedSpeedLimitMs);
         }
         
         bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
@@ -1403,8 +1398,6 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            SCR_RSS_SpeedBridge.ClearStuckWalkDynamicSpeed(this, false);
-            m_bRssGaitWalkActive = false;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
             RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
         }
@@ -1575,7 +1568,10 @@ modded class SCR_CharacterControllerComponent
             m_pUISignalBridge.Init(owner);
 
         m_pBreathSoundDriver = new SCR_RSS_BreathSoundDriver();
-        m_pHeartbeatSoundDriver = new SCR_RSS_HeartbeatSoundDriver();
+        if (SCR_RSS_Constants.V6_HEARTBEAT_SOUND_ENABLED)
+            m_pHeartbeatSoundDriver = new SCR_RSS_HeartbeatSoundDriver();
+        else
+            m_pHeartbeatSoundDriver = null;
         m_pCardioDrive = new SCR_RSS_CardioDrive();
         
         m_pEpocState = new SCR_RSS_EpocState();

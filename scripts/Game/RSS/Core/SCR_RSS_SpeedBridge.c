@@ -4,7 +4,7 @@
 //! RSS 必须只写入独立 source 参与 min 合并；禁止再单独 OverrideMaxSpeed，
 //! 否则会盖掉 Foliage/铁丝网等已合并的限速。
 //!
-//! 禁止用 SetDynamicSpeed(0.5) 假按 Walk：会把相位锁死，Run 进不去。
+//! 不写 SetDynamicSpeed 假按 Walk（会锁死相位）；只走 SetSpeedLimit。
 //! CP 反解低于 Run 地板时：DrainCalculator.ResolveRunCruiseCapMs 降 Walk 带目标（只改
 //! SetSpeedLimit 绝对值；分母仍用当前相位顶速）。硬钳开时改回抬地板。
 
@@ -40,12 +40,6 @@ class SCR_RSS_SpeedBridge
     static bool IsCpMetabolicSpeedCapEnabled()
     {
         return SCR_RSS_Constants.V6_APPLY_CP_METABOLIC_SPEED_CAP;
-    }
-
-    //! 是否使用 March 行军档绝对速度（见 V6_USE_MARCH_GAIT_SPEEDS）。
-    static bool IsMarchGaitSpeedEnabled()
-    {
-        return SCR_RSS_Constants.V6_USE_MARCH_GAIT_SPEEDS;
     }
 
     //! 是否试跑 MovementComponent 绝对顶速（见 V6_TRY_MOVEMENT_MAX_SPEED）。
@@ -167,20 +161,6 @@ class SCR_RSS_SpeedBridge
                 frac = 0.999;
         }
         return frac;
-    }
-
-    //! 清除残留 DynamicSpeed=0.5（非玩家按 Walk）；不主动切入 Walk。
-    static void ClearStuckWalkDynamicSpeed(CharacterControllerComponent ctrl, bool walkKeyHeld)
-    {
-        if (!ctrl || walkKeyHeld)
-            return;
-
-        float dyn = ctrl.GetDynamicSpeed();
-        if (dyn > 0.52)
-            return;
-
-        ctrl.SetDynamicSpeed(1.0);
-        ctrl.SetShouldApplyDynamicSpeedOverride(false);
     }
 
     //! 当前相位下「不滑步」的物理上限：不能超过该相位动画顶速。

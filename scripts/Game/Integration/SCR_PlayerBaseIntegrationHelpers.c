@@ -137,54 +137,6 @@ class SCR_PlayerBaseMovementHelper
         return true;
     }
 
-    static void UpdateTacticalSprintState(
-        float currentTimeSprint,
-        bool isSprintActive,
-        bool lastWasSprinting,
-        float sprintCooldownUntil,
-        float sprintStartTime,
-        out bool nextLastWasSprinting,
-        out float nextSprintCooldownUntil,
-        out float nextSprintStartTime)
-    {
-        nextLastWasSprinting = lastWasSprinting;
-        nextSprintCooldownUntil = sprintCooldownUntil;
-        nextSprintStartTime = sprintStartTime;
-
-        if (isSprintActive)
-        {
-            if (!lastWasSprinting)
-            {
-                if (currentTimeSprint >= sprintCooldownUntil)
-                    nextSprintStartTime = currentTimeSprint;
-            }
-        }
-        else
-        {
-            if (lastWasSprinting)
-                nextSprintCooldownUntil = currentTimeSprint + SCR_RSS_Constants.GetTacticalSprintCooldown();
-        }
-
-        if (isSprintActive && nextSprintStartTime >= 0.0)
-        {
-            float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
-            float bufferDuration = SCR_RSS_Constants.GetTacticalSprintBurstBufferDuration();
-            float elapsed = currentTimeSprint - nextSprintStartTime;
-            if (burstDuration > 0.0)
-            {
-                if (bufferDuration >= 0.0)
-                {
-                    if (elapsed >= burstDuration + bufferDuration)
-                    {
-                        nextSprintCooldownUntil = currentTimeSprint + SCR_RSS_Constants.GetTacticalSprintCooldown();
-                        nextSprintStartTime = -1.0;
-                    }
-                }
-            }
-        }
-
-        nextLastWasSprinting = isSprintActive;
-    }
 }
 
 class SCR_PlayerBaseNetworkHelper
