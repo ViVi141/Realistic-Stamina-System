@@ -7,7 +7,7 @@ RSS 回归测试套件
 """
 
 import sys, os, math, copy
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from rss_digital_twin_fix import RSSDigitalTwin, RSSConstants, tobler_speed_multiplier
 from rss_pipeline_v4 import MissionLibrary, simulate_mission, compute_metrics

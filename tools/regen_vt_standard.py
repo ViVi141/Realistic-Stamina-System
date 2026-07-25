@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+ARTIFACTS_VT = os.path.join(HERE, "artifacts", "vt")
 
 from rss_pipeline_v6 import load_preset_params
 from rss_digital_twin_fix import (
@@ -167,11 +168,12 @@ def main() -> int:
         "short32": short,
     }
 
-    embed_path = os.path.join(HERE, "_vt_canvas_embed.json")
+    os.makedirs(ARTIFACTS_VT, exist_ok=True)
+    embed_path = os.path.join(ARTIFACTS_VT, "_vt_canvas_embed.json")
     with open(embed_path, "w", encoding="utf-8") as f:
         json.dump(embed, f)
 
-    raw_path = os.path.join(HERE, "_vt_standard_30kg.json")
+    raw_path = os.path.join(ARTIFACTS_VT, "_vt_standard_30kg.json")
     with open(raw_path, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -188,7 +190,7 @@ def main() -> int:
             f,
         )
 
-    out_png = os.path.join(HERE, "vt_standard_30kg.png")
+    out_png = os.path.join(ARTIFACTS_VT, "vt_standard_30kg.png")
     fig, axes = plt.subplots(2, 1, figsize=(10, 7.2), constrained_layout=True)
     ax = axes[0]
     t = [float(x) for x in early["cats"]]
@@ -349,7 +351,7 @@ export default function StandardVtChart() {
           speed-up). Floor reference 2.2 m/s.
         </Text>
         <Text tone="secondary" size="small">
-          Static PNG: tools/vt_standard_30kg.png
+          Static PNG: tools/artifacts/vt/vt_standard_30kg.png
         </Text>
       </Stack>
     </Stack>

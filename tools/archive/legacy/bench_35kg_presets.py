@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from rss_pipeline_v4 import MissionLibrary, Mission, Phase, simulate_mission
 from rss_digital_twin_fix import (

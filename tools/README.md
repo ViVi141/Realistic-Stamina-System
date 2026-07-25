@@ -1,32 +1,37 @@
 # Realistic Stamina System — Tools
 
-Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。
-**Phase-B（方案 A）**：仿真核已迁至 Rust（`rss_sim/` PyO3），Python 保留 Optuna NSGA-II 编排；`rss_sim_backend.py` 自动选用 Rust 后端并在不可用时回退 Python。
-Rust CLI 入口（Phase-A）：`rust_pipeline_v6/`。
+Python 数字孪生与 **v6 优化/校验管线**（v4 保留作对照）。  
+**Phase-B**：仿真核在 Rust（`rss_sim/` PyO3），Python 保留 Optuna；`rss_sim_backend.py` 优先 Rust、不可用则回退 Python。  
+Rust CLI：`rust_pipeline_v6/`。
 
-## 文件一览
+## 目录结构
 
-| 文件 | 说明 |
-|------|------|
-| **`rss_pipeline_v6.py`** | **主入口**：`validate` / `optimize`（默认两阶段 LHS→MOEA）/ `anchors` / `optimize-tiers` |
-| `rss_anchors_v6.py` | LCDA Walk → 最低 CP0 / 三档建议（锚点编译器） |
-| `rss_constraints_v6.py` | 生理锚点硬约束 + soft 行军锚点（含 margin/hint 归因） |
-| `rss_pipeline_v4.py` | v4 三目标优化（历史对照） |
-| `rss_pipeline_v5.py` | 薄包装 → `rss_pipeline_v6 validate` |
-| `rss_digital_twin_fix.py` | 与 C 端对齐的数字孪生 |
-| `bench_physio_anchors.py` | 锚点 bench（调用 constraints 模块） |
-| `test_v6_smoke.py` | v6 CP–W′ / 代谢契约冒烟 |
-| `schemas/rss_params_v5.schema.json` | v5/v6 可嵌入参数字段 |
-| `optimized_rss_config_*_v4.json` | v4 三档预设（当前 C 端主要来源） |
-| `optimized_rss_config_*_v6.json` | v6 优化产出预设（待 embed 到 C 端） |
-| `compare_presets.py` | v4 vs v6 关键参数对比 |
-| **`wb_compile_telemetry.py`** | Workbench 编译崩溃遥测（盯日志/进程，输出时间线报告） |
-| `Run-WbCompileTelemetry.ps1` | 上述遥测的一键启动器 |
-| `embed_json_to_c.py` | JSON → `SCR_RSS_SettingsPresetBake.c`（可选） |
-| `rss_sim/` | **PyO3 仿真核**（`game_player_tick` / `simulate_mission` / 硬约束） |
-| `rss_sim_backend.py` | 优化管线仿真后端：Rust 优先（summary_only + 并行），Python 回退 |
-| `test_rss_sim_parity.py` | Rust vs Python 数值 parity 门禁 |
-| `rust_pipeline_v6/` | Rust CLI 入口（`validate/calibrate/optimize/dual-run`），当前代理到 Python v6 管线 |
+```text
+tools/
+  README.md / requirements.txt
+  # —— 日常入口（保持在根目录，便于 import）——
+  rss_pipeline_v6.py          # validate / optimize / anchors
+  rss_pipeline_v4.py / v5.py
+  rss_digital_twin_fix.py
+  rss_constraints_v6.py / rss_anchors_v6.py / rss_sim_backend.py
+  test_v6_smoke.py / test_v4_smoke.py / test_v5_smoke.py
+  test_rss_random_scenarios.py / test_rss_sim_parity.py
+  optimized_rss_config_*_{v4,v6}.json
+  embed_json_to_c.py / compare_presets.py / check_*.py
+  bench_physio_anchors.py / bench_rss_sim_backend.py
+  bench_standard_30kg_*.py / regen_vt_standard.py
+  wb_compile_telemetry.py / Run-WbCompileTelemetry.ps1
+  rss_sim/                    # PyO3 + sim_grid_random
+  rust_pipeline_v6/
+  schemas/
+
+  artifacts/                  # 生成物（勿当源码）
+    vt/                       # V-T JSON / PNG
+    diagnostics/              # 诊断图与旧 mission JSON
+  viz/                        # V-T canvas / PNG 辅助脚本
+  vps/                        # VPS 部署与网格跑批
+  archive/                    # bisect 备份 + legacy 脚本
+```
 
 设计说明：`docs/RSS_v6_优化管线设计.md`
 
@@ -40,7 +45,7 @@ cd rss_sim
 maturin develop --release
 ```
 
-未构建 `rss_sim` 时，管线自动回退到纯 Python 孪生（功能不变，速度较慢）。
+未构建 `rss_sim` 时，管线自动回退到纯 Python 孪生。
 
 ## 校验（推荐 CI / 提交前）
 
@@ -48,6 +53,19 @@ maturin develop --release
 python rss_pipeline_v6.py validate
 python test_v6_smoke.py
 python test_rss_sim_parity.py
+python test_rss_random_scenarios.py --quick
+```
+
+网格抽样（多核）：
+
+```bash
+python test_rss_random_scenarios.py --grid --n 100000 --seed 42 -j 0
+```
+
+Rust 网格（更快）：
+
+```bash
+cargo run --manifest-path rss_sim/Cargo.toml --release --bin sim_grid_random --no-default-features -- --grid -n 100000 -j 0 --config-dir .
 ```
 
 ## Rust 入口（Phase-A 双跑）
@@ -57,19 +75,20 @@ cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- validate --fast
 cargo run --manifest-path tools/rust_pipeline_v6/Cargo.toml -- dual-run --fast
 ```
 
-> `dual-run` 会执行同参数下的校验输出一致性检查（Rust 入口 vs Python 入口）。
-
 ## 优化（生成 v6 预设 JSON）
-
-默认 **两阶段**：LHS 批量硬约束可行域 → NSGA-III。
 
 ```bash
 python rss_pipeline_v6.py anchors
 python rss_pipeline_v6.py optimize --trials 400 --jobs 4 --output .
-python rss_pipeline_v6.py optimize --no-two-phase --trials 200   # 跳过可行域
 ```
 
-`rss_sim.batch_evaluate_hard_constraints` 在可用时并行评估 LHS 样本。
+## V-T 图
+
+```bash
+python regen_vt_standard.py
+# 产物：artifacts/vt/
+# 可选：python viz/_plot_vt_standard.py / viz/_emit_vt_canvas.py
+```
 
 ## v4 优化（对照）
 

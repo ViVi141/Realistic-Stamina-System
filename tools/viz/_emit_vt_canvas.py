@@ -7,7 +7,9 @@ import json
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-embed_path = os.path.join(HERE, "_vt_canvas_embed.json")
+TOOLS = os.path.dirname(HERE)
+ARTIFACTS_VT = os.path.join(TOOLS, "artifacts", "vt")
+embed_path = os.path.join(ARTIFACTS_VT, "_vt_canvas_embed.json")
 canvas_path = os.path.join(
     os.path.expanduser("~"),
     ".cursor",
@@ -158,7 +160,7 @@ parts.append(
           Walk holds about 1.30 m/s; full Walk TTE is hours (chart truncated at 32 min).
         </Text>
         <Text tone="secondary" size="small">
-          Static PNG: tools/vt_standard_30kg.png
+          Static PNG: tools/artifacts/vt/vt_standard_30kg.png
         </Text>
       </Stack>
     </Stack>

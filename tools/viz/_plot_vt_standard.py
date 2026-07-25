@@ -12,8 +12,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-embed_path = os.path.join(HERE, "_vt_canvas_embed.json")
-out_png = os.path.join(HERE, "vt_standard_30kg.png")
+TOOLS = os.path.dirname(HERE)
+ARTIFACTS_VT = os.path.join(TOOLS, "artifacts", "vt")
+embed_path = os.path.join(ARTIFACTS_VT, "_vt_canvas_embed.json")
+out_png = os.path.join(ARTIFACTS_VT, "vt_standard_30kg.png")
 
 with open(embed_path, encoding="utf-8") as f:
     e = json.load(f)

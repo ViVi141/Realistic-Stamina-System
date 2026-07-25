@@ -919,7 +919,7 @@ impl RSSDigitalTwin {
         self.apply_sprint_gait_min_separation(sprint_ms, run_ms)
     }
 
-    fn calculate_actual_speed(
+    pub fn calculate_actual_speed(
         &mut self,
         stamina_percent: f64,
         current_weight: f64,
@@ -929,6 +929,14 @@ impl RSSDigitalTwin {
         current_time: f64,
         terrain_factor: f64,
     ) -> f64 {
+        // Match Python twin / game: metabolic/CP invert grade ±V6_METABOLIC_GRADE_ABS_MAX_PCT
+        let mut grade_percent = grade_percent;
+        let g_lim = crate::constants::V6_METABOLIC_GRADE_ABS_MAX_PCT;
+        if grade_percent > g_lim {
+            grade_percent = g_lim;
+        } else if grade_percent < -g_lim {
+            grade_percent = -g_lim;
+        }
         let game_max = self.constants.game_max_speed;
         let max_pen = self.constants.encumbrance_speed_penalty_max;
         let exhausted = stamina_percent <= self.constants.exhaustion_threshold;

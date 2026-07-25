@@ -22,7 +22,7 @@ import os
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -90,9 +90,13 @@ def scenario_from_grid_index(index: int) -> dict:
     pi, gi, li, ti, si, wi, phi = _unravel(index)
     # Deterministic aux speeds from cell id (keeps overspeed/phys checks active)
     h = (int(index) * 1103515245 + 12345) & 0x7FFFFFFF
+    # Independent mix so coast excess is not coupled to grade/unravel bits.
+    h2 = (int(index) * 1664525 + 1013904223) & 0x7FFFFFFF
     v_limit = 0.35 + (h % 3400) / 1000.0
     v_meas = (h // 3400 % 5800) / 1000.0
-    coast = v_limit + 0.2 + (h // 19_720_000 % 2500) / 1000.0
+    # Excess over limit: ~0.16 … ~2.95 m/s (covers soft/hard clamp bands).
+    excess = 0.16 + (h2 % 2800) / 1000.0
+    coast = v_limit + excess
     if coast > 5.8:
         coast = 5.8
     dt_pick = (0.017, 0.02, 0.05, 0.1)[h % 4]
@@ -117,6 +121,151 @@ class Failure:
     case_id: int
     check: str
     detail: str
+
+
+@dataclass
+class WeirdStats:
+    """Counterintuitive-but-passing zones (not failures)."""
+
+    walk_near_run: int = 0
+    metabolic_clamped: int = 0
+    mid_wprime_disarmed: int = 0
+    steep_phys_skip: int = 0
+    downhill_coast_over: int = 0
+    over_bin_le_035: int = 0
+    over_bin_le_070: int = 0
+    over_bin_le_150: int = 0
+    over_bin_gt_150: int = 0
+    crawl_v: int = 0
+    high_power: int = 0
+    max_downhill_excess: float = 0.0
+    samples: List[Tuple[str, str]] = field(default_factory=list)
+
+    def merge(self, other: "WeirdStats") -> None:
+        self.walk_near_run += other.walk_near_run
+        self.metabolic_clamped += other.metabolic_clamped
+        self.mid_wprime_disarmed += other.mid_wprime_disarmed
+        self.steep_phys_skip += other.steep_phys_skip
+        self.downhill_coast_over += other.downhill_coast_over
+        self.over_bin_le_035 += other.over_bin_le_035
+        self.over_bin_le_070 += other.over_bin_le_070
+        self.over_bin_le_150 += other.over_bin_le_150
+        self.over_bin_gt_150 += other.over_bin_gt_150
+        self.crawl_v += other.crawl_v
+        self.high_power += other.high_power
+        if other.max_downhill_excess > self.max_downhill_excess:
+            self.max_downhill_excess = other.max_downhill_excess
+        for cat, note in other.samples:
+            n = sum(1 for c, _ in self.samples if c == cat)
+            if n < 3:
+                self.samples.append((cat, note))
+
+    def _sample(self, cat: str, note: str) -> None:
+        n = sum(1 for c, _ in self.samples if c == cat)
+        if n < 3:
+            self.samples.append((cat, note))
+
+    def observe_from_sc(self, sc: dict) -> None:
+        g = float(sc["grade"])
+        if abs(g) > 45.0:
+            self.metabolic_clamped += 1
+            self._sample("metabolic_clamped", f"grade={g:.1f}")
+        if abs(g) > 35.0:
+            self.steep_phys_skip += 1
+            self._sample("steep_phys_skip", f"|grade|={abs(g):.1f}")
+        wp = float(sc["w_pool"])
+        if 0.25 < wp <= 0.60:
+            self.mid_wprime_disarmed += 1
+            self._sample(
+                "mid_wprime_disarmed",
+                f"W′={wp:.2f} stamina={float(sc['stamina']):.2f}",
+            )
+        if g < -2.0 and float(sc["coast"]) > float(sc["v_limit"]) + 0.15:
+            ex = float(sc["coast"]) - float(sc["v_limit"])
+            self.downhill_coast_over += 1
+            if ex <= 0.35:
+                self.over_bin_le_035 += 1
+            elif ex <= 0.70:
+                self.over_bin_le_070 += 1
+            elif ex <= 1.50:
+                self.over_bin_le_150 += 1
+            else:
+                self.over_bin_gt_150 += 1
+            if ex > self.max_downhill_excess:
+                self.max_downhill_excess = ex
+            self._sample(
+                "downhill_coast_over",
+                f"grade={g:.1f} coast={float(sc['coast']):.2f} "
+                f"lim={float(sc['v_limit']):.2f} excess={ex:.2f}",
+            )
+        v = sc.get("_obs_v")
+        p = sc.get("_obs_p")
+        v_walk = sc.get("_obs_v_walk")
+        v_run = sc.get("_obs_v_run")
+        if v is not None and float(v) < 0.55:
+            self.crawl_v += 1
+            self._sample(
+                "crawl_v",
+                f"v={float(v):.3f} phase={sc['phase']} grade={g:.1f} "
+                f"load={float(sc['load_kg']):.1f}",
+            )
+        if p is not None and float(p) > 3000.0:
+            self.high_power += 1
+            self._sample(
+                "high_power",
+                f"P={float(p):.0f}W v={float(v or 0):.3f} grade={g:.1f}",
+            )
+        if v_walk is not None and v_run is not None:
+            gap = float(v_run) - float(v_walk)
+            if 0.0 <= gap <= 0.05:
+                self.walk_near_run += 1
+                self._sample(
+                    "walk_near_run",
+                    f"walk={float(v_walk):.3f} run={float(v_run):.3f} "
+                    f"grade={g:.1f} load={float(sc['load_kg']):.1f}",
+                )
+
+    def print_report(self, total: int) -> None:
+        def pct(c: int) -> float:
+            if total <= 0:
+                return 0.0
+            return c * 100.0 / float(total)
+
+        print("--- weird-but-legal (pass, counterintuitive zones) ---")
+        print(
+            f"  metabolic_clamped(|grade|>45): {self.metabolic_clamped} "
+            f"({pct(self.metabolic_clamped):.2f}%)"
+        )
+        print(
+            f"  steep_phys_skip(|grade|>35): {self.steep_phys_skip} "
+            f"({pct(self.steep_phys_skip):.2f}%)"
+        )
+        print(
+            f"  mid_wprime_disarmed(0.25<W′≤0.60): {self.mid_wprime_disarmed} "
+            f"({pct(self.mid_wprime_disarmed):.2f}%)"
+        )
+        print(
+            f"  walk_near_run(demoted |Δ|≤0.05): {self.walk_near_run} "
+            f"({pct(self.walk_near_run):.2f}%)"
+        )
+        print(f"  crawl_v(phase v<0.55): {self.crawl_v} ({pct(self.crawl_v):.2f}%)")
+        print(
+            f"  high_power(P>3000W): {self.high_power} ({pct(self.high_power):.2f}%)"
+        )
+        print(
+            f"  downhill_coast_over(grade<-2, coast>lim+0.15): "
+            f"{self.downhill_coast_over} ({pct(self.downhill_coast_over):.2f}%) "
+            f"max_excess={self.max_downhill_excess:.3f} m/s"
+        )
+        print(
+            f"    excess bins: ≤0.35={self.over_bin_le_035}  "
+            f"≤0.70={self.over_bin_le_070}  ≤1.50={self.over_bin_le_150}  "
+            f">1.50={self.over_bin_gt_150}"
+        )
+        if self.samples:
+            print("  samples:")
+            for cat, note in self.samples:
+                print(f"    [{cat}] {note}")
 
 
 def _finite(x: float) -> bool:
@@ -297,11 +446,13 @@ def _check_speeds(twin: RSSDigitalTwin, sc: dict) -> Optional[str]:
         return f"calculate_actual_speed non-finite {v}"
     if v < 0.0 or v > 8.0:
         return f"calculate_actual_speed out of range {v:.3f}"
+    sc["_obs_v"] = float(v)
 
     g_meta = clamp_grade_percent_for_metabolic_speed(grade)
     p = metabolism_power_watts(max(v, 0.1), total, g_meta, terrain, phase)
     if not _finite(p) or p < 0.0 or p > 20000.0:
         return f"metabolism_power weird P={p}"
+    sc["_obs_p"] = float(p)
 
     inv = invert_speed_for_power_watts(
         max(200.0, twin.v6_cp_state.get_effective_critical_power_watts()),
@@ -342,6 +493,8 @@ def _check_speeds(twin: RSSDigitalTwin, sc: dict) -> Optional[str]:
             f"Walk faster than demoted Run: walk={v_walk:.3f} run={v_run:.3f} "
             f"grade={grade:.1f} load={sc['load_kg']:.1f} terr={terrain:.2f}"
         )
+    sc["_obs_v_walk"] = float(v_walk)
+    sc["_obs_v_run"] = float(v_run)
     return None
 
 
@@ -407,7 +560,10 @@ CHECKS: List[Tuple[str, Callable]] = [
 ]
 
 
-def _eval_one(case_id: int, sc: dict) -> Optional[Tuple[int, str, str]]:
+def _eval_one(
+    case_id: int, sc: dict
+) -> Tuple[Optional[Tuple[int, str, str]], WeirdStats]:
+    weird = WeirdStats()
     twin = _make_twin(sc["preset"], sc["load_kg"], sc["w_pool"], sc["stamina"])
     for name, fn in CHECKS:
         try:
@@ -415,39 +571,53 @@ def _eval_one(case_id: int, sc: dict) -> Optional[Tuple[int, str, str]]:
         except Exception as exc:  # noqa: BLE001
             err = f"exception: {exc}"
         if err:
-            return (case_id, name, err + f" | sc={sc}")
-    return None
+            return (case_id, name, err + f" | sc={sc}"), WeirdStats()
+    weird.observe_from_sc(sc)
+    return None, weird
 
 
-def _eval_scenario(case_id: int, sc: dict, failures: List[Failure]) -> None:
-    hit = _eval_one(case_id, sc)
+def _eval_scenario(
+    case_id: int,
+    sc: dict,
+    failures: List[Failure],
+    weird: WeirdStats,
+) -> None:
+    hit, w = _eval_one(case_id, sc)
     if hit is not None:
         failures.append(Failure(hit[0], hit[1], hit[2]))
+    else:
+        weird.merge(w)
 
 
 def _worker_eval_scenarios(
     batch: Sequence[Tuple[int, dict]],
-) -> List[Tuple[int, str, str]]:
+) -> Tuple[List[Tuple[int, str, str]], WeirdStats]:
     """Process-pool worker: evaluate a batch of (case_id, scenario)."""
     out: List[Tuple[int, str, str]] = []
+    weird = WeirdStats()
     for case_id, sc in batch:
-        hit = _eval_one(int(case_id), sc)
+        hit, w = _eval_one(int(case_id), sc)
         if hit is not None:
             out.append(hit)
-    return out
+        else:
+            weird.merge(w)
+    return out, weird
 
 
 def _worker_eval_grid_indices(
     batch: Sequence[Tuple[int, int]],
-) -> List[Tuple[int, str, str]]:
+) -> Tuple[List[Tuple[int, str, str]], WeirdStats]:
     """Process-pool worker: (case_id, grid_index) → rebuild scenario in-worker."""
     out: List[Tuple[int, str, str]] = []
+    weird = WeirdStats()
     for case_id, gi in batch:
         sc = scenario_from_grid_index(int(gi))
-        hit = _eval_one(int(case_id), sc)
+        hit, w = _eval_one(int(case_id), sc)
         if hit is not None:
             out.append(hit)
-    return out
+        else:
+            weird.merge(w)
+    return out, weird
 
 
 def _chunked(items: Sequence, chunk_size: int) -> Iterable[Sequence]:
@@ -471,23 +641,26 @@ def _run_parallel_scenarios(
     scenarios: Sequence[Tuple[int, dict]],
     jobs: int,
     chunk_size: int,
-) -> List[Failure]:
+) -> Tuple[List[Failure], WeirdStats]:
+    weird = WeirdStats()
     if jobs <= 1 or len(scenarios) < 32:
         fails: List[Failure] = []
         for case_id, sc in scenarios:
-            _eval_scenario(case_id, sc, fails)
-        return fails
+            _eval_scenario(case_id, sc, fails, weird)
+        return fails, weird
 
     batches = list(_chunked(list(scenarios), chunk_size))
-    fails: List[Failure] = []
+    fails = []
     done_cases = 0
     total = len(scenarios)
     t0 = time.perf_counter()
     with ProcessPoolExecutor(max_workers=jobs) as pool:
         futures = [pool.submit(_worker_eval_scenarios, batch) for batch in batches]
         for fut in as_completed(futures):
-            for case_id, name, detail in fut.result():
+            batch_fails, batch_weird = fut.result()
+            for case_id, name, detail in batch_fails:
                 fails.append(Failure(case_id, name, detail))
+            weird.merge(batch_weird)
             done_cases += chunk_size
             if done_cases >= 20000 and done_cases % 20000 < chunk_size:
                 elapsed = time.perf_counter() - t0
@@ -499,30 +672,35 @@ def _run_parallel_scenarios(
                     f"jobs={jobs}  ETA={eta/60:.1f}min",
                     flush=True,
                 )
-    return fails
+    return fails, weird
 
 
 def _run_parallel_grid_indices(
     pairs: Sequence[Tuple[int, int]],
     jobs: int,
     chunk_size: int,
-) -> List[Failure]:
+) -> Tuple[List[Failure], WeirdStats]:
+    weird = WeirdStats()
     if jobs <= 1 or len(pairs) < 32:
         fails: List[Failure] = []
         for case_id, gi in pairs:
-            _eval_scenario(case_id, scenario_from_grid_index(int(gi)), fails)
-        return fails
+            _eval_scenario(
+                case_id, scenario_from_grid_index(int(gi)), fails, weird
+            )
+        return fails, weird
 
     batches = list(_chunked(list(pairs), chunk_size))
-    fails: List[Failure] = []
+    fails = []
     done_cases = 0
     total = len(pairs)
     t0 = time.perf_counter()
     with ProcessPoolExecutor(max_workers=jobs) as pool:
         futures = [pool.submit(_worker_eval_grid_indices, batch) for batch in batches]
         for fut in as_completed(futures):
-            for case_id, name, detail in fut.result():
+            batch_fails, batch_weird = fut.result()
+            for case_id, name, detail in batch_fails:
                 fails.append(Failure(case_id, name, detail))
+            weird.merge(batch_weird)
             done_cases += chunk_size
             if done_cases >= 20000 and done_cases % 20000 < chunk_size:
                 elapsed = time.perf_counter() - t0
@@ -534,32 +712,36 @@ def _run_parallel_grid_indices(
                     f"jobs={jobs}  ETA={eta/60:.1f}min",
                     flush=True,
                 )
-    return fails
+    return fails, weird
 
 
 def run_random_battery(
     n: int, seed: int, jobs: int = 1, chunk_size: int = 64
-) -> Tuple[int, List[Failure]]:
+) -> Tuple[int, List[Failure], WeirdStats]:
     rng = np.random.default_rng(seed)
     scenarios = [(i, _sample_scenario(rng)) for i in range(n)]
-    return n, _run_parallel_scenarios(scenarios, jobs, chunk_size)
+    fails, weird = _run_parallel_scenarios(scenarios, jobs, chunk_size)
+    return n, fails, weird
 
 
 def run_grid_sample(
     n: int, seed: int, jobs: int = 1, chunk_size: int = 64
-) -> Tuple[int, List[Failure]]:
+) -> Tuple[int, List[Failure], WeirdStats]:
     """Sample unique cells from the 3×99×45×14×100×10×3 design grid."""
     rng = np.random.default_rng(seed)
     n = max(1, int(n))
     if n >= GRID_TOTAL:
-        return run_grid_full(shard_index=0, shard_count=1, jobs=jobs, chunk_size=chunk_size)
+        return run_grid_full(
+            shard_index=0, shard_count=1, jobs=jobs, chunk_size=chunk_size
+        )
     if n <= 2_000_000:
         indices = rng.choice(GRID_TOTAL, size=n, replace=False)
     else:
         indices = ((rng.integers(0, GRID_TOTAL, size=n, dtype=np.int64)
                     + np.arange(n, dtype=np.int64) * 1_000_003) % GRID_TOTAL)
     pairs = [(i, int(gi)) for i, gi in enumerate(indices)]
-    return n, _run_parallel_grid_indices(pairs, jobs, chunk_size)
+    fails, weird = _run_parallel_grid_indices(pairs, jobs, chunk_size)
+    return n, fails, weird
 
 
 def run_grid_full(
@@ -567,7 +749,7 @@ def run_grid_full(
     shard_count: int = 1,
     jobs: int = 1,
     chunk_size: int = 64,
-) -> Tuple[int, List[Failure]]:
+) -> Tuple[int, List[Failure], WeirdStats]:
     """Iterate the full Cartesian grid (optionally sharded + multi-process).
 
     Streams batches so we never materialize all 561M indices in RAM.
@@ -577,11 +759,12 @@ def run_grid_full(
     # Approximate count for this shard
     total = (GRID_TOTAL - shard_index + shard_count - 1) // shard_count
     fails: List[Failure] = []
+    weird = WeirdStats()
     if jobs <= 1:
         done = 0
         t0 = time.perf_counter()
         for gi in range(shard_index, GRID_TOTAL, shard_count):
-            _eval_scenario(done, scenario_from_grid_index(gi), fails)
+            _eval_scenario(done, scenario_from_grid_index(gi), fails, weird)
             done += 1
             if done % 20000 == 0:
                 elapsed = time.perf_counter() - t0
@@ -592,7 +775,7 @@ def run_grid_full(
                     f"ETA={eta/3600:.1f}h",
                     flush=True,
                 )
-        return done, fails
+        return done, fails, weird
 
     # Multi-process: keep a bounded window of in-flight chunk futures
     t0 = time.perf_counter()
@@ -617,8 +800,10 @@ def run_grid_full(
             done_set, _ = wait(tuple(inflight.keys()), return_when=FIRST_COMPLETED)
             for finished in done_set:
                 batch_n = inflight.pop(finished)
-                for cid, name, detail in finished.result():
+                batch_fails, batch_weird = finished.result()
+                for cid, name, detail in batch_fails:
                     fails.append(Failure(cid, name, detail))
+                weird.merge(batch_weird)
                 done += batch_n
             if done > 0 and done % 20000 < chunk_size * jobs:
                 elapsed = time.perf_counter() - t0
@@ -629,17 +814,18 @@ def run_grid_full(
                     f"jobs={jobs}  ETA={eta/3600:.1f}h",
                     flush=True,
                 )
-    return done, fails
+    return done, fails, weird
 
 
 def run_quick() -> bool:
-    n, fails = run_random_battery(128, seed=20260725, jobs=1)
+    _n, fails, _weird = run_random_battery(128, seed=20260725, jobs=1)
     if len(fails) > 0:
         return False
     corners = [0, GRID_TOTAL // 2, GRID_TOTAL - 1, 1234567 % GRID_TOTAL]
     fails2: List[Failure] = []
+    weird2 = WeirdStats()
     for i, gi in enumerate(corners):
-        _eval_scenario(i, scenario_from_grid_index(gi), fails2)
+        _eval_scenario(i, scenario_from_grid_index(gi), fails2, weird2)
     return len(fails2) == 0
 
 
@@ -709,15 +895,21 @@ def main() -> int:
         parts = str(args.shard).split("/")
         shard_i = int(parts[0])
         shard_n = int(parts[1]) if len(parts) > 1 else 1
-        total, fails = run_grid_full(shard_i, shard_n, jobs=jobs, chunk_size=chunk_size)
+        total, fails, weird = run_grid_full(
+            shard_i, shard_n, jobs=jobs, chunk_size=chunk_size
+        )
         mode = f"grid-full shard={shard_i}/{shard_n}"
     elif args.grid:
         n = max(1, int(args.n))
-        total, fails = run_grid_sample(n, seed, jobs=jobs, chunk_size=chunk_size)
+        total, fails, weird = run_grid_sample(
+            n, seed, jobs=jobs, chunk_size=chunk_size
+        )
         mode = "grid-sample"
     else:
         n = max(1, int(args.n))
-        total, fails = run_random_battery(n, seed, jobs=jobs, chunk_size=chunk_size)
+        total, fails, weird = run_random_battery(
+            n, seed, jobs=jobs, chunk_size=chunk_size
+        )
         mode = "random"
 
     elapsed = time.perf_counter() - t0
@@ -726,6 +918,7 @@ def main() -> int:
         f"cases={total} seed={seed} checks={len(CHECKS)} jobs={jobs} "
         f"chunk={chunk_size} elapsed={elapsed:.1f}s ({total/max(elapsed,1e-6):.0f}/s)"
     )
+    weird.print_report(total)
     if not fails:
         print(f"PASS: {total}/{total} scenarios")
         return 0

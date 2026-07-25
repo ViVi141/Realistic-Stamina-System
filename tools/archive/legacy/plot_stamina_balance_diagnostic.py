@@ -3,7 +3,7 @@
 """RSS v6 体力收支诊断图：暴露消耗/恢复/HUD ETA 与仿真之间的矛盾。
 
 对齐 SCR_RSS_Settings.InitEliteStandardDefaults + SCR_RSS_MetabolismModel + UpdateCoordinator。
-输出：tools/output/stamina_balance_diagnostic.png
+输出：tools/artifacts/diagnostics/stamina_balance_diagnostic.png
 """
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(__file__))
+_TOOLS = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _TOOLS)
 
 from rss_digital_twin_fix import (
     RSSConstants,
@@ -258,7 +259,7 @@ def main() -> None:
         print("需要 matplotlib：pip install matplotlib")
         sys.exit(1)
 
-    out_dir = os.path.join(os.path.dirname(__file__), "output")
+    out_dir = os.path.join(_TOOLS, "artifacts", "diagnostics")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "stamina_balance_diagnostic.png")
 

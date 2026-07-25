@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 root = Path(r"C:\Users\74738\Documents\My Games\ArmaReforgerWorkbench\addons\Realistic-Stamina-System")
-backup = (root / "tools/bisect_backup/PlayerBase_UpdateLoop.c.full").read_text(encoding="utf-8")
+backup = (root / "tools/archive/bisect_backup/PlayerBase_UpdateLoop.c.full").read_text(encoding="utf-8")
 lines = backup.splitlines(True)
 
 start = None

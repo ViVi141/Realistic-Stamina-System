@@ -5,13 +5,15 @@
 对照 C 端 SCR_MudSlipEffects.c + SCR_StaminaConstants.c 完整实现摩擦阈值模型。
 输出：单参数曲线 + 双参数热力图，用于调参和定量理解。
 
-运行：python rss_mudslip_analysis.py
+运行：cd tools && set PYTHONPATH=. && python archive/legacy/rss_mudslip_analysis.py
 """
 
-import numpy as np
 import math
+import os
 from dataclasses import dataclass
 from typing import Tuple
+
+import numpy as np
 
 # =============================================================================
 # 常量 — 与 SCR_StaminaConstants.c 严格一致
@@ -276,7 +278,7 @@ def _sweep_2d(name_x, vals_x, setter_x, name_y, vals_y, setter_y, scene):
     return P, G
 
 
-def plot_all(output_path: str = "mudslip_analysis.png"):
+def plot_all(output_path: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "artifacts", "diagnostics", "mudslip_analysis.png")):
     """生成全部分析图"""
     if not HAVE_MPL:
         print("[WARN] matplotlib 未安装，跳过绘图。仅输出数值。")

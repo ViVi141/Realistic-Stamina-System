@@ -21,6 +21,11 @@ name = "sim_bug_hunt"
 path = "src/bin/sim_bug_hunt.rs"
 required-features = []
 
+[[bin]]
+name = "sim_grid_random"
+path = "src/bin/sim_grid_random.rs"
+required-features = []
+
 [dependencies]
 pyo3 = { version = "0.22", features = ["abi3-py311"] }
 serde = { version = "1", features = ["derive"] }
