@@ -254,7 +254,10 @@ impl V6CriticalPowerState {
             }
             if allow_discharge {
                 let drain_j = (power_watts - cp) * dt;
-                self.w_prime_joules = (self.w_prime_joules - drain_j).max(0.0);
+                self.w_prime_joules -= drain_j;
+                if self.w_prime_joules < V6_WPRIME_EMPTY_FLOOR_JOULES {
+                    self.w_prime_joules = 0.0;
+                }
             }
         }
 

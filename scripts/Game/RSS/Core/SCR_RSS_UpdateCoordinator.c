@@ -316,8 +316,11 @@ class SCR_RSS_UpdateCoordinator
                     applyRunCpCruise = false;
             }
             bool sprintOverspeedArmed = wPrimeOverspeedArmed;
+            // Run：W′ 解除武装时套 CP∩有氧巡航顶。
+            // Walk：同样套有氧能力顶（Walk 意图负重罚更轻，且旧逻辑豁免 CP，会出现
+            // 「Run 耗尽 W′ 降速后切 Walk 反而更快」）。
             if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()
-                && applyRunCpCruise && !isWalkPhase)
+                && (isWalkPhase || applyRunCpCruise))
             {
                 SCR_RSS_AnaerobicBurst anaRun = controller.RSS_GetWPrimeBurst();
                 if (anaRun && anaRun.GetCpModel())
@@ -338,38 +341,81 @@ class SCR_RSS_UpdateCoordinator
                         runTerrain = 0.5;
                     if (runTerrain > 3.0)
                         runTerrain = 3.0;
-                    int runPhase = currentMovementPhase;
-                    if (runPhase < 2 || runPhase == 3)
-                        runPhase = 2;
-                    float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
                     float cpEffW = cpRun.GetEffectiveCriticalPowerWatts();
-                    float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
-                        cpEffW,
-                        totalWeightKg,
-                        gradePct,
-                        runTerrain,
-                        runPhase);
-                    if (gradePct < 0.0)
+
+                    if (isWalkPhase)
                     {
-                        // 下坡：只按 CP 反解，不套平路 2.4 帽（否则 v_limit≪重力可达速 → 限速与物理互殴抖动）
-                        if (cpCapMs > 0.05)
-                            cruiseCapMs = cpCapMs;
+                        // Walk 自身 CP 反解 + 不得超过同条件解除武装后的 Run 巡航帽
+                        float walkCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                            cpEffW,
+                            totalWeightKg,
+                            gradePct,
+                            runTerrain,
+                            1);
+                        if (walkCapMs > 0.05 && theoreticalTargetSpeed > walkCapMs)
+                            theoreticalTargetSpeed = walkCapMs;
+
+                        float runCruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+                        float runCpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                            cpEffW,
+                            totalWeightKg,
+                            gradePct,
+                            runTerrain,
+                            2);
+                        if (gradePct < 0.0)
+                        {
+                            if (runCpCapMs > 0.05)
+                                runCruiseCapMs = runCpCapMs;
+                        }
+                        else
+                        {
+                            if (runCpCapMs > 0.05 && runCpCapMs < runCruiseCapMs)
+                                runCruiseCapMs = runCpCapMs;
+                        }
+                        runCruiseCapMs = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
+                            runCruiseCapMs,
+                            2,
+                            gradePct,
+                            totalWeightKg,
+                            runTerrain,
+                            cpEffW);
+                        if (theoreticalTargetSpeed > runCruiseCapMs)
+                            theoreticalTargetSpeed = runCruiseCapMs;
                     }
                     else
                     {
-                        if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
-                            cruiseCapMs = cpCapMs;
+                        int runPhase = currentMovementPhase;
+                        if (runPhase < 2 || runPhase == 3)
+                            runPhase = 2;
+                        float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+                        float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                            cpEffW,
+                            totalWeightKg,
+                            gradePct,
+                            runTerrain,
+                            runPhase);
+                        if (gradePct < 0.0)
+                        {
+                            // 下坡：只按 CP 反解，不套平路 2.4 帽（否则 v_limit≪重力可达速 → 限速与物理互殴抖动）
+                            if (cpCapMs > 0.05)
+                                cruiseCapMs = cpCapMs;
+                        }
+                        else
+                        {
+                            if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
+                                cruiseCapMs = cpCapMs;
+                        }
+                        // Run 带：≥地板保留；<地板则降 Walk（硬钳开时仍抬地板）
+                        cruiseCapMs = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
+                            cruiseCapMs,
+                            runPhase,
+                            gradePct,
+                            totalWeightKg,
+                            runTerrain,
+                            cpEffW);
+                        if (theoreticalTargetSpeed > cruiseCapMs)
+                            theoreticalTargetSpeed = cruiseCapMs;
                     }
-                    // Run 带：≥地板保留；<地板则降 Walk（硬钳开时仍抬地板）
-                    cruiseCapMs = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
-                        cruiseCapMs,
-                        runPhase,
-                        gradePct,
-                        totalWeightKg,
-                        runTerrain,
-                        cpEffW);
-                    if (theoreticalTargetSpeed > cruiseCapMs)
-                        theoreticalTargetSpeed = cruiseCapMs;
                 }
             }
 

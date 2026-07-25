@@ -52,7 +52,19 @@ def _wprime_discharge_run_ok() -> bool:
     power_run = cp + 120.0
     j0 = st.w_prime_joules
     st.tick(power_run, False, 0.0, dt, 1.2)
-    return st.w_prime_joules < j0
+    if st.w_prime_joules >= j0:
+        return False
+    # 恢复门槛：P < CP-40 才回充；P=CP 不回充
+    st2 = V6CriticalPowerState(cp0=400.0)
+    st2.set_runtime_context(0.0, 0.0, 1.0, 0.0)
+    st2.w_prime_joules = st2.w_prime_max_joules * 0.5
+    cp2 = st2.get_effective_critical_power_watts()
+    j_mid = st2.w_prime_joules
+    st2.tick(cp2, False, 0.0, 1.0, 1.2)
+    if st2.w_prime_joules != j_mid:
+        return False
+    st2.tick(cp2 - 50.0, False, 1.0, 1.0, 1.2)
+    return st2.w_prime_joules > j_mid
 
 
 def _fatigue_cap_clamp_ok() -> bool:
@@ -116,13 +128,23 @@ def _overspeed_accounting_ok() -> bool:
 
 
 def _overspeed_excess_drain_ok() -> bool:
-    # 双速差惩罚已废弃，恒为 0
-    if get_client_overspeed_excess_drain_per_second(3.55, 1.15, 1.0, 125.0, 9.1, 2.24, 2) != 0.0:
-        return False
-    extra = get_client_overspeed_excess_drain_per_second(
-        3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0
+    # 武装且 P_meas>CP：W′ 买单，STA 税为 0
+    tax_armed = get_client_overspeed_excess_drain_per_second(
+        3.55, 1.15, 1.0, 125.0, 9.1, 2.24, 2, 380.0, True
     )
-    return extra == 0.0
+    if tax_armed != 0.0:
+        return False
+    # 解除武装 + 超速：STA 税 > 0
+    tax_disarmed = get_client_overspeed_excess_drain_per_second(
+        3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
+    )
+    if tax_disarmed <= 0.0:
+        return False
+    # 未超速：税为 0
+    tax_ok = get_client_overspeed_excess_drain_per_second(
+        1.0, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
+    )
+    return tax_ok == 0.0
 
 
 def _march_4h_ok() -> bool:
@@ -147,6 +169,7 @@ def _zero_load_2mile_constants_ok() -> bool:
     from rss_constraints_v6 import (
         TWO_MILE_DIST_M,
         TWO_MILE_HARD,
+        TWO_MILE_HARD_MAX_SEC,
         TWO_MILE_MAX_SEC,
         TWO_MILE_SCORE_70_SEC,
         TWO_MILE_SCORE_85_SEC,
@@ -161,11 +184,39 @@ def _zero_load_2mile_constants_ok() -> bool:
         return False
     if abs(TWO_MILE_SCORE_85_SEC - 930.0) > 1e-6:
         return False
+    if abs(TWO_MILE_HARD_MAX_SEC - TWO_MILE_SCORE_70_SEC) > 1e-6:
+        return False
+    if abs(TWO_MILE_HARD_MAX_SEC - 1080.0) > 1e-6:
+        return False
     if abs(two_mile_score_01(1080.0) - 0.70) > 1e-6:
         return False
     if abs(two_mile_score_01(930.0) - 0.85) > 1e-6:
         return False
     return bool(TWO_MILE_HARD)
+
+
+def _walk_not_faster_than_demoted_run_ok() -> bool:
+    """W′ 空时：Walk 不得快过同条件降速 Run（重装/低 CP）。"""
+    from rss_pipeline_v6 import load_preset_params
+    from rss_digital_twin_fix import merge_game_aligned_params
+
+    params = dict(load_preset_params("StandardMilsim"))
+    params["critical_power_watts"] = 400.0
+    constants = RSSConstants(**merge_game_aligned_params(params))
+    for total_w in (110.0, 125.0, 135.0):
+        for grade in (0.0, 5.0, 10.0):
+            twin = RSSDigitalTwin(constants)
+            twin.reset()
+            twin.v6_cp_state.w_prime_joules = 0.0
+            v_run = twin.calculate_actual_speed(
+                1.0, total_w, MovementType.RUN, 2.0, grade_percent=grade, current_time=10.0
+            )
+            v_walk = twin.calculate_actual_speed(
+                1.0, total_w, MovementType.WALK, 1.0, grade_percent=grade, current_time=10.0
+            )
+            if v_walk > v_run + 0.02:
+                return False
+    return True
 
 
 def _tier_scalar_gradients_ok() -> bool:
@@ -285,6 +336,7 @@ SCENARIOS = [
     ("sprint_load_30m", lambda: _sprint_load_30m_ok()),
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
+    ("walk_not_faster_than_demoted_run", lambda: _walk_not_faster_than_demoted_run_ok()),
 ]
 
 

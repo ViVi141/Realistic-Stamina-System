@@ -359,7 +359,7 @@ class SCR_RSS_DrainCalculator
 
         float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             targetP, totalWeightKg, gradePercent, terrainFactor, invertPhase);
-        // Walk 不套有氧巡航硬顶；Run：平路上限 + 低于地板则降 Walk
+        // Run：平路上限 + 低于地板则降 Walk；Walk 反解本身不再套 2.4 平路帽
         if (!isSprintPhase && invertPhase != 1)
         {
             capMs = ResolveRunCruiseCapMs(

@@ -1001,7 +1001,7 @@ class RSSDigitalTwin:
 
             recovery_rate = min(max(float(recovery_rate), 0.0), 0.01)
 
-            # ── v6 CP–W′ Tick ──
+            # ── v6 CP–W′ Tick（与 PlayerBase_UpdateLoop phys 功率钳对齐）──
             bw = getattr(self.constants, 'CHARACTER_WEIGHT', 90.0)
             load_kg = max(current_weight - bw, 0.0)
             phase = movement_type
@@ -1020,8 +1020,46 @@ class RSSDigitalTwin:
                 phase,
                 float(getattr(self.constants, 'LOAD_METABOLIC_DAMPENING', 0.70)),
             )
+            power_w = float(metabolic_power)
+            applied_limit_ms = float(getattr(self, '_applied_speed_limit_ms', -1.0))
+            measured_ms = float(getattr(self, '_measured_velocity_ms', speed))
+            if measured_ms < 0.05:
+                measured_ms = float(speed)
+            # 非冲刺：
+            # - 未超速：功率钳到 CP（巡航不烧 W′）
+            # - 超速且 P>CP：放开，超额烧 W′
+            # - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
+            if not is_sprinting:
+                phys_overspeed = is_metabolic_overspeed_accounting(
+                    measured_ms, applied_limit_ms
+                )
+                cp_clamp = self.v6_cp_state.get_effective_critical_power_watts()
+                if cp_clamp > 1.0:
+                    if not phys_overspeed:
+                        if power_w > cp_clamp:
+                            power_w = cp_clamp
+                    else:
+                        if power_w <= cp_clamp:
+                            power_w = cp_clamp
             self.v6_cp_state.tick(
-                metabolic_power, is_sprinting, current_time, time_delta, speed)
+                power_w, is_sprinting, current_time, time_delta, speed)
+
+            w_prime_armed_for_tax = self.v6_cp_state.refresh_and_get_overspeed_armed()
+            overspeed_extra_per_sec = 0.0
+            if applied_limit_ms > 0.05:
+                overspeed_extra_per_sec = get_client_overspeed_excess_drain_per_second(
+                    measured_ms,
+                    applied_limit_ms,
+                    self.v6_cp_state.pool01,
+                    current_weight,
+                    grade_percent,
+                    terrain_factor,
+                    phase,
+                    self.v6_cp_state.get_effective_critical_power_watts(),
+                    w_prime_armed_for_tax,
+                    float(getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 9.5e-07)),
+                    bw,
+                )
             # ──
 
             net_change = recovery_rate - total_drain
@@ -1029,6 +1067,8 @@ class RSSDigitalTwin:
 
             tick_scale = time_delta / STAMINA_TICK_SEC
             stamina_delta = float(net_change) * tick_scale
+            if overspeed_extra_per_sec > 0.000001:
+                stamina_delta = stamina_delta - overspeed_extra_per_sec * time_delta
             stamina_before = self.stamina
             self.stamina = self._apply_stamina_cap_clamp(
                 stamina_before, stamina_before + stamina_delta)
@@ -1146,6 +1186,17 @@ class RSSDigitalTwin:
             return float(np.clip(walk_ms, V6_WALK_START_MIN_MS, self._v5_walk_speed_ms()))
         return float(walk_ms)
 
+    def get_disarmed_sprint_fallback_run_ms(self, sprint_scaled_encumbrance_penalty: float) -> float:
+        """与 SCR_RSS_SpeedCalculator.GetDisarmedSprintFallbackRunMs 同形。"""
+        run_enc_penalty = sprint_scaled_encumbrance_penalty
+        sprint_enc_mult = float(SPRINT_ENCUMBRANCE_PENALTY_MULT)
+        if sprint_enc_mult > 1.0:
+            run_enc_penalty = sprint_scaled_encumbrance_penalty / sprint_enc_mult
+        enc_mult = 1.0 - run_enc_penalty
+        if enc_mult < 0.5:
+            enc_mult = 0.5
+        return float(self._v5_run_speed_ms() * enc_mult)
+
     def get_v6_sprint_speed_ms(
         self,
         encumbrance_penalty: float,
@@ -1163,13 +1214,13 @@ class RSSDigitalTwin:
         gait_sprint = self._ensured_march_sprint_speed_ms() * enc_mult
         # 与 CP 施密特闩锁对齐（勿用裸池阈值）
         if not self.v6_cp_state.refresh_and_get_overspeed_armed():
-            return float(run_ms)
+            return self.get_disarmed_sprint_fallback_run_ms(encumbrance_penalty)
         available_p = self.v6_cp_state.get_available_power_watts(
             True, time_delta_sec, world_time_sec
         )
         cp_only = self.v6_cp_state.get_effective_critical_power_watts()
         if available_p <= cp_only + 1.0:
-            return float(run_ms)
+            return self.get_disarmed_sprint_fallback_run_ms(encumbrance_penalty)
         power_ms = invert_speed_for_power_watts(
             available_p,
             total_weight_kg,
@@ -1328,8 +1379,45 @@ class RSSDigitalTwin:
                 )
                 if theoretical_target > cruise_cap:
                     theoretical_target = cruise_cap
-        elif phase != MovementType.WALK and not self.v6_cp_state.refresh_and_get_overspeed_armed():
-            # Run only: CP intersect aerobic cruise max; Walk exempt
+        elif phase == MovementType.WALK:
+            # Walk：CP 反解 + 不得超过同条件 Run 有氧巡航帽（禁止切 Walk 比降速 Run 更快）
+            cp_eff = self.v6_cp_state.get_effective_critical_power_watts()
+            walk_cap_ms = invert_speed_for_power_watts(
+                cp_eff,
+                current_weight,
+                grade_percent,
+                tf,
+                MovementType.WALK,
+            )
+            if walk_cap_ms > 0.05 and theoretical_target > walk_cap_ms:
+                theoretical_target = walk_cap_ms
+            run_cruise = float(V6_AEROBIC_CRUISE_MAX_MS)
+            run_cp_cap = invert_speed_for_power_watts(
+                cp_eff,
+                current_weight,
+                grade_percent,
+                tf,
+                MovementType.RUN,
+            )
+            if grade_percent < 0.0:
+                if run_cp_cap > 0.05:
+                    run_cruise = run_cp_cap
+            else:
+                if run_cp_cap > 0.05 and run_cp_cap < run_cruise:
+                    run_cruise = run_cp_cap
+            run_cruise = resolve_run_cruise_cap_ms(
+                run_cruise,
+                MovementType.RUN,
+                grade_percent,
+                current_weight,
+                tf,
+                cp_eff,
+                self.constants,
+            )
+            if theoretical_target > run_cruise:
+                theoretical_target = run_cruise
+        elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
+            # Run: CP intersect aerobic cruise max
             run_phase = phase
             if run_phase < MovementType.RUN:
                 run_phase = MovementType.RUN
@@ -1342,8 +1430,12 @@ class RSSDigitalTwin:
                 tf,
                 run_phase,
             )
-            if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
-                cruise_cap = cp_cap_ms
+            if grade_percent < 0.0:
+                if cp_cap_ms > 0.05:
+                    cruise_cap = cp_cap_ms
+            else:
+                if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
+                    cruise_cap = cp_cap_ms
             cruise_cap = resolve_run_cruise_cap_ms(
                 cruise_cap,
                 run_phase,
@@ -1446,6 +1538,7 @@ class RSSDigitalTwin:
             )
 
         applied_limit_ms = speed_limit_mult * engine_base_ms
+        armed = self.v6_cp_state.refresh_and_get_overspeed_armed()
         return get_metabolic_corrected_speed_multiplier(
             speed_limit_mult,
             current_speed_ms,
@@ -1459,6 +1552,7 @@ class RSSDigitalTwin:
             self.v6_cp_state.pool01,
             available_power_watts=available_p,
             applied_speed_limit_ms=applied_limit_ms,
+            overspeed_armed=armed,
         )
 
     def compute_speed_limit_multiplier(
@@ -1860,8 +1954,11 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
+V6_OVERSPEED_STA_TAX_MULT = 12.0
 V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05
 V6_WPRIME_OVERSPEED_REARM = 0.40
+V6_W_PRIME_RECOVERY_POWER_MARGIN_W = 40.0
+V6_WPRIME_EMPTY_FLOOR_JOULES = 5.0
 V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT = 0.2
 
 
@@ -1888,11 +1985,14 @@ def is_wprime_pool_available_for_overspeed(
     threshold: float = V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
     overspeed_armed=None,
 ) -> bool:
-    """无状态近似；传入 overspeed_armed 时使用施密特闩锁结果。"""
+    """与 C IsWPrimePoolAvailableForOverspeed 同形。
+
+    传入 overspeed_armed 时用施密特闩锁；否则无状态近似须过再武装带。
+    """
     if overspeed_armed is not None:
         return bool(overspeed_armed)
-    enable_at = threshold + V6_WPRIME_OVERSPEED_HYSTERESIS
-    return w_prime_pool01 > enable_at
+    rearm_at = threshold + V6_WPRIME_OVERSPEED_REARM
+    return w_prime_pool01 > rearm_at
 
 
 def get_metabolic_accounting_velocity_ms(
@@ -1932,15 +2032,48 @@ def get_client_overspeed_excess_drain_per_second(
     terrain_factor: float,
     movement_phase: int,
     effective_critical_power_watts: float = -1.0,
+    w_prime_overspeed_armed: bool = False,
+    energy_to_stamina_coeff: float = 9.5e-07,
+    character_weight_kg: float = 90.0,
 ) -> float:
-    """已废弃：记账与 v_meas 对齐后差额恒为 0。"""
-    return 0.0
+    """与 SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond 同形。"""
+    if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+        return 0.0
+
+    p_meas = metabolism_power_watts(
+        measured_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
+    )
+
+    armed = bool(w_prime_overspeed_armed)
+    if not armed:
+        armed = is_wprime_pool_available_for_overspeed(w_prime_pool01)
+    if armed:
+        if (
+            effective_critical_power_watts > 1.0
+            and p_meas > effective_critical_power_watts + 1.0
+        ):
+            return 0.0
+
+    p_limit = metabolism_power_watts(
+        applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
+    )
+    unpaid_w = p_meas - p_limit
+    if unpaid_w <= 1.0:
+        return 0.0
+
+    per_sec = stamina_drain_rate_per_second_from_power_watts(
+        unpaid_w, -1.0, energy_to_stamina_coeff
+    )
+    load_kg = max(total_weight_kg - character_weight_kg, 0.0)
+    per_sec = per_sec * loaded_gait_stamina_drain_multiplier(load_kg, movement_phase)
+    per_sec = per_sec * V6_OVERSPEED_STA_TAX_MULT
+    return float(per_sec)
 
 
 def stamina_drain_rate_per_second_from_power_watts(
     power_watts: float,
     critical_power_cap_watts: float = -1.0,
-    energy_to_stamina_coeff: float = 1.55e-07,
+    energy_to_stamina_coeff: float = 9.5e-07,
 ) -> float:
     aerobic_w = power_watts
     if critical_power_cap_watts > 1.0 and power_watts > critical_power_cap_watts:
@@ -1978,6 +2111,7 @@ def get_metabolic_speed_cap_ms(
     w_prime_pool01: float = 1.0,
     available_power_watts: float = -1.0,
     speed_for_power_eval_ms: float = -1.0,
+    overspeed_armed=None,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形。"""
     if is_exhausted:
@@ -1985,9 +2119,16 @@ def get_metabolic_speed_cap_ms(
     if movement_phase < 1:
         return -1.0
 
-    is_sprint = movement_phase == MovementType.SPRINT
-    if (not is_sprint) and is_wprime_pool_available_for_overspeed(w_prime_pool01):
+    is_sprint_phase = movement_phase == MovementType.SPRINT
+    armed = is_wprime_pool_available_for_overspeed(
+        w_prime_pool01, overspeed_armed=overspeed_armed
+    )
+    # W′ 武装纯 Run：勿再压回 2.0~2.4（与 UpdateCoordinator 对齐）
+    if armed and movement_phase == MovementType.RUN:
         return -1.0
+    # 解除武装后一律按 Run/CP 巡航压速，忽略引擎仍停在 Sprint 相位
+    if not armed:
+        is_sprint_phase = False
 
     eval_speed = current_speed_ms
     if speed_for_power_eval_ms >= 0.0:
@@ -2001,17 +2142,35 @@ def get_metabolic_speed_cap_ms(
         movement_phase,
     )
     available_p = effective_cp_watts
-    if available_power_watts >= 0.0:
+    if is_sprint_phase and available_power_watts >= 0.0:
         available_p = available_power_watts
+
     if power_w <= available_p + 1.0:
+        # 即使功率未超 availableP，非冲刺仍须钳在有氧巡航顶以下
+        if (
+            (not is_sprint_phase)
+            and movement_phase != MovementType.WALK
+            and grade_percent >= 0.0
+        ):
+            cruise_only = resolve_run_cruise_cap_ms(
+                float(V6_AEROBIC_CRUISE_MAX_MS),
+                MovementType.RUN,
+                grade_percent,
+                total_weight_kg,
+                terrain_factor,
+                effective_cp_watts,
+                None,
+            )
+            if eval_speed > cruise_only + 0.05:
+                return float(cruise_only)
         return -1.0
 
     target_p = available_p
-    if power_w > effective_cp_watts and (not is_sprint):
+    if power_w > effective_cp_watts and (not is_sprint_phase):
         target_p = effective_cp_watts
 
     invert_phase = movement_phase
-    if (not is_sprint) and (not is_wprime_pool_available_for_overspeed(w_prime_pool01)):
+    if not is_sprint_phase:
         invert_phase = MovementType.RUN
         if movement_phase == MovementType.WALK:
             invert_phase = MovementType.WALK
@@ -2023,8 +2182,7 @@ def get_metabolic_speed_cap_ms(
         terrain_factor,
         invert_phase,
     )
-    # 与游戏 GetMetabolicSpeedCapMs：非 Sprint 套有氧巡航顶 + Run/Walk 步态对齐
-    if (not is_sprint) and invert_phase != MovementType.WALK:
+    if (not is_sprint_phase) and invert_phase != MovementType.WALK:
         cap_ms = resolve_run_cruise_cap_ms(
             cap_ms,
             invert_phase,
@@ -2050,6 +2208,7 @@ def get_metabolic_corrected_speed_multiplier(
     w_prime_pool01: float = 1.0,
     available_power_watts: float = -1.0,
     applied_speed_limit_ms: float = -1.0,
+    overspeed_armed=None,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier 同形。"""
     if engine_base_ms <= 0.05:
@@ -2071,6 +2230,7 @@ def get_metabolic_corrected_speed_multiplier(
         w_prime_pool01,
         available_power_watts=available_power_watts,
         speed_for_power_eval_ms=speed_for_eval,
+        overspeed_armed=overspeed_armed,
     )
     if cap_ms < 0.0:
         return applied_speed_multiplier
@@ -2691,6 +2851,9 @@ class V6CriticalPowerState:
         cp = self.get_effective_critical_power_watts()
         if not sprint_intent:
             return cp
+        # 解除武装后禁止再用 W′/Δt 虚高功率
+        if not self.refresh_and_get_overspeed_armed():
+            return cp
         if self.is_on_cooldown(world_time_sec):
             return cp
 
@@ -2698,7 +2861,8 @@ class V6CriticalPowerState:
         if cap <= cp:
             cap = cp + V6_SPRINT_POWER_CAP_WATTS_DEFAULT * 0.5
 
-        if self.w_prime_joules <= 0.0:
+        # 残余焦耳按空池处理，避免 ε/Δt 突然顶满 sprint_power_cap
+        if self.w_prime_joules <= V6_WPRIME_EMPTY_FLOOR_JOULES:
             return cp
 
         burst_budget = self.w_prime_joules / max(dt, 0.01)
@@ -2711,7 +2875,8 @@ class V6CriticalPowerState:
             return False
         if aerobic_stamina < 0.25:  # SPRINT_ENABLE_THRESHOLD
             return False
-        if self.pool01 <= V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT:
+        # 与超速武装共用施密特：耗尽带关闭后须回到 rearm
+        if not self.refresh_and_get_overspeed_armed():
             return False
         if self.is_on_cooldown(world_time_sec):
             return False
@@ -2737,7 +2902,9 @@ class V6CriticalPowerState:
                 allow_discharge = False
             if allow_discharge:
                 drain_j = (power_watts - cp) * dt
-                self.w_prime_joules = max(0.0, self.w_prime_joules - drain_j)
+                self.w_prime_joules = self.w_prime_joules - drain_j
+                if self.w_prime_joules < V6_WPRIME_EMPTY_FLOOR_JOULES:
+                    self.w_prime_joules = 0.0
 
         if sprint_intent:
             # 首次 sprint 记录开始时间
@@ -2760,8 +2927,9 @@ class V6CriticalPowerState:
                 self._apply_cooldown_on_sprint_end(world_time_sec, burst_dur, self.pool01)
                 self.sprint_start_sec = -1.0
 
-            # P <= CP+5 → W′ 恢复（不再被时间 CD 挡住）
-            if power_watts <= cp + 5.0:
+            # Morin–Petit / Skiba：仅 P 明显低于 CP 才再填充（禁止 CP 巡航回充）
+            recovery_ceil = cp - V6_W_PRIME_RECOVERY_POWER_MARGIN_W
+            if power_watts < recovery_ceil:
                 self._apply_w_prime_recovery(power_watts, cp, dt)
 
         self.was_sprinting = sprint_intent
@@ -2840,7 +3008,13 @@ def simulate_v6_sprint_seconds(
     state.set_runtime_context(load_kg, 0.0, 1.0, 0.0)
     t = 0.0
     while state.pool01 > 0.20 and t < 30.0:
+        # 与 C 一致：施密特解除武装后不再用 W′ 虚高功率，爆发结束
+        if not state.refresh_and_get_overspeed_armed():
+            break
         available_p = state.get_available_power_watts(True, dt, t)
+        cp_only = state.get_effective_critical_power_watts()
+        if available_p <= cp_only + 1.0:
+            break
         state.tick(available_p, True, t, dt)
         t += dt
     return t

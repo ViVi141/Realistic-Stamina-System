@@ -31,32 +31,47 @@ SUSTAIN_OBS_MAX_PCT_PER_S = 2.60
 SUSTAIN_OBS_HARD = True
 
 # v6 满体力 Run 理论速度契约（m/s，theoretical_speed_at_weight 不动点）
-MOBILITY_RUN_0KG_MIN_MS = 2.65
-MOBILITY_RUN_0KG_MAX_MS = 2.95
+# 0 kg 下限 ≈ 2mi@18:00；上限覆盖 Tactical ~15:30 / 85 分
+MOBILITY_RUN_0KG_MIN_MS = 2.98
+MOBILITY_RUN_0KG_MAX_MS = 3.45
 MOBILITY_RUN_35KG_MIN_MS = 2.15
-MOBILITY_RUN_35KG_MAX_MS = 2.85
+MOBILITY_RUN_35KG_MAX_MS = 3.20
 MOBILITY_HARD = True
 
-# 零负重 2 英里体测（Sprint 意图；18:00=70 分硬底线，15:30=85 分软目标）
+# 零负重 2 英里体测（Run 意图；由 v5_run_speed_ms 拉开三档）
+# - 硬门禁 ≤18:00（≥70 分）
+# - 评分锚点：18:00=70 分、15:30=85 分（软目标 / scalarize）
 TWO_MILE_DIST_M = 2.0 * 1609.344
 TWO_MILE_SCORE_70_SEC = 18.0 * 60.0
 TWO_MILE_SCORE_85_SEC = 15.0 * 60.0 + 30.0
 TWO_MILE_SCORE_70 = 0.70
 TWO_MILE_SCORE_85 = 0.85
 TWO_MILE_MAX_SEC = TWO_MILE_SCORE_70_SEC
+TWO_MILE_HARD_MAX_SEC = TWO_MILE_SCORE_70_SEC
 TWO_MILE_TIMEOUT_SEC = 1800.0
 TWO_MILE_HARD = True
 
 TOOLS_DIR = Path(__file__).resolve().parent
+ELITE_PRESET_JSON_V6 = TOOLS_DIR / "optimized_rss_config_elitestandard_v6.json"
 ELITE_PRESET_JSON = TOOLS_DIR / "optimized_rss_config_elitestandard_v4.json"
 
 
 def _load_elite_preset_params() -> Dict:
-    if not ELITE_PRESET_JSON.is_file():
-        return {}
-    with ELITE_PRESET_JSON.open(encoding="utf-8") as f:
-        data = json.load(f)
-    return {k: float(v) for k, v in data.items() if not str(k).startswith("_")}
+    """优先 v6（含 v5_run_speed_ms）；回退 v4。"""
+    out: Dict = {}
+    for path in (ELITE_PRESET_JSON_V6, ELITE_PRESET_JSON):
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+        for k, v in data.items():
+            if str(k).startswith("_"):
+                continue
+            if isinstance(v, (int, float)):
+                out[k] = float(v)
+        if path == ELITE_PRESET_JSON_V6:
+            break
+    return out
 
 
 @dataclass
@@ -315,9 +330,9 @@ def simulate_zero_load_run_time_to_distance(
     distance_m: float = TWO_MILE_DIST_M,
     params: Optional[Dict] = None,
     timeout_s: float = TWO_MILE_TIMEOUT_SEC,
-    movement_intent: int = 3,
+    movement_intent: int = 2,
 ) -> Tuple[float, float]:
-    """闭环孪生：零负重体测跑（默认 Sprint 意图），积分实测速度至目标距离。
+    """闭环孪生：零负重体测跑（默认 Run 意图），积分实测速度至目标距离。
 
     Returns:
         (time_s, distance_m_reached). 超时未跑完时 time_s == timeout_s。
@@ -342,7 +357,7 @@ def simulate_zero_load_run_time_to_distance(
     body_kg = float(getattr(twin.constants, "CHARACTER_WEIGHT", 90.0))
     intent = int(movement_intent)
     if intent < MovementType.WALK:
-        intent = MovementType.SPRINT
+        intent = MovementType.RUN
     dist = 0.0
     t = 0.0
     while t < timeout_s and dist < distance_m:
@@ -364,31 +379,32 @@ def simulate_zero_load_run_time_to_distance(
 def check_zero_load_run_2mile(
     params: Optional[Dict] = None,
 ) -> ConstraintCheck:
-    """零负重 Sprint 2 英里：用时必须 ≤18:00（≥70 分）；软目标 15:30（85 分）。"""
+    """零负重 Run 2 英里：硬门禁 ≤18:00（≥70 分）；软锚 15:30/85%。"""
     time_s, dist_m = simulate_zero_load_run_time_to_distance(
         TWO_MILE_DIST_M,
         params=params,
         timeout_s=TWO_MILE_TIMEOUT_SEC,
-        movement_intent=3,
+        movement_intent=2,
     )
     finished = dist_m + 1e-6 >= TWO_MILE_DIST_M
-    ok = finished and time_s <= TWO_MILE_MAX_SEC
-    margin = float(TWO_MILE_MAX_SEC - time_s)
+    hard_max = float(TWO_MILE_HARD_MAX_SEC)
+    ok = finished and time_s <= hard_max
+    margin = float(hard_max - time_s)
     if not finished:
-        margin = float(TWO_MILE_MAX_SEC - TWO_MILE_TIMEOUT_SEC)
+        margin = float(hard_max - TWO_MILE_TIMEOUT_SEC)
     score = two_mile_score_01(time_s) if finished else 0.0
     hint = ""
     if not ok:
         hint = (
-            "raise critical_power_watts / w_prime_max_joules or sprint_power_cap_watts "
-            "so 2mi Sprint finishes by 18:00 (70%)"
+            "raise v5_run_speed_ms (and CP if demoted) so zero-load Run 2mi "
+            "finishes by 18:00 (hard ≥70%); soft target remains 15:30 / 85%"
         )
     minutes = int(time_s // 60)
     seconds = time_s - 60.0 * minutes
     if finished:
         detail = (
             f"time={minutes}:{seconds:05.2f} score={score * 100.0:.1f}% "
-            f"(hard≤18:00/70%, soft 15:30/85%, dist={dist_m:.1f}m)"
+            f"(hard≤18:00/70%, soft85@15:30, dist={dist_m:.1f}m)"
         )
     else:
         detail = (

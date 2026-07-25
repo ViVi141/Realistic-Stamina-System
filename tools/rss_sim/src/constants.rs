@@ -7,10 +7,14 @@ pub const RSS_PLAYER_TICK_SEC: f64 = 0.017;
 pub const VELOCITY_HORIZ_CAP_MS: f64 = 7.0;
 
 pub const V6_OVERSPEED_ACCOUNTING_EPS_MPS: f64 = 0.12;
+pub const V6_OVERSPEED_STA_TAX_MULT: f64 = 12.0;
 pub const V6_WPRIME_OVERSPEED_HYSTERESIS: f64 = 0.05;
 pub const V6_WPRIME_OVERSPEED_REARM: f64 = 0.40;
 /// Joules below this count as empty for AvailableP (match game V6_WPRIME_EMPTY_FLOOR_JOULES).
 pub const V6_WPRIME_EMPTY_FLOOR_JOULES: f64 = 5.0;
+/// Match game: CP invert below Run floor demotes to Walk band (not hard lift to floor).
+pub const V6_RUN_GAIT_DEMOTE_TO_WALK: bool = true;
+pub const V6_WALK_START_MIN_MS: f64 = 0.35;
 pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
 pub const V6_ACSM_REST_W: f64 = 50.0;

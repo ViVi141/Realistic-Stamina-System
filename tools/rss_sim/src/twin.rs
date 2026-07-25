@@ -4,13 +4,15 @@ use crate::constants::{
     MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
     RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
     SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
-    V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
-    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
-    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, VELOCITY_HORIZ_CAP_MS, WALK_VELOCITY_THRESHOLD,
+    V6_AEROBIC_CRUISE_MAX_MS, V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
+    V6_SPRINT_POWER_CAP_WATTS_DEFAULT, V6_WALK_START_MIN_MS, VELOCITY_HORIZ_CAP_MS,
+    WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
-    get_drain_velocity_ms, get_epoc_sample_velocity_ms, get_metabolic_corrected_speed_multiplier,
+    get_client_overspeed_excess_drain_per_second, get_drain_velocity_ms, get_epoc_sample_velocity_ms,
+    get_metabolic_corrected_speed_multiplier, is_metabolic_overspeed_accounting,
+    resolve_run_cruise_cap_ms,
 };
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
@@ -682,12 +684,54 @@ impl RSSDigitalTwin {
             phase,
             self.constants.load_metabolic_dampening,
         );
+        let mut power_w = metabolic_power;
+        let applied_limit_ms = self.applied_speed_limit_ms;
+        let mut measured_ms = self.measured_velocity_ms;
+        if measured_ms < 0.05 {
+            measured_ms = speed;
+        }
+        // Match PlayerBase_UpdateLoop phys overspeed power clamp
+        if !is_sprinting {
+            let phys_overspeed =
+                is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms);
+            let cp_clamp = self.v6_cp_state.get_effective_critical_power_watts();
+            if cp_clamp > 1.0 {
+                if !phys_overspeed {
+                    if power_w > cp_clamp {
+                        power_w = cp_clamp;
+                    }
+                } else if power_w <= cp_clamp {
+                    power_w = cp_clamp;
+                }
+            }
+        }
         self.v6_cp_state
-            .tick(metabolic_power, is_sprinting, current_time, time_delta, speed);
+            .tick(power_w, is_sprinting, current_time, time_delta, speed);
+
+        let w_prime_armed_for_tax = self.v6_cp_state.refresh_and_get_overspeed_armed();
+        let mut overspeed_extra_per_sec = 0.0;
+        if applied_limit_ms > 0.05 {
+            overspeed_extra_per_sec = get_client_overspeed_excess_drain_per_second(
+                measured_ms,
+                applied_limit_ms,
+                self.v6_cp_state.pool01(),
+                current_weight,
+                grade_percent,
+                terrain_factor,
+                phase,
+                self.v6_cp_state.get_effective_critical_power_watts(),
+                w_prime_armed_for_tax,
+                self.constants.energy_to_stamina_coeff,
+                self.constants.character_weight,
+            );
+        }
 
         let net_change = clip_f64(recovery_rate - total_drain, -0.1, 0.01);
         let tick_scale = time_delta / STAMINA_TICK_SEC;
-        let stamina_delta = net_change * tick_scale;
+        let mut stamina_delta = net_change * tick_scale;
+        if overspeed_extra_per_sec > 0.000001 {
+            stamina_delta -= overspeed_extra_per_sec * time_delta;
+        }
         let stamina_before = self.stamina;
         self.stamina = self._apply_stamina_cap_clamp(stamina_before, stamina_before + stamina_delta);
 
@@ -822,6 +866,19 @@ impl RSSDigitalTwin {
         sprint_ms
     }
 
+    fn get_disarmed_sprint_fallback_run_ms(&self, sprint_scaled_encumbrance_penalty: f64) -> f64 {
+        let mut run_enc_penalty = sprint_scaled_encumbrance_penalty;
+        let sprint_enc_mult = SPRINT_ENCUMBRANCE_PENALTY_MULT;
+        if sprint_enc_mult > 1.0 {
+            run_enc_penalty = sprint_scaled_encumbrance_penalty / sprint_enc_mult;
+        }
+        let mut enc_mult = 1.0 - run_enc_penalty;
+        if enc_mult < 0.5 {
+            enc_mult = 0.5;
+        }
+        self.constants.v5_run_speed_ms * enc_mult
+    }
+
     fn get_v6_sprint_speed_ms(
         &mut self,
         encumbrance_penalty: f64,
@@ -838,14 +895,14 @@ impl RSSDigitalTwin {
         let run_ms = self.constants.v5_run_speed_ms * enc_mult;
         let gait_sprint_ms = self.ensured_march_sprint_speed_ms() * enc_mult;
         if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
-            return run_ms;
+            return self.get_disarmed_sprint_fallback_run_ms(encumbrance_penalty);
         }
         let available_p = self
             .v6_cp_state
             .get_available_power_watts(true, time_delta_sec, world_time_sec);
         let cp_only = self.v6_cp_state.get_effective_critical_power_watts();
         if available_p <= cp_only + 1.0 {
-            return run_ms;
+            return self.get_disarmed_sprint_fallback_run_ms(encumbrance_penalty);
         }
         let mut power_ms = invert_speed_for_power_watts(
             available_p,
@@ -941,8 +998,8 @@ impl RSSDigitalTwin {
         let mut final_abs = self.get_v5_absolute_speed_ms(phase, is_sprinting, scaled_run, enc_penalty, 1.0);
         if last_speed < 0.5 {
             let mut start_min = self.constants.v5_walk_speed_ms * (1.0 - enc_penalty);
-            if start_min < 0.8 {
-                start_min = 0.8;
+            if start_min < V6_WALK_START_MIN_MS {
+                start_min = V6_WALK_START_MIN_MS;
             }
             if final_abs < start_min {
                 final_abs = start_min;
@@ -976,8 +1033,9 @@ impl RSSDigitalTwin {
             if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
                 let run_phase = MOVEMENT_RUN;
                 let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
+                let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
                 let cp_cap_ms = invert_speed_for_power_watts(
-                    self.v6_cp_state.get_effective_critical_power_watts(),
+                    cp_eff,
                     current_weight,
                     grade_percent,
                     tf,
@@ -990,22 +1048,67 @@ impl RSSDigitalTwin {
                 } else if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
                     cruise_cap = cp_cap_ms;
                 }
-                if cruise_cap > 0.05 && cruise_cap < V6_RUN_GAIT_FLOOR_MS {
-                    cruise_cap = V6_RUN_GAIT_FLOOR_MS;
-                }
+                cruise_cap = resolve_run_cruise_cap_ms(
+                    cruise_cap,
+                    run_phase,
+                    grade_percent,
+                    current_weight,
+                    tf,
+                    cp_eff,
+                );
                 if theoretical_target > cruise_cap {
                     theoretical_target = cruise_cap;
                 }
             }
-        } else if phase != MOVEMENT_WALK && !self.v6_cp_state.refresh_and_get_overspeed_armed() {
-            // Run only: CP ∩ aerobic cruise max; Walk exempt
+        } else if phase == MOVEMENT_WALK {
+            // Walk: CP invert + never exceed disarmed Run cruise (no Walk>Run inversion)
+            let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
+            let walk_cap_ms = invert_speed_for_power_watts(
+                cp_eff,
+                current_weight,
+                grade_percent,
+                tf,
+                MOVEMENT_WALK,
+            );
+            if walk_cap_ms > 0.05 && theoretical_target > walk_cap_ms {
+                theoretical_target = walk_cap_ms;
+            }
+            let mut run_cruise = V6_AEROBIC_CRUISE_MAX_MS;
+            let run_cp_cap = invert_speed_for_power_watts(
+                cp_eff,
+                current_weight,
+                grade_percent,
+                tf,
+                MOVEMENT_RUN,
+            );
+            if grade_percent < 0.0 {
+                if run_cp_cap > 0.05 {
+                    run_cruise = run_cp_cap;
+                }
+            } else if run_cp_cap > 0.05 && run_cp_cap < run_cruise {
+                run_cruise = run_cp_cap;
+            }
+            run_cruise = resolve_run_cruise_cap_ms(
+                run_cruise,
+                MOVEMENT_RUN,
+                grade_percent,
+                current_weight,
+                tf,
+                cp_eff,
+            );
+            if theoretical_target > run_cruise {
+                theoretical_target = run_cruise;
+            }
+        } else if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+            // Run: CP ∩ aerobic cruise max
             let mut run_phase = phase;
             if run_phase < MOVEMENT_RUN {
                 run_phase = MOVEMENT_RUN;
             }
             let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
+            let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
             let cp_cap_ms = invert_speed_for_power_watts(
-                self.v6_cp_state.get_effective_critical_power_watts(),
+                cp_eff,
                 current_weight,
                 grade_percent,
                 tf,
@@ -1019,9 +1122,14 @@ impl RSSDigitalTwin {
             } else if cp_cap_ms > 0.05 && cp_cap_ms < cruise_cap {
                 cruise_cap = cp_cap_ms;
             }
-            if cruise_cap > 0.05 && cruise_cap < V6_RUN_GAIT_FLOOR_MS {
-                cruise_cap = V6_RUN_GAIT_FLOOR_MS;
-            }
+            cruise_cap = resolve_run_cruise_cap_ms(
+                cruise_cap,
+                run_phase,
+                grade_percent,
+                current_weight,
+                tf,
+                cp_eff,
+            );
             if theoretical_target > cruise_cap {
                 theoretical_target = cruise_cap;
             }

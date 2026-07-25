@@ -81,7 +81,7 @@ V6_DEFAULTS = {
     "w_prime_recovery_w_per_s": 12.0,
     "sprint_power_cap_watts": 2400.0,
     "v5_walk_speed_ms": 1.4,
-    "v5_run_speed_ms": 2.8,
+    "v5_run_speed_ms": 3.20,
     "v5_sprint_speed_ms": 4.5,
 }
 
@@ -93,9 +93,20 @@ V6_PARAM_REFS = dict(V6_DEFAULTS)
 SUSTAIN_TARGET_DEPLETE_PCT_PER_S = 1.8
 SUSTAIN_DEPLETE_BAND_PCT_PER_S = 0.50
 
-# mobility 软目标：band 内朝目标速度收敛（拟真档偏好更慢）
-MOBILITY_RUN_0KG_TARGET_MS = 2.80
-MOBILITY_RUN_35KG_TARGET_MS = 2.45
+# mobility 软目标：band 内朝目标速度收敛（拟真档更慢 / 战术档更快）
+MOBILITY_RUN_0KG_TARGET_MS = 3.20
+MOBILITY_RUN_35KG_TARGET_MS = 2.70
+MOBILITY_RUN_0KG_TARGET_BY_TIER = {
+    "EliteStandard": 3.05,
+    "StandardMilsim": 3.20,
+    "TacticalAction": 3.40,
+}
+# 分档搜索带：避免软目标把三档都拉到 15:30 附近
+TIER_RUN_SPEED_BOUNDS = {
+    "EliteStandard": (2.98, 3.12),
+    "StandardMilsim": (3.12, 3.28),
+    "TacticalAction": (3.28, 3.45),
+}
 
 TIER_PHILOSOPHY = {
     "EliteStandard": "低 combat_ease + 低 recovery_ease → 最拟真/最硬核",
@@ -121,6 +132,8 @@ TIER_TARGETS = {
         "base_recovery_rate": 9.0e-5,
         "critical_power_watts": 980.0,
         "w_prime_max_joules": 28500.0,
+        # ~17:35 / ~72%（零负重 Run 2mi）
+        "v5_run_speed_ms": 3.05,
     },
     "StandardMilsim": {
         "combat_ease": 0.69,
@@ -131,6 +144,8 @@ TIER_TARGETS = {
         "base_recovery_rate": 1.10e-4,
         "critical_power_watts": 1000.0,
         "w_prime_max_joules": 30000.0,
+        # ~16:45 / ~77%
+        "v5_run_speed_ms": 3.20,
     },
     "TacticalAction": {
         "combat_ease": 0.82,
@@ -141,6 +156,8 @@ TIER_TARGETS = {
         "base_recovery_rate": 1.25e-4,
         "critical_power_watts": 1030.0,
         "w_prime_max_joules": 31500.0,
+        # ~15:47 / ~83%
+        "v5_run_speed_ms": 3.40,
     },
 }
 
@@ -159,6 +176,7 @@ TIER_LADDER_ASC = (
     "w_prime_recovery_w_per_s",
     "w_prime_max_joules",
     "critical_power_watts",
+    "v5_run_speed_ms",
 )
 TIER_LADDER_DESC = (
     "energy_to_stamina_coeff",
@@ -251,16 +269,24 @@ def _mobility_target_penalty(
     return float(d * d * 0.25)
 
 
-def _mobility_ease(params: Dict) -> float:
+def _mobility_ease(params: Dict, tier: str = None) -> float:
     merged = merge_game_aligned_params(params)
     constants = RSSConstants(**merged)
     s0 = theoretical_speed_at_weight(constants, 90.0, MovementType.RUN)
     s35 = theoretical_speed_at_weight(constants, 125.0, MovementType.RUN)
+    target_0 = MOBILITY_RUN_0KG_TARGET_MS
+    if tier is not None and tier in MOBILITY_RUN_0KG_TARGET_BY_TIER:
+        target_0 = MOBILITY_RUN_0KG_TARGET_BY_TIER[tier]
+    else:
+        # 无档位时：朝 trial 自身 v5_run 盖子收敛，避免与 2mi 软目标对打
+        run_cap = float(params.get("v5_run_speed_ms", target_0))
+        if MOBILITY_RUN_0KG_MIN_MS <= run_cap <= MOBILITY_RUN_0KG_MAX_MS:
+            target_0 = run_cap
     pen = _mobility_target_penalty(
         s0,
         MOBILITY_RUN_0KG_MIN_MS,
         MOBILITY_RUN_0KG_MAX_MS,
-        MOBILITY_RUN_0KG_TARGET_MS,
+        target_0,
     )
     pen += _mobility_target_penalty(
         s35,
@@ -312,7 +338,7 @@ def scalarize_tier_metrics(
         from rss_constraints_v6 import two_mile_ease_from_time
 
         # 软目标：15:30 / 85 分；硬底线 18:00 / 70 分已由硬约束保证
-        score += two_mile_ease_from_time(float(two_mile_time_s)) * 12.0
+        score += two_mile_ease_from_time(float(two_mile_time_s)) * 14.0
 
     # 参数阶梯锚点：即使 combat_ease 被 CP 双池压扁，档位仍可区分
     score += _rel_abs(
@@ -335,6 +361,10 @@ def scalarize_tier_metrics(
         float(p.get("w_prime_max_joules", ideal["w_prime_max_joules"])),
         ideal["w_prime_max_joules"],
     ) * 1.5
+    score += _rel_abs(
+        float(p.get("v5_run_speed_ms", ideal["v5_run_speed_ms"])),
+        ideal["v5_run_speed_ms"],
+    ) * 6.0
 
     if tier == "EliteStandard":
         # 额外压低战斗余量 / 恢复宽松度
@@ -368,14 +398,18 @@ def make_mo_sampler(sampler_name: str, population_size: int):
     raise ValueError(f"unknown sampler: {sampler_name} (use nsga2 or nsga3)")
 
 
-def suggest_search_params(trial, defaults: Dict = None) -> Dict:
+def suggest_search_params(trial, defaults: Dict = None, tier: str = None) -> Dict:
     params = dict(defaults or V6_DEFAULTS)
     for space in (RSSOptimizerV6.SEARCH_SPACE_V4, RSSOptimizerV6.SEARCH_SPACE_V6):
         for name, (low, high, log_scale) in space.items():
-            if log_scale and low > 0 and high > 0:
-                params[name] = trial.suggest_float(name, low, high, log=True)
+            lo = float(low)
+            hi = float(high)
+            if name == "v5_run_speed_ms" and tier in TIER_RUN_SPEED_BOUNDS:
+                lo, hi = TIER_RUN_SPEED_BOUNDS[tier]
+            if log_scale and lo > 0 and hi > 0:
+                params[name] = trial.suggest_float(name, lo, hi, log=True)
             else:
-                params[name] = trial.suggest_float(name, low, high)
+                params[name] = trial.suggest_float(name, lo, hi)
     return params
 
 
@@ -528,7 +562,11 @@ def search_feasible_seeds(
     return seeds
 
 
-def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
+def compute_v6_metrics(
+    results: List[MissionResult],
+    params: Dict,
+    tier: str = None,
+) -> V6Metrics:
     v4 = compute_metrics(results, params)
 
     sustain_ease = 0.5
@@ -541,7 +579,7 @@ def compute_v6_metrics(results: List[MissionResult], params: Dict) -> V6Metrics:
             break
 
     drift = float(v4.parameter_realism) + _v6_param_drift(params) * 2.0
-    mobility = _mobility_ease(params)
+    mobility = _mobility_ease(params, tier=tier)
 
     return V6Metrics(
         sustain_ease=sustain_ease,
@@ -725,11 +763,12 @@ class RSSOptimizerV6:
     }
 
     SEARCH_SPACE_V6 = {
-        # 零负重 Run 2mi&lt;20:00 约需 CP≳965 + W′≈30k（与冲刺≤15s 折中）
+        # 零负重 Run 2mi≤18:00：v5_run≥~2.98；三档靠 run 盖子拉开
         "critical_power_watts": (750.0, 1100.0, False),
         "w_prime_max_joules": (18000.0, 33000.0, False),
         "w_prime_recovery_w_per_s": (8.0, 16.0, False),
         "sprint_power_cap_watts": (2200.0, 3000.0, False),
+        "v5_run_speed_ms": (2.98, 3.45, False),
     }
 
     def __init__(
@@ -855,7 +894,7 @@ class TierOptimizerV6:
 
     def objective(self, trial) -> float:
         self.stats.total += 1
-        params = suggest_search_params(trial)
+        params = suggest_search_params(trial, tier=self.tier)
 
         report = evaluate_hard_constraints(params)
         if not report.all_hard_passed:
@@ -870,15 +909,15 @@ class TierOptimizerV6:
             raise optuna.TrialPruned()
 
         two_mile_time_s = None
-        from rss_constraints_v6 import TWO_MILE_MAX_SEC
+        from rss_constraints_v6 import TWO_MILE_HARD_MAX_SEC
 
         for c in report.checks:
             if c.name == "zero_load_2mile_pt_ge70":
-                two_mile_time_s = float(TWO_MILE_MAX_SEC - c.margin)
+                two_mile_time_s = float(TWO_MILE_HARD_MAX_SEC - c.margin)
                 break
 
         results = run_mission_suite(params, fast_mode=self.fast_mode)
-        metrics = compute_v6_metrics(results, params)
+        metrics = compute_v6_metrics(results, params, tier=self.tier)
         enc = float(params.get("encumbrance_speed_penalty_coeff", 0.28))
         score = scalarize_tier_metrics(
             metrics, enc, self.tier, params, two_mile_time_s=two_mile_time_s
@@ -908,7 +947,21 @@ class TierOptimizerV6:
             sampler=optuna.samplers.TPESampler(seed=42),
         )
         for seed in seeds:
-            study.enqueue_trial(seed)
+            seed_params = dict(seed)
+            if self.tier in TIER_RUN_SPEED_BOUNDS:
+                lo, hi = TIER_RUN_SPEED_BOUNDS[self.tier]
+                run_v = float(
+                    seed_params.get(
+                        "v5_run_speed_ms",
+                        TIER_TARGETS[self.tier]["v5_run_speed_ms"],
+                    )
+                )
+                if run_v < lo:
+                    run_v = lo
+                elif run_v > hi:
+                    run_v = hi
+                seed_params["v5_run_speed_ms"] = run_v
+            study.enqueue_trial(seed_params)
 
         print(
             f"[V6] optimize-tier {self.tier}: {self.n_trials} trials "
@@ -1062,6 +1115,12 @@ def _apply_tier_param_ladders(presets: Dict[str, Dict]) -> Dict[str, Dict]:
     for key in TIER_LADDER_DESC:
         _reassign(key, ascending=False)
 
+    # 2mi 叙事：锚定各档 Run 盖子（软目标不再把三档糊成同一成绩）
+    for name in names:
+        target_run = TIER_TARGETS.get(name, {}).get("v5_run_speed_ms")
+        if target_run is not None:
+            fixed[name]["v5_run_speed_ms"] = float(target_run)
+
     # 姿态恢复：prone ≥ crouch ≥ stand（各档内）
     for name in names:
         p = fixed[name]
@@ -1111,6 +1170,9 @@ def _write_preset_export(preset_name: str, export: Dict, out_path: Path) -> None
         json.dump(export, f, indent=2, ensure_ascii=False)
 
     v4_export = {k: export[k] for k in HARDCORE_PARAM_REFS if k in export}
+    for k in V6_DEFAULTS:
+        if k in export:
+            v4_export[k] = float(export[k])
     metrics = export.get("_metrics_v6", {})
     v4_export["_metrics"] = {
         "combat_ease": float(metrics.get("combat_ease", 0.0)),
@@ -1295,6 +1357,9 @@ def _write_preset_pair(
         json.dump(v6_export, f, indent=2, ensure_ascii=False)
 
     v4_export = {k: v6_export[k] for k in HARDCORE_PARAM_REFS if k in v6_export}
+    for k in V6_DEFAULTS:
+        if k in v6_export:
+            v4_export[k] = float(v6_export[k])
     v4_export["_metrics"] = {
         "combat_ease": metrics[2],
         "recovery_ease": metrics[3],

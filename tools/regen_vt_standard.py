@@ -112,7 +112,9 @@ def build_short(full: dict, tmax_min: float = 32.0, step_min: float = 0.5):
     return {"cats": cats, "Walk": walk, "Run": run, "Sprint": sprint}
 
 
-def fmt_tte(sec: float) -> str:
+def fmt_tte(sec) -> str:
+    if sec is None:
+        return f">{MAX_S / 3600.0:.0f}h+"
     if sec >= 3600:
         h = int(sec // 3600)
         m = int((sec % 3600) // 60)
@@ -121,6 +123,18 @@ def fmt_tte(sec: float) -> str:
     m = int(sec // 60)
     s = int(sec % 60)
     return f"{m:02d}:{s:02d}"
+
+
+def tte_hours_label(sec) -> str:
+    if sec is None:
+        return f">{MAX_S / 3600.0:.0f}h+"
+    return f"{sec / 3600.0:.2f} h"
+
+
+def tte_minutes_label(sec) -> str:
+    if sec is None:
+        return f">{MAX_S / 60.0:.0f}min+"
+    return f"{sec / 60.0:.1f} min"
 
 
 def main() -> int:
@@ -140,7 +154,14 @@ def main() -> int:
     short = build_short(full)
     embed = {
         "meta": {"preset": PRESET, "load_kg": LOAD_KG, "grade": 0},
-        "tte": {k: round(full[k]["t_empty"], 1) for k in full},
+        "tte": {
+            k: (
+                round(full[k]["t_empty"], 1)
+                if full[k]["t_empty"] is not None
+                else None
+            )
+            for k in full
+        },
         "v_avg": {k: round(full[k]["v_avg"], 3) for k in full},
         "early90s": early,
         "short32": short,
@@ -197,8 +218,9 @@ def main() -> int:
     tte = embed["tte"]
     fig.suptitle(
         "RSS v6 StandardMilsim @ 30 kg flat — continuous gait V-T\n"
-        f"TTE STA<=1%: Walk {tte['Walk']/3600:.2f} h | "
-        f"Run {tte['Run']/60:.1f} min | Sprint {tte['Sprint']/60:.1f} min",
+        f"TTE STA<=1%: Walk {tte_hours_label(tte['Walk'])} | "
+        f"Run {tte_minutes_label(tte['Run'])} | "
+        f"Sprint {tte_minutes_label(tte['Sprint'])}",
         fontsize=11,
     )
     fig.savefig(out_png, dpi=140)

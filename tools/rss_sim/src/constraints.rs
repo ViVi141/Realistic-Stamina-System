@@ -1,5 +1,5 @@
 use crate::constants::{
-    merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
+    merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_WALK,
     RSS_PLAYER_TICK_SEC, STANCE_STAND,
 };
 use crate::cp_wprime::{simulate_v6_sprint_seconds, V5AnaerobicState};
@@ -21,10 +21,10 @@ pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.40;
 pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 2.60;
 pub const SUSTAIN_OBS_HARD: bool = true;
 
-pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 2.65;
-pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 2.95;
+pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 2.98;
+pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 3.45;
 pub const MOBILITY_RUN_35KG_MIN_MS: f64 = 2.15;
-pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 2.85;
+pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 3.20;
 pub const MOBILITY_HARD: bool = true;
 
 pub const TWO_MILE_DIST_M: f64 = 2.0 * 1609.344;
@@ -33,6 +33,8 @@ pub const TWO_MILE_SCORE_85_SEC: f64 = 15.0 * 60.0 + 30.0;
 pub const TWO_MILE_SCORE_70: f64 = 0.70;
 pub const TWO_MILE_SCORE_85: f64 = 0.85;
 pub const TWO_MILE_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
+/// Hard gate = 70% score anchor (18:00); soft target 15:30 / 85%.
+pub const TWO_MILE_HARD_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
 pub const TWO_MILE_TIMEOUT_SEC: f64 = 1800.0;
 pub const TWO_MILE_HARD: bool = true;
 
@@ -54,34 +56,46 @@ pub struct ConstraintReport {
     pub all_hard_passed: bool,
 }
 
-fn elite_preset_path() -> PathBuf {
+fn elite_preset_paths() -> Vec<PathBuf> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let tools_dir = manifest
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or(manifest);
-    tools_dir.join("optimized_rss_config_elitestandard_v4.json")
+    vec![
+        tools_dir.join("optimized_rss_config_elitestandard_v6.json"),
+        tools_dir.join("optimized_rss_config_elitestandard_v4.json"),
+    ]
 }
 
 pub fn load_elite_preset_params() -> HashMap<String, f64> {
-    let path = elite_preset_path();
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return HashMap::new(),
-    };
-    let parsed = match serde_json::from_str::<serde_json::Value>(&content) {
-        Ok(v) => v,
-        Err(_) => return HashMap::new(),
-    };
     let mut out = HashMap::new();
-    if let Some(obj) = parsed.as_object() {
-        for (k, v) in obj {
-            if k.starts_with('_') {
-                continue;
+    for path in elite_preset_paths() {
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let parsed = match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(obj) = parsed.as_object() {
+            for (k, v) in obj {
+                if k.starts_with('_') {
+                    continue;
+                }
+                if let Some(f) = v.as_f64() {
+                    out.insert(k.clone(), f);
+                }
             }
-            if let Some(f) = v.as_f64() {
-                out.insert(k.clone(), f);
-            }
+        }
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.contains("_v6."))
+            .unwrap_or(false)
+        {
+            break;
         }
     }
     out
@@ -398,7 +412,7 @@ pub fn simulate_zero_load_run_time_to_distance(
     let mut t = 0.0;
     while t < timeout_s && dist < distance_m {
         twin.game_player_tick(
-            MOVEMENT_SPRINT,
+            MOVEMENT_RUN,
             body_kg,
             0.0,
             1.0,
@@ -418,10 +432,11 @@ pub fn check_zero_load_run_2mile(params: Option<&HashMap<String, f64>>) -> Const
     let (time_s, dist_m) =
         simulate_zero_load_run_time_to_distance(TWO_MILE_DIST_M, params, TWO_MILE_TIMEOUT_SEC);
     let finished = dist_m + 1e-6 >= TWO_MILE_DIST_M;
-    let ok = finished && time_s <= TWO_MILE_MAX_SEC;
-    let mut margin = TWO_MILE_MAX_SEC - time_s;
+    let hard_max = TWO_MILE_HARD_MAX_SEC;
+    let ok = finished && time_s <= hard_max;
+    let mut margin = hard_max - time_s;
     if !finished {
-        margin = TWO_MILE_MAX_SEC - TWO_MILE_TIMEOUT_SEC;
+        margin = hard_max - TWO_MILE_TIMEOUT_SEC;
     }
     let score = if finished {
         two_mile_score_01(time_s)
@@ -430,14 +445,14 @@ pub fn check_zero_load_run_2mile(params: Option<&HashMap<String, f64>>) -> Const
     };
     let mut hint = String::new();
     if !ok {
-        hint = "raise critical_power_watts / w_prime_max_joules or sprint_power_cap_watts so 2mi Sprint finishes by 18:00 (70%)"
+        hint = "raise v5_run_speed_ms (and CP if demoted) so zero-load Run 2mi finishes by 18:00 (hard ≥70%); soft target remains 15:30 / 85%"
             .to_string();
     }
     let minutes = (time_s / 60.0).floor() as i64;
     let seconds = time_s - 60.0 * (minutes as f64);
     let detail = if finished {
         format!(
-            "time={}:{:05.2} score={:.1}% (hard≤18:00/70%, soft 15:30/85%, dist={:.1}m)",
+            "time={}:{:05.2} score={:.1}% (hard≤18:00/70%, soft85@15:30, dist={:.1}m)",
             minutes,
             seconds,
             score * 100.0,
