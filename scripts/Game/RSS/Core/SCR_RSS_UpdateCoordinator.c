@@ -278,7 +278,8 @@ class SCR_RSS_UpdateCoordinator
                     {
                         GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
                             controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
-                        gradePct = gradeRes.gradePercent;
+                        gradePct = SCR_RSS_SpeedBridge.ClampGradePercentForMetabolicSpeed(
+                            gradeRes.gradePercent);
                     }
                     float sprintTerrainFactor = terrainFactor;
                     if (sprintTerrainFactor < 0.5)

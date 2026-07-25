@@ -108,9 +108,10 @@
 ### 处置
 
 - 引擎顶速**只测一次**，禁止周期抬限。
-- **不**用 `EnforceCpCruisePhysicsCap` / 水平硬钳压 `v_meas`（默认关）。
+- 平路/上坡：W′ 解除武装后可用 `EnforceCpCruisePhysicsCap` 防 Run→Walk 窜速。
+- **下坡**（`grade < -2%`）与极陡（`|grade|>35%`）**跳过**物理钳；超额走 STA 超速罚，避免重力与 `v_limit` 互殴抖动。
 - 下坡不套 2.4 平路巡航帽；解除武装后 W′ 放电钳到 CP。
-- Run：CP 反解 ≥ `V6_RUN_GAIT_FLOOR_MS` 留在巡航带；更低则 `ResolveRunCruiseCapMs` 降 Walk（勿开物理钳）。
+- Run：CP 反解 ≥ `V6_RUN_GAIT_FLOOR_MS` 留在巡航带；更低则 `ResolveRunCruiseCapMs` 降 Walk。
 
 ### 复测
 

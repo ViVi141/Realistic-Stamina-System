@@ -626,17 +626,9 @@ class SCR_RSS_SpeedCalculator
             result.slopeAngleDegrees = rawAngleDeg;
             // 将角度转换为斜率比：tan(angle_rad)
             float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
-            // Clamp ratio to reasonable range (-100%..100%) to avoid terrain/measurement glitches
-            if (slopeRatio < -1.0 || slopeRatio > 1.0)
-            {
-                // log warning once per debug cycle
-                if (SCR_RSS_ConfigBridge.IsDebugEnabled())
-                slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
-            }
+            // 始终钳到 ±100%（±45°）。旧逻辑误把 Clamp 放进 IsDebugEnabled，正式局会读到悬崖噪声。
+            slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             result.gradePercent = slopeRatio * 100.0;
-            if (SCR_RSS_ConfigBridge.IsDebugEnabled())
-            {
-            }
         }
         
         return result;

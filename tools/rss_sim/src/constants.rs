@@ -33,8 +33,12 @@ pub const V6_WALK_DOWNHILL_COAST_FACTOR_MIN: f64 = 0.42;
 pub const V6_AEROBIC_CRUISE_MAX_MS: f64 = 2.4;
 /// Run-intent CP-cruise floor: keep above Walk anim band (match game V6_RUN_GAIT_FLOOR_MS).
 pub const V6_RUN_GAIT_FLOOR_MS: f64 = 2.2;
-/// Match game: do not clamp Physics velocity; only SetSpeedLimit.
-pub const V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP: bool = false;
+/// Match game: W' disarmed flat/uphill may clamp Physics; downhill/steep skip.
+pub const V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP: bool = true;
+pub const V6_CP_CRUISE_OVERSPEED_EPS_MPS: f64 = 0.15;
+pub const V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX: f64 = 35.0;
+pub const V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE: f64 = -2.0;
+pub const V6_METABOLIC_GRADE_ABS_MAX_PCT: f64 = 45.0;
 pub const V6_APPLY_HORIZONTAL_SPEED_CLAMP: bool = false;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;

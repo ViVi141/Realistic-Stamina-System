@@ -1091,12 +1091,20 @@ modded class SCR_CharacterControllerComponent
         return slewed;
     }
 
+    //! 最近一次用于 CP 反解的平滑坡度%（Phase A 物理钳可复用，避免峭壁上无坡度时仍硬钳）
+    float RSS_GetSmoothedGradePercentForSpeed()
+    {
+        return m_fSmoothedGradePercentForSpeed;
+    }
+
     //! 坡度 EMA：供 CP 反解限速，避免下坡法线噪声拧速度
     float RSS_SmoothGradePercentForSpeed(float rawGradePercent, float currentTimeSec)
     {
+        float raw = SCR_RSS_SpeedBridge.ClampGradePercentForMetabolicSpeed(rawGradePercent);
+
         if (!m_bGradeSmoothInitialized)
         {
-            m_fSmoothedGradePercentForSpeed = rawGradePercent;
+            m_fSmoothedGradePercentForSpeed = raw;
             m_bGradeSmoothInitialized = true;
             m_fLastGradeSmoothTimeSec = currentTimeSec;
             return m_fSmoothedGradePercentForSpeed;
@@ -1111,10 +1119,19 @@ modded class SCR_CharacterControllerComponent
             dt = 0.5;
         m_fLastGradeSmoothTimeSec = currentTimeSec;
 
-        float tau = 0.45;
+        // 峭壁进出：限制坡度变化速率，避免巡航顶从 0.3↔2.0 瞬跳触发 SNAP_UP
+        float maxDeltaPerSec = 55.0;
+        float maxStep = maxDeltaPerSec * dt;
+        float delta = raw - m_fSmoothedGradePercentForSpeed;
+        if (delta > maxStep)
+            raw = m_fSmoothedGradePercentForSpeed + maxStep;
+        else if (delta < -maxStep)
+            raw = m_fSmoothedGradePercentForSpeed - maxStep;
+
+        float tau = 0.55;
         float alpha = dt / (tau + dt);
         m_fSmoothedGradePercentForSpeed = m_fSmoothedGradePercentForSpeed
-            + (rawGradePercent - m_fSmoothedGradePercentForSpeed) * alpha;
+            + (raw - m_fSmoothedGradePercentForSpeed) * alpha;
         return m_fSmoothedGradePercentForSpeed;
     }
 

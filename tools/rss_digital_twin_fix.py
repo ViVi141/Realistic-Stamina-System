@@ -1269,6 +1269,7 @@ class RSSDigitalTwin:
     ) -> float:
         """与 SCR_RSS_UpdateCoordinator.UpdateSpeed v6 路径一致，返回 theoreticalTargetSpeed (m/s)。"""
         c = self.constants
+        grade_percent = clamp_grade_percent_for_metabolic_speed(grade_percent)
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
@@ -2278,6 +2279,64 @@ V6_RUN_GAIT_FLOOR_MS = 2.2
 V6_RUN_GAIT_DEMOTE_TO_WALK = True
 V6_WALK_START_MIN_MS = 0.35
 V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
+# Match game SCR_RSS_Constants: W' disarmed flat/uphill may clamp Physics; downhill/steep skip.
+V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = True
+V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15
+V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX = 35.0
+V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE = -2.0
+V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0
+
+
+def clamp_grade_percent_for_metabolic_speed(grade_percent: float) -> float:
+    lim = float(V6_METABOLIC_GRADE_ABS_MAX_PCT)
+    if lim < 1.0:
+        lim = 1.0
+    g = float(grade_percent)
+    if g > lim:
+        return lim
+    if g < -lim:
+        return -lim
+    return g
+
+
+def should_enforce_cp_cruise_physics_cap(grade_percent: float) -> bool:
+    # Parity with SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap grade gates.
+    if not V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
+        return False
+    g = float(grade_percent)
+    if g < float(V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE):
+        return False
+    if abs(g) > float(V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX):
+        return False
+    return True
+
+
+def apply_cp_cruise_physics_cap(
+    measured_ms: float,
+    applied_limit_ms: float,
+    dt_sec: float,
+    grade_percent: float,
+) -> float:
+    # Simplified SoftClampOwnerHorizontalSpeed for twin bug hunts.
+    if not should_enforce_cp_cruise_physics_cap(grade_percent):
+        return float(measured_ms)
+    if applied_limit_ms < 0.1:
+        return float(measured_ms)
+    eps = float(V6_CP_CRUISE_OVERSPEED_EPS_MPS)
+    v = float(measured_ms)
+    lim = float(applied_limit_ms)
+    if v <= lim + eps:
+        return v
+    if dt_sec < 0.01:
+        dt_sec = 0.01
+    if dt_sec > 0.5:
+        dt_sec = 0.5
+    if v > lim + 0.35:
+        return lim
+    nv = v - 9.0 * dt_sec
+    if nv < lim:
+        nv = lim
+    return nv
 
 
 def resolve_run_cruise_cap_ms(

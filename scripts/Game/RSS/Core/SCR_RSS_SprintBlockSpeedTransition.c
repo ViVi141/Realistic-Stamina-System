@@ -130,7 +130,12 @@ class SCR_RSS_SprintBlockSpeedTransition
             m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
         }
 
-        return m_fCurrentSmoothedAbsMs / currentEngineBaseMs;
+        // 分母切到更矮的相位顶（Run→Walk）时，禁止用「高绝对速/矮顶」推出 >1 倍率：
+        // 外层 FractionForAbsoluteSpeed 会钳成 1.0 并清掉限速源，物理仍按 Run 顶窜速。
+        float absForFrac = m_fCurrentSmoothedAbsMs;
+        if (absForFrac > currentEngineBaseMs)
+            absForFrac = currentEngineBaseMs;
+        return absForFrac / currentEngineBaseMs;
     }
 
     bool IsInTransition()

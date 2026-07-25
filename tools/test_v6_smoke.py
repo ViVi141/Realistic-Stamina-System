@@ -219,6 +219,55 @@ def _walk_not_faster_than_demoted_run_ok() -> bool:
     return True
 
 
+def _downhill_phys_clamp_policy_ok() -> bool:
+    """孪生复现用户日志：缓下坡不得物理钳；峭壁跳过；平路仍钳；代谢坡度±45。"""
+    from rss_digital_twin_fix import (
+        apply_cp_cruise_physics_cap,
+        clamp_grade_percent_for_metabolic_speed,
+        should_enforce_cp_cruise_physics_cap,
+        invert_speed_for_power_watts,
+        refresh_wprime_overspeed_armed,
+    )
+
+    if should_enforce_cp_cruise_physics_cap(-9.1):
+        return False
+    if should_enforce_cp_cruise_physics_cap(99.0):
+        return False
+    if not should_enforce_cp_cruise_physics_cap(0.0):
+        return False
+    if not should_enforce_cp_cruise_physics_cap(5.0):
+        return False
+
+    g = clamp_grade_percent_for_metabolic_speed(99.0)
+    if abs(g - 45.0) > 1e-6:
+        return False
+    g2 = clamp_grade_percent_for_metabolic_speed(-99.0)
+    if abs(g2 + 45.0) > 1e-6:
+        return False
+
+    # W′=38% 解除武装（再武装≈60%）
+    if refresh_wprime_overspeed_armed(0.38, False):
+        return False
+
+    v_limit = 1.94
+    coast = 2.79
+    dt = 0.018
+    # 旧策略（强制钳）应把超速钉回 limit；新策略下坡应保持 coast
+    v_old = apply_cp_cruise_physics_cap(coast, v_limit, dt, 0.0)
+    if v_old > v_limit + 0.05:
+        return False
+    v_new = apply_cp_cruise_physics_cap(coast, v_limit, dt, -9.1)
+    if abs(v_new - coast) > 1e-6:
+        return False
+
+    # 峭壁代谢坡度钳后反解应明显快于 raw 99%（上坡）
+    inv_raw = invert_speed_for_power_watts(740.0, 121.128, 99.0, 1.0, 2)
+    inv_c = invert_speed_for_power_watts(740.0, 121.128, g, 1.0, 2)
+    if inv_c + 0.05 < inv_raw:
+        return False
+    return True
+
+
 def _tier_scalar_gradients_ok() -> bool:
     from rss_pipeline_v6 import V6Metrics, scalarize_tier_metrics, make_mo_sampler
 
@@ -337,6 +386,13 @@ SCENARIOS = [
     ("march_4h_aerobic_end", lambda: _march_4h_ok()),
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
     ("walk_not_faster_than_demoted_run", lambda: _walk_not_faster_than_demoted_run_ok()),
+    ("downhill_phys_clamp_policy", lambda: _downhill_phys_clamp_policy_ok()),
+    (
+        "random_scenarios_quick",
+        lambda: __import__(
+            "test_rss_random_scenarios", fromlist=["run_quick"]
+        ).run_quick(),
+    ),
 ]
 
 

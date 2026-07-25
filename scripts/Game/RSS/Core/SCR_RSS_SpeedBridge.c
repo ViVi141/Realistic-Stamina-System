@@ -145,16 +145,27 @@ class SCR_RSS_SpeedBridge
         ApplyStaminaSpeedLimit(owner, limit);
     }
 
-    //! 绝对速度 → 相对当前相位顶速的 SetSpeedLimit 倍率
-    static float FractionForAbsoluteSpeed(float desiredAbsMs, float phaseTopMs)
+    //! 绝对速度 → 相对当前相位顶速的 SetSpeedLimit 倍率。
+    //! @param keepSource true：禁止返回 1.0（Chimera SetSpeedLimit(1.0) 会移除限速源，
+    //!   Run→Walk 时若仍停在 Run 顶速会瞬间窜到 3m/s+）。
+    static float FractionForAbsoluteSpeed(float desiredAbsMs, float phaseTopMs, bool keepSource = false)
     {
         if (phaseTopMs < 0.1)
+        {
+            if (keepSource)
+                return 0.999;
             return 1.0;
+        }
         float frac = desiredAbsMs / phaseTopMs;
         if (frac > 1.0)
             frac = 1.0;
         if (frac < 0.01)
             frac = 0.01;
+        if (keepSource)
+        {
+            if (frac >= 0.999)
+                frac = 0.999;
+        }
         return frac;
     }
 
@@ -281,10 +292,22 @@ class SCR_RSS_SpeedBridge
         physics.SetVelocity(velocity);
     }
 
-    //! CP 巡航 / W′ 解除武装后超速纠偏（默认关：禁止直接改 Physics，只靠 SetSpeedLimit）
-    static void EnforceCpCruisePhysicsCap(IEntity owner, float appliedLimitMs, float measuredSpeedMs, float dtSec)
+    //! CP 巡航 / W′ 解除武装后超速纠偏。
+    //! @param gradePercent 当前坡度%；下坡与极陡时跳过，避免与重力/碰撞抢速度。
+    static void EnforceCpCruisePhysicsCap(
+        IEntity owner,
+        float appliedLimitMs,
+        float measuredSpeedMs,
+        float dtSec,
+        float gradePercent)
     {
         if (!SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
+            return;
+        float downhillSkip = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE;
+        if (gradePercent < downhillSkip)
+            return;
+        float gradeAbsMax = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX;
+        if (Math.AbsFloat(gradePercent) > gradeAbsMax)
             return;
         if (appliedLimitMs < 0.1)
             return;
@@ -292,5 +315,14 @@ class SCR_RSS_SpeedBridge
         if (measuredSpeedMs <= appliedLimitMs + eps)
             return;
         SoftClampOwnerHorizontalSpeed(owner, appliedLimitMs, dtSec, true);
+    }
+
+    //! 代谢/CP 反解用坡度：钳到 ±V6_METABOLIC_GRADE_ABS_MAX_PCT
+    static float ClampGradePercentForMetabolicSpeed(float gradePercent)
+    {
+        float lim = SCR_RSS_Constants.V6_METABOLIC_GRADE_ABS_MAX_PCT;
+        if (lim < 1.0)
+            lim = 1.0;
+        return Math.Clamp(gradePercent, -lim, lim);
     }
 }

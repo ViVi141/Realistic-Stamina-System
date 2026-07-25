@@ -3,8 +3,11 @@
 //! cargo run --manifest-path tools/rss_sim/Cargo.toml --bin sim_bug_hunt --no-default-features --release
 
 use rss_sim::constants::{
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
-    V6_WPRIME_OVERSPEED_HYSTERESIS, V6_WPRIME_OVERSPEED_REARM,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS,
+    V6_CP_CRUISE_OVERSPEED_EPS_MPS, V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP,
+    V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE, V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX,
+    V6_METABOLIC_GRADE_ABS_MAX_PCT, V6_RUN_GAIT_FLOOR_MS, V6_WPRIME_OVERSPEED_HYSTERESIS,
+    V6_WPRIME_OVERSPEED_REARM,
 };
 use rss_sim::cp_wprime::V6CriticalPowerState;
 use rss_sim::drain::refresh_wprime_overspeed_armed;
@@ -42,6 +45,75 @@ fn cruise_v(cp: f64, total: f64, grade: f64, skip_flat_cap_downhill: bool) -> f6
         cap = V6_RUN_GAIT_FLOOR_MS;
     }
     cap
+}
+
+fn clamp_grade_metabolic(grade: f64) -> f64 {
+    let lim = V6_METABOLIC_GRADE_ABS_MAX_PCT;
+    if grade > lim {
+        return lim;
+    }
+    if grade < -lim {
+        return -lim;
+    }
+    grade
+}
+
+fn should_enforce_phys_clamp(grade: f64) -> bool {
+    if !V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP {
+        return false;
+    }
+    if grade < V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE {
+        return false;
+    }
+    if grade.abs() > V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX {
+        return false;
+    }
+    true
+}
+
+fn apply_phys_clamp(v_meas: f64, v_limit: f64, dt: f64, clamp_on: bool) -> f64 {
+    if !clamp_on {
+        return v_meas;
+    }
+    if v_meas <= v_limit + V6_CP_CRUISE_OVERSPEED_EPS_MPS {
+        return v_meas;
+    }
+    if v_meas > v_limit + 0.35 {
+        return v_limit;
+    }
+    let mut v = v_meas - 9.0 * dt;
+    if v < v_limit {
+        v = v_limit;
+    }
+    v
+}
+
+/// Gravity coasts toward target; RSS clamp fights back. Returns clamp-event count.
+fn count_downhill_clamp_fights(
+    v_limit: f64,
+    coast_ms: f64,
+    grade: f64,
+    force_clamp: Option<bool>,
+    seconds: f64,
+) -> u32 {
+    let clamp_on = match force_clamp {
+        Some(v) => v,
+        None => should_enforce_phys_clamp(grade),
+    };
+    let mut v = v_limit;
+    let mut events = 0u32;
+    let mut t = 0.0;
+    let g_accel = 12.0;
+    while t < seconds {
+        v = (v + g_accel * DT).min(coast_ms);
+        let before = v;
+        v = apply_phys_clamp(v, v_limit, DT, clamp_on);
+        if clamp_on && before > v_limit + V6_CP_CRUISE_OVERSPEED_EPS_MPS {
+            events += 1;
+        }
+        t += DT;
+    }
+    events
 }
 
 fn main() {
@@ -293,11 +365,102 @@ fn main() {
         );
     }
 
+    // ── BUG11: 缓下坡 + W′解除武装 + 物理钳 → 与重力互殴（对照用户日志）──
+    {
+        let load_log = 31.128;
+        let grade_dn = -9.1;
+        let total_log = BODY + load_log;
+        let cp_eff = compute_cp_watts(780.0, load_log, grade_dn, 1.0, 1.0);
+        // 日志常见：STA/负重倍率把 v_limit 压到 ~1.94，重力 coast ~2.79
+        let v_limit = 1.94;
+        let coast = 2.79;
+        let events_old = count_downhill_clamp_fights(v_limit, coast, grade_dn, Some(true), 3.0);
+        let events_new = count_downhill_clamp_fights(v_limit, coast, grade_dn, None, 3.0);
+        let events_flat = count_downhill_clamp_fights(v_limit, coast, 0.0, None, 3.0);
+        let pool = 0.38;
+        let armed = refresh_wprime_overspeed_armed(pool, false, thresh);
+        println!(
+            "[用例11] 缓下坡物理钳: W'%={:.0} armed={} CP≈{:.0} v_lim={v_limit} coast={coast}",
+            pool * 100.0,
+            armed,
+            cp_eff
+        );
+        println!(
+            "         旧策略(总钳) events={events_old}  新策略(下坡跳过) events={events_new}  平路仍钳 events={events_flat}"
+        );
+        let _ = total_log;
+        if events_new > 2 {
+            bugs.push(Bug {
+                id: "DOWNHILL_PHYS_CLAMP_THRASH",
+                severity: "高",
+                detail: format!(
+                    "缓下坡 grade={grade_dn}% 仍物理钳 {events_new} 次/3s；重力 coast 与 v_limit 互殴（日志 1.9↔2.8）"
+                ),
+            });
+        }
+        if events_old < 10 {
+            bugs.push(Bug {
+                id: "DOWNHILL_THRASH_MODEL_WEAK",
+                severity: "低",
+                detail: format!("对照旧策略应频繁钳制，却只有 {events_old} 次"),
+            });
+        }
+        if events_flat < 10 {
+            bugs.push(Bug {
+                id: "FLAT_PHYS_CLAMP_MISSING",
+                severity: "中",
+                detail: format!("平路 W′解除后应仍钳防窜速，events={events_flat}"),
+            });
+        }
+        if armed {
+            bugs.push(Bug {
+                id: "WPRIME_38_SHOULD_STAY_DISARMED",
+                severity: "高",
+                detail: "池 38% 再武装闩应为 false（rearm≈60%）".into(),
+            });
+        }
+    }
+
+    // ── BUG12: 代谢坡度未钳 → 峭壁反解成爬行顶 ──
+    {
+        let raw = 99.0;
+        let clamped = clamp_grade_metabolic(raw);
+        let inv_raw = invert_speed_for_power_watts(740.0, BODY + 31.128, raw, 1.0, RUN);
+        let inv_c = invert_speed_for_power_watts(740.0, BODY + 31.128, clamped, 1.0, RUN);
+        println!(
+            "[用例12] 代谢坡度钳: raw={raw}% → {clamped}%  Invert {inv_raw:.2} → {inv_c:.2} m/s"
+        );
+        if clamped > V6_METABOLIC_GRADE_ABS_MAX_PCT + 0.01 {
+            bugs.push(Bug {
+                id: "METABOLIC_GRADE_CLAMP_MISSING",
+                severity: "高",
+                detail: format!("峭壁坡度未钳到 ±{V6_METABOLIC_GRADE_ABS_MAX_PCT}%"),
+            });
+        }
+        if inv_c + 0.05 < inv_raw {
+            // expected: clamp raises uphill invert (less extreme)
+        }
+        if should_enforce_phys_clamp(raw) {
+            bugs.push(Bug {
+                id: "STEEP_PHYS_CLAMP_NOT_SKIPPED",
+                severity: "高",
+                detail: format!("|grade|={raw}% 仍启用物理钳"),
+            });
+        }
+        if should_enforce_phys_clamp(-9.1) {
+            bugs.push(Bug {
+                id: "DOWNHILL_PHYS_CLAMP_NOT_SKIPPED",
+                severity: "高",
+                detail: "缓下坡 -9.1% 仍启用物理钳".into(),
+            });
+        }
+    }
+
     println!();
     if bugs.is_empty() {
         println!("========== 拟真回归：未发现未修复问题 ==========");
         println!(
-            "已验证: P≈CP 不回充 / 施密特 / 空池 AvailableP / 下坡2.4 / Run地板 / 疲劳意图速 / 无状态门"
+            "已验证: P≈CP 不回充 / 施密特 / 空池 AvailableP / 下坡2.4 / Run地板 / 疲劳意图速 / 无状态门 / 下坡物理钳跳过 / 代谢坡度钳"
         );
     } else {
         println!("========== 发现 {} 个问题 ==========", bugs.len());

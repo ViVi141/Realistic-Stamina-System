@@ -558,11 +558,20 @@ class SCR_RSS_Constants
     //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
     static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
     //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度。
-    //! **默认 false**：与水平硬钳同一原则——只走 SetSpeedLimit，禁止直接改 Physics 速度（会滑步）。
-    //! 仅调试「限速压不住物理」时临时打开；正式玩法保持关。
-    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false;
-    //! 超过限速多少 m/s 才触发上项纠偏（仅上项为 true 时有效）
-    static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.20;
+    //! 必须开：SetSpeedLimit(1.0) 会清源，Run→Walk 切步态时物理仍按 Run 顶窜速，
+    //! 表现为「降速 Run 后切 Walk 反而更快」。仅靠 SetSpeedLimit 压不住惯性/相位滞后。
+    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = true;
+    //! 超过限速多少 m/s 才触发上项纠偏
+    static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15;
+    //! |坡度%| 超过此值不做物理超速钳（悬崖/陡壁由引擎碰撞主导；CP 反解会把 v_limit
+    //! 压到 <0.5 再硬钳 → 倍率 0.09↔0.6 抽搐，离开峭壁又 SNAP_UP）。
+    static const float V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX = 35.0;
+    //! 坡度% 低于此值（下坡）不做物理超速钳。缓下坡重力可达速常 ≫ SetSpeedLimit，
+    //! 硬钳会把 v_meas 在 ~1.9↔2.8 间抽；超额改由 STA 超速罚买单。
+    //! 平路/上坡仍钳，保证 W′ 解除后 Run→Walk 不窜速。
+    static const float V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE = -2.0;
+    //! 代谢/CP 反解用坡度绝对值上限（%）。更陡只记账展示，不继续把巡航顶拧成爬行。
+    static const float V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! false：只保留负重+坡度等机械限速；超代谢功率只烧 W′/体力，不压速。
     static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
