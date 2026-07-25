@@ -8,6 +8,7 @@
 - **孪生回归**：`sim_bug_hunt` 用例11/12 + `test_v6_smoke.downhill_phys_clamp_policy`；Python/Rust 对齐物理钳坡度门与代谢坡度钳（旧策略下坡 61 clamp/3s，新策略 0）
 - **随机工况**：`tools/test_rss_random_scenarios.py`（默认 2000 例；`--quick` 128 例接入 smoke）覆盖三档预设×坡度/负重/W′/步态/超速钳不变量
 - **设计网格**：`3×99×45×14×100×10×3 = 561,330,000`（`--grid` 无放回抽样；`--grid-full --i-accept-full-grid` 全量，可 `--shard i/N`）
+- **多核**：`-j/--jobs`（默认 `cpu-1`）ProcessPool；20k 网格抽样约 687/s→6700/s（本机 24 逻辑核）
 - **Run 三带**：`≥2.2` 保留；`Walk顶～2.2` **软 Run**（保留 CP 反解，禁止悬崖降到 ~1.4）；`<Walk顶` 才降 Walk
 - **Walk 托底**：`startMin` / Walk clamp → `V6_WALK_START_MIN_MS`（0.35）；开关 `V6_RUN_GAIT_DEMOTE_TO_WALK`
 - **物理超速买单**：Run 超速时 W′ 吃 `P−CP`；W′ 解除武装后 STA `超速罚`×`V6_OVERSPEED_STA_TAX_MULT`（12，避免耗尽后仍半小时慢跑）

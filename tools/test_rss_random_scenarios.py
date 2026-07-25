@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import time
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -405,7 +407,7 @@ CHECKS: List[Tuple[str, Callable]] = [
 ]
 
 
-def _eval_scenario(case_id: int, sc: dict, failures: List[Failure]) -> None:
+def _eval_one(case_id: int, sc: dict) -> Optional[Tuple[int, str, str]]:
     twin = _make_twin(sc["preset"], sc["load_kg"], sc["w_pool"], sc["stamina"])
     for name, fn in CHECKS:
         try:
@@ -413,77 +415,227 @@ def _eval_scenario(case_id: int, sc: dict, failures: List[Failure]) -> None:
         except Exception as exc:  # noqa: BLE001
             err = f"exception: {exc}"
         if err:
-            failures.append(Failure(case_id, name, err + f" | sc={sc}"))
-            return
+            return (case_id, name, err + f" | sc={sc}")
+    return None
 
 
-def run_random_battery(n: int, seed: int) -> Tuple[int, List[Failure]]:
+def _eval_scenario(case_id: int, sc: dict, failures: List[Failure]) -> None:
+    hit = _eval_one(case_id, sc)
+    if hit is not None:
+        failures.append(Failure(hit[0], hit[1], hit[2]))
+
+
+def _worker_eval_scenarios(
+    batch: Sequence[Tuple[int, dict]],
+) -> List[Tuple[int, str, str]]:
+    """Process-pool worker: evaluate a batch of (case_id, scenario)."""
+    out: List[Tuple[int, str, str]] = []
+    for case_id, sc in batch:
+        hit = _eval_one(int(case_id), sc)
+        if hit is not None:
+            out.append(hit)
+    return out
+
+
+def _worker_eval_grid_indices(
+    batch: Sequence[Tuple[int, int]],
+) -> List[Tuple[int, str, str]]:
+    """Process-pool worker: (case_id, grid_index) → rebuild scenario in-worker."""
+    out: List[Tuple[int, str, str]] = []
+    for case_id, gi in batch:
+        sc = scenario_from_grid_index(int(gi))
+        hit = _eval_one(int(case_id), sc)
+        if hit is not None:
+            out.append(hit)
+    return out
+
+
+def _chunked(items: Sequence, chunk_size: int) -> Iterable[Sequence]:
+    n = len(items)
+    cs = max(1, int(chunk_size))
+    for i in range(0, n, cs):
+        yield items[i : i + cs]
+
+
+def _default_jobs() -> int:
+    n = os.cpu_count()
+    if n is None or n < 1:
+        return 1
+    # Leave one logical core for the OS/UI on interactive machines
+    if n <= 2:
+        return n
+    return n - 1
+
+
+def _run_parallel_scenarios(
+    scenarios: Sequence[Tuple[int, dict]],
+    jobs: int,
+    chunk_size: int,
+) -> List[Failure]:
+    if jobs <= 1 or len(scenarios) < 32:
+        fails: List[Failure] = []
+        for case_id, sc in scenarios:
+            _eval_scenario(case_id, sc, fails)
+        return fails
+
+    batches = list(_chunked(list(scenarios), chunk_size))
+    fails: List[Failure] = []
+    done_cases = 0
+    total = len(scenarios)
+    t0 = time.perf_counter()
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(_worker_eval_scenarios, batch) for batch in batches]
+        for fut in as_completed(futures):
+            for case_id, name, detail in fut.result():
+                fails.append(Failure(case_id, name, detail))
+            done_cases += chunk_size
+            if done_cases >= 20000 and done_cases % 20000 < chunk_size:
+                elapsed = time.perf_counter() - t0
+                finished = min(done_cases, total)
+                rate = finished / max(elapsed, 1e-6)
+                eta = (total - finished) / max(rate, 1e-6)
+                print(
+                    f"  … ~{finished}/{total}  {rate:.0f}/s  fails={len(fails)}  "
+                    f"jobs={jobs}  ETA={eta/60:.1f}min",
+                    flush=True,
+                )
+    return fails
+
+
+def _run_parallel_grid_indices(
+    pairs: Sequence[Tuple[int, int]],
+    jobs: int,
+    chunk_size: int,
+) -> List[Failure]:
+    if jobs <= 1 or len(pairs) < 32:
+        fails: List[Failure] = []
+        for case_id, gi in pairs:
+            _eval_scenario(case_id, scenario_from_grid_index(int(gi)), fails)
+        return fails
+
+    batches = list(_chunked(list(pairs), chunk_size))
+    fails: List[Failure] = []
+    done_cases = 0
+    total = len(pairs)
+    t0 = time.perf_counter()
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(_worker_eval_grid_indices, batch) for batch in batches]
+        for fut in as_completed(futures):
+            for case_id, name, detail in fut.result():
+                fails.append(Failure(case_id, name, detail))
+            done_cases += chunk_size
+            if done_cases >= 20000 and done_cases % 20000 < chunk_size:
+                elapsed = time.perf_counter() - t0
+                finished = min(done_cases, total)
+                rate = finished / max(elapsed, 1e-6)
+                eta = (total - finished) / max(rate, 1e-6)
+                print(
+                    f"  … ~{finished}/{total}  {rate:.0f}/s  fails={len(fails)}  "
+                    f"jobs={jobs}  ETA={eta/60:.1f}min",
+                    flush=True,
+                )
+    return fails
+
+
+def run_random_battery(
+    n: int, seed: int, jobs: int = 1, chunk_size: int = 64
+) -> Tuple[int, List[Failure]]:
     rng = np.random.default_rng(seed)
-    failures: List[Failure] = []
-    for case_id in range(n):
-        sc = _sample_scenario(rng)
-        _eval_scenario(case_id, sc, failures)
-    return n, failures
+    scenarios = [(i, _sample_scenario(rng)) for i in range(n)]
+    return n, _run_parallel_scenarios(scenarios, jobs, chunk_size)
 
 
-def run_grid_sample(n: int, seed: int) -> Tuple[int, List[Failure]]:
+def run_grid_sample(
+    n: int, seed: int, jobs: int = 1, chunk_size: int = 64
+) -> Tuple[int, List[Failure]]:
     """Sample unique cells from the 3×99×45×14×100×10×3 design grid."""
     rng = np.random.default_rng(seed)
     n = max(1, int(n))
     if n >= GRID_TOTAL:
-        return run_grid_full(shard_index=0, shard_count=1)
-    # Large populations: sample with replacement-free via partial Fisher-Yates on indices
+        return run_grid_full(shard_index=0, shard_count=1, jobs=jobs, chunk_size=chunk_size)
     if n <= 2_000_000:
         indices = rng.choice(GRID_TOTAL, size=n, replace=False)
     else:
-        # Avoid allocating huge arrays: hash-shuffle stream (tiny collision risk)
         indices = ((rng.integers(0, GRID_TOTAL, size=n, dtype=np.int64)
                     + np.arange(n, dtype=np.int64) * 1_000_003) % GRID_TOTAL)
-    failures: List[Failure] = []
-    t0 = time.perf_counter()
-    for case_id, gi in enumerate(indices):
-        sc = scenario_from_grid_index(int(gi))
-        _eval_scenario(case_id, sc, failures)
-        if case_id > 0 and case_id % 20000 == 0:
-            elapsed = time.perf_counter() - t0
-            rate = case_id / max(elapsed, 1e-6)
-            eta = (n - case_id) / max(rate, 1e-6)
-            print(
-                f"  … {case_id}/{n}  {rate:.0f}/s  fails={len(failures)}  ETA={eta/60:.1f}min",
-                flush=True,
-            )
-    return n, failures
+    pairs = [(i, int(gi)) for i, gi in enumerate(indices)]
+    return n, _run_parallel_grid_indices(pairs, jobs, chunk_size)
 
 
-def run_grid_full(shard_index: int = 0, shard_count: int = 1) -> Tuple[int, List[Failure]]:
-    """Iterate the full Cartesian grid (optionally sharded)."""
+def run_grid_full(
+    shard_index: int = 0,
+    shard_count: int = 1,
+    jobs: int = 1,
+    chunk_size: int = 64,
+) -> Tuple[int, List[Failure]]:
+    """Iterate the full Cartesian grid (optionally sharded + multi-process).
+
+    Streams batches so we never materialize all 561M indices in RAM.
+    """
     shard_count = max(1, int(shard_count))
     shard_index = max(0, min(int(shard_index), shard_count - 1))
-    failures: List[Failure] = []
-    done = 0
+    # Approximate count for this shard
+    total = (GRID_TOTAL - shard_index + shard_count - 1) // shard_count
+    fails: List[Failure] = []
+    if jobs <= 1:
+        done = 0
+        t0 = time.perf_counter()
+        for gi in range(shard_index, GRID_TOTAL, shard_count):
+            _eval_scenario(done, scenario_from_grid_index(gi), fails)
+            done += 1
+            if done % 20000 == 0:
+                elapsed = time.perf_counter() - t0
+                rate = done / max(elapsed, 1e-6)
+                eta = (total - done) / max(rate, 1e-6)
+                print(
+                    f"  … {done}/{total}  {rate:.0f}/s  fails={len(fails)}  "
+                    f"ETA={eta/3600:.1f}h",
+                    flush=True,
+                )
+        return done, fails
+
+    # Multi-process: keep a bounded window of in-flight chunk futures
     t0 = time.perf_counter()
-    for gi in range(shard_index, GRID_TOTAL, shard_count):
-        sc = scenario_from_grid_index(gi)
-        _eval_scenario(done, sc, failures)
-        done += 1
-        if done % 20000 == 0:
-            elapsed = time.perf_counter() - t0
-            rate = done / max(elapsed, 1e-6)
-            remain = (GRID_TOTAL - gi) / shard_count
-            eta = remain / max(rate, 1e-6)
-            print(
-                f"  … shard {shard_index}/{shard_count} done={done} "
-                f"cell={gi}/{GRID_TOTAL} {rate:.0f}/s fails={len(failures)} ETA={eta/3600:.1f}h",
-                flush=True,
-            )
-    return done, failures
+    done = 0
+    case_id = 0
+    gi = shard_index
+    max_inflight = max(jobs * 4, jobs)
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        inflight = {}
+        while gi < GRID_TOTAL or inflight:
+            while gi < GRID_TOTAL and len(inflight) < max_inflight:
+                batch = []
+                while gi < GRID_TOTAL and len(batch) < chunk_size:
+                    batch.append((case_id, gi))
+                    case_id += 1
+                    gi += shard_count
+                if batch:
+                    fut = pool.submit(_worker_eval_grid_indices, batch)
+                    inflight[fut] = len(batch)
+            if not inflight:
+                break
+            done_set, _ = wait(tuple(inflight.keys()), return_when=FIRST_COMPLETED)
+            for finished in done_set:
+                batch_n = inflight.pop(finished)
+                for cid, name, detail in finished.result():
+                    fails.append(Failure(cid, name, detail))
+                done += batch_n
+            if done > 0 and done % 20000 < chunk_size * jobs:
+                elapsed = time.perf_counter() - t0
+                rate = done / max(elapsed, 1e-6)
+                eta = (total - done) / max(rate, 1e-6)
+                print(
+                    f"  … {done}/{total}  {rate:.0f}/s  fails={len(fails)}  "
+                    f"jobs={jobs}  ETA={eta/3600:.1f}h",
+                    flush=True,
+                )
+    return done, fails
 
 
 def run_quick() -> bool:
-    n, fails = run_random_battery(128, seed=20260725)
+    n, fails = run_random_battery(128, seed=20260725, jobs=1)
     if len(fails) > 0:
         return False
-    # Also touch a few fixed grid corners
     corners = [0, GRID_TOTAL // 2, GRID_TOTAL - 1, 1234567 % GRID_TOTAL]
     fails2: List[Failure] = []
     for i, gi in enumerate(corners):
@@ -506,7 +658,25 @@ def main() -> int:
                     help="full-grid shard as i/N (e.g. 0/8)")
     ap.add_argument("--max-print", type=int, default=12, help="max failures to print")
     ap.add_argument("--show-grid", action="store_true", help="print grid size and exit")
+    ap.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=0,
+        help="worker processes (0=auto cpu-1, 1=single-core)",
+    )
+    ap.add_argument(
+        "--chunk-size",
+        type=int,
+        default=64,
+        help="cases per process-pool task (default 64)",
+    )
     args = ap.parse_args()
+
+    jobs = int(args.jobs)
+    if jobs <= 0:
+        jobs = _default_jobs()
+    chunk_size = max(8, int(args.chunk_size))
 
     print(
         f"design grid: {'×'.join(str(x) for x in GRID_SHAPE)} = {GRID_TOTAL:,} cells",
@@ -514,6 +684,7 @@ def main() -> int:
     )
     if args.show_grid:
         print(f"est. ~1.7ms/case → full sequential ≈ {GRID_TOTAL * 0.0017 / 3600:.0f} h")
+        print(f"auto jobs={_default_jobs()} (logical cpus={os.cpu_count()})")
         return 0
 
     seed = int(args.seed)
@@ -530,30 +701,30 @@ def main() -> int:
     elif args.grid_full:
         if not args.i_accept_full_grid:
             print(
-                "REFUSE: full grid is 561,330,000 cells (~11 days @1.7ms). "
-                "Use --grid --n 100000, or pass --i-accept-full-grid "
+                "REFUSE: full grid is 561,330,000 cells (~11 days @1.7ms single-core). "
+                "Use --grid --n 100000 -j 0, or pass --i-accept-full-grid "
                 "(optionally --shard i/N)."
             )
             return 2
         parts = str(args.shard).split("/")
         shard_i = int(parts[0])
         shard_n = int(parts[1]) if len(parts) > 1 else 1
-        total, fails = run_grid_full(shard_i, shard_n)
+        total, fails = run_grid_full(shard_i, shard_n, jobs=jobs, chunk_size=chunk_size)
         mode = f"grid-full shard={shard_i}/{shard_n}"
     elif args.grid:
         n = max(1, int(args.n))
-        total, fails = run_grid_sample(n, seed)
+        total, fails = run_grid_sample(n, seed, jobs=jobs, chunk_size=chunk_size)
         mode = "grid-sample"
     else:
         n = max(1, int(args.n))
-        total, fails = run_random_battery(n, seed)
+        total, fails = run_random_battery(n, seed, jobs=jobs, chunk_size=chunk_size)
         mode = "random"
 
     elapsed = time.perf_counter() - t0
     print(f"=== RSS twin battery ({mode}) ===")
     print(
-        f"cases={total} seed={seed} checks={len(CHECKS)} "
-        f"elapsed={elapsed:.1f}s ({total/max(elapsed,1e-6):.0f}/s)"
+        f"cases={total} seed={seed} checks={len(CHECKS)} jobs={jobs} "
+        f"chunk={chunk_size} elapsed={elapsed:.1f}s ({total/max(elapsed,1e-6):.0f}/s)"
     )
     if not fails:
         print(f"PASS: {total}/{total} scenarios")
