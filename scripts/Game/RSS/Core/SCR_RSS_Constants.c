@@ -583,9 +583,14 @@ class SCR_RSS_Constants
     //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。
     //! 下坡不套此帽（只按 CP 反解），否则 v_limit 远低于重力可达速，限速与物理互殴抖动。
     static const float V6_AEROBIC_CRUISE_MAX_MS = 2.4;
-    //! Run 意图 CP 巡航地板（m/s）。CP 反解若低于此值会落入 Walk 动画带。
+    //! Run 步态带下沿（m/s）。CP 反解低于此值视为撑不住 Run。
     //! 须 > ENGINE_WALK_TOP，且 ≤ V6_AEROBIC_CRUISE_MAX_MS。
     static const float V6_RUN_GAIT_FLOOR_MS = 2.2;
+    //! true（且硬钳关）：CP 反解 < Walk 顶才降 Walk；Walk顶～Run地板为软 Run（保留反解）。
+    //! false 或硬钳开：仍抬到 V6_RUN_GAIT_FLOOR_MS（硬钳+低于地板 → 滑步）。
+    static const bool V6_RUN_GAIT_DEMOTE_TO_WALK = true;
+    //! Walk 起步/意图绝对速度硬托底（m/s）。勿再用 0.8，否则重装/疲惫 Walk 抬得过高。
+    static const float V6_WALK_START_MIN_MS = 0.35;
     //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
     static const float V6_ACSM_REST_W = 50.0;
     static const float V6_ACSM_LINEAR_W_PER_MS = 200.0;
@@ -666,6 +671,9 @@ class SCR_RSS_Constants
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
     //! 超速判定阈值（调试 / CP 压速纠偏）；记账已不再 min 到 v_limit
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
+    //! W′ 解除武装后的物理超速 STA 税倍率（叠在 energy_to_stamina 上）。
+    //! 预设 coeff 极小，裸超额≈0.05%/s 仍可半小时慢跑；约 12× → ~0.5%/s 量级。
+    static const float V6_OVERSPEED_STA_TAX_MULT = 12.0;
     //! W′ 施密特关闭带偏移：池 ≤ 冲刺阈值 + 此值时解除超速/Sprint 武装（默认阈 0.20 → ≈25%）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
     //! W′ 施密特再开带偏移：池须回到 冲刺阈值 + 此值才再允许超速/Sprint（默认 → ≈60%），避免阈值附近速度震荡

@@ -1,7 +1,7 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
 记录日期：2026-07-24  
-更新：2026-07-24 — **疲劳/无状态门**：`P_fat` 改用意速（同 EPOC）；float 超速门改再武装带。关死 CP 巡航物理钳；Run 步态地板 2.2。
+更新：2026-07-25 — **步态三带**：`≥Run地板` 保留；`Walk顶～Run地板` 软 Run（保留反解）；`<Walk顶` 才降 Walk。修复 37kg 缓坡把 ~2.0 悬崖压到 1.48。Walk `startMin`→`0.35`。
 
 相关试跑开关（`SCR_RSS_Constants`）：
 
@@ -10,19 +10,21 @@
 - `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false`（**关** CP 巡航物理旁路钳）
 - `V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（CP/有氧巡航顶；经 SetSpeedLimit）
 - `V6_USE_MARCH_GAIT_SPEEDS = false`（March 档关，目标改引擎顶）
-- `V6_RUN_GAIT_FLOOR_MS = 2.2`（Run 意图 CP 巡航下限）
+- `V6_RUN_GAIT_FLOOR_MS = 2.2`（Run 步态带下沿；低于则降 Walk）
+- `V6_RUN_GAIT_DEMOTE_TO_WALK = true`（硬钳开时自动失效，改回抬地板）
+- `V6_WALK_START_MIN_MS = 0.35`（Walk 绝对速度硬托底）
 
 ### 结论（滑步）
 
 - **根因倾向**：`ClampOwnerHorizontalSpeed` / `PrepareControls` 每帧拧 `Physics` 水平速度，使位移与相位动画顶速脱节 → 滑步。
 - **原则**：**只** `SetSpeedLimit` 合并限速；**禁止**直接改 `Physics` 速度（含曾加的 `EnforceCpCruisePhysicsCap`）。
-- **Run 地板**：W′ 解除武装后 CP 反解若把 Run 压到 ≤~1.9 m/s，引擎易播 Walk 动画 → 用 `V6_RUN_GAIT_FLOOR_MS` 托住。
+- **Run / Walk 步态带**：W′ **解除武装** 时 CP 反解 ≥ 地板 → 巡航带（≤2.4）；< Walk 顶才降 Walk。W′ **武装** 的纯 Run **不套** 2.4 硬顶（避免 v_limit≈2.0 / v_meas≈2.5 轻滑步）。分母仍用当前相位顶速算 frac。
 - **引擎顶速分母（试跑）**：`V6_ENGINE_TOP_LIVE_SAMPLE=true` 时每 tick `GetMaxSpeed` **不解限**取相位顶，再算 `frac`；首次仍解限标定一次。若 live ≪ 标定（&lt;`V6_ENGINE_TOP_LIVE_MIN_RATIO`）则回退标定，避免 `GetMaxSpeed` 被 `OverrideMaxSpeed` 缩放导致 frac→1。改回 `false` 即旧「只缓存一次」路径。
 - **MovementMaxSpeed（试跑）**：`V6_TRY_MOVEMENT_MAX_SPEED` **默认 false**（实机无效：v_meas 仍≈引擎 Run 顶）。保留代码路径供复测。
 - **Run 有氧巡航压速**：平路/上坡 Run（含「有 W′ 但不冲刺」）一律 `min(意图, CP反解, V6_AEROBIC_CRUISE_MAX_MS)` + Run 地板；**仅真 Sprint+W′ 武装**可超巡航顶。修复前：W′ 武装时跳过巡航 → 日志常见 `v_limit≈3.2` 狂烧 W′。
 - **日志语义**：`超速记账=on(phys)` = `v_meas > v_limit+ε`（物理跑飞）；`on(sprint)` = 冲刺且 W′ 可超速记账。旧版仅在冲刺时显示 on，Run 跑飞会误显示 off。
-- **非冲刺 W′**：纯 Run 时 `TickPower` 功率钳到 CP，避免物理仍 ~3.1 时靠烧 W′ 维持引擎顶。
-- 问题 2 状态：**按原则关闭物理钳**；`v_limit≈2.2` 而 `v_meas≈3.1` 属指令限速已生效、物理未贴限；要贴测速只能再开物理钳（滑步风险）。
+- **非冲刺 W′**：纯 Run **未超速**时 `TickPower` 钳到 CP；**物理超速**（`v_meas>v_limit`）时放开，超额烧 W′。W′ 解除武装后超额改走 STA `超速罚`。
+- 问题 2 状态：**按原则关闭物理钳**；`v_limit≈2.0` 而 `v_meas≈2.5` 属指令限速已生效、物理未贴限——用 W′/超速罚买单，不拧 Physics。
 
 ---
 
@@ -33,19 +35,17 @@
 - RSS 下 Walk 有效速度常被托在 **约 1.0 m/s 以上**（实机日志常见 `v_limit` / `v_meas` ≈ 1.2–1.3 m/s @ ~30 kg 缓坡）。
 - **原版（无 RSS 压速或引擎原生 Walk）可以更慢**；玩家感觉 RSS Walk「抬得太高、做不到很差/很慢的踱步」。
 
-### 可能来源（代码）
+### 已改（2026-07-25）
 
 | 位置 | 行为 |
 |------|------|
-| `SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed` | `currentSpeed < 0.5` 时把绝对目标抬到 `startMin`，且 **`startMin` 下限写死 0.8 m/s** |
-| `SCR_RSS_Constants.ENGINE_WALK_TOP_MS = 1.45` | March 关闭后 Walk 目标锚在引擎空载顶附近，再乘负重/坡度仍偏快 |
-| `GetMarchWalkSpeedMs()`（March 关） | 直接返回 `ENGINE_WALK_TOP_MS`，不再用更低的战术/疲惫 Walk |
+| `CalculateFinalAbsoluteSpeed` / `GetMarchAbsoluteSpeedMs` | `startMin` / Walk clamp 下限改为 `V6_WALK_START_MIN_MS`（**0.35**，原 0.8 / 0.5） |
+| `ENGINE_WALK_TOP_MS = 1.45` | March 关时仍为意图顶；疲惫/负重可乘到更低 |
 
-### 期望方向（待做）
+### 复测
 
-- Walk **允许低于 1 m/s**（至少不低于原版在同等负重/坡度下的慢速区间）。
-- 取消或下调 `startMin ≥ 0.8` 的硬托底；疲惫/重装 Walk 应能明显慢于「舒适踱步」。
-- 与原版对比标定：空载平地 / 30 kg / 上坡 三档 Walk 下限。
+- 空载平地 / 30 kg / 上坡：Walk `v_limit` 应能明显低于 ~1.0 m/s（视负重与坡度）。
+- 若仍偏快：再查 March 关时意图是否锚死在引擎顶、或坡度/负重惩罚未生效。
 
 ---
 
@@ -110,9 +110,10 @@
 - 引擎顶速**只测一次**，禁止周期抬限。
 - **不**用 `EnforceCpCruisePhysicsCap` / 水平硬钳压 `v_meas`（默认关）。
 - 下坡不套 2.4 平路巡航帽；解除武装后 W′ 放电钳到 CP。
-- Run：`V6_RUN_GAIT_FLOOR_MS` 防止 CP 反解落入 Walk 带。
+- Run：CP 反解 ≥ `V6_RUN_GAIT_FLOOR_MS` 留在巡航带；更低则 `ResolveRunCruiseCapMs` 降 Walk（勿开物理钳）。
 
 ### 复测
 
-- 同坡 Run、`W'<25%`（解除武装）：`v_limit` ≥ 2.2，动画为 Run；偶发 `v_meas` 略高于限速可接受（勿开物理钳）。
-- 若 Walk 感仍重：略抬 `V6_RUN_GAIT_FLOOR_MS`（上限 2.4）。
+- 同坡 Run、`W'<25%`（解除武装）：若 CP 仍够 → `v_limit` ≥ 2.2 且为 Run 感；若 CP 不够 → `v_limit` 落到 Walk 带（≤~1.45），勿再假抬 2.2。
+- 偶发 `v_meas` 略高于限速可接受（勿开物理钳）。
+- 若误降 Walk 过频：略降 `V6_RUN_GAIT_FLOOR_MS`；若假慢 Run：确认 `V6_RUN_GAIT_DEMOTE_TO_WALK=true` 且硬钳关。

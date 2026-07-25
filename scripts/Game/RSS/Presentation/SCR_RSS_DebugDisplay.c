@@ -801,6 +801,9 @@ class SCR_RSS_DebugDisplay
         float perSecMult = 1.0 / tickSec;
         float recoveryPerSec = recoveryPerTick * perSecMult;
         float drainPerSec = finalDrainPerTick * perSecMult;
+        // 超速 STA 税在 UpdateStaminaValue 外叠加，ETA/有效掉条须计入
+        if (tick.overspeedExtraDrainPerSec > 0.0)
+            drainPerSec = drainPerSec + tick.overspeedExtraDrainPerSec;
         float netPerSec = SCR_RSS_StaminaNetRate.GetNetStaminaRatePerSecond(
             tick.staminaPercent,
             tick.useSwimmingModel,
@@ -815,6 +818,8 @@ class SCR_RSS_DebugDisplay
             controller,
             environmentFactor,
             false);
+        if (tick.overspeedExtraDrainPerSec > 0.0)
+            netPerSec = netPerSec - tick.overspeedExtraDrainPerSec;
 
         float tickScale = Math.Clamp(tick.timeDeltaSec / tickSec, 0.01, 2.0);
         float observedPctPerSec = 0.0;

@@ -162,7 +162,8 @@ class SCR_RSS_StaminaNetRate
         SCR_RSS_ExerciseTracker exerciseTracker,
         SCR_CharacterControllerComponent controller,
         SCR_RSS_EnvironmentFactor environmentFactor,
-        float capShrinkPerSec)
+        float capShrinkPerSec,
+        float overspeedExtraDrainPerSec = 0.0)
     {
         StaminaEtaResult result = new StaminaEtaResult();
         result.timeToDepleteSec = -1.0;
@@ -187,6 +188,8 @@ class SCR_RSS_StaminaNetRate
             totalDrainRate,
             epocState,
             false) * 5.0;
+        if (overspeedExtraDrainPerSec > 0.0)
+            drainPerSec = drainPerSec + overspeedExtraDrainPerSec;
 
         if (drainPerSec > recoveryPerSec)
         {

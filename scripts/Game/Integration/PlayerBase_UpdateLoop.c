@@ -690,13 +690,28 @@ modded class SCR_CharacterControllerComponent
                         cpModel.SetFatigueCpMultiplier(1.0);
                     }
 
-                    // 解除武装且非冲刺：W′ 放电功率钳到 CP，避免下坡 v_meas≫v_limit 时无氧池被重力超速抽干
-                    // 非冲刺（纯 Run）：即使 W′ 武装也不按跑飞 v_meas 烧 W′——W′ 只服务真冲刺
+                    // 非冲刺：
+                    // - 未超速：功率钳到 CP（巡航不烧 W′）
+                    // - 超速且 P>CP：放开，超额烧 W′
+                    // - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
                     if (!loc.isSprintActive)
                     {
+                        bool physOverspeed = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
+                            loc.currentSpeed, m_fAppliedSpeedLimitMs);
                         float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
-                        if (cpClamp > 1.0 && powerW > cpClamp)
-                            powerW = cpClamp;
+                        if (cpClamp > 1.0)
+                        {
+                            if (!physOverspeed)
+                            {
+                                if (powerW > cpClamp)
+                                    powerW = cpClamp;
+                            }
+                            else
+                            {
+                                if (powerW <= cpClamp)
+                                    powerW = cpClamp;
+                            }
+                        }
                     }
                 }
 

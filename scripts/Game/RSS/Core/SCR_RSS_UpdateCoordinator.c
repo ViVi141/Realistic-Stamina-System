@@ -296,18 +296,26 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
 
-            // Run / 空 W′ 假冲刺：始终套 CP∩有氧巡航顶（即使 W′ 仍有余量也不许用引擎 Run 顶靠烧 W′ 维持）。
-            // 真 Sprint（按住冲刺且 W′ 武装）不套，走 GetV6SprintSpeedMs / availableP。
+            // W′ 解除武装：Run/假冲刺套 CP∩有氧巡航顶。
+            // W′ 武装：真 Sprint 不套；纯 Run 也不套 2.4 硬顶（否则 v_limit≈2.0 而 v_meas≈2.5 → 轻滑步，
+            // 且玩家会觉得「W′ 还在却被压速」）。超额由 W′ 买单。
             bool isWalkPhase = (currentMovementPhase == 1);
-            bool sprintOverspeedArmed = false;
-            if (isSprinting || currentMovementPhase == 3)
+            bool wPrimeOverspeedArmed = false;
+            SCR_RSS_AnaerobicBurst anaArm = controller.RSS_GetWPrimeBurst();
+            if (anaArm && anaArm.GetCpModel())
             {
-                SCR_RSS_AnaerobicBurst anaArm = controller.RSS_GetWPrimeBurst();
-                if (anaArm && anaArm.GetCpModel())
-                    sprintOverspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                        anaArm.GetCpModel());
+                wPrimeOverspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    anaArm.GetCpModel());
             }
-            bool applyRunCpCruise = !(isSprinting || currentMovementPhase == 3) || !sprintOverspeedArmed;
+            bool applyRunCpCruise = true;
+            if (wPrimeOverspeedArmed)
+            {
+                if (isSprinting || currentMovementPhase == 3)
+                    applyRunCpCruise = false;
+                else if (currentMovementPhase == 2)
+                    applyRunCpCruise = false;
+            }
+            bool sprintOverspeedArmed = wPrimeOverspeedArmed;
             if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()
                 && applyRunCpCruise && !isWalkPhase)
             {
@@ -334,8 +342,9 @@ class SCR_RSS_UpdateCoordinator
                     if (runPhase < 2 || runPhase == 3)
                         runPhase = 2;
                     float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+                    float cpEffW = cpRun.GetEffectiveCriticalPowerWatts();
                     float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
-                        cpRun.GetEffectiveCriticalPowerWatts(),
+                        cpEffW,
                         totalWeightKg,
                         gradePct,
                         runTerrain,
@@ -351,9 +360,14 @@ class SCR_RSS_UpdateCoordinator
                         if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
                             cruiseCapMs = cpCapMs;
                     }
-                    // Run 地板：避免 CP 反解落到 Walk 带（~1.8）→ Walk 动画 + 滑步
-                    cruiseCapMs = SCR_RSS_DrainCalculator.ApplyRunGaitFloorToCruiseCapMs(
-                        cruiseCapMs, runPhase);
+                    // Run 带：≥地板保留；<地板则降 Walk（硬钳开时仍抬地板）
+                    cruiseCapMs = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
+                        cruiseCapMs,
+                        runPhase,
+                        gradePct,
+                        totalWeightKg,
+                        runTerrain,
+                        cpEffW);
                     if (theoreticalTargetSpeed > cruiseCapMs)
                         theoreticalTargetSpeed = cruiseCapMs;
                 }
@@ -366,10 +380,14 @@ class SCR_RSS_UpdateCoordinator
                     theoreticalTargetSpeed = theoreticalTargetSpeed * (1.0 - mudSprintPenalty);
             }
 
-            // 仅真冲刺（可冲且 W′ 武装）保 Sprint/Run 拉开；空池假冲刺不抬速
+            // 仅真冲刺（可冲且 W′ 武装）保 Sprint/Run 拉开；须在泥泞罚之后，防止冲刺比 Run 还慢
             if ((isSprinting || currentMovementPhase == 3) && canSprint && sprintOverspeedArmed)
             {
-                float encMultFloor = 1.0 - encumbrancePenalty;
+                float runEncPenalty = encumbrancePenalty;
+                float sprintEncMult = SCR_RSS_Constants.SPRINT_ENCUMBRANCE_PENALTY_MULT;
+                if (sprintEncMult > 1.0)
+                    runEncPenalty = encumbrancePenalty / sprintEncMult;
+                float encMultFloor = 1.0 - runEncPenalty;
                 if (encMultFloor < 0.5)
                     encMultFloor = 0.5;
                 float runFloorMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMultFloor;

@@ -5,6 +5,8 @@
 //! 否则会盖掉 Foliage/铁丝网等已合并的限速。
 //!
 //! 禁止用 SetDynamicSpeed(0.5) 假按 Walk：会把相位锁死，Run 进不去。
+//! CP 反解低于 Run 地板时：DrainCalculator.ResolveRunCruiseCapMs 降 Walk 带目标（只改
+//! SetSpeedLimit 绝对值；分母仍用当前相位顶速）。硬钳开时改回抬地板。
 
 class RSS_StaminaSpeedLimitToken : Managed
 {

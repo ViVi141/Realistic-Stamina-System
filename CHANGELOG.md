@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### 限速 / 步态（滑步优化）
+
+- **Run 三带**：`≥2.2` 保留；`Walk顶～2.2` **软 Run**（保留 CP 反解，禁止悬崖降到 ~1.4）；`<Walk顶` 才降 Walk
+- **Walk 托底**：`startMin` / Walk clamp → `V6_WALK_START_MIN_MS`（0.35）；开关 `V6_RUN_GAIT_DEMOTE_TO_WALK`
+- **物理超速买单**：Run 超速时 W′ 吃 `P−CP`；W′ 解除武装后 STA `超速罚`×`V6_OVERSPEED_STA_TAX_MULT`（12，避免耗尽后仍半小时慢跑）
+- **假冲刺不慢于 Run**：W′ 解除武装回落用 Run 负重尺度；泥泞罚后再做 Sprint/Run 最低拉开
+- **下坡 Walk 超速**：STA 税按 `P(v_meas)−P(v_limit)`（不再用会变 0 的 `P−CP`）；超速且 P≤CP 时禁止 W′ 回充
+- **超速税与 W′ 施密特对齐**：25–60% 滞回带不再 W′+STA 双计；ETA 计入超速罚
+- **W′ 武装纯 Run**：不再套有氧 2.4 硬顶（修复「W′ 还在却被压到 ~2.0」+ 轻滑步）；解除武装后仍巡航顶
+- 原则不变：默认不拧 Physics；硬钳开时仍抬地板防滑步
+
 ### 命名语义与接线（PR #5 / #6）
 
 - **环境因子** — Custom 开关守卫雨/风/泥/热/疲劳；接入 `coldStaticPenalty` / `rainBreathing` / `mudSprintPenalty`；跛行阈值统一为 5%

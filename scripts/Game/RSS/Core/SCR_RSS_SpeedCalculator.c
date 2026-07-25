@@ -166,6 +166,20 @@ class SCR_RSS_SpeedCalculator
         return encumbrancePenalty * SCR_RSS_Constants.SPRINT_ENCUMBRANCE_PENALTY_MULT;
     }
 
+    //! 假冲刺 / W′ 解除武装回落 Run：去掉 Sprint 负重放大，避免“冲刺比跑步还慢”
+    static float GetDisarmedSprintFallbackRunMs(float sprintScaledEncumbrancePenalty)
+    {
+        float runEncPenalty = sprintScaledEncumbrancePenalty;
+        float sprintEncMult = SCR_RSS_Constants.SPRINT_ENCUMBRANCE_PENALTY_MULT;
+        if (sprintEncMult > 1.0)
+            runEncPenalty = sprintScaledEncumbrancePenalty / sprintEncMult;
+
+        float encMult = 1.0 - runEncPenalty;
+        if (encMult < 0.5)
+            encMult = 0.5;
+        return SCR_RSS_ConfigBridge.GetMarchRunSpeedMs() * encMult;
+    }
+
     //! 步态基准 Sprint（保证相对 Run 的最低拉开）
     static float GetEnsuredMarchSprintSpeedMs()
     {
@@ -214,13 +228,13 @@ class SCR_RSS_SpeedCalculator
 
         // 与 CP 施密特闩锁对齐（勿用裸池阈值，否则会在开门点附近 Sprint↔Run 跳变）
         if (!cpModel.RefreshAndGetOverspeedArmed())
-            return runMs;
+            return GetDisarmedSprintFallbackRunMs(encumbrancePenalty);
 
         float availableP = cpModel.GetAvailablePowerWatts(true, timeDeltaSec, worldTimeSec);
         float cpOnly = cpModel.GetEffectiveCriticalPowerWatts();
         // 可用功率已落到 CP：按 Run 处理，避免功率软顶在耗尽点抖
         if (availableP <= cpOnly + 1.0)
-            return runMs;
+            return GetDisarmedSprintFallbackRunMs(encumbrancePenalty);
 
         float powerMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
             availableP, totalWeightKg, gradePercent, terrainFactor, 3);
@@ -279,7 +293,12 @@ class SCR_RSS_SpeedCalculator
         if (currentMovementPhase == 2)
             return Math.Clamp(runMs, walkMs, SCR_RSS_ConfigBridge.GetMarchRunSpeedMs());
         if (currentMovementPhase == 1)
-            return Math.Clamp(walkMs, 0.5, SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs());
+        {
+            return Math.Clamp(
+                walkMs,
+                SCR_RSS_Constants.V6_WALK_START_MIN_MS,
+                SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs());
+        }
 
         return walkMs;
     }
@@ -354,8 +373,9 @@ class SCR_RSS_SpeedCalculator
         if (currentSpeed < 0.5)
         {
             float startMin = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * (1.0 - encumbrancePenalty);
-            if (startMin < 0.8)
-                startMin = 0.8;
+            float walkFloorMs = SCR_RSS_Constants.V6_WALK_START_MIN_MS;
+            if (startMin < walkFloorMs)
+                startMin = walkFloorMs;
             if (finalAbsoluteSpeed < startMin)
                 finalAbsoluteSpeed = startMin;
         }

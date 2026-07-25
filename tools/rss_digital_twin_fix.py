@@ -1143,7 +1143,7 @@ class RSSDigitalTwin:
         if movement_phase == MovementType.RUN:
             return float(np.clip(run_ms, walk_ms, self._v5_run_speed_ms()))
         if movement_phase == MovementType.WALK:
-            return float(np.clip(walk_ms, 0.5, self._v5_walk_speed_ms()))
+            return float(np.clip(walk_ms, V6_WALK_START_MIN_MS, self._v5_walk_speed_ms()))
         return float(walk_ms)
 
     def get_v6_sprint_speed_ms(
@@ -1275,8 +1275,9 @@ class RSSDigitalTwin:
         final_abs = self.get_v5_absolute_speed_ms(phase, is_sprinting, scaled_run, enc_penalty, 1.0)
         if last_speed < 0.5:
             start_min = self._v5_walk_speed_ms() * (1.0 - enc_penalty)
-            if start_min < 0.8:
-                start_min = 0.8
+            walk_floor = float(getattr(self.constants, 'V6_WALK_START_MIN_MS', V6_WALK_START_MIN_MS))
+            if start_min < walk_floor:
+                start_min = walk_floor
             if final_abs < start_min:
                 final_abs = start_min
 
@@ -1315,9 +1316,16 @@ class RSSDigitalTwin:
                 else:
                     if cp_cap_ms > 0.05:
                         cruise_cap = cp_cap_ms
-                floor_ms = float(getattr(self.constants, 'V6_RUN_GAIT_FLOOR_MS', 2.2))
-                if cruise_cap < floor_ms:
-                    cruise_cap = floor_ms
+                cp_eff = self.v6_cp_state.get_effective_critical_power_watts()
+                cruise_cap = resolve_run_cruise_cap_ms(
+                    cruise_cap,
+                    run_phase,
+                    grade_percent,
+                    current_weight,
+                    tf,
+                    cp_eff,
+                    self.constants,
+                )
                 if theoretical_target > cruise_cap:
                     theoretical_target = cruise_cap
         elif phase != MovementType.WALK and not self.v6_cp_state.refresh_and_get_overspeed_armed():
@@ -1326,8 +1334,9 @@ class RSSDigitalTwin:
             if run_phase < MovementType.RUN:
                 run_phase = MovementType.RUN
             cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
+            cp_eff = self.v6_cp_state.get_effective_critical_power_watts()
             cp_cap_ms = invert_speed_for_power_watts(
-                self.v6_cp_state.get_effective_critical_power_watts(),
+                cp_eff,
                 current_weight,
                 grade_percent,
                 tf,
@@ -1335,9 +1344,15 @@ class RSSDigitalTwin:
             )
             if cp_cap_ms > 0.05 and cp_cap_ms < cruise_cap:
                 cruise_cap = cp_cap_ms
-            floor_ms = float(getattr(self.constants, 'V6_RUN_GAIT_FLOOR_MS', 2.2))
-            if cruise_cap < floor_ms:
-                cruise_cap = floor_ms
+            cruise_cap = resolve_run_cruise_cap_ms(
+                cruise_cap,
+                run_phase,
+                grade_percent,
+                current_weight,
+                tf,
+                cp_eff,
+                self.constants,
+            )
             if theoretical_target > cruise_cap:
                 theoretical_target = cruise_cap
 
@@ -2008,14 +2023,17 @@ def get_metabolic_speed_cap_ms(
         terrain_factor,
         invert_phase,
     )
-    # 与游戏 GetMetabolicSpeedCapMs：非 Sprint 套有氧巡航顶 + Run 地板
+    # 与游戏 GetMetabolicSpeedCapMs：非 Sprint 套有氧巡航顶 + Run/Walk 步态对齐
     if (not is_sprint) and invert_phase != MovementType.WALK:
-        if grade_percent >= 0.0:
-            if cap_ms > V6_AEROBIC_CRUISE_MAX_MS:
-                cap_ms = V6_AEROBIC_CRUISE_MAX_MS
-        if invert_phase != MovementType.WALK and cap_ms > 0.05:
-            if cap_ms < V6_RUN_GAIT_FLOOR_MS:
-                cap_ms = V6_RUN_GAIT_FLOOR_MS
+        cap_ms = resolve_run_cruise_cap_ms(
+            cap_ms,
+            invert_phase,
+            grade_percent,
+            total_weight_kg,
+            terrain_factor,
+            effective_cp_watts,
+            None,
+        )
     return float(cap_ms)
 
 
@@ -2097,6 +2115,73 @@ V6_WALK_DOWNHILL_COAST_PER_GRADE_PCT = 0.09
 V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
 V6_RUN_GAIT_FLOOR_MS = 2.2
+V6_RUN_GAIT_DEMOTE_TO_WALK = True
+V6_WALK_START_MIN_MS = 0.35
+V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
+
+
+def resolve_run_cruise_cap_ms(
+    raw_cap_ms,
+    movement_phase,
+    grade_percent,
+    total_weight_kg,
+    terrain_factor,
+    critical_power_watts,
+    constants=None,
+):
+    """Align with SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs."""
+    if movement_phase == MovementType.WALK:
+        return float(raw_cap_ms)
+    if raw_cap_ms <= 0.05:
+        return float(raw_cap_ms)
+
+    cap_ms = float(raw_cap_ms)
+    cruise_max = float(V6_AEROBIC_CRUISE_MAX_MS)
+    floor_ms = float(V6_RUN_GAIT_FLOOR_MS)
+    demote = bool(V6_RUN_GAIT_DEMOTE_TO_WALK)
+    horiz_clamp = bool(V6_APPLY_HORIZONTAL_SPEED_CLAMP)
+    walk_min = float(V6_WALK_START_MIN_MS)
+    walk_top = float(V5_WALK_SPEED_MS_DEFAULT)
+    if constants is not None:
+        cruise_max = float(getattr(constants, 'V6_AEROBIC_CRUISE_MAX_MS', cruise_max))
+        floor_ms = float(getattr(constants, 'V6_RUN_GAIT_FLOOR_MS', floor_ms))
+        demote = bool(getattr(constants, 'V6_RUN_GAIT_DEMOTE_TO_WALK', demote))
+        horiz_clamp = bool(getattr(constants, 'V6_APPLY_HORIZONTAL_SPEED_CLAMP', horiz_clamp))
+        walk_min = float(getattr(constants, 'V6_WALK_START_MIN_MS', walk_min))
+        if bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', True)):
+            walk_top = float(getattr(constants, 'V5_WALK_SPEED_MS_DEFAULT', walk_top))
+        else:
+            walk_top = float(getattr(constants, 'ENGINE_WALK_TOP_MS', 1.45))
+
+    if grade_percent >= 0.0 and cap_ms > cruise_max:
+        cap_ms = cruise_max
+
+    if cap_ms >= floor_ms:
+        return cap_ms
+
+    if (not demote) or horiz_clamp:
+        return floor_ms
+
+    # Gray zone: above Walk top but below Run floor — keep metabolic invert
+    if cap_ms >= walk_top:
+        return cap_ms
+
+    walk_cap = cap_ms
+    if critical_power_watts > 1.0:
+        walk_cap = invert_speed_for_power_watts(
+            critical_power_watts,
+            total_weight_kg,
+            grade_percent,
+            terrain_factor,
+            MovementType.WALK,
+        )
+    if walk_cap > walk_top:
+        walk_cap = walk_top
+    if walk_cap < walk_min:
+        walk_cap = walk_min
+    return float(walk_cap)
+
+
 LCDA_REST_W_PER_KG = 1.05
 LCDA_STAND_NET_W_PER_KG = 0.19
 LCDA_SPEED_FRAC_COEFF = 1.78

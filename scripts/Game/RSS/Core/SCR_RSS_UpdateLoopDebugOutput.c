@@ -61,7 +61,8 @@ class SCR_RSS_UpdateLoopDebugOutput
                 exerciseTracker,
                 ctrl,
                 environmentFactor,
-                tick.capShrinkPerSec);
+                tick.capShrinkPerSec,
+                tick.overspeedExtraDrainPerSec);
             if (eta)
             {
                 timeToDepleteSec = eta.timeToDepleteSec;

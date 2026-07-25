@@ -144,6 +144,13 @@ modded class SCR_CharacterControllerComponent
         loc.overspeedExtraPerSec = 0.0;
         if (!loc.useSwimmingModel && m_fAppliedSpeedLimitMs > 0.05)
         {
+            // 与 TickPower 同施密特武装态，避免 25–60% 带 W′+STA 税双计
+            bool wPrimeArmedForTax = false;
+            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            {
+                wPrimeArmedForTax = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    m_pAnaerobicBurst.GetCpModel());
+            }
             loc.overspeedExtraPerSec = SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond(
                 loc.currentSpeed,
                 m_fAppliedSpeedLimitMs,
@@ -152,7 +159,8 @@ modded class SCR_CharacterControllerComponent
                 loc.gradePercent,
                 loc.terrainFactor,
                 loc.effectiveMovementPhase,
-                loc.drainParams.effectiveCriticalPowerWatts);
+                loc.drainParams.effectiveCriticalPowerWatts,
+                wPrimeArmedForTax);
         }
 
         if (m_pStaminaComponent)
