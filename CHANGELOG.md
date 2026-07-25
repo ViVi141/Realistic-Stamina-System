@@ -2,29 +2,39 @@
 
 ## [Unreleased]
 
+## [6.1.0] - 2026-07-26
+
+### 策略默认：drain-only（不伺服速度）
+
+- **默认关** `V6_APPLY_CP_METABOLIC_SPEED_CAP` / `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP` / 全局水平硬钳：只走 `SetSpeedLimit` + 记账，不与 Physics 抢位移
+- **武装期**：`P>CP` 只烧 W′；**解除武装后**：STA 超额税 `unpaidW = P(v_meas)−CP`，倍率 `V6_CP_EXCESS_STA_TAX_MULT`（0.75；代谢伺服开时仍可用 12× 路径）
+- **假冲刺不慢于 Run**：W′ 解除武装回落用 Run 负重尺度；泥泞罚后再做 Sprint/Run 最低拉开
+
+### W′ 回充与表现
+
+- **欠 CP 深度调制**：`rate ∝ floor+(1−floor)×((CP−margin−P)/(CP−margin))`；Skiba 在 `wLim` 前切慢相，可补过半池（修 Euler 卡 50%）
+- **RSS-CPCR**：`SCR_RSS_CardioDrive`（Cardiac→Respiratory）；手动呼吸采样；心跳默认关
+- **W′→引擎条 FX**：`ApplyTransientEngineStamina` 取 min(有氧, W′映射, sprint poke)；Exhaustion 信号由 UI 桥驱动
+
 ### 限速 / 步态（滑步优化）
 
-- **陡坡/峭壁**：坡度比始终钳 ±100%（不再依赖 Debug）；代谢/CP 反解坡度再钳 ±45%；`|坡度|>35%` 或下坡`<-2%` 跳过 CP 巡航物理超速钳（缓下坡重力 vs `v_limit≈1.9` 硬钳会 1.9↔2.8 抽）；坡度 EMA 加变化速率上限
-- **孪生回归**：`sim_bug_hunt` 用例11/12 + `test_v6_smoke.downhill_phys_clamp_policy`；Python/Rust 对齐物理钳坡度门与代谢坡度钳（旧策略下坡 61 clamp/3s，新策略 0）
-- **随机工况**：`tools/test_rss_random_scenarios.py`（默认 2000 例；`--quick` 128 例接入 smoke）覆盖三档预设×坡度/负重/W′/步态/超速钳不变量
-- **设计网格**：`3×99×45×14×100×10×3 = 561,330,000`（`--grid` 无放回抽样；`--grid-full --i-accept-full-grid` 全量，可 `--shard i/N`）
-- **多核**：`-j/--jobs`（默认 `cpu-1`）ProcessPool；20k 网格抽样约 687/s→6700/s（本机 24 逻辑核）
-- **Run 三带**：`≥2.2` 保留；`Walk顶～2.2` **软 Run**（保留 CP 反解，禁止悬崖降到 ~1.4）；`<Walk顶` 才降 Walk
-- **Walk 托底**：`startMin` / Walk clamp → `V6_WALK_START_MIN_MS`（0.35）；开关 `V6_RUN_GAIT_DEMOTE_TO_WALK`
-- **物理超速买单**：Run 超速时 W′ 吃 `P−CP`；W′ 解除武装后 STA `超速罚`×`V6_OVERSPEED_STA_TAX_MULT`（12，避免耗尽后仍半小时慢跑）
-- **假冲刺不慢于 Run**：W′ 解除武装回落用 Run 负重尺度；泥泞罚后再做 Sprint/Run 最低拉开
-- **下坡 Walk 超速**：STA 税按 `P(v_meas)−P(v_limit)`（不再用会变 0 的 `P−CP`）；超速且 P≤CP 时禁止 W′ 回充
-- **超速税与 W′ 施密特对齐**：25–60% 滞回带不再 W′+STA 双计；ETA 计入超速罚
-- **W′ 武装纯 Run**：不再套有氧 2.4 硬顶（修复「W′ 还在却被压到 ~2.0」+ 轻滑步）；解除武装后仍巡航顶
-- 原则不变：默认不拧 Physics；硬钳开时仍抬地板防滑步
+- **陡坡/峭壁**：坡度比始终钳 ±100%；代谢/CP 反解坡度再钳 ±45%；物理超速钳开时 `|坡度|>35%` 或缓下坡小幅滑行门控
+- **Run 三带**：`≥2.2` 保留；`Walk顶～2.2` **软 Run**；`<Walk顶` 才降 Walk；`V6_WALK_START_MIN_MS=0.35`
+- **物理超速买单**：Run 超速时 W′ 吃 `P−CP`；超速税与 W′ 施密特对齐（25–60% 不双计）；ETA 计入超额税
+- **W′ 武装纯 Run**：不再套有氧 2.4 硬顶；解除武装后仍巡航顶
+
+### 工具 / 回归
+
+- 随机工况 `test_rss_random_scenarios.py`（`--quick` 入 smoke）；网格/多核抽样
+- StandardMilsim @30kg 连续步态 V-T：`tools/regen_vt_standard.py` → `artifacts/vt/vt_standard_30kg.png`
+- 配置版本 / ConfigManager → **6.1.0**
 
 ### 命名语义与接线（PR #5 / #6）
 
 - **环境因子** — Custom 开关守卫雨/风/泥/热/疲劳；接入 `coldStaticPenalty` / `rainBreathing` / `mudSprintPenalty`；跛行阈值统一为 5%
-- **配置接线** — preset/custom 字段（`load_metabolic_dampening`、`anaerobic_*`、`sprint_stamina_drain_multiplier` 等）接入实际消耗/恢复/Sprint 路径
-- **行军档 API** — canonical `GetMarch*SpeedMs`；`GetV5*` 保留兼容别名
-- **W′ 语义** — `GetWPrimePool01` / `GetRssWPrimePool01` / `RSS_GetWPrimeBurst` / `UpdateWPrimeHud`；外部 API 新增 `wPrimePool01` 字段
-- **常量** — `*_PER_TICK` 后缀；删除死代码 `CalculateBaseDrainRateByVelocity`
+- **配置接线** — preset/custom 字段接入实际消耗/恢复/Sprint 路径
+- **行军档 API** — canonical `GetMarch*SpeedMs`；`GetV5*` 兼容别名
+- **W′ 语义** — `GetWPrimePool01` / `GetRssWPrimePool01` / `RSS_GetWPrimeBurst` / `UpdateWPrimeHud`；API `wPrimePool01`
 
 ## [6.0.0] - 2026-06-04
 

@@ -1,0 +1,80 @@
+RSS v6.1.0 Change Notes
+=======================
+From stable 3.23.1 → 6.1.0 (config 6.1.0). No automatic cross-major migration.
+(6.0.0 was published but not widely adopted — treat this as the first broad v6 jump.)
+Re-select Elite / Standard / Tactical in Settings, or use tools/optimized_rss_config_*_v6.json.
+Keep server & clients on the same mod build.
+
+Current play feel (6.1.0 defaults)
+----------------------------------
+• Drain-first: prefer burning W′ / STA over clamping Physics velocity.
+• SetSpeedLimit still applies phase gears / soft cruise / limp (merged with 1.7+ foliage/wire).
+• No default Physics hard-clamp; no continuous CP metabolic speed servo.
+• Metabolic accounting uses measured speed (v_meas), not min(v_meas, v_limit).
+
+[EN]
+• NEW: Critical Power–W′ dual budget (Pandolf + ACSM → dynamic CP → W′ joules)
+• NEW: Sprint gate = aerobic threshold + W′ Schmitt latch (not short-burst time CD)
+• NEW: Sprint speed = march Sprint gear first; available-power invert is a soft cap; W′ empty → Run-scale fallback
+• NEW: Phase march gears (Walk/Run/Sprint m/s); collapse SmoothStep near empty STA (~5%)
+• NEW: Soft Run band (Walk-top…2.2 m/s) — no cliff demote to ~1.4; Walk start floor 0.35 m/s
+• NEW: Armed overspeed (P>CP) burns W′ only; after disarm STA tax = (P(v_meas)−CP)×0.75
+• NEW: W′ refill — Skiba (typical presets) with under-CP depth modulation (can refill past ~50%); P must be well below CP
+• NEW: W′-linked presentation — maps W′ into engine stamina so native muzzle sway rises when W′ is low; RSS-CPCR drive + manual breath samples (Exhaustion signal); no custom sway script
+• NEW: Fatigue integral I(t) + EPOC (oxygen debt ∝ peak intended power)
+• NEW: v6 optimize pipeline + digital twin; presets baked in
+• KEEP: 1.7+ foliage/wire SpeedBridge min, environment, swim, mud (toggle), HUD, admin Settings, CSB, API
+• REMOVED: 25%/35% willpower speed plateau; fake Sprint×fixed drain on main path; legacy Givoni stubs
+• API: prefer wPrimePool01 (anaerobicPercent deprecated)
+• AI: speed cap aligned with player v6 phase curve (SCR_RSS_AIManager)
+• FIX: Third-party prefabs that set SCR_CharacterStaminaComponent Enabled=0 — RSS re-activates / resolves it
+• FIX: Schmitt band avoids W′+STA double-tax; fake sprint not slower than Run
+
+Known limitation (engine)
+-------------------------
+In a strict CP–W′ model, once W′ is empty you cannot sustain the same supra-CP effort —
+speed should drop. In Reforger, forcing a large speed cut while the animation stays in
+the same gait (esp. Run) desyncs feet vs displacement (sliding). To avoid that, 6.1.0
+keeps the current movement state where possible and bills the excess to STA instead of
+hard-clamping Physics to a much lower v.
+
+[中文]
+• 新增：Critical Power–W′ 双池预算（Pandolf + ACSM → 动态 CP → W′ 焦耳池）
+• 新增：冲刺门禁 = 有氧阈值 + W′ 施密特闩锁（非短冲时间 CD）
+• 新增：冲刺速度以行军 Sprint 档为基准；可用功率反演只作软顶；W′ 空 → 回落 Run 负重尺度
+• 新增：相位行军档 Walk/Run/Sprint；极低 STA 约 5% SmoothStep 撞墙阻尼
+• 新增：软 Run 带（Walk 顶～2.2 m/s）— 不再悬崖降到 ~1.4；Walk 起步托底 0.35 m/s
+• 新增：武装期超速（P>CP）只烧 W′；解除武装后 STA 税 =(P(v_meas)−CP)×0.75
+• 新增：W′ 回充 — 典型预设走 Skiba + 欠 CP 深度调制（可补过半池）；须明显低于 CP 才回
+• 新增：W′ 关联表现 — 将 W′ 映射进引擎体力条以借用原生枪口晃动（W′ 低时晃动加重）；RSS-CPCR 驱动 + 手动呼吸采样（Exhaustion 信号）；无自定义晃动脚本
+• 新增：积分疲劳 I(t) + EPOC（氧债 ∝ 峰值意图功率）
+• 新增：v6 优化管线与数字孪生；预设 Bake 嵌入
+• 保留：1.7+ 灌木/铁丝网限速合并、环境/游泳/泥泞（可关）、HUD、管理员 Settings、CSB、外部 API
+• 移除：意志力平台期；主路径 Sprint×固定倍数假消耗；旧 Givoni 等遗留桩
+• API：请用 wPrimePool01（anaerobicPercent 已弃用）
+• AI：限速与玩家 v6 相位曲线同源（SCR_RSS_AIManager）
+• 修复：第三方角色预制体将体力组件 Enabled=0 时 RSS 会重新激活/解析
+• 修复：施密特滞回不双计；假冲刺不慢于 Run
+
+已知限制（引擎）
+--------------
+按严格 CP–W′：W′ 耗尽后无法以相同强度持续高于 CP 的运动，现实表现应为降速。
+但在 Reforger 中，若强行把速度拉低很多而动画仍停在同一相位（尤其 Run），脚部与位移
+会不同步（滑步）。为避免该问题，6.1.0 在可行范围内保持当前运动状态，超额改为消耗
+STA，而不是用物理硬钳把 v 压到远低于动画带。
+
+Upgrade tip: Custom JSON from 3.x is not a drop-in for 6.x — start from a baked preset.
+If you briefly tried 6.0.0: re-select a preset after updating so 6.1.0 defaults apply.
+Full log: CHANGELOG.md [6.1.0] / [6.0.0] / [5.0.0] / [3.23.1]
+
+Author note / 碎碎念
+--------------------
+[EN] Sorry for the ~2 month gap since the last official Workshop update. I was deep in
+researching an intelligent-driving / vehicle-AI style mod for games, tried a lot of
+approaches that did not pan out cleanly, and had some personal factors on top — so this
+RSS drop took longer than planned. Thanks for waiting.
+
+[中文] 距上次正式 Workshop 更新大约两个月，抱歉让大家久等。期间我在研究可用于游戏中的
+智能驾驶类模组，试了很多方案，加上一些个人因素，所以这版拖得比较久。感谢耐心。
+
+Author: ViVi141 | License: AGPL-3.0
