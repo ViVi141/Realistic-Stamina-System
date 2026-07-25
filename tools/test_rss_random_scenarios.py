@@ -37,6 +37,7 @@ from rss_digital_twin_fix import (  # noqa: E402
     RSSConstants,
     RSSDigitalTwin,
     Stance,
+    V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS,
     apply_cp_cruise_physics_cap,
     clamp_grade_percent_for_metabolic_speed,
     invert_speed_for_power_watts,
@@ -350,15 +351,19 @@ def _make_twin(preset: str, load_kg: float, w_pool: float, stamina: float) -> RS
 
 
 def _check_grade_policy(sc: dict) -> Optional[str]:
+    from rss_digital_twin_fix import V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP
+
     g = float(sc["grade"])
     enforce = should_enforce_cp_cruise_physics_cap(g)
-    if g < -2.0 and enforce:
-        return f"downhill grade={g:.2f} still enforces phys clamp"
+    # 默认不压速：物理钳关闭，任意坡度都不应 enforce
+    if not V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
+        if enforce:
+            return f"drain-only mode still enforces phys clamp grade={g:.2f}"
+        return None
     if abs(g) > 35.0 and enforce:
         return f"steep |grade|={abs(g):.2f} still enforces phys clamp"
-    if -2.0 <= g <= 35.0 and not enforce:
-        # Only when global flag on (twin default true)
-        return f"flat/uphill grade={g:.2f} should enforce phys clamp"
+    if abs(g) <= 35.0 and not enforce:
+        return f"grade={g:.2f} should allow phys clamp path"
     return None
 
 
@@ -375,6 +380,8 @@ def _check_metabolic_grade_clamp(sc: dict) -> Optional[str]:
 
 
 def _check_phys_cap_behavior(sc: dict) -> Optional[str]:
+    from rss_digital_twin_fix import V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP
+
     g = float(sc["grade"])
     lim = float(sc["v_limit"])
     coast = float(sc["coast"])
@@ -382,28 +389,34 @@ def _check_phys_cap_behavior(sc: dict) -> Optional[str]:
     out = apply_cp_cruise_physics_cap(coast, lim, dt, g)
     if not _finite(out):
         return f"phys cap non-finite {out}"
-    if should_enforce_cp_cruise_physics_cap(g):
-        if coast > lim + 0.15:
-            # Soft clamp: excess in (eps, 0.35] only sheds 9*dt; >0.35 hard→lim
-            if coast > lim + 0.35:
-                if out > lim + 1e-6:
-                    return (
-                        f"hard clamp failed coast={coast:.2f} lim={lim:.2f} out={out:.2f}"
-                    )
-            else:
-                expected_max = coast - 9.0 * max(0.01, min(0.5, dt))
-                if expected_max < lim:
-                    expected_max = lim
-                if out > expected_max + 1e-4:
-                    return (
-                        f"soft clamp no decelerate coast={coast:.2f} "
-                        f"lim={lim:.2f} out={out:.2f} expect<={expected_max:.2f}"
-                    )
-                if out > coast + 1e-9:
-                    return f"clamp increased speed {coast:.2f}->{out:.2f}"
-    else:
+    # 默认不压速：物理钳恒为旁路
+    if not V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
         if abs(out - coast) > 1e-6:
-            return f"skip-grade clamp mutated speed {coast:.2f} -> {out:.2f} grade={g:.2f}"
+            return f"drain-only phys clamp mutated {coast:.2f}->{out:.2f}"
+        return None
+    enforce = should_enforce_cp_cruise_physics_cap(g, coast, lim)
+    if abs(g) > 35.0:
+        if abs(out - coast) > 1e-6:
+            return f"steep skip mutated {coast:.2f}->{out:.2f} grade={g:.2f}"
+        return None
+    if not enforce:
+        if abs(out - coast) > 1e-6:
+            return f"coast skip mutated {coast:.2f}->{out:.2f} grade={g:.2f}"
+        return None
+    if coast > lim + 0.35:
+        if out > lim + 1e-6:
+            return f"hard clamp failed coast={coast:.2f} lim={lim:.2f} out={out:.2f}"
+    else:
+        expected_max = coast - 9.0 * max(0.01, min(0.5, dt))
+        if expected_max < lim:
+            expected_max = lim
+        if out > expected_max + 1e-4:
+            return (
+                f"soft clamp no decelerate coast={coast:.2f} "
+                f"lim={lim:.2f} out={out:.2f} expect<={expected_max:.2f}"
+            )
+        if out > coast + 1e-9:
+            return f"clamp increased speed {coast:.2f}->{out:.2f}"
     return None
 
 
@@ -529,23 +542,38 @@ def _check_short_step(twin: RSSDigitalTwin, sc: dict) -> Optional[str]:
 
 
 def _check_thrash_metric(sc: dict) -> Optional[str]:
-    """Gentle downhill + overspeed: skip policy must not oscillate via clamp."""
+    """Gentle downhill: mild coast must not fight; runaway clamps only if phys clamp on."""
+    from rss_digital_twin_fix import V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP
+
     g = float(sc["grade"])
     if g >= -2.0 or g < -35.0:
         return None
     lim = float(sc["v_limit"])
-    coast = max(float(sc["coast"]), lim + 0.4)
+    allow = float(V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS)
+    mild_coast = lim + allow * 0.75
     dt = 0.02
     v = lim
-    events = 0
-    for _ in range(80):
-        v = min(coast, v + 10.0 * dt)
+    mild_events = 0
+    for _ in range(40):
+        v = min(mild_coast, v + 10.0 * dt)
         before = v
         v = apply_cp_cruise_physics_cap(v, lim, dt, g)
-        if before > lim + 0.15 and abs(v - before) > 1e-9:
-            events += 1
-    if events > 0:
-        return f"downhill thrash events={events} grade={g:.2f} lim={lim:.2f}"
+        if abs(v - before) > 1e-9:
+            mild_events += 1
+    if mild_events > 0:
+        return f"mild downhill coast fought events={mild_events} grade={g:.2f}"
+
+    # 不压速默认：不要求物理钳住窜速（透支改扣 STA）
+    if not V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
+        return None
+
+    runaway = lim + allow + 0.50
+    after = apply_cp_cruise_physics_cap(runaway, lim, dt, g)
+    if after > lim + 1e-3:
+        return (
+            f"downhill runaway not clamped grade={g:.2f} "
+            f"in={runaway:.2f} out={after:.2f} lim={lim:.2f}"
+        )
     return None
 
 

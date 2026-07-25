@@ -25,8 +25,11 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     // 标记：是否是我们自己的调用（避免循环）
     protected bool m_bIsOurOwnCall = false;
 
-    //! >= 0 时引擎条应显示此值（冲刺门禁），m_fTargetStamina 仍是有氧权威
+    //! >= 0 时引擎条应显示此值（冲刺门禁 / W′ 晃动呼吸），m_fTargetStamina 仍是有氧权威
     protected float m_fTransientEngineDisplay = -1.0;
+    //! 引擎表现读数平滑（防 SetTarget/帧间隙一闪有一无）
+    protected float m_fSmoothedEngineDisplay = 1.0;
+    protected const float ENGINE_FX_SMOOTH_ALPHA = 0.28;
     
     // 关键发现：
     // 1. OnStaminaDrain 是一个 event，每次体力值改变时都会触发（包括 AddStamina 调用）
@@ -58,37 +61,60 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     
     protected float GetExpectedEngineStamina()
     {
-        if (m_fTransientEngineDisplay >= 0.0)
-            return m_fTransientEngineDisplay;
-        return m_fTargetStamina;
+        // 平滑后的引擎读数；Monitor / SetTarget 都对齐此值，避免隔帧跳回有氧满值
+        return m_fSmoothedEngineDisplay;
     }
 
-    // 纠正体力值到目标值（主动监控机制）
-    void CorrectStaminaToTarget()
+    protected void ClampTransientToAerobic()
+    {
+        if (m_fTransientEngineDisplay < 0.0)
+            return;
+        if (m_fTransientEngineDisplay > m_fTargetStamina)
+            m_fTransientEngineDisplay = m_fTargetStamina;
+    }
+
+    protected void RefreshSmoothedEngineDisplay(bool snap)
+    {
+        float desired = m_fTargetStamina;
+        if (m_fTransientEngineDisplay >= 0.0)
+            desired = m_fTransientEngineDisplay;
+
+        if (snap)
+        {
+            m_fSmoothedEngineDisplay = desired;
+            return;
+        }
+
+        m_fSmoothedEngineDisplay = m_fSmoothedEngineDisplay
+            + (desired - m_fSmoothedEngineDisplay) * ENGINE_FX_SMOOTH_ALPHA;
+    }
+
+    protected void WriteEngineStaminaToExpected()
     {
         float currentStamina = GetStamina();
-        
-        // 如果体力值 < 0（没有体力组件），不处理
         if (currentStamina < 0.0)
             return;
 
         float expectedStamina = GetExpectedEngineStamina();
-        
-        // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
-        if (Math.AbsFloat(currentStamina - expectedStamina) > 0.001)
-        {
-            // 计算需要调整的体力量，使其回到目标值
-            float correction = expectedStamina - currentStamina;
-            
-            // 标记这是我们自己的调用，允许执行
-            m_bIsOurOwnCall = true;
-            // 使用父类的 AddStamina 来设置体力值
-            super.AddStamina(correction);
-            m_bIsOurOwnCall = false;
-        }
-        
-        // 更新记录的体力值（使用实际值，而不是目标值）
-        m_fLastKnownStamina = GetStamina();
+        float correction = expectedStamina - currentStamina;
+        if (Math.AbsFloat(correction) < 0.0001)
+            return;
+
+        m_bIsOurOwnCall = true;
+        super.AddStamina(correction);
+        m_bIsOurOwnCall = false;
+
+        float finalStamina = GetStamina();
+        if (finalStamina >= 0.0)
+            m_fLastKnownStamina = finalStamina;
+    }
+
+    // 纠正引擎条到期望表现读数（有氧权威或 transient 平滑值）
+    void CorrectStaminaToTarget()
+    {
+        ClampTransientToAerobic();
+        RefreshSmoothedEngineDisplay(false);
+        WriteEngineStaminaToExpected();
     }
     
     // 启动主动监控（每帧检查，确保完全覆盖原生系统）
@@ -174,42 +200,14 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
     
-    // 设置目标体力值（由我们的自定义系统调用）
-    // 这是唯一允许改变体力的方式
+    // 设置有氧权威；不拆除 W′/冲刺门禁 transient，避免中间一帧弹回满体力
     void SetTargetStamina(float targetStamina)
     {
         m_fTargetStamina = Math.Clamp(targetStamina, 0.0, 1.0);
-        m_fTransientEngineDisplay = -1.0;
-        
-        // 立即应用目标体力值（直接调用父类的 AddStamina）
-        float currentStamina = GetStamina();
-        if (currentStamina >= 0.0)
-        {
-            float correction = m_fTargetStamina - currentStamina;
-            
-            // 标记这是我们自己的调用，允许执行
-            // 注意：调用 AddStamina 会触发 OnStaminaDrain 事件
-            m_bIsOurOwnCall = true;
-            // 直接调用父类方法设置体力值
-            super.AddStamina(correction);
-            m_bIsOurOwnCall = false;
-            
-            // 立即再次检查，确保设置成功（原生系统可能在设置后立即恢复）
-            float verifyStamina = GetStamina();
-            if (Math.AbsFloat(verifyStamina - m_fTargetStamina) > 0.001)
-            {
-                // 如果设置后立即被改变，再次纠正
-                float reCorrection = m_fTargetStamina - verifyStamina;
-                m_bIsOurOwnCall = true;
-                super.AddStamina(reCorrection);
-                m_bIsOurOwnCall = false;
-            }
-        }
-        
-        // 更新记录的体力值（使用实际设置后的值）
-        float finalStamina = GetStamina();
-        if (finalStamina >= 0.0)
-            m_fLastKnownStamina = finalStamina;
+        ClampTransientToAerobic();
+        // 权威刚写入时对齐期望读数；若仍有 transient 则保持压条，不闪高
+        RefreshSmoothedEngineDisplay(false);
+        WriteEngineStaminaToExpected();
     }
     
     // 获取目标体力值
@@ -218,34 +216,31 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         return m_fTargetStamina;
     }
 
-    //! 仅改引擎 GetStamina() 显示/原生门禁读数，不修改 m_fTargetStamina（冲刺门禁用）
+    //! 仅改引擎 GetStamina() 显示/原生门禁/晃动读数，不修改 m_fTargetStamina
     void ApplyTransientEngineStamina(float engineValue)
     {
         engineValue = Math.Clamp(engineValue, 0.0, 1.0);
+        if (engineValue > m_fTargetStamina)
+            engineValue = m_fTargetStamina;
         m_fTransientEngineDisplay = engineValue;
-        float currentStamina = GetStamina();
-        if (currentStamina < 0.0)
-            return;
-
-        float correction = engineValue - currentStamina;
-        if (Math.AbsFloat(correction) < 0.0001)
-            return;
-
-        m_bIsOurOwnCall = true;
-        super.AddStamina(correction);
-        m_bIsOurOwnCall = false;
-
-        float finalStamina = GetStamina();
-        if (finalStamina >= 0.0)
-            m_fLastKnownStamina = finalStamina;
+        RefreshSmoothedEngineDisplay(false);
+        WriteEngineStaminaToExpected();
     }
 
-    //! 将引擎条恢复为 RSS 有氧目标（冲刺门禁结束后）
+    //! 清除表现伪装，引擎条回到有氧权威（可平滑收回）
     void RestoreEngineStaminaFromTarget()
     {
         m_fTransientEngineDisplay = -1.0;
-        ApplyTransientEngineStamina(m_fTargetStamina);
+        RefreshSmoothedEngineDisplay(false);
+        WriteEngineStaminaToExpected();
+    }
+
+    //! 强制引擎条立即等于有氧权威（初始化 / 重置）
+    void SnapEngineStaminaToTarget()
+    {
         m_fTransientEngineDisplay = -1.0;
+        RefreshSmoothedEngineDisplay(true);
+        WriteEngineStaminaToExpected();
     }
     
     // 允许/禁用原生体力系统

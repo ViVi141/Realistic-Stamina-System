@@ -3,6 +3,7 @@ use crate::constants::{
     MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_WALK_SPEED_MS_DEFAULT,
     V6_AEROBIC_CRUISE_MAX_MS, V6_APPLY_HORIZONTAL_SPEED_CLAMP, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
     V6_OVERSPEED_STA_TAX_MULT, V6_RUN_GAIT_DEMOTE_TO_WALK, V6_RUN_GAIT_FLOOR_MS,
+    V6_RUN_SOFT_BAND_BELOW_FLOOR_MS,
     V6_STAMINA_DRAIN_CALIBRATION, V6_WALK_START_MIN_MS,
 };
 use crate::math::clip_f64;
@@ -139,6 +140,7 @@ pub fn resolve_run_cruise_cap_ms(
     let cruise_max = V6_AEROBIC_CRUISE_MAX_MS;
     let floor_ms = V6_RUN_GAIT_FLOOR_MS;
     let demote = V6_RUN_GAIT_DEMOTE_TO_WALK;
+    let soft_band = V6_RUN_SOFT_BAND_BELOW_FLOOR_MS;
     let horiz_clamp = V6_APPLY_HORIZONTAL_SPEED_CLAMP;
     let walk_min = V6_WALK_START_MIN_MS;
     let walk_top = V5_WALK_SPEED_MS_DEFAULT;
@@ -155,8 +157,12 @@ pub fn resolve_run_cruise_cap_ms(
         return floor_ms;
     }
 
-    // Gray zone: above Walk top but below Run floor — keep metabolic invert
-    if cap_ms >= walk_top {
+    // Near-floor soft Run; deeper gray demotes Walk (avoids 1.8↔2.42 thrash)
+    let mut soft_run_floor = floor_ms - soft_band;
+    if soft_run_floor < walk_top {
+        soft_run_floor = walk_top;
+    }
+    if cap_ms >= soft_run_floor {
         return cap_ms;
     }
 
@@ -192,9 +198,7 @@ pub fn get_client_overspeed_excess_drain_per_second(
     energy_to_stamina_coeff: f64,
     character_weight_kg: f64,
 ) -> f64 {
-    if !is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
-        return 0.0;
-    }
+    use crate::constants::V6_APPLY_CP_METABOLIC_SPEED_CAP;
 
     let p_meas = metabolism_power_watts(
         measured_ms,
@@ -211,21 +215,34 @@ pub fn get_client_overspeed_excess_drain_per_second(
             V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
         );
     }
-    if armed
-        && effective_critical_power_watts > 1.0
-        && p_meas > effective_critical_power_watts + 1.0
-    {
-        return 0.0;
-    }
 
-    let p_limit = metabolism_power_watts(
-        applied_limit_ms,
-        total_weight_kg,
-        grade_percent,
-        terrain_factor,
-        movement_phase,
-    );
-    let unpaid_w = p_meas - p_limit;
+    let unpaid_w = if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
+        if armed {
+            return 0.0;
+        }
+        if effective_critical_power_watts <= 1.0 {
+            return 0.0;
+        }
+        p_meas - effective_critical_power_watts
+    } else {
+        if !is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
+            return 0.0;
+        }
+        if armed
+            && effective_critical_power_watts > 1.0
+            && p_meas > effective_critical_power_watts + 1.0
+        {
+            return 0.0;
+        }
+        let p_limit = metabolism_power_watts(
+            applied_limit_ms,
+            total_weight_kg,
+            grade_percent,
+            terrain_factor,
+            movement_phase,
+        );
+        p_meas - p_limit
+    };
     if unpaid_w <= 1.0 {
         return 0.0;
     }
@@ -237,7 +254,12 @@ pub fn get_client_overspeed_excess_drain_per_second(
     );
     let load_kg = (total_weight_kg - character_weight_kg).max(0.0);
     per_sec *= loaded_gait_stamina_drain_multiplier(load_kg, movement_phase);
-    per_sec *= V6_OVERSPEED_STA_TAX_MULT;
+    let tax_mult = if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
+        crate::constants::V6_CP_EXCESS_STA_TAX_MULT
+    } else {
+        V6_OVERSPEED_STA_TAX_MULT
+    };
+    per_sec *= tax_mult;
     per_sec
 }
 
@@ -265,6 +287,10 @@ pub fn get_metabolic_speed_cap_ms(
     available_power_watts: f64,
     speed_for_power_eval_ms: f64,
 ) -> f64 {
+    use crate::constants::V6_APPLY_CP_METABOLIC_SPEED_CAP;
+    if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
+        return -1.0;
+    }
     if is_exhausted {
         return -1.0;
     }

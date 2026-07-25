@@ -1956,6 +1956,7 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
 V6_OVERSPEED_STA_TAX_MULT = 12.0
+V6_CP_EXCESS_STA_TAX_MULT = 0.75
 V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05
 V6_WPRIME_OVERSPEED_REARM = 0.40
 V6_W_PRIME_RECOVERY_POWER_MARGIN_W = 40.0
@@ -2037,10 +2038,7 @@ def get_client_overspeed_excess_drain_per_second(
     energy_to_stamina_coeff: float = 9.5e-07,
     character_weight_kg: float = 90.0,
 ) -> float:
-    """与 SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond 同形。"""
-    if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
-        return 0.0
-
+    """Parity with GetClientOverspeedExcessDrainPerSecond (drain-only or limit tax)."""
     p_meas = metabolism_power_watts(
         measured_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
     )
@@ -2048,17 +2046,27 @@ def get_client_overspeed_excess_drain_per_second(
     armed = bool(w_prime_overspeed_armed)
     if not armed:
         armed = is_wprime_pool_available_for_overspeed(w_prime_pool01)
-    if armed:
-        if (
-            effective_critical_power_watts > 1.0
-            and p_meas > effective_critical_power_watts + 1.0
-        ):
-            return 0.0
 
-    p_limit = metabolism_power_watts(
-        applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
-    )
-    unpaid_w = p_meas - p_limit
+    if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
+        if armed:
+            return 0.0
+        if effective_critical_power_watts <= 1.0:
+            return 0.0
+        unpaid_w = p_meas - float(effective_critical_power_watts)
+    else:
+        if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+            return 0.0
+        if armed:
+            if (
+                effective_critical_power_watts > 1.0
+                and p_meas > effective_critical_power_watts + 1.0
+            ):
+                return 0.0
+        p_limit = metabolism_power_watts(
+            applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
+        )
+        unpaid_w = p_meas - p_limit
+
     if unpaid_w <= 1.0:
         return 0.0
 
@@ -2067,8 +2075,11 @@ def get_client_overspeed_excess_drain_per_second(
     )
     load_kg = max(total_weight_kg - character_weight_kg, 0.0)
     per_sec = per_sec * loaded_gait_stamina_drain_multiplier(load_kg, movement_phase)
-    per_sec = per_sec * V6_OVERSPEED_STA_TAX_MULT
-    return float(per_sec)
+    tax_mult = V6_OVERSPEED_STA_TAX_MULT
+    if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
+        tax_mult = V6_CP_EXCESS_STA_TAX_MULT
+    per_sec = per_sec * tax_mult
+    return per_sec
 
 
 def stamina_drain_rate_per_second_from_power_watts(
@@ -2115,6 +2126,8 @@ def get_metabolic_speed_cap_ms(
     overspeed_armed=None,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形。"""
+    if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
+        return -1.0
     if is_exhausted:
         return -1.0
     if movement_phase < 1:
@@ -2277,13 +2290,16 @@ V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
 V6_RUN_GAIT_FLOOR_MS = 2.2
 V6_RUN_GAIT_DEMOTE_TO_WALK = True
+V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25
 V6_WALK_START_MIN_MS = 0.35
 V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
-# Match game SCR_RSS_Constants: W' disarmed flat/uphill may clamp Physics; downhill/steep skip.
-V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = True
+V6_APPLY_CP_METABOLIC_SPEED_CAP = False
+# Match game SCR_RSS_Constants: W' disarmed flat/uphill clamp; downhill allows small coast then clamp; steep skip.
+V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = False
 V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15
 V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX = 35.0
 V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE = -2.0
+V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS = 0.40
 V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0
 
 
@@ -2299,14 +2315,34 @@ def clamp_grade_percent_for_metabolic_speed(grade_percent: float) -> float:
     return g
 
 
-def should_enforce_cp_cruise_physics_cap(grade_percent: float) -> bool:
-    # Parity with SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap grade gates.
+def should_enforce_cp_cruise_physics_cap(
+    grade_percent: float,
+    measured_ms: float = None,
+    applied_limit_ms: float = None,
+    movement_phase: int = 2,
+) -> bool:
+    """Parity with EnforceCpCruisePhysicsCap grade + downhill coast-allow gates.
+
+    When measured/limit omitted: downhill band returns True (may clamp runaway).
+    Callers that only care about «mild coast skipped» should use apply_* or pass speeds.
+    Walk (phase=1): never skip by steep grade; never use downhill coast allow.
+    """
     if not V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
         return False
     g = float(grade_percent)
-    if g < float(V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE):
+    is_walk = int(movement_phase) == 1
+    if (not is_walk) and abs(g) > float(V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX):
         return False
-    if abs(g) > float(V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX):
+    if measured_ms is None or applied_limit_ms is None:
+        return True
+    lim = float(applied_limit_ms)
+    v = float(measured_ms)
+    if lim < 0.1:
+        return False
+    trigger = float(V6_CP_CRUISE_OVERSPEED_EPS_MPS)
+    if (not is_walk) and g < float(V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE):
+        trigger = float(V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS)
+    if v <= lim + trigger:
         return False
     return True
 
@@ -2316,17 +2352,19 @@ def apply_cp_cruise_physics_cap(
     applied_limit_ms: float,
     dt_sec: float,
     grade_percent: float,
+    movement_phase: int = 2,
 ) -> float:
-    # Simplified SoftClampOwnerHorizontalSpeed for twin bug hunts.
-    if not should_enforce_cp_cruise_physics_cap(grade_percent):
+    # SoftClamp for Run; Walk hard-snaps (parity with EnforceCpCruisePhysicsCap).
+    if not should_enforce_cp_cruise_physics_cap(
+        grade_percent, measured_ms, applied_limit_ms, movement_phase=movement_phase
+    ):
         return float(measured_ms)
     if applied_limit_ms < 0.1:
         return float(measured_ms)
-    eps = float(V6_CP_CRUISE_OVERSPEED_EPS_MPS)
     v = float(measured_ms)
     lim = float(applied_limit_ms)
-    if v <= lim + eps:
-        return v
+    if int(movement_phase) == 1:
+        return lim
     if dt_sec < 0.01:
         dt_sec = 0.01
     if dt_sec > 0.5:
@@ -2358,6 +2396,7 @@ def resolve_run_cruise_cap_ms(
     cruise_max = float(V6_AEROBIC_CRUISE_MAX_MS)
     floor_ms = float(V6_RUN_GAIT_FLOOR_MS)
     demote = bool(V6_RUN_GAIT_DEMOTE_TO_WALK)
+    soft_band = float(V6_RUN_SOFT_BAND_BELOW_FLOOR_MS)
     horiz_clamp = bool(V6_APPLY_HORIZONTAL_SPEED_CLAMP)
     walk_min = float(V6_WALK_START_MIN_MS)
     walk_top = float(V5_WALK_SPEED_MS_DEFAULT)
@@ -2365,6 +2404,7 @@ def resolve_run_cruise_cap_ms(
         cruise_max = float(getattr(constants, 'V6_AEROBIC_CRUISE_MAX_MS', cruise_max))
         floor_ms = float(getattr(constants, 'V6_RUN_GAIT_FLOOR_MS', floor_ms))
         demote = bool(getattr(constants, 'V6_RUN_GAIT_DEMOTE_TO_WALK', demote))
+        soft_band = float(getattr(constants, 'V6_RUN_SOFT_BAND_BELOW_FLOOR_MS', soft_band))
         horiz_clamp = bool(getattr(constants, 'V6_APPLY_HORIZONTAL_SPEED_CLAMP', horiz_clamp))
         walk_min = float(getattr(constants, 'V6_WALK_START_MIN_MS', walk_min))
         if bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', True)):
@@ -2381,8 +2421,11 @@ def resolve_run_cruise_cap_ms(
     if (not demote) or horiz_clamp:
         return floor_ms
 
-    # Gray zone: above Walk top but below Run floor — keep metabolic invert
-    if cap_ms >= walk_top:
+    # Near-floor soft Run only; deeper gray demotes Walk (avoids 1.8↔2.42 thrash)
+    soft_run_floor = floor_ms - soft_band
+    if soft_run_floor < walk_top:
+        soft_run_floor = walk_top
+    if cap_ms >= soft_run_floor:
         return cap_ms
 
     walk_cap = cap_ms

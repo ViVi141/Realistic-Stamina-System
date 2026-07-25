@@ -8,12 +8,16 @@ pub const VELOCITY_HORIZ_CAP_MS: f64 = 7.0;
 
 pub const V6_OVERSPEED_ACCOUNTING_EPS_MPS: f64 = 0.12;
 pub const V6_OVERSPEED_STA_TAX_MULT: f64 = 12.0;
+/// Drain-only mode: tax on full P-CP excess (not tiny over-limit delta).
+pub const V6_CP_EXCESS_STA_TAX_MULT: f64 = 0.75;
 pub const V6_WPRIME_OVERSPEED_HYSTERESIS: f64 = 0.05;
 pub const V6_WPRIME_OVERSPEED_REARM: f64 = 0.40;
 /// Joules below this count as empty for AvailableP (match game V6_WPRIME_EMPTY_FLOOR_JOULES).
 pub const V6_WPRIME_EMPTY_FLOOR_JOULES: f64 = 5.0;
 /// Match game: CP invert below Run floor demotes to Walk band (not hard lift to floor).
 pub const V6_RUN_GAIT_DEMOTE_TO_WALK: bool = true;
+/// Soft-Run band below floor (m/s); deeper gray demotes Walk (match game).
+pub const V6_RUN_SOFT_BAND_BELOW_FLOOR_MS: f64 = 0.25;
 pub const V6_WALK_START_MIN_MS: f64 = 0.35;
 pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
@@ -33,13 +37,15 @@ pub const V6_WALK_DOWNHILL_COAST_FACTOR_MIN: f64 = 0.42;
 pub const V6_AEROBIC_CRUISE_MAX_MS: f64 = 2.4;
 /// Run-intent CP-cruise floor: keep above Walk anim band (match game V6_RUN_GAIT_FLOOR_MS).
 pub const V6_RUN_GAIT_FLOOR_MS: f64 = 2.2;
-/// Match game: W' disarmed flat/uphill may clamp Physics; downhill/steep skip.
-pub const V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP: bool = true;
+/// Match game: flat/uphill clamp; downhill mild coast then clamp; steep skip.
+pub const V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP: bool = false;
 pub const V6_CP_CRUISE_OVERSPEED_EPS_MPS: f64 = 0.15;
 pub const V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX: f64 = 35.0;
 pub const V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE: f64 = -2.0;
+pub const V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS: f64 = 0.40;
 pub const V6_METABOLIC_GRADE_ABS_MAX_PCT: f64 = 45.0;
 pub const V6_APPLY_HORIZONTAL_SPEED_CLAMP: bool = false;
+pub const V6_APPLY_CP_METABOLIC_SPEED_CAP: bool = false;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;
 pub const LCDA_SPEED_FRAC_COEFF: f64 = 1.78;

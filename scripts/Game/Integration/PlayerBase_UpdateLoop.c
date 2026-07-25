@@ -363,13 +363,21 @@ modded class SCR_CharacterControllerComponent
             float lastEngineBase = m_fLastRssEngineBaseForLimit;
             if (lastEngineBase <= 0.1)
                 lastEngineBase = engineBaseForLimit;
+            bool overspeedArmedForTransition = true;
+            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            {
+                if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    m_pAnaerobicBurst.GetCpModel()))
+                    overspeedArmedForTransition = false;
+            }
             loc.finalSpeedMultiplier = m_pSprintBlockSpeedTransition.UpdateAndGet(
                 loc.currentTime,
                 targetAbsoluteSpeedMs,
                 engineBaseForLimit,
                 sprintAllowed,
                 m_fLastRssSpeedMultiplierApplied,
-                lastEngineBase);
+                lastEngineBase,
+                overspeedArmedForTransition);
             m_fLastRssEngineBaseForLimit = engineBaseForLimit;
         }
         
@@ -470,17 +478,25 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
             RSS_ApplyTrialMovementMaxSpeed(loc.owner, safeCap);
 
-            if (cruiseDisarmed)
+            // 仅当 V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=true 时生效；默认不压速只扣条
+            bool enforceCruisePhys = cruiseDisarmed;
+            if (loc.phaseNow == 1 || loc.effectivePhase == 1)
+                enforceCruisePhys = true;
+            if (enforceCruisePhys)
             {
                 float clampDt = GetSpeedUpdateIntervalMs() / 1000.0;
                 if (clampDt < 0.01)
                     clampDt = 0.05;
+                int clampPhase = loc.phaseNow;
+                if (loc.effectivePhase == 1)
+                    clampPhase = 1;
                 SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
                     loc.owner,
                     safeCap,
                     loc.currentSpeed,
                     clampDt,
-                    RSS_GetSmoothedGradePercentForSpeed());
+                    RSS_GetSmoothedGradePercentForSpeed(),
+                    clampPhase);
             }
         }
         else
@@ -668,7 +684,8 @@ modded class SCR_CharacterControllerComponent
                             safeCap,
                             loc.currentSpeed,
                             loc.timeDeltaSec,
-                            loc.gradePercent);
+                            loc.gradePercent,
+                            loc.phaseNow);
                     }
                 }
                 else
@@ -823,6 +840,27 @@ modded class SCR_CharacterControllerComponent
                 wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
                     pool01AfterTick);
 
+            // TickPower 同帧刚解除武装：立刻开绝对速度缓降，避免本帧硬钳把限速 SNAP 到巡航顶
+            if (m_pSprintBlockSpeedTransition && !wPrimeAllowsOverspeed)
+            {
+                float disarmTargetAbs = m_fAppliedSpeedLimitMs;
+                float wPrimeCapNow = SCR_RSS_DrainCalculator.GetWPrimeExhaustedOverspeedCapMs(
+                    loc.currentSpeed,
+                    m_fAppliedSpeedLimitMs,
+                    pool01AfterTick,
+                    loc.phaseNow,
+                    loc.totalWeightWithWetAndBody,
+                    loc.gradePercent,
+                    loc.terrainFactor,
+                    cpPostTick);
+                if (wPrimeCapNow > 0.05)
+                    disarmTargetAbs = wPrimeCapNow;
+                m_pSprintBlockSpeedTransition.EnsureDisarmTransition(
+                    loc.currentTime,
+                    m_fAppliedSpeedLimitMs,
+                    disarmTargetAbs);
+            }
+
             // 绝对速度缓降中不要用代谢硬顶覆盖倍率，但要用当前已应用限速做相位安全软钳（防滑步）
             bool inAbsSpeedTransition = false;
             if (m_pSprintBlockSpeedTransition)
@@ -840,27 +878,32 @@ modded class SCR_CharacterControllerComponent
                     loc.isSprintingNow,
                     loc.phaseNow);
                 m_fAppliedSpeedLimitMs = safeCap;
-                SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
-                // 缓降中也必须纠偏：否则 Run→Walk 过渡窗内 v_meas 会窜过 Walk 顶
-                if (!wPrimeAllowsOverspeed)
+                // 全局水平钳默认关：缓降窗内用 force 纠偏（勿调用无 force 的 Clamp，等于空操作）
+                if (!wPrimeAllowsOverspeed || loc.phaseNow == 1)
                 {
                     SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
                         loc.owner,
                         safeCap,
                         loc.currentSpeed,
                         loc.timeDeltaSec,
-                        loc.gradePercent);
+                        loc.gradePercent,
+                        loc.phaseNow);
                 }
             }
 
-            // 武装且在缓降中：勿硬顶覆盖；解除武装时过渡窗内也必须压超速
+            // 武装且在缓降中：勿硬顶覆盖。
+            // W′ 解除武装的绝对速度缓降窗内：禁止把 SetSpeedLimit 瞬间钉到巡航顶
+            // （旧逻辑会 3.3→1.8 SNAP，再与 phys 互殴）；只靠上方对「已缓降 safeCap」的软钳。
             bool allowOverspeedHardClamp = false;
             if (overspeeding)
             {
                 if (!inAbsSpeedTransition)
                     allowOverspeedHardClamp = true;
-                else if (!wPrimeAllowsOverspeed)
+                else if (!wPrimeAllowsOverspeed && loc.phaseNow == 1)
+                {
+                    // Walk 缓降窗仍允许硬路径压到步行顶（原版 Walk 不得 3m/s+）
                     allowOverspeedHardClamp = true;
+                }
             }
 
             if (allowOverspeedHardClamp
@@ -910,15 +953,15 @@ modded class SCR_CharacterControllerComponent
                     float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
                         hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
                     m_fAppliedSpeedLimitMs = safeCap;
-                    SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
-                    if (!wPrimeAllowsOverspeed)
+                    if (!wPrimeAllowsOverspeed || loc.phaseNow == 1)
                     {
                         SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
                             loc.owner,
                             safeCap,
                             loc.currentSpeed,
                             loc.timeDeltaSec,
-                            loc.gradePercent);
+                            loc.gradePercent,
+                            loc.phaseNow);
                     }
                 }
                 else
@@ -929,6 +972,21 @@ modded class SCR_CharacterControllerComponent
                 }
                 m_fLastRssSpeedMultiplierApplied = hardFrac;
                 loc.finalSpeedMultiplier = hardFrac;
+            }
+            else if (inAbsSpeedTransition && overspeeding && !wPrimeAllowsOverspeed
+                && IsPlayerControlled() && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
+            {
+                // Run 解除武装缓降中：只软跟当前已缓降的 applied 限速，不 SNAP
+                if (m_fAppliedSpeedLimitMs > 0.05)
+                {
+                    SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
+                        loc.owner,
+                        m_fAppliedSpeedLimitMs,
+                        loc.currentSpeed,
+                        loc.timeDeltaSec,
+                        loc.gradePercent,
+                        loc.phaseNow);
+                }
             }
         }
 

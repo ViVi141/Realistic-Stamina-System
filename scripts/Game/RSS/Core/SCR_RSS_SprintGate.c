@@ -1,4 +1,5 @@
-//! Sprint 门禁：引擎条临时 poke / PrepareControls 拦截（从 PlayerBase.c 拆分）
+//! Sprint 门禁 + W′→引擎条表现（晃动/呼吸/Exhaustion）
+//! 仅改 GetStamina() transient，不改 m_fTargetStamina（有氧权威）
 
 class SCR_RSS_SprintGate
 {
@@ -12,26 +13,100 @@ class SCR_RSS_SprintGate
         pokeActive = false;
     }
 
+    //! W′/W′max → 引擎条伪装读数（1=不压条）
+    static float MapWPrimePoolToEngineDisplay(float wPrime01)
+    {
+        if (!SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_ENABLED)
+            return 1.0;
+
+        float start = SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_START;
+        float floorVal = SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_FLOOR;
+        if (start <= 0.001)
+            return 1.0;
+
+        wPrime01 = Math.Clamp(wPrime01, 0.0, 1.0);
+        if (wPrime01 >= start)
+            return 1.0;
+
+        float t = wPrime01 / start;
+        return floorVal + (1.0 - floorVal) * t;
+    }
+
+    //! min(有氧, W′映射, 冲刺门禁压条)
+    static float ComputeEnginePresentationDisplay(
+        float aerobic01,
+        float wPrime01,
+        bool sprintAllowed,
+        bool sprintIntent)
+    {
+        aerobic01 = Math.Clamp(aerobic01, 0.0, 1.0);
+        float display = aerobic01;
+
+        float wPrimeMapped = MapWPrimePoolToEngineDisplay(wPrime01);
+        if (wPrimeMapped < display)
+            display = wPrimeMapped;
+
+        if (!sprintAllowed && sprintIntent)
+        {
+            float blockStamina = SCR_RSS_ConfigBridge.GetSprintEnableThreshold() - 0.01;
+            if (blockStamina < 0.0)
+                blockStamina = 0.0;
+            if (blockStamina < display)
+                display = blockStamina;
+        }
+
+        return display;
+    }
+
+    //! 统一写入引擎条：W′ 表现 + 冲刺门禁 poke
+    static void ApplyEngineStaminaPresentation(
+        bool sprintAllowed,
+        bool sprintIntent,
+        SCR_CharacterStaminaComponent staminaComponent,
+        float aerobic01,
+        float wPrime01,
+        inout bool pokeActive)
+    {
+        if (!staminaComponent)
+            return;
+
+        float aerobicClamped = Math.Clamp(aerobic01, 0.0, 1.0);
+        float display = ComputeEnginePresentationDisplay(
+            aerobicClamped, wPrime01, sprintAllowed, sprintIntent);
+
+        bool needTransient = false;
+        if (display + 0.0005 < aerobicClamped)
+            needTransient = true;
+
+        if (!needTransient)
+        {
+            // 即使 poke 已清，仍每帧 Ease 回有氧，避免平滑停在半路
+            if (pokeActive)
+                ClearEnginePoke(staminaComponent, pokeActive);
+            else
+                staminaComponent.RestoreEngineStaminaFromTarget();
+            return;
+        }
+
+        staminaComponent.ApplyTransientEngineStamina(display);
+        pokeActive = true;
+    }
+
     static void PokeEngineStaminaForSprintBlock(
         bool sprintAllowed,
         bool sprintIntent,
         SCR_CharacterStaminaComponent staminaComponent,
-        inout bool pokeActive)
+        inout bool pokeActive,
+        float aerobic01,
+        float wPrime01)
     {
-        if (sprintAllowed || !sprintIntent)
-        {
-            ClearEnginePoke(staminaComponent, pokeActive);
-            return;
-        }
-
-        if (!staminaComponent)
-            return;
-
-        float blockStamina = SCR_RSS_ConfigBridge.GetSprintEnableThreshold() - 0.01;
-        if (blockStamina < 0.0)
-            blockStamina = 0.0;
-        staminaComponent.ApplyTransientEngineStamina(blockStamina);
-        pokeActive = true;
+        ApplyEngineStaminaPresentation(
+            sprintAllowed,
+            sprintIntent,
+            staminaComponent,
+            aerobic01,
+            wPrime01,
+            pokeActive);
     }
 
     static void ApplyOnPrepareControls(
@@ -41,11 +116,20 @@ class SCR_RSS_SprintGate
         int movementPhase,
         bool sprintToggle,
         SCR_CharacterStaminaComponent staminaComponent,
-        inout bool pokeActive)
+        inout bool pokeActive,
+        float aerobic01,
+        float wPrime01)
     {
         if (sprintAllowed)
         {
-            ClearEnginePoke(staminaComponent, pokeActive);
+            // 仍可因 W′ 低而保持引擎条压低（晃动/呼吸）
+            ApplyEngineStaminaPresentation(
+                true,
+                false,
+                staminaComponent,
+                aerobic01,
+                wPrime01,
+                pokeActive);
             return;
         }
 
@@ -60,6 +144,12 @@ class SCR_RSS_SprintGate
         am.SetActionValue("CharacterSprint", 0.0);
         am.SetActionValue("CharacterSprintToggle", 0.0);
 
-        PokeEngineStaminaForSprintBlock(sprintAllowed, sprintIntent, staminaComponent, pokeActive);
+        ApplyEngineStaminaPresentation(
+            sprintAllowed,
+            sprintIntent,
+            staminaComponent,
+            aerobic01,
+            wPrime01,
+            pokeActive);
     }
 }

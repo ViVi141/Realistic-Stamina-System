@@ -58,14 +58,21 @@ fn clamp_grade_metabolic(grade: f64) -> f64 {
     grade
 }
 
-fn should_enforce_phys_clamp(grade: f64) -> bool {
+fn should_enforce_phys_clamp(grade: f64, measured: f64, limit: f64) -> bool {
     if !V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP {
         return false;
     }
-    if grade < V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE {
+    if grade.abs() > V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX {
         return false;
     }
-    if grade.abs() > V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX {
+    if limit < 0.1 {
+        return false;
+    }
+    let mut trigger = V6_CP_CRUISE_OVERSPEED_EPS_MPS;
+    if grade < V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE {
+        trigger = rss_sim::constants::V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS;
+    }
+    if measured <= limit + trigger {
         return false;
     }
     true
@@ -96,10 +103,6 @@ fn count_downhill_clamp_fights(
     force_clamp: Option<bool>,
     seconds: f64,
 ) -> u32 {
-    let clamp_on = match force_clamp {
-        Some(v) => v,
-        None => should_enforce_phys_clamp(grade),
-    };
     let mut v = v_limit;
     let mut events = 0u32;
     let mut t = 0.0;
@@ -107,7 +110,11 @@ fn count_downhill_clamp_fights(
     while t < seconds {
         v = (v + g_accel * DT).min(coast_ms);
         let before = v;
-        v = apply_phys_clamp(v, v_limit, DT, clamp_on);
+        let clamp_on = match force_clamp {
+            Some(flag) => flag,
+            None => should_enforce_phys_clamp(grade, before, v_limit),
+        };
+        v = apply_phys_clamp(before, v_limit, DT, clamp_on);
         if clamp_on && before > v_limit + V6_CP_CRUISE_OVERSPEED_EPS_MPS {
             events += 1;
         }
@@ -365,44 +372,46 @@ fn main() {
         );
     }
 
-    // ── BUG11: 缓下坡 + W′解除武装 + 物理钳 → 与重力互殴（对照用户日志）──
+    // ── BUG11: 缓下坡 — 小幅滑行不互殴；窜速（Walk 3.3）仍钳 ──
     {
         let load_log = 31.128;
         let grade_dn = -9.1;
         let total_log = BODY + load_log;
         let cp_eff = compute_cp_watts(780.0, load_log, grade_dn, 1.0, 1.0);
-        // 日志常见：STA/负重倍率把 v_limit 压到 ~1.94，重力 coast ~2.79
         let v_limit = 1.94;
-        let coast = 2.79;
-        let events_old = count_downhill_clamp_fights(v_limit, coast, grade_dn, Some(true), 3.0);
-        let events_new = count_downhill_clamp_fights(v_limit, coast, grade_dn, None, 3.0);
-        let events_flat = count_downhill_clamp_fights(v_limit, coast, 0.0, None, 3.0);
+        let mild = v_limit + 0.30;
+        let runaway = 2.79;
+        let events_mild = count_downhill_clamp_fights(v_limit, mild, grade_dn, None, 3.0);
+        let events_runaway = count_downhill_clamp_fights(v_limit, runaway, grade_dn, None, 3.0);
+        let events_flat = count_downhill_clamp_fights(v_limit, runaway, 0.0, None, 3.0);
         let pool = 0.38;
         let armed = refresh_wprime_overspeed_armed(pool, false, thresh);
         println!(
-            "[用例11] 缓下坡物理钳: W'%={:.0} armed={} CP≈{:.0} v_lim={v_limit} coast={coast}",
+            "[用例11] 缓下坡物理钳: W'%={:.0} armed={} CP≈{:.0} v_lim={v_limit}",
             pool * 100.0,
             armed,
             cp_eff
         );
         println!(
-            "         旧策略(总钳) events={events_old}  新策略(下坡跳过) events={events_new}  平路仍钳 events={events_flat}"
+            "         小幅滑行 events={events_mild}  窜速钳 events={events_runaway}  平路钳 events={events_flat}"
         );
         let _ = total_log;
-        if events_new > 2 {
+        if events_mild > 2 {
             bugs.push(Bug {
-                id: "DOWNHILL_PHYS_CLAMP_THRASH",
+                id: "DOWNHILL_MILD_COAST_FOUGHT",
                 severity: "高",
                 detail: format!(
-                    "缓下坡 grade={grade_dn}% 仍物理钳 {events_new} 次/3s；重力 coast 与 v_limit 互殴（日志 1.9↔2.8）"
+                    "缓下坡 mild coast 仍互殴 {events_mild} 次/3s（应放行 ≤coast_allow）"
                 ),
             });
         }
-        if events_old < 10 {
+        if events_runaway < 10 {
             bugs.push(Bug {
-                id: "DOWNHILL_THRASH_MODEL_WEAK",
-                severity: "低",
-                detail: format!("对照旧策略应频繁钳制，却只有 {events_old} 次"),
+                id: "DOWNHILL_RUNAWAY_NOT_CLAMPED",
+                severity: "高",
+                detail: format!(
+                    "缓下坡窜速 coast={runaway} 应钳，却只有 {events_runaway} 次（Walk 超速回归）"
+                ),
             });
         }
         if events_flat < 10 {
@@ -440,18 +449,25 @@ fn main() {
         if inv_c + 0.05 < inv_raw {
             // expected: clamp raises uphill invert (less extreme)
         }
-        if should_enforce_phys_clamp(raw) {
+        if should_enforce_phys_clamp(raw, 3.0, 1.5) {
             bugs.push(Bug {
                 id: "STEEP_PHYS_CLAMP_NOT_SKIPPED",
                 severity: "高",
                 detail: format!("|grade|={raw}% 仍启用物理钳"),
             });
         }
-        if should_enforce_phys_clamp(-9.1) {
+        if should_enforce_phys_clamp(-9.1, 2.14, 1.94) {
             bugs.push(Bug {
-                id: "DOWNHILL_PHYS_CLAMP_NOT_SKIPPED",
+                id: "DOWNHILL_MILD_COAST_CLAMPED",
                 severity: "高",
-                detail: "缓下坡 -9.1% 仍启用物理钳".into(),
+                detail: "缓下坡小幅滑行不应物理钳".into(),
+            });
+        }
+        if !should_enforce_phys_clamp(-5.0, 3.27, 1.47) {
+            bugs.push(Bug {
+                id: "DOWNHILL_WALK_RUNAWAY_NOT_CLAMPED",
+                severity: "高",
+                detail: "缓下坡 Walk 窜速 3.27 vs lim 1.47 应物理钳".into(),
             });
         }
     }

@@ -293,27 +293,57 @@ class SCR_RSS_SpeedBridge
     }
 
     //! CP 巡航 / W′ 解除武装后超速纠偏。
-    //! @param gradePercent 当前坡度%；下坡与极陡时跳过，避免与重力/碰撞抢速度。
+    //! @param gradePercent 当前坡度%
+    //! @param movementPhase 1=Walk：永不放行下坡滑行（原版 Walk 顶 ≈1.45，不应到 3m/s+）；
+    //!   Run/Sprint 缓下坡可小幅滑行，峭壁整段跳过。
     static void EnforceCpCruisePhysicsCap(
         IEntity owner,
         float appliedLimitMs,
         float measuredSpeedMs,
         float dtSec,
-        float gradePercent)
+        float gradePercent,
+        int movementPhase)
     {
         if (!SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
             return;
-        float downhillSkip = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE;
-        if (gradePercent < downhillSkip)
-            return;
-        float gradeAbsMax = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX;
-        if (Math.AbsFloat(gradePercent) > gradeAbsMax)
-            return;
+
+        bool isWalkPhase = false;
+        if (movementPhase == 1)
+            isWalkPhase = true;
+
+        // Walk：始终可钳（引擎步行顶是硬顶）。非 Walk：极陡整段跳过。
+        if (!isWalkPhase)
+        {
+            float gradeAbsMax = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX;
+            if (Math.AbsFloat(gradePercent) > gradeAbsMax)
+                return;
+        }
+
         if (appliedLimitMs < 0.1)
             return;
-        float eps = SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_EPS_MPS;
-        if (measuredSpeedMs <= appliedLimitMs + eps)
+
+        float triggerExcess = SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_EPS_MPS;
+        if (!isWalkPhase)
+        {
+            float downhillSkip = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE;
+            if (gradePercent < downhillSkip)
+            {
+                // Run 缓下坡：容忍小幅重力滑行；超额仍钳
+                triggerExcess = SCR_RSS_Constants.V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS;
+            }
+        }
+
+        if (measuredSpeedMs <= appliedLimitMs + triggerExcess)
             return;
+
+        // Walk / 明显超额 Run：硬钳（软钳会被动画回灌压回去，日志 1.8↔2.42）
+        float hardExcess = 0.25;
+        if (isWalkPhase || measuredSpeedMs > appliedLimitMs + hardExcess)
+        {
+            ClampOwnerHorizontalSpeed(owner, appliedLimitMs, true);
+            return;
+        }
+
         SoftClampOwnerHorizontalSpeed(owner, appliedLimitMs, dtSec, true);
     }
 

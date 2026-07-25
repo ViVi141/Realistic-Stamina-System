@@ -558,23 +558,24 @@ class SCR_RSS_Constants
     //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
     static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
     //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度。
-    //! 必须开：SetSpeedLimit(1.0) 会清源，Run→Walk 切步态时物理仍按 Run 顶窜速，
-    //! 表现为「降速 Run 后切 Walk 反而更快」。仅靠 SetSpeedLimit 压不住惯性/相位滞后。
-    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = true;
+    //! false（默认）：不与引擎抢位移；透支只扣 STA/W′（见 V6_APPLY_CP_METABOLIC_SPEED_CAP）。
+    static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false;
     //! 超过限速多少 m/s 才触发上项纠偏
     static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15;
     //! |坡度%| 超过此值不做物理超速钳（悬崖/陡壁由引擎碰撞主导；CP 反解会把 v_limit
     //! 压到 <0.5 再硬钳 → 倍率 0.09↔0.6 抽搐，离开峭壁又 SNAP_UP）。
     static const float V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX = 35.0;
-    //! 坡度% 低于此值（下坡）不做物理超速钳。缓下坡重力可达速常 ≫ SetSpeedLimit，
-    //! 硬钳会把 v_meas 在 ~1.9↔2.8 间抽；超额改由 STA 超速罚买单。
-    //! 平路/上坡仍钳，保证 W′ 解除后 Run→Walk 不窜速。
+    //! 坡度% 低于此值视为 Run 下坡巡航带：允许相对 v_limit 的小幅重力滑行（见 COAST_ALLOW），
+    //! 超额仍钳。Walk 相位不适用本放行（原版步行顶 ≈1.45，禁止 3m/s+ 惯性滑）。
+    //! 非 Walk 且 |grade|>GRADE_ABS_MAX 整段跳过。平路/上坡按 EPS 钳。
     static const float V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE = -2.0;
+    //! Run 下坡允许的滑行超额（m/s）；Walk 始终用 EPS，不读此值。
+    static const float V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS = 0.40;
     //! 代谢/CP 反解用坡度绝对值上限（%）。更陡只记账展示，不继续把巡航顶拧成爬行。
     static const float V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
-    //! false：只保留负重+坡度等机械限速；超代谢功率只烧 W′/体力，不压速。
-    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
+    //! false（默认）：不精确伺服速度；P>CP 时武装烧 W′、解除武装加 STA 透支税。
+    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = false;
     //! true：步态目标用 March 档（Walk/Run/Sprint ≈ 1.4/2.8/4.5，可经预设改）。
     //! false：步态目标用引擎空载顶（Walk/Run/Sprint ≈ 1.45/3.8/5.5），仍乘负重与坡度。
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
@@ -595,9 +596,12 @@ class SCR_RSS_Constants
     //! Run 步态带下沿（m/s）。CP 反解低于此值视为撑不住 Run。
     //! 须 > ENGINE_WALK_TOP，且 ≤ V6_AEROBIC_CRUISE_MAX_MS。
     static const float V6_RUN_GAIT_FLOOR_MS = 2.2;
-    //! true（且硬钳关）：CP 反解 < Walk 顶才降 Walk；Walk顶～Run地板为软 Run（保留反解）。
+    //! true（且硬钳关）：深灰区降 Walk；近地板软 Run 带宽见下。
     //! false 或硬钳开：仍抬到 V6_RUN_GAIT_FLOOR_MS（硬钳+低于地板 → 滑步）。
     static const bool V6_RUN_GAIT_DEMOTE_TO_WALK = true;
+    //! 软 Run 带宽（m/s）：仅 floor−此值～floor 保留代谢反解；更深（如 1.8）降 Walk，
+    //! 避免 Run 动画回灌到 ~enc×Run顶（日志 1.8↔2.42）互殴。
+    static const float V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25;
     //! Walk 起步/意图绝对速度硬托底（m/s）。勿再用 0.8，否则重装/疲惫 Walk 抬得过高。
     static const float V6_WALK_START_MIN_MS = 0.35;
     //! ACSM 跑步功率 P = scale * (REST + LINEAR*v + QUAD*v^2)，scale = totalWeight/REFERENCE
@@ -680,15 +684,37 @@ class SCR_RSS_Constants
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;
     //! 超速判定阈值（调试 / CP 压速纠偏）；记账已不再 min 到 v_limit
     static const float V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12;
-    //! W′ 解除武装后的物理超速 STA 税倍率（叠在 energy_to_stamina 上）。
-    //! 预设 coeff 极小，裸超额≈0.05%/s 仍可半小时慢跑；约 12× → ~0.5%/s 量级。
+    //! 代谢限速开启时：相对 v_limit 的小超额 STA 税倍率。
+    //! 预设 coeff 极小，裸超额≈0.05%/s；约 12× → ~0.5%/s 量级。
     static const float V6_OVERSPEED_STA_TAX_MULT = 12.0;
+    //! 不压速模式（代谢限速关）：相对 CP 的全功率超额税倍率。
+    //! 税基是 P(v)−CP（可达上千瓦），不可再用 12×；约 0.75× → 重装上坡快跑 ~0.3–0.7%/s。
+    static const float V6_CP_EXCESS_STA_TAX_MULT = 0.75;
     //! W′ 施密特关闭带偏移：池 ≤ 冲刺阈值 + 此值时解除超速/Sprint 武装（默认阈 0.20 → ≈25%）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
     //! W′ 施密特再开带偏移：池须回到 冲刺阈值 + 此值才再允许超速/Sprint（默认 → ≈60%），避免阈值附近速度震荡
     static const float V6_WPRIME_OVERSPEED_REARM = 0.40;
     //! 低于此焦耳视为 W′ 已空（GetAvailablePowerWatts 不再用 ε/Δt 虚高冲刺功率）
     static const float V6_WPRIME_EMPTY_FLOOR_JOULES = 5.0;
+
+    //! W′→引擎 GetStamina() 表现映射：借用原生晃动/呼吸/Exhaustion，不改有氧权威
+    static const bool V6_WPRIME_ENGINE_FX_ENABLED = true;
+    //! W′ 池低于此开始压低引擎条（满池不伪装）
+    static const float V6_WPRIME_ENGINE_FX_START = 0.50;
+    //! W′ 空时引擎条地板（须低于原生模糊阈 ~0.55 剩余 / Exhaustion>0.45）
+    static const float V6_WPRIME_ENGINE_FX_FLOOR = 0.12;
+    //! 手动呼吸采样：表现体力低于 START 开始喘；HARD 以下接近连喘
+    static const bool V6_BREATH_SOUND_ENABLED = true;
+    static const float V6_BREATH_SOUND_PRESENTATION_START = 0.55;
+    static const float V6_BREATH_SOUND_PRESENTATION_HARD = 0.18;
+    //! 手动心跳：Slow/Mid/Fast 采样；START 起搏，HARD 偏 Fast
+    static const bool V6_HEARTBEAT_SOUND_ENABLED = true;
+    static const float V6_HEARTBEAT_SOUND_PRESENTATION_START = 0.60;
+    static const float V6_HEARTBEAT_SOUND_PRESENTATION_HARD = 0.16;
+    static const float V6_HEARTBEAT_TIER_MID_ENTER = 0.38;
+    static const float V6_HEARTBEAT_TIER_MID_EXIT = 0.28;
+    static const float V6_HEARTBEAT_TIER_FAST_ENTER = 0.72;
+    static const float V6_HEARTBEAT_TIER_FAST_EXIT = 0.58;
     //! 限速倍率斜率（1/s）：W′ 耗尽后 CP/坡度反解噪声不致每 tick 拧 SetSpeedLimit
     static const float V6_SPEED_LIMIT_SLEW_FRAC_PER_SEC = 1.25;
     //! 限速倍率死区：变化小于此值不重写限速源

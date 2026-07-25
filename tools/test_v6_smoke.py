@@ -128,21 +128,23 @@ def _overspeed_accounting_ok() -> bool:
 
 
 def _overspeed_excess_drain_ok() -> bool:
-    # 武装且 P_meas>CP：W′ 买单，STA 税为 0
+    # 不压速模式：武装透支只烧 W′，STA 税为 0
     tax_armed = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 1.0, 125.0, 9.1, 2.24, 2, 380.0, True
     )
     if tax_armed != 0.0:
         return False
-    # 解除武装 + 超速：STA 税 > 0
+    # 解除武装 + P≫CP：STA 透支税 > 0，且不应到「十余秒抽干」量级
     tax_disarmed = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
     )
     if tax_disarmed <= 0.0:
         return False
-    # 未超速：税为 0
+    if tax_disarmed > 0.02:
+        return False
+    # P≪CP：税为 0
     tax_ok = get_client_overspeed_excess_drain_per_second(
-        1.0, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
+        0.8, 3.5, 0.1, 125.0, 0.0, 1.0, 1, 2000.0, False
     )
     return tax_ok == 0.0
 
@@ -219,23 +221,37 @@ def _walk_not_faster_than_demoted_run_ok() -> bool:
     return True
 
 
+def _wprime_disarm_apply_path_ok() -> bool:
+    """控制环时间序列：W′ 解除武装后 applied 不得 SNAP；legacy 策略必须被检出失败。"""
+    from rss_apply_path_twin import wprime_disarm_apply_path_regression_ok
+
+    return wprime_disarm_apply_path_regression_ok()
+
+
 def _downhill_phys_clamp_policy_ok() -> bool:
-    """孪生复现用户日志：缓下坡不得物理钳；峭壁跳过；平路仍钳；代谢坡度±45。"""
+    """不压速默认：物理钳关闭；代谢坡度±45；施密特滞回仍有效。"""
     from rss_digital_twin_fix import (
         apply_cp_cruise_physics_cap,
         clamp_grade_percent_for_metabolic_speed,
         should_enforce_cp_cruise_physics_cap,
         invert_speed_for_power_watts,
         refresh_wprime_overspeed_armed,
+        V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP,
+        V6_APPLY_CP_METABOLIC_SPEED_CAP,
     )
 
-    if should_enforce_cp_cruise_physics_cap(-9.1):
+    if V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
         return False
-    if should_enforce_cp_cruise_physics_cap(99.0):
+    if V6_APPLY_CP_METABOLIC_SPEED_CAP:
         return False
-    if not should_enforce_cp_cruise_physics_cap(0.0):
+
+    # 物理钳关闭后任意坡度都不应 enforce
+    if should_enforce_cp_cruise_physics_cap(0.0, 3.0, 1.5):
         return False
-    if not should_enforce_cp_cruise_physics_cap(5.0):
+    if should_enforce_cp_cruise_physics_cap(-5.0, 3.0, 1.5):
+        return False
+    v_passthrough = apply_cp_cruise_physics_cap(3.22, 1.47, 0.018, 3.5, movement_phase=1)
+    if abs(v_passthrough - 3.22) > 1e-6:
         return False
 
     g = clamp_grade_percent_for_metabolic_speed(99.0)
@@ -245,22 +261,9 @@ def _downhill_phys_clamp_policy_ok() -> bool:
     if abs(g2 + 45.0) > 1e-6:
         return False
 
-    # W′=38% 解除武装（再武装≈60%）
     if refresh_wprime_overspeed_armed(0.38, False):
         return False
 
-    v_limit = 1.94
-    coast = 2.79
-    dt = 0.018
-    # 旧策略（强制钳）应把超速钉回 limit；新策略下坡应保持 coast
-    v_old = apply_cp_cruise_physics_cap(coast, v_limit, dt, 0.0)
-    if v_old > v_limit + 0.05:
-        return False
-    v_new = apply_cp_cruise_physics_cap(coast, v_limit, dt, -9.1)
-    if abs(v_new - coast) > 1e-6:
-        return False
-
-    # 峭壁代谢坡度钳后反解应明显快于 raw 99%（上坡）
     inv_raw = invert_speed_for_power_watts(740.0, 121.128, 99.0, 1.0, 2)
     inv_c = invert_speed_for_power_watts(740.0, 121.128, g, 1.0, 2)
     if inv_c + 0.05 < inv_raw:
@@ -360,6 +363,48 @@ def _anchors_and_batch_ok() -> bool:
     return True
 
 
+def _wprime_engine_fx_map_ok() -> bool:
+    """Mirror SCR_RSS_SprintGate.MapWPrimePoolToEngineDisplay / ComputeEnginePresentationDisplay."""
+    start = 0.50
+    floor_val = 0.12
+
+    def map_w(w: float) -> float:
+        if w >= start:
+            return 1.0
+        t = max(0.0, min(1.0, w)) / start
+        return floor_val + (1.0 - floor_val) * t
+
+    def compute(aerobic: float, w: float, sprint_allowed: bool, sprint_intent: bool) -> float:
+        display = max(0.0, min(1.0, aerobic))
+        wm = map_w(w)
+        if wm < display:
+            display = wm
+        if (not sprint_allowed) and sprint_intent:
+            block = 0.20 - 0.01
+            if block < 0.0:
+                block = 0.0
+            if block < display:
+                display = block
+        return display
+
+    if abs(map_w(1.0) - 1.0) > 1e-6:
+        return False
+    if abs(map_w(0.50) - 1.0) > 1e-6:
+        return False
+    if abs(map_w(0.0) - floor_val) > 1e-6:
+        return False
+    mid = map_w(0.25)
+    if mid <= floor_val or mid >= 1.0:
+        return False
+    # W′ empty + full aerobic → presentation at floor (Exhaustion ≈ 0.88)
+    if abs(compute(0.95, 0.0, True, False) - floor_val) > 1e-6:
+        return False
+    # Sprint block wins when lower
+    if abs(compute(0.95, 1.0, False, True) - 0.19) > 1e-6:
+        return False
+    return True
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 5.5),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
@@ -387,6 +432,8 @@ SCENARIOS = [
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
     ("walk_not_faster_than_demoted_run", lambda: _walk_not_faster_than_demoted_run_ok()),
     ("downhill_phys_clamp_policy", lambda: _downhill_phys_clamp_policy_ok()),
+    ("wprime_disarm_apply_path", lambda: _wprime_disarm_apply_path_ok()),
+    ("wprime_engine_fx_map", lambda: _wprime_engine_fx_map_ok()),
     (
         "random_scenarios_quick",
         lambda: __import__(

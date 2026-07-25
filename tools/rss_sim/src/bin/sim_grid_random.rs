@@ -8,8 +8,9 @@ use rayon::prelude::*;
 use rss_sim::constants::{
     merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
     V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_CP_CRUISE_OVERSPEED_EPS_MPS,
-    V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP, V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE,
-    V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX, V6_METABOLIC_GRADE_ABS_MAX_PCT,
+    V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP, V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS,
+    V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE, V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX,
+    V6_METABOLIC_GRADE_ABS_MAX_PCT,
 };
 use rss_sim::drain::refresh_wprime_overspeed_armed;
 use rss_sim::metabolism::{invert_speed_for_power_watts, metabolism_power_watts};
@@ -75,27 +76,28 @@ fn clamp_grade_metabolic(g: f64) -> f64 {
     g
 }
 
-fn should_enforce_phys_clamp(grade: f64) -> bool {
+fn should_enforce_phys_clamp(grade: f64, measured: f64, limit: f64) -> bool {
     if !V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP {
         return false;
     }
-    if grade < V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE {
+    if grade.abs() > V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX {
         return false;
     }
-    if grade.abs() > V6_CP_CRUISE_PHYS_CLAMP_GRADE_ABS_MAX {
+    if limit < 0.1 {
+        return false;
+    }
+    let mut trigger = V6_CP_CRUISE_OVERSPEED_EPS_MPS;
+    if grade < V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE {
+        trigger = V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS;
+    }
+    if measured <= limit + trigger {
         return false;
     }
     true
 }
 
 fn apply_phys_cap(measured: f64, limit: f64, dt: f64, grade: f64) -> f64 {
-    if !should_enforce_phys_clamp(grade) {
-        return measured;
-    }
-    if limit < 0.1 {
-        return measured;
-    }
-    if measured <= limit + V6_CP_CRUISE_OVERSPEED_EPS_MPS {
+    if !should_enforce_phys_clamp(grade, measured, limit) {
         return measured;
     }
     let mut d = dt;
@@ -433,27 +435,15 @@ impl WeirdStats {
 fn check_scenario(constants: &[RssConstants; 3], sc: &Scenario) -> (Option<String>, f64, WeirdHit) {
     let mut hit = WeirdHit::default();
     let g = sc.grade;
-    let enforce = should_enforce_phys_clamp(g);
-    if g < -2.0 && enforce {
-        return (
-            Some(format!("downhill grade={g:.2} still enforces phys clamp")),
-            0.0,
-            hit,
-        );
-    }
-    if g.abs() > 35.0 && enforce {
-        return (
-            Some(format!("steep |grade|={} still enforces", g.abs())),
-            0.0,
-            hit,
-        );
-    }
-    if (-2.0..=35.0).contains(&g) && !enforce {
-        return (
-            Some(format!("flat/uphill grade={g:.2} should enforce")),
-            0.0,
-            hit,
-        );
+    // Steep: full skip even for runaway. Other grades: path may enforce.
+    if g.abs() > 35.0 {
+        if should_enforce_phys_clamp(g, sc.coast, sc.v_limit) {
+            return (
+                Some(format!("steep |grade|={} still enforces", g.abs())),
+                0.0,
+                hit,
+            );
+        }
     }
 
     let c = clamp_grade_metabolic(g);
@@ -468,28 +458,31 @@ fn check_scenario(constants: &[RssConstants; 3], sc: &Scenario) -> (Option<Strin
     if !out.is_finite() {
         return (Some("phys cap non-finite".into()), 0.0, hit);
     }
-    if should_enforce_phys_clamp(g) {
-        if sc.coast > sc.v_limit + 0.15 {
-            if sc.coast > sc.v_limit + 0.35 {
-                if out > sc.v_limit + 1e-6 {
-                    return (Some(format!("hard clamp failed out={out}")), 0.0, hit);
-                }
-            } else {
-                let mut expected_max = sc.coast - 9.0 * sc.dt.clamp(0.01, 0.5);
-                if expected_max < sc.v_limit {
-                    expected_max = sc.v_limit;
-                }
-                if out > expected_max + 1e-4 {
-                    return (
-                        Some(format!("soft clamp no decelerate out={out}")),
-                        0.0,
-                        hit,
-                    );
-                }
-            }
+    let enforce = should_enforce_phys_clamp(g, sc.coast, sc.v_limit);
+    if g.abs() > 35.0 {
+        if (out - sc.coast).abs() > 1e-6 {
+            return (Some(format!("steep skip mutated {out}")), 0.0, hit);
         }
-    } else if (out - sc.coast).abs() > 1e-6 {
-        return (Some(format!("skip-grade mutated {out}")), 0.0, hit);
+    } else if !enforce {
+        if (out - sc.coast).abs() > 1e-6 {
+            return (Some(format!("mild coast mutated {out}")), 0.0, hit);
+        }
+    } else if sc.coast > sc.v_limit + 0.35 {
+        if out > sc.v_limit + 1e-6 {
+            return (Some(format!("hard clamp failed out={out}")), 0.0, hit);
+        }
+    } else if sc.coast > sc.v_limit + 1e-9 {
+        let mut expected_max = sc.coast - 9.0 * sc.dt.clamp(0.01, 0.5);
+        if expected_max < sc.v_limit {
+            expected_max = sc.v_limit;
+        }
+        if out > expected_max + 1e-4 {
+            return (
+                Some(format!("soft clamp no decelerate out={out}")),
+                0.0,
+                hit,
+            );
+        }
     }
 
     if g < -2.0 && sc.coast > sc.v_limit + 0.15 {
@@ -580,19 +573,28 @@ fn check_scenario(constants: &[RssConstants; 3], sc: &Scenario) -> (Option<Strin
         hit.walk_near_run = true;
     }
 
-    // downhill thrash: skip policy must not mutate
+    // downhill: mild coast must not fight; runaway must clamp
     if g < -2.0 && g >= -35.0 {
         let lim = sc.v_limit;
-        let coast = sc.coast.max(lim + 0.4);
+        let mild = lim + V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS * 0.75;
         let mut vv = lim;
         let dt = 0.02;
-        for _ in 0..80 {
-            vv = (vv + 10.0 * dt).min(coast);
+        for _ in 0..40 {
+            vv = (vv + 10.0 * dt).min(mild);
             let before = vv;
             vv = apply_phys_cap(vv, lim, dt, g);
-            if before > lim + 0.15 && (vv - before).abs() > 1e-9 {
-                return (Some(format!("downhill thrash grade={g:.2}")), 0.0, hit);
+            if (vv - before).abs() > 1e-9 {
+                return (Some(format!("mild downhill coast fought grade={g:.2}")), 0.0, hit);
             }
+        }
+        let runaway = lim + V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS + 0.50;
+        let after = apply_phys_cap(runaway, lim, dt, g);
+        if after > lim + 1e-3 {
+            return (
+                Some(format!("downhill runaway not clamped grade={g:.2}")),
+                0.0,
+                hit,
+            );
         }
     }
 

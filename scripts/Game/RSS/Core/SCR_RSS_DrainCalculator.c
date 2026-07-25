@@ -175,10 +175,11 @@ class SCR_RSS_DrainCalculator
         return true;
     }
 
-    //! Run 巡航帽三带：
+    //! Run 巡航帽：
     //!   ≥ Run 地板 → 保留；
-    //!   Walk 顶～Run 地板 → 保留代谢反解（软 Run，禁止悬崖降到 1.4）；
-    //!   < Walk 顶 → 降 Walk（硬钳开时改抬到 Run 地板）。
+    //!   近地板灰区（floor−SOFT_BAND～floor）→ 软 Run 保留反解；
+    //!   更深灰区 / < Walk 顶 → 降 Walk（硬钳开时改抬到 Run 地板）。
+    //! 深灰区若仍软 Run（日志 1.8），Run 动画会回灌到 ~encumbrance×Run顶（≈2.4）互殴。
     //! @param rawCapMs CP/巡航反解（可已含平路 2.4 帽，亦可未含）
     static float ResolveRunCruiseCapMs(
         float rawCapMs,
@@ -207,9 +208,12 @@ class SCR_RSS_DrainCalculator
         if (!IsRunGaitDemoteToWalkEnabled())
             return floorMs;
 
-        // 灰区：代谢还能撑过 Walk 顶，只是略低于 Run 地板 → 保留反解，勿悬崖降档
         float walkTopMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
-        if (capMs >= walkTopMs)
+        // 近地板：保留软 Run（避免 2.05→1.48 悬崖）；更深则降 Walk
+        float softRunFloor = floorMs - SCR_RSS_Constants.V6_RUN_SOFT_BAND_BELOW_FLOOR_MS;
+        if (softRunFloor < walkTopMs)
+            softRunFloor = walkTopMs;
+        if (capMs >= softRunFloor)
             return capMs;
 
         float walkCapMs = capMs;
@@ -415,7 +419,9 @@ class SCR_RSS_DrainCalculator
         return nextFrac;
     }
 
-    //! 物理超速 STA 附加罚（%/s），按 P(v_meas)−P(v_limit)。
+    //! STA 透支附加罚（%/s）。
+    //! - 代谢限速开：P(v_meas)−P(v_limit)，且须物理超限速；
+    //! - 代谢限速关（默认）：不压速，解除武装后按 P(v_meas)−CP 罚 STA；武装时只烧 W′。
     //! @param wPrimeOverspeedArmed 须与 TickPower 同用施密特武装态（勿用 pool>rearm 近似，
     //!   否则 25–60% 滞回带会 W′ 与 STA 税双计）。
     static float GetClientOverspeedExcessDrainPerSecond(
@@ -429,25 +435,42 @@ class SCR_RSS_DrainCalculator
         float effectiveCriticalPowerWatts = -1.0,
         bool wPrimeOverspeedArmed = false)
     {
-        if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
-            return 0.0;
-
         float pMeas = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
             measuredSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
 
-        // 与 TickPower 一致：施密特武装且 P>CP → 只烧 W′，免 STA 税
         bool armed = wPrimeOverspeedArmed;
         if (!armed)
             armed = IsWPrimePoolAvailableForOverspeed(wPrimePool01);
-        if (armed)
+
+        bool drainOnlyMode = !SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled();
+        float unpaidW = 0.0;
+
+        if (drainOnlyMode)
         {
-            if (effectiveCriticalPowerWatts > 1.0 && pMeas > effectiveCriticalPowerWatts + 1.0)
+            // 不伺服速度：武装透支由 W′ 承担；解除武装后超额相对 CP 扣 STA
+            if (armed)
                 return 0.0;
+            if (effectiveCriticalPowerWatts <= 1.0)
+                return 0.0;
+            unpaidW = pMeas - effectiveCriticalPowerWatts;
+        }
+        else
+        {
+            if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
+                return 0.0;
+
+            // 与 TickPower 一致：施密特武装且 P>CP → 只烧 W′，免 STA 税
+            if (armed)
+            {
+                if (effectiveCriticalPowerWatts > 1.0 && pMeas > effectiveCriticalPowerWatts + 1.0)
+                    return 0.0;
+            }
+
+            float pLimit = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+            unpaidW = pMeas - pLimit;
         }
 
-        float pLimit = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-            appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
-        float unpaidW = pMeas - pLimit;
         if (unpaidW <= 1.0)
             return 0.0;
 
@@ -455,7 +478,10 @@ class SCR_RSS_DrainCalculator
         float loadKg = Math.Max(totalWeightKg - SCR_RSS_MetabolismMath.CHARACTER_WEIGHT, 0.0);
         perSec = perSec * SCR_RSS_MetabolismModel.GetLoadedGaitStaminaDrainMultiplier(
             loadKg, movementPhase);
-        perSec = perSec * SCR_RSS_Constants.V6_OVERSPEED_STA_TAX_MULT;
+        float taxMult = SCR_RSS_Constants.V6_OVERSPEED_STA_TAX_MULT;
+        if (drainOnlyMode)
+            taxMult = SCR_RSS_Constants.V6_CP_EXCESS_STA_TAX_MULT;
+        perSec = perSec * taxMult;
         return perSec;
     }
 }

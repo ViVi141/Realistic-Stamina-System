@@ -142,25 +142,37 @@ modded class SCR_CharacterControllerComponent
             false) / 5.0;
         
         loc.overspeedExtraPerSec = 0.0;
-        if (!loc.useSwimmingModel && m_fAppliedSpeedLimitMs > 0.05)
+        if (!loc.useSwimmingModel)
         {
-            // 与 TickPower 同施密特武装态，避免 25–60% 带 W′+STA 税双计
-            bool wPrimeArmedForTax = false;
-            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            // 代谢限速模式：须有 applied limit；不压速模式：按 P−CP 罚 STA，不依赖限速
+            bool canTaxOverspeed = true;
+            if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
             {
-                wPrimeArmedForTax = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                    m_pAnaerobicBurst.GetCpModel());
+                if (m_fAppliedSpeedLimitMs <= 0.05)
+                    canTaxOverspeed = false;
             }
-            loc.overspeedExtraPerSec = SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond(
-                loc.currentSpeed,
-                m_fAppliedSpeedLimitMs,
-                loc.drainParams.wPrimePool01,
-                loc.totalWeightWithWetAndBody,
-                loc.gradePercent,
-                loc.terrainFactor,
-                loc.effectiveMovementPhase,
-                loc.drainParams.effectiveCriticalPowerWatts,
-                wPrimeArmedForTax);
+            if (canTaxOverspeed)
+            {
+                bool wPrimeArmedForTax = false;
+                if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+                {
+                    wPrimeArmedForTax = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                        m_pAnaerobicBurst.GetCpModel());
+                }
+                float limitForTax = m_fAppliedSpeedLimitMs;
+                if (limitForTax <= 0.05)
+                    limitForTax = loc.currentSpeed;
+                loc.overspeedExtraPerSec = SCR_RSS_DrainCalculator.GetClientOverspeedExcessDrainPerSecond(
+                    loc.currentSpeed,
+                    limitForTax,
+                    loc.drainParams.wPrimePool01,
+                    loc.totalWeightWithWetAndBody,
+                    loc.gradePercent,
+                    loc.terrainFactor,
+                    loc.effectiveMovementPhase,
+                    loc.drainParams.effectiveCriticalPowerWatts,
+                    wPrimeArmedForTax);
+            }
         }
 
         if (m_pStaminaComponent)
@@ -194,6 +206,7 @@ modded class SCR_CharacterControllerComponent
             bool sprintIntentAfterUpdate = loc.isSprintActive || GetIsSprintingToggle();
             RSS_PokeEngineStaminaForSprintBlock(sprintIntentAfterUpdate);
             
+            // transient 活跃时 GetStamina()!=有氧目标是预期（冲刺门 / W′ 表现）
             if (!m_bSprintGateEnginePokeActive)
             {
                 float verifyStamina = m_pStaminaComponent.GetStamina();
@@ -210,6 +223,7 @@ modded class SCR_CharacterControllerComponent
                     m_pStaminaComponent.SetTargetStamina(newTargetStamina);
                     if (m_pStaminaState)
                         m_pStaminaState.SetAerobic(newTargetStamina);
+                    RSS_PokeEngineStaminaForSprintBlock(sprintIntentAfterUpdate);
                 }
             }
             
@@ -218,7 +232,13 @@ modded class SCR_CharacterControllerComponent
 
         if (loc.isPlayer && m_pUISignalBridge)
         {
-            m_pUISignalBridge.UpdateUISignal(loc.staminaPercent, loc.isExhausted, loc.currentSpeed, loc.totalDrainRate, false);
+            m_pUISignalBridge.UpdateUISignal(
+                loc.staminaPercent,
+                loc.isExhausted,
+                loc.currentSpeed,
+                loc.totalDrainRate,
+                false,
+                GetRssWPrimePool01());
         }
         
         m_fLastStaminaPercent = loc.staminaPercent;
@@ -418,6 +438,8 @@ modded class SCR_CharacterControllerComponent
     protected ref SCR_RSS_EnvironmentFactor m_pEnvironmentFactor;
     
     protected ref SCR_RSS_UISignalBridge m_pUISignalBridge;
+    protected ref SCR_RSS_BreathSoundDriver m_pBreathSoundDriver;
+    protected ref SCR_RSS_HeartbeatSoundDriver m_pHeartbeatSoundDriver;
     
     protected ref SCR_RSS_EpocState m_pEpocState;
     
@@ -517,6 +539,8 @@ modded class SCR_CharacterControllerComponent
             m_pFatigueSystem = null;
             m_pEncumbranceCache = null;
             m_pUISignalBridge = null;
+            m_pBreathSoundDriver = null;
+            m_pHeartbeatSoundDriver = null;
             m_pEpocState = null;
             m_pNetworkSyncManager = null;
             return;
@@ -554,6 +578,10 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pUISignalBridge)
             m_pUISignalBridge.Cleanup();
+        if (m_pBreathSoundDriver)
+            m_pBreathSoundDriver.Cleanup();
+        if (m_pHeartbeatSoundDriver)
+            m_pHeartbeatSoundDriver.Cleanup();
 
         m_pCachedOwnerCharacter = null;
         m_pStaminaComponent = null;
@@ -572,6 +600,8 @@ modded class SCR_CharacterControllerComponent
         m_pFatigueSystem = null;
         m_pEncumbranceCache = null;
         m_pUISignalBridge = null;
+        m_pBreathSoundDriver = null;
+        m_pHeartbeatSoundDriver = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
         if (m_pAIManager)
@@ -1279,7 +1309,9 @@ modded class SCR_CharacterControllerComponent
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
 
-        // 每帧重申限速；水平硬钳由 V6_APPLY_HORIZONTAL_SPEED_CLAMP 控制
+        RSS_UpdatePresentationSoundDrivers();
+
+        // 每帧重申机械限速（负重/坡度）。默认不物理钳、不代谢伺服速度。
         if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled()
             && m_fAppliedSpeedLimitMs > 0.05
             && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
@@ -1358,6 +1390,10 @@ modded class SCR_CharacterControllerComponent
 
         if (m_pUISignalBridge)
             m_pUISignalBridge.Cleanup();
+        if (m_pBreathSoundDriver)
+            m_pBreathSoundDriver.Cleanup();
+        if (m_pHeartbeatSoundDriver)
+            m_pHeartbeatSoundDriver.Cleanup();
         
         m_pCachedOwnerCharacter = null;
         m_pStaminaComponent = null;
@@ -1377,6 +1413,8 @@ modded class SCR_CharacterControllerComponent
         m_pFatigueSystem = null;
         m_pEncumbranceCache = null;
         m_pUISignalBridge = null;
+        m_pBreathSoundDriver = null;
+        m_pHeartbeatSoundDriver = null;
         m_pEpocState = null;
         m_pNetworkSyncManager = null;
     }
@@ -1509,6 +1547,9 @@ modded class SCR_CharacterControllerComponent
         m_pUISignalBridge = new SCR_RSS_UISignalBridge();
         if (m_pUISignalBridge)
             m_pUISignalBridge.Init(owner);
+
+        m_pBreathSoundDriver = new SCR_RSS_BreathSoundDriver();
+        m_pHeartbeatSoundDriver = new SCR_RSS_HeartbeatSoundDriver();
         
         m_pEpocState = new SCR_RSS_EpocState();
         
@@ -1677,21 +1718,50 @@ modded class SCR_CharacterControllerComponent
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 
-    //! proto external 的 IsSprintingAllowed 无法 modded override；仅临时压低引擎条读数，有氧目标保留在 StaminaState。
+    //! 引擎条 transient：冲刺门禁 poke + W′→晃动/呼吸/Exhaustion；有氧权威仍在 StaminaState。
+    protected void RSS_UpdatePresentationSoundDrivers()
+    {
+        float aerobic01 = GetRssAerobicPercent();
+        if (m_pStaminaComponent)
+            aerobic01 = m_pStaminaComponent.GetTargetStamina();
+        float presentation01 = SCR_RSS_SprintGate.ComputeEnginePresentationDisplay(
+            aerobic01,
+            GetRssWPrimePool01(),
+            true,
+            false);
+
+        float worldTimeSec = 0.0;
+        if (GetGame() && GetGame().GetWorld())
+            worldTimeSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        if (m_pBreathSoundDriver)
+            m_pBreathSoundDriver.Update(worldTimeSec, presentation01);
+        if (m_pHeartbeatSoundDriver)
+            m_pHeartbeatSoundDriver.Update(worldTimeSec, presentation01);
+    }
+
     protected void RSS_PokeEngineStaminaForSprintBlock(bool sprintIntent)
     {
         bool pokeActive = m_bSprintGateEnginePokeActive;
+        float aerobic01 = GetRssAerobicPercent();
+        if (m_pStaminaComponent)
+            aerobic01 = m_pStaminaComponent.GetTargetStamina();
         SCR_RSS_SprintGate.PokeEngineStaminaForSprintBlock(
             GetRssSprintAllowed(),
             sprintIntent,
             m_pStaminaComponent,
-            pokeActive);
+            pokeActive,
+            aerobic01,
+            GetRssWPrimePool01());
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 
     protected void RSS_ApplySprintGateOnPrepareControls(ActionManager am)
     {
         bool pokeActive = m_bSprintGateEnginePokeActive;
+        float aerobic01 = GetRssAerobicPercent();
+        if (m_pStaminaComponent)
+            aerobic01 = m_pStaminaComponent.GetTargetStamina();
         SCR_RSS_SprintGate.ApplyOnPrepareControls(
             am,
             GetRssSprintAllowed(),
@@ -1699,7 +1769,9 @@ modded class SCR_CharacterControllerComponent
             GetCurrentMovementPhase(),
             GetIsSprintingToggle(),
             m_pStaminaComponent,
-            pokeActive);
+            pokeActive,
+            aerobic01,
+            GetRssWPrimePool01());
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 
