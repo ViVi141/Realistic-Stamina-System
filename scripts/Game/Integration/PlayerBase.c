@@ -1567,7 +1567,10 @@ modded class SCR_CharacterControllerComponent
         if (m_pUISignalBridge)
             m_pUISignalBridge.Init(owner);
 
-        m_pBreathSoundDriver = new SCR_RSS_BreathSoundDriver();
+        if (SCR_RSS_Constants.V6_BREATH_SOUND_ENABLED)
+            m_pBreathSoundDriver = new SCR_RSS_BreathSoundDriver();
+        else
+            m_pBreathSoundDriver = null;
         if (SCR_RSS_Constants.V6_HEARTBEAT_SOUND_ENABLED)
             m_pHeartbeatSoundDriver = new SCR_RSS_HeartbeatSoundDriver();
         else

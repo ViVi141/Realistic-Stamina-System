@@ -709,7 +709,7 @@ class SCR_RSS_Constants
     //! W′ 空时引擎条地板（须低于原生模糊阈 ~0.55 剩余 / Exhaustion>0.45）
     static const float V6_WPRIME_ENGINE_FX_FLOOR = 0.12;
     //! 呼吸/心跳采样开关（节奏由 CardioDrive 驱动）
-    static const bool V6_BREATH_SOUND_ENABLED = true;
+    static const bool V6_BREATH_SOUND_ENABLED = false;
     static const bool V6_HEARTBEAT_SOUND_ENABLED = false;
     //! 心跳分档滞回（相对 Cardiac 轴）
     static const float V6_HEARTBEAT_TIER_MID_ENTER = 0.38;
