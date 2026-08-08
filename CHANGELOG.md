@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [6.1.2] - 2026-08-09
+
+### 表现 / 音频
+
+- **W′→引擎 STA 全池映射** — `V6_WPRIME_ENGINE_FX_START=1.0`、`FLOOR=0.12`：W′ 下降即压 `GetStamina()` transient，驱动原生枪口晃动；有氧权威仍在 `m_fTargetStamina`
+- **Exhaustion** — 与表现条同源，`Exhaustion = 1 − presentation`（对齐原生模糊阈 ~0.45）；平滑略加快
+- **呼吸音默认关** — `V6_BREATH_SOUND_ENABLED=false`；关时不构造 `BreathSoundDriver`（与心跳一致）
+- 配置版本 / ConfigManager → **6.1.2**
+
 ## [6.1.1] - 2026-07-26
 
 ### 修复 / 清理

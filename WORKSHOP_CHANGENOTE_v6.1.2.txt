@@ -1,0 +1,20 @@
+RSS v6.1.2 Change Notes
+=======================
+From 6.1.1 → 6.1.2 (config 6.1.2). Drain-only feel unchanged; presentation + audio defaults.
+Keep server & clients on the same mod build.
+
+[EN]
+• W′ → engine STA (full-pool map): draining W′ lowers GetStamina() transient for native
+  weapon sway; aerobic authority stays on m_fTargetStamina.
+• Exhaustion signal = 1 − presentation (native blur when bar ≲55%); smoother FX follow-up.
+• Breath SFX off by default (V6_BREATH_SOUND_ENABLED=false); no BreathSoundDriver when off.
+
+[中文]
+• W′→引擎 STA 全池映射：烧 W′ 即压 GetStamina() transient，驱动原生枪口晃动；
+  有氧权威仍在 m_fTargetStamina。
+• Exhaustion = 1−表现条（条≲55% 原生模糊）；表现跟随略加快。
+• 呼吸音默认关；关闭时不构造 BreathSoundDriver。
+
+Full log: CHANGELOG.md [6.1.2] / [6.1.1] / [6.1.0]
+
+Author: ViVi141 | License: AGPL-3.0
