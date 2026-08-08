@@ -33,7 +33,8 @@ class SCR_RSS_UISignalBridge
         return m_iExhaustionSignal;
     }
 
-    //! Exhaustion：高=更累。由 min(有氧, W′映射) 反相驱动，对齐原生 STAMINA_EFFECT_THRESHOLD≈0.45
+    //! Exhaustion：高=更累。与引擎 GetStamina() 表现条同源（min有氧, W′映射）
+    //! onset≥0.999：Exhaustion = 1 - presentation（原生路径：条&lt;~0.55 → 模糊）
     void UpdateUISignal(
         float staminaPercent,
         bool isExhausted,
@@ -58,7 +59,7 @@ class SCR_RSS_UISignalBridge
             true,
             false);
 
-        float exhaustion = 1.0 - presentation;
+        float exhaustion = MapPresentationToExhaustion(presentation);
         if (isExhausted)
         {
             if (exhaustion < 0.85)
@@ -69,6 +70,34 @@ class SCR_RSS_UISignalBridge
         s_fSmoothedExhaustion = s_fSmoothedExhaustion
             + (exhaustion - s_fSmoothedExhaustion) * EXHAUSTION_SIGNAL_SMOOTH_ALPHA;
         m_pSignalsManager.SetSignalValue(m_iExhaustionSignal, s_fSmoothedExhaustion);
+    }
+
+    //! onset≥0.999 → 直接 1-presentation；否则带死区缓入模糊阈
+    protected float MapPresentationToExhaustion(float presentation)
+    {
+        presentation = Math.Clamp(presentation, 0.0, 1.0);
+        float onset = SCR_RSS_Constants.V6_EXHAUSTION_FX_ONSET;
+        if (onset >= 0.999)
+            return 1.0 - presentation;
+
+        float blurThresh = SCR_RSS_Constants.V6_EXHAUSTION_NATIVE_BLUR_THRESHOLD;
+        if (onset < 0.05)
+            onset = 0.05;
+        if (blurThresh < 0.0)
+            blurThresh = 0.0;
+        if (blurThresh > 0.95)
+            blurThresh = 0.95;
+
+        if (presentation >= onset)
+        {
+            float span = 1.0 - onset;
+            if (span < 0.001)
+                return 0.0;
+            return blurThresh * (1.0 - presentation) / span;
+        }
+
+        float t = (onset - presentation) / onset;
+        return blurThresh + (1.0 - blurThresh) * t;
     }
 
     void SetExhaustionSignalOverride(float value)

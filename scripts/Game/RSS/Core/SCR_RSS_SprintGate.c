@@ -13,7 +13,8 @@ class SCR_RSS_SprintGate
         pokeActive = false;
     }
 
-    //! W′/W′max → 引擎条伪装读数（1=不压条）
+    //! W′/W′max → 引擎 GetStamina() 伪装读数（1=满条不压）
+    //! 全池映射：池降多少条就压多少（再夹到 FLOOR），原生晃动读的是这条
     static float MapWPrimePoolToEngineDisplay(float wPrime01)
     {
         if (!SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_ENABLED)
@@ -21,6 +22,10 @@ class SCR_RSS_SprintGate
 
         float start = SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_START;
         float floorVal = SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_FLOOR;
+        if (floorVal < 0.0)
+            floorVal = 0.0;
+        if (floorVal > 0.95)
+            floorVal = 0.95;
         if (start <= 0.001)
             return 1.0;
 

@@ -702,12 +702,16 @@ class SCR_RSS_Constants
     //! 低于此焦耳视为 W′ 已空（GetAvailablePowerWatts 不再用 ε/Δt 虚高冲刺功率）
     static const float V6_WPRIME_EMPTY_FLOOR_JOULES = 5.0;
 
-    //! W′→引擎 GetStamina() 表现映射：借用原生晃动/呼吸/Exhaustion，不改有氧权威
+    //! W′→引擎 GetStamina() 表现映射：驱动原生枪口晃动；有氧权威仍在 m_fTargetStamina
     static const bool V6_WPRIME_ENGINE_FX_ENABLED = true;
-    //! W′ 池低于此开始压低引擎条（满池不伪装）
-    static const float V6_WPRIME_ENGINE_FX_START = 0.50;
-    //! W′ 空时引擎条地板（须低于原生模糊阈 ~0.55 剩余 / Exhaustion>0.45）
+    //! W′ 池低于此开始压引擎条。1.0=全池线性映射（中高池也会晃）；过小则几乎无 FX
+    static const float V6_WPRIME_ENGINE_FX_START = 1.0;
+    //! W′ 空时引擎条地板（须能让 Exhaustion=1-条 超过原生模糊阈 0.45）
     static const float V6_WPRIME_ENGINE_FX_FLOOR = 0.12;
+    //! Exhaustion 与表现条：1=直接用 1-presentation（对齐原生）；<1 为死区起点（旧缓和用）
+    static const float V6_EXHAUSTION_FX_ONSET = 1.0;
+    //! 原生 SCR_StaminaBlurEffect：Exhaustion > 此值开模糊
+    static const float V6_EXHAUSTION_NATIVE_BLUR_THRESHOLD = 0.45;
     //! 呼吸/心跳采样开关（节奏由 CardioDrive 驱动）
     static const bool V6_BREATH_SOUND_ENABLED = false;
     static const bool V6_HEARTBEAT_SOUND_ENABLED = false;

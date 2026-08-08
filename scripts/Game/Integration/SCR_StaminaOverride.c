@@ -29,7 +29,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     protected float m_fTransientEngineDisplay = -1.0;
     //! 引擎表现读数平滑（防 SetTarget/帧间隙一闪有一无）
     protected float m_fSmoothedEngineDisplay = 1.0;
-    protected const float ENGINE_FX_SMOOTH_ALPHA = 0.28;
+    protected const float ENGINE_FX_SMOOTH_ALPHA = 0.45;
     
     // 关键发现：
     // 1. OnStaminaDrain 是一个 event，每次体力值改变时都会触发（包括 AddStamina 调用）
