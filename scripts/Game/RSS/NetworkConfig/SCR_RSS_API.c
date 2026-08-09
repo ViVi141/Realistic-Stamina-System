@@ -13,10 +13,12 @@ class RSS_PlayerInfo
     bool isExhausted;          // 是否精疲力尽
     bool isSwimming;           // 是否在游泳
     float currentWeight;      // 当前负重 (kg)
-    float anaerobicPercent;   // @deprecated 请读 wPrimePool01；保留兼容
-    float wPrimePool01;       // W′ 池归一化储量 (0-1)
-    float sprintCooldownRemainingSec; // v5 冲刺冷却剩余秒
-    bool sprintAllowed;       // v5 是否允许冲刺
+    float anaerobicPercent;   // @deprecated 请读 wPrimePool01；保留兼容（与 wPrimePool01 同值）
+    float wPrimePool01;       // W′ 池归一化储量 (0-1)；非引擎 GetStamina() 表现条
+    float wPrimeJoules;       // W′ 当前焦耳
+    float wPrimeMaxJoules;    // 当前预设 W′_max 焦耳
+    float sprintCooldownRemainingSec; // 冲刺/爆发冷却剩余秒（多为 0；门禁以 W′ 施密特为主）
+    bool sprintAllowed;       // 当前是否允许冲刺（CP/W′ 门禁）
     bool isValid;              // 数据是否有效（实体有 RSS 组件且已初始化）
 }
 
@@ -70,6 +72,8 @@ class SCR_RSS_API
         s_pPlayerInfoCache.currentWeight = 0.0;
         s_pPlayerInfoCache.anaerobicPercent = 0.0;
         s_pPlayerInfoCache.wPrimePool01 = 0.0;
+        s_pPlayerInfoCache.wPrimeJoules = 0.0;
+        s_pPlayerInfoCache.wPrimeMaxJoules = 0.0;
         s_pPlayerInfoCache.sprintCooldownRemainingSec = 0.0;
         s_pPlayerInfoCache.sprintAllowed = false;
         s_pPlayerInfoCache.isValid = false;
@@ -91,6 +95,16 @@ class SCR_RSS_API
         s_pPlayerInfoCache.currentWeight = ctrl.GetRssCurrentWeight();
         s_pPlayerInfoCache.wPrimePool01 = ctrl.GetRssWPrimePool01();
         s_pPlayerInfoCache.anaerobicPercent = s_pPlayerInfoCache.wPrimePool01;
+        s_pPlayerInfoCache.wPrimeMaxJoules = SCR_RSS_ConfigBridge.GetWPrimeMaxJoules();
+        SCR_RSS_AnaerobicBurst burst = ctrl.RSS_GetWPrimeBurst();
+        if (burst)
+        {
+            s_pPlayerInfoCache.wPrimeJoules = burst.GetWPrimeJoules();
+        }
+        else
+        {
+            s_pPlayerInfoCache.wPrimeJoules = s_pPlayerInfoCache.wPrimePool01 * s_pPlayerInfoCache.wPrimeMaxJoules;
+        }
         s_pPlayerInfoCache.sprintCooldownRemainingSec = ctrl.GetRssSprintCooldownRemainingSec();
         s_pPlayerInfoCache.sprintAllowed = ctrl.GetRssSprintAllowed();
         s_pPlayerInfoCache.isValid = true;

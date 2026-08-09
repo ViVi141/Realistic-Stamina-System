@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [6.1.4] - 2026-08-09
+
+### API / 文档
+
+- **外部 API 补全 W′** — `RSS_PlayerInfo` 增加 `wPrimeJoules` / `wPrimeMaxJoules`；`wPrimePool01` 仍为归一化权威；`staminaPercent` 仍为有氧 `GetTargetStamina()`（不受 W′→引擎条表现映射影响）
+- **文档** — 过时 docs 对齐 6.1.x；新增开发者指南与 `docs/en/` 关键文档英文版；`RSS_API` 中英补 STA vs W′ 说明
+- 配置版本 / ConfigManager → **6.1.4**
+
 ## [6.1.3] - 2026-08-09
 
 ### 拆分 / 清理

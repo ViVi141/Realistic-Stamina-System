@@ -16,25 +16,50 @@
 - 模组需依赖 RSS 模组（`Realistic Stamina System`）
 - 调用前确保目标实体为角色（ChimeraCharacter）
 
+## 有氧 STA vs W′（必读）
+
+| 概念 | 字段 | 权威来源 | 说明 |
+|------|------|----------|------|
+| **有氧体力** | `staminaPercent` | `GetTargetStamina()` / `m_fTargetStamina` | **不受** W′→引擎条表现映射影响 |
+| **W′ 归一化** | `wPrimePool01` | `AnaerobicBurst` / CP–W′ 池 | `0`=空，`1`=满；**请优先读这个** |
+| **W′ 焦耳** | `wPrimeJoules` / `wPrimeMaxJoules` | 同上 + 当前预设 max | 绝对焦耳与容量 |
+| 兼容别名 | `anaerobicPercent` | 同 `wPrimePool01` | **已弃用**，勿写新逻辑 |
+| 引擎条表现 | （API **不**暴露） | `GetStamina()` transient | 仅原生晃动/模糊；**不是**有氧权威 |
+
+```c
+RSS_PlayerInfo info = SCR_RSS_API.GetPlayerInfo(player);
+if (info.isValid)
+{
+    float sta = info.staminaPercent;       // 有氧 0~1
+    float w01 = info.wPrimePool01;         // W′ 0~1
+    float wJ = info.wPrimeJoules;          // 当前焦耳
+    float wMax = info.wPrimeMaxJoules;     // 容量焦耳
+    // 需要百分比条：w01 * 100，或 wJ / wMax（wMax>0 时）
+}
+```
+
+高级：也可 `ctrl.RSS_GetWPrimeBurst().GetPool()` / `GetWPrimeJoules()`（`GetRssController`）。
+
+---
+
 ## 用法示例
 
 ```c
-// 获取本地玩家实体
 IEntity player = SCR_PlayerController.GetLocalControlledEntity();
 if (!player)
     return;
 
-// 获取玩家体力与运动状态
 RSS_PlayerInfo playerInfo = SCR_RSS_API.GetPlayerInfo(player);
 if (playerInfo.isValid)
 {
-    PrintFormat("体力: %1%% | 速度倍率: %2 | 速度: %3 m/s",
+    PrintFormat("STA=%1%% W'=%2%% (%3/%4 J) sprintOk=%5",
         playerInfo.staminaPercent * 100.0,
-        playerInfo.speedMultiplier,
-        playerInfo.currentSpeed);
+        playerInfo.wPrimePool01 * 100.0,
+        playerInfo.wPrimeJoules,
+        playerInfo.wPrimeMaxJoules,
+        playerInfo.sprintAllowed);
 }
 
-// 获取环境信息
 RSS_EnvironmentInfo envInfo = SCR_RSS_API.GetEnvironmentInfo(player);
 if (envInfo.isValid)
 {
@@ -71,14 +96,20 @@ if (envInfo.isValid)
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| staminaPercent | float | 体力百分比 (0.0 ~ 1.0) |
-| speedMultiplier | float | 当前速度倍率 (0.15 ~ 1.0) |
+| staminaPercent | float | **有氧**体力 (0.0 ~ 1.0)，权威条 |
+| speedMultiplier | float | 当前速度倍率 (约 0.15 ~ 1.0) |
 | currentSpeed | float | 当前水平速度 (m/s) |
 | movementPhase | int | 0=idle, 1=walk, 2=run, 3=sprint |
 | isSprinting | bool | 是否在冲刺 |
-| isExhausted | bool | 是否精疲力尽 |
+| isExhausted | bool | 是否精疲力尽（有氧侧判定） |
 | isSwimming | bool | 是否在游泳 |
 | currentWeight | float | 当前负重 (kg) |
+| wPrimePool01 | float | **W′** 归一化 (0.0 ~ 1.0) |
+| wPrimeJoules | float | **W′** 当前焦耳 |
+| wPrimeMaxJoules | float | 当前预设 **W′_max** 焦耳 |
+| anaerobicPercent | float | @deprecated＝`wPrimePool01` |
+| sprintCooldownRemainingSec | float | 冷却剩余秒（多为 0） |
+| sprintAllowed | bool | 当前是否允许冲刺 |
 | isValid | bool | 数据是否有效 |
 
 ---
@@ -127,45 +158,19 @@ if (envInfo.isValid)
 - **格式**：JSON，含 `timestamp` 与 `players` 数组
 - **用途**：供外部应用（命令控制台等）轮询读取
 
-JSON 示例（字段与 `RSS_ExportPlayerEntry` / `RSS_ExportData` 对齐，见 `SCR_RSS_DataExport.c`）：
+> 当前导出条目仍以 STA/速度/环境为主；**脚本侧读 W′ 请用 `GetPlayerInfo`**（含 `wPrimePool01` / 焦耳）。导出 JSON 若需 W′ 字段可另提需求。
 
-```json
-{
-  "timestamp": 1234567890,
-  "players": [
-    {
-      "playerId": 1,
-      "playerName": "Player1",
-      "staminaPercent": 0.85,
-      "speedMultiplier": 0.92,
-      "currentSpeed": 4.2,
-      "movementPhase": 2,
-      "isSprinting": false,
-      "isExhausted": false,
-      "isSwimming": false,
-      "currentWeight": 12.5,
-      "temperature": 22.0,
-      "rainIntensity": 0.0,
-      "windSpeed": 2.1,
-      "isIndoor": false
-    }
-  ]
-}
-```
+`timestamp` 由 `GetGame().GetWorld().GetWorldTime()` 写入（引擎世界时间毫秒；**不是** Unix Epoch 秒）。
 
-`timestamp` 由 `GetGame().GetWorld().GetWorldTime()` 写入（`RSS_ExportData.timestamp`，引擎世界时间毫秒；**不是** Unix Epoch 秒，读取方按需解释或仅作序列号）。
-
-> 若 `GetEnvironmentInfo` 在导出时刻无效，则 `temperature` / `rainIntensity` / `windSpeed` / `isIndoor` 会回落为代码中的默认值（见 `SCR_RSS_DataExport.ExportToFile()`）。
-
-配置项（在 `RealisticStaminaSystem.json` 中）：
+配置项（`RealisticStaminaSystem.json`）：
 
 - `m_bDataExportEnabled`：是否启用（默认 false）
 - `m_iDataExportIntervalMs`：导出间隔毫秒（默认 1000）
 
 ## 注意事项
 
-1. **isValid 检查**：调用 `GetPlayerInfo` / `GetEnvironmentInfo` 后务必检查 `isValid`，若为 false 表示实体无 RSS 组件或未初始化。
-2. **返回值复用**：API 使用静态缓存返回结构体，每次调用会覆盖上次结果，如需保存请复制字段。
-3. **执行端**：玩家实体在客户端调用可获得本地计算数据；AI 实体需在服务器端调用。
-4. **数据导出**：仅在服务器端执行，客户端需在 profile 目录读取生成的 JSON。
-5. **服务器端环境数据**：玩家体力/速度在客户端计算，服务器不运行其 UpdateSpeedBasedOnStamina。体力由引擎复制；环境（室内、气温、降雨等）在导出前由服务器调用 `EnvironmentFactor.ForceUpdate()` 独立计算，确保室内外、环境数据正确。
+1. **isValid 检查**：调用后务必检查；false 表示无 RSS 组件或未初始化。
+2. **返回值复用**：静态缓存，下次调用覆盖；需保存请复制字段。
+3. **执行端**：玩家可在客户端读本地计算；AI 宜在服务器读。
+4. **不要**用引擎 `GetStamina()` 当有氧或 W′ 权威（可能含 W′ 表现伪装）。
+5. **数据导出**：仅服务器写文件；环境在导出前 `ForceUpdate`。
