@@ -1,5 +1,7 @@
 # RSS 模组下 AI 受影响说明（现行）
 
+> **中文** | [English](en/AI_BEHAVIOR.md)
+
 本文说明 **Realistic Stamina System (RSS)** 对 **AI 角色** 的行为与实现入口。  
 以 `scripts/Game/RSS/AI/` 源码为准。旧版群组机动 / GroupSync / 群组代理等模块**已移除**；历史设计见归档稿 [`RSS_AI体力集成全盘设计方案.md`](RSS_AI体力集成全盘设计方案.md)。
 

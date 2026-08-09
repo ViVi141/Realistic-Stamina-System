@@ -1,5 +1,7 @@
 # RSS 项目引擎 API 使用清单
 
+> **中文** | [English](en/ENGINE_API_USAGE.md)
+>
 > **v6.1.x（当前）**：限速经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`（与灌木等 min 合并）。有氧权威在 `m_fTargetStamina`，经 `SCR_StaminaOverride` 拦截壳写入。W′ **不**改有氧权威，但默认经 `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` 驱动原生晃动/模糊（`Exhaustion`）。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
 
 > 统计范围：`scripts/` 目录下所有 `.c` 文件  

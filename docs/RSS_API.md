@@ -1,5 +1,7 @@
 # Realistic Stamina System (RSS) - 外部模组 API
 
+> **中文** | [English](en/API.md)
+
 供其他模组从 RSS 获取玩家体力状态与环境信息的接口。
 
 ## 实现位置（与代码一致）

@@ -1,5 +1,7 @@
 # C 脚本文件大小硬限制
 
+> **中文** | [English](en/SCRIPT_FILE_SIZE_LIMIT.md)
+
 ## 规则
 
 > **所有 `.c` 脚本文件不得超过 65535 字节（64 KB）。超出后在 Arma Reforger 工作台编译或游戏运行时有概率直接崩溃，无报错信息。**

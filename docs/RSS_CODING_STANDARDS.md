@@ -1,5 +1,7 @@
 # RSS 编码规范（权威）
 
+> **中文** | [English](en/CODING_STANDARDS.md)
+>
 > 取代 [`scripts_naming_and_layout_rules.md`](scripts_naming_and_layout_rules.md) 中的冲突条目。  
 > 版本：**6.1.x**（命名与分层继承 v5；体力表现见 §5）
 

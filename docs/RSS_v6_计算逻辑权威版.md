@@ -1,5 +1,7 @@
 # RSS v6 计算逻辑权威版
 
+> **中文** | [English](en/V6_CALCULATION_LOGIC.md)
+>
 > **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-09）  
 > 取代 v5 及更早文档中「意志力平台期 / Givoni / 旧模块名」描述。以本文件与源码为准。  
 > **6.1.x 限速默认**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（drain-only：代谢超额扣 STA/W′，默认不压 CP 巡航 `SetSpeedLimit`）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。

@@ -1,5 +1,7 @@
 # RSS 已知问题：Walk 下限过快 & 滑步
 
+> **中文** | [English](en/KNOWN_ISSUES_SPEED_SLIP.md)
+
 记录日期：2026-07-24  
 更新：2026-08-09 — 对齐 **6.1.x drain-only** 默认：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（CP/有氧巡航顶默认不写 `SetSpeedLimit`；透支只扣 STA/W′）。
 

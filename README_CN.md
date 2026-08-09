@@ -449,10 +449,11 @@ Realistic-Stamina-System/
 
 **配置优先级**：运行期动态配置（当前预设/服务器）优先于工具硬编码；Custom 模式仅增量补全，永不覆盖用户已设项。
 
-- **[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)** - **开发者入口**（目录地图、硬性约束、常见改动、PR 自检）
-- **[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)** - v6 CP–W′ 计算逻辑（权威）
-- **[docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md)** - 编码规范（权威）
-- **[docs/RSS_v6_优化管线设计.md](docs/RSS_v6_优化管线设计.md)** - v6 优化管线与约束
+- **[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)** / [EN](docs/en/DEVELOPER_GUIDE.md) - 开发入口
+- **[docs/en/README.md](docs/en/README.md)** - 关键文档中英索引
+- **[docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md)** / [EN](docs/en/V6_CALCULATION_LOGIC.md) - v6 CP–W′ 计算逻辑（权威）
+- **[docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md)** / [EN](docs/en/CODING_STANDARDS.md) - 编码与分层规范
+- **[docs/RSS_v6_优化管线设计.md](docs/RSS_v6_优化管线设计.md)** - v6 优化管线与约束（暂仅中文）
 - **[tools/README.md](tools/README.md)** - 工具集与数字孪生入口
 
 ## 技术实现
@@ -962,8 +963,6 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 - 需要测试 `GetStamina()` 和 `GetMaxStamina()` 方法是否可用（如果不可用，可能需要通过其他方式获取体力值）
 
 ## 开发说明
-
-> **请先读 [docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)**（目录地图、约束、改动路径）。下列段落含历史细节，与现行代码冲突时以开发者指南与源码为准。
 
 ### 编译要求
 

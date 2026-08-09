@@ -60,7 +60,7 @@ v_meas → P(v) [MetabolismModel]
 ### Presets
 EliteStandard · **StandardMilsim** (default) · TacticalAction · Custom — baked in `SCR_RSS_SettingsPresetBake`.
 
-Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Developer guide (Chinese): `docs/RSS_开发者指南.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
+Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
 
 ## v6.1.3 Updates
 
@@ -227,7 +227,9 @@ See `docs/RSS_API.md`. Prefer `wPrimePool01` over deprecated `anaerobicPercent`.
 
 ## Contributing
 
-See `CONTRIBUTING.md`.
+- Developer guide: [`docs/en/DEVELOPER_GUIDE.md`](docs/en/DEVELOPER_GUIDE.md) · Chinese [`docs/RSS_开发者指南.md`](docs/RSS_开发者指南.md)
+- Bilingual doc index: [`docs/en/README.md`](docs/en/README.md)
+- Also see [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ## License
 

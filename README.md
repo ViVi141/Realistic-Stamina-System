@@ -13,7 +13,7 @@
 - **GUID**: `68649101601CC93D` · **Config**: **6.1.3** · **Game**: Reforger **1.7+**
 - 完整中文说明（含历史版本记录与系统特性细则）：[README_CN.md](README_CN.md)
 - English overview：[README_EN.md](README_EN.md)
-- 开发者指南：[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md) · 贡献：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 开发者指南：[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md) · [English](docs/en/DEVELOPER_GUIDE.md) · [docs/en index](docs/en/README.md)
 
 ## 作者信息
 

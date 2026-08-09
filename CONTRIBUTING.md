@@ -2,14 +2,6 @@
 
 感谢您对本项目的关注！我们欢迎任何形式的贡献。
 
-## 开发者文档
-
-动手改代码前请阅读：
-
-- **[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)** — 环境、目录地图、硬性约束、常见改动、PR 自检
-- [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) — 编码规范
-- [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md) — 计算逻辑权威说明
-
 ## 如何贡献
 
 ### 报告问题
@@ -29,10 +21,15 @@
 
 ### 代码规范
 
-- 遵循 [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md)（禁止三元 `?:`、单文件 ≤ 64 KB 等）
-- 提交前运行 `python tools/check_script_size.py` 与 `python tools/check_enforce_syntax.py`
-- 添加必要的中文注释（公共 static：`//!` + `@param` / `@return`）
-- 确保 Workbench 可编译；更新相关 docs / CHANGELOG
+开发前请阅读 **[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)** / [English](docs/en/DEVELOPER_GUIDE.md)（目录、改动入口、提交前检查）。  
+关键文档中英索引：[docs/en/README.md](docs/en/README.md)。
+
+编码细则以 [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) / [EN](docs/en/CODING_STANDARDS.md) 为准，尤其注意：
+
+- 禁止 EnforceScript 三元运算符 `?:`
+- 单文件不超过 65535 字节
+- 限速经 `SCR_RSS_SpeedBridge` / `SetSpeedLimit`，勿盖掉灌木减速
+- 提交前运行 `tools/check_script_size.py`、`tools/check_enforce_syntax.py`、`tools/test_v6_smoke.py`
 
 ## 许可证
 
