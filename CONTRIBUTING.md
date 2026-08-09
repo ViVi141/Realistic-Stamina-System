@@ -2,6 +2,14 @@
 
 感谢您对本项目的关注！我们欢迎任何形式的贡献。
 
+## 开发者文档
+
+动手改代码前请阅读：
+
+- **[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md)** — 环境、目录地图、硬性约束、常见改动、PR 自检
+- [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) — 编码规范
+- [docs/RSS_v6_计算逻辑权威版.md](docs/RSS_v6_计算逻辑权威版.md) — 计算逻辑权威说明
+
 ## 如何贡献
 
 ### 报告问题
@@ -21,10 +29,10 @@
 
 ### 代码规范
 
-- 遵循项目的代码风格
-- 添加必要的注释
-- 确保代码可以编译通过
-- 更新相关文档
+- 遵循 [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md)（禁止三元 `?:`、单文件 ≤ 64 KB 等）
+- 提交前运行 `python tools/check_script_size.py` 与 `python tools/check_enforce_syntax.py`
+- 添加必要的中文注释（公共 static：`//!` + `@param` / `@return`）
+- 确保 Workbench 可编译；更新相关 docs / CHANGELOG
 
 ## 许可证
 

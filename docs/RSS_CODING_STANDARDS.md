@@ -1,7 +1,7 @@
-# RSS v5 编码规范（权威）
+# RSS 编码规范（权威）
 
 > 取代 [`scripts_naming_and_layout_rules.md`](scripts_naming_and_layout_rules.md) 中的冲突条目。  
-> 版本：**5.0.0**
+> 版本：**6.1.x**（命名与分层继承 v5；体力表现见 §5）
 
 ## 1. 命名
 
@@ -42,11 +42,12 @@
 | **天气/环境** | RSS 自建为主；`TimeAndWeatherManagerEntity` 仅采样 |
 | **引擎体力条** | 仅**拦截**（`OnStaminaDrain` / `ApplyDrain`）；`AddStamina` 不可 override |
 
-## 5. 体力拦截（有氧 / 无氧）
+## 5. 体力拦截（有氧 / W′）
 
-- **有氧池** → RSS 计算 → `SetTargetStamina` → 受控 `AddStamina` → `GetStamina()` UI
-- **无氧池** → `SCR_RSS_AnaerobicBurst` + Controller；**never** 写入引擎条
-- 业务公式只在 `RSS/Core/`，不在 `StaminaOverride`
+- **有氧池** → RSS 计算 → `SetTargetStamina` / 受控 `AddStamina`；权威在 `m_fTargetStamina`
+- **W′（无氧）** → `SCR_RSS_CriticalPowerModel` / `SCR_RSS_AnaerobicBurst`；**不改**有氧权威
+- **W′→引擎表现**（默认开）：`SCR_RSS_SprintGate` 经 `ApplyTransientEngineStamina` 写 transient `GetStamina()`，驱动原生晃动/`Exhaustion`；业务公式仍只在 `RSS/Core/`
+- CPR 等禁用原生 `CharacterStaminaComponent` 的兼容不在本模组内；需独立 compat 模组
 
 ## 6. EnforceScript 禁用
 

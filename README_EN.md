@@ -60,7 +60,7 @@ v_meas → P(v) [MetabolismModel]
 ### Presets
 EliteStandard · **StandardMilsim** (default) · TacticalAction · Custom — baked in `SCR_RSS_SettingsPresetBake`.
 
-Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
+Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Developer guide (Chinese): `docs/RSS_开发者指南.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
 
 ## v6.1.3 Updates
 

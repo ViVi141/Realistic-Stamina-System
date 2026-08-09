@@ -1,19 +1,20 @@
 # RSS 项目引擎 API 使用清单
 
-> **v5 更新（5.0.0-dev）**：限速统一经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`；有氧池经 `SCR_StaminaOverride` 拦截壳；无氧池 **不** 写入引擎条，用 `[RplProp]` 同步。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
+> **v6.1.x（当前）**：限速经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`（与灌木等 min 合并）。有氧权威在 `m_fTargetStamina`，经 `SCR_StaminaOverride` 拦截壳写入。W′ **不**改有氧权威，但默认经 `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` 驱动原生晃动/模糊（`Exhaustion`）。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
 
 > 统计范围：`scripts/` 目录下所有 `.c` 文件  
 > 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*` 等项目内部类）  
 > **路径约定**：文中 `PlayerBase.c` 均指 `scripts/Game/Integration/PlayerBase.c`（`modded class SCR_CharacterControllerComponent`）。
 
-## v5 新增/变更锚点
+## v6 锚点
 
-| 职责 | v5 模块 | 官方 API |
-|------|---------|----------|
+| 职责 | 模块 | 官方 API |
+|------|------|----------|
 | 速度合并 | `SCR_RSS_SpeedBridge.c` | `SCR_ChimeraCharacter.SetSpeedLimit` |
 | 有氧注入 | `SCR_StaminaOverride.c` | `OnStaminaDrain` / `ApplyDrain` 拦截 + `AddStamina` |
-| 无氧同步 | `SCR_RSS_NetworkSyncManager.c`（静态 RplProp 辅助）+ PlayerBase `[RplProp]` | 不绑定 `GetStamina()` |
-| 环境采样 | `SCR_RSS_WeatherApi.c` | `TimeAndWeatherManagerEntity` 只读输入 |
+| W′ 引擎表现 | `SCR_RSS_SprintGate.c` | `ApplyTransientEngineStamina`（不改 `m_fTargetStamina`） |
+| 消耗/速度协调 | `SCR_RSS_UpdateCoordinator.c` | 调用桥接与双池 |
+| 环境采样 | `SCR_RSS_WeatherApi.c` / `SCR_RSS_EnvironmentFactor.c` | `TimeAndWeatherManagerEntity` 只读 |
 | 配置复制 | `SCR_RSS_ServerBootstrap.c` | `[RplProp(onRplName:)]` on GameMode |
 | HUD 数据 | `SCR_RSS_StaminaHUDComponent.c` | `WorkspaceWidget` + `GUIColors` |
 
@@ -40,7 +41,7 @@
 | `IEntity` | 所有实体的基础接口类型 | 全局通用 |
 | `GetOwner()` | 获取当前组件所属的实体 | PlayerBase.c, SCR_InventoryStorageManagerComponent_Override.c |
 | `IEntity.FindComponent(ComponentType)` | 在实体上查找指定类型组件 | PlayerBase.c, SCR_EncumbranceCache.c |
-| `IEntity.GetOrigin()` | 获取实体世界坐标（`vector`） | SCR_TerrainDetection.c, SCR_StaminaUpdateCoordinator.c |
+| `IEntity.GetOrigin()` | 获取实体世界坐标（`vector`） | SCR_TerrainDetection.c, SCR_RSS_UpdateCoordinator.c |
 | `IEntity.GetWorld()` | 获取实体所在的世界对象 | SCR_TerrainDetection.c |
 | `ChimeraCharacter` | Reforger 角色实体类 | PlayerBase.c, SCR_StanceTransitionManager.c |
 | `ChimeraCharacter.Cast(entity)` | 类型安全转换为 `ChimeraCharacter` | PlayerBase.c |
@@ -54,10 +55,10 @@
 | API | 说明 | 来源文件 |
 |-----|------|---------|
 | `SCR_CharacterControllerComponent` | Reforger 扩展的角色控制器（`modded` 基类） | PlayerBase.c |
-| `GetStance()` | 获取当前姿态，返回 `ECharacterStance` | PlayerBase.c, SCR_StaminaConsumption.c |
+| `GetStance()` | 获取当前姿态，返回 `ECharacterStance` | PlayerBase.c, SCR_RSS_SpeedCalculator.c |
 | `GetStaminaComponent()` | 获取体力组件（`CharacterStaminaComponent`） | PlayerBase.c |
 | `GetVelocity()` | 获取角色当前速度向量（`vector`） | PlayerBase.c |
-| `OverrideMaxSpeed(multiplier)` | 覆盖角色最大速度倍率（RSS 经 `SCR_RSS_CharacterSpeedBridge` → `SetSpeedLimit` 合并灌木减速） | PlayerBase.c, SCR_RSS_CharacterSpeedBridge.c |
+| `OverrideMaxSpeed(multiplier)` | 覆盖角色最大速度倍率（RSS 经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit` 合并灌木减速） | PlayerBase.c, SCR_RSS_SpeedBridge.c |
 | `OnInit(IEntity owner)` | 生命周期：组件初始化回调 | PlayerBase.c |
 | `OnControlledByPlayer(IEntity, bool)` | 生命周期：玩家取得/放弃控制回调 | PlayerBase.c |
 | `OnPrepareControls(IEntity, ActionManager, float, bool)` | 生命周期：每帧控制准备回调 | PlayerBase.c |
@@ -70,7 +71,7 @@
 |-----|------|---------|
 | `CharacterStaminaComponent` | 引擎原生体力组件基类 | PlayerBase.c, SCR_StaminaOverride.c |
 | `SCR_CharacterStaminaComponent` | Reforger 扩展体力组件（`modded` 对象） | PlayerBase.c, SCR_StaminaOverride.c |
-| `GetStamina()` | 获取当前体力值（0.0 ~ 1.0） | SCR_StaminaOverride.c |
+| `GetStamina()` | 获取当前体力值（0.0 ~ 1.0）；有氧权威经 Override 写入，W′ 可另经 transient 叠加表现 | SCR_StaminaOverride.c, SCR_RSS_SprintGate.c |
 | `ApplyDrain(float pDrain)` | 应用体力消耗（引擎原生，被 override 拦截） | SCR_StaminaOverride.c |
 
 ---
@@ -81,10 +82,10 @@
 |-----|------|---------|
 | `SCR_CharacterInventoryStorageComponent` | 角色库存存储组件 | PlayerBase.c, SCR_EncumbranceCache.c |
 | `SCR_CharacterInventoryStorageComponent.GetTotalWeight()` | 获取角色库存总重量（kg） | PlayerBase.c, SCR_JumpVaultDetection.c |
-| `SCR_CharacterInventoryStorageComponent.GetMaxLoad()` | 获取最大可携带重量 | SCR_RealisticStaminaSystem.c |
+| `SCR_CharacterInventoryStorageComponent.GetMaxLoad()` | 获取最大可携带重量 | SCR_RSS_MetabolismMath.c |
 | `SCR_InventoryStorageManagerComponent` | Reforger 扩展的库存管理器组件 | SCR_EncumbranceCache.c |
 | `SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages()` | 获取所有存储槽总重量（官方推荐方式） | SCR_EncumbranceCache.c |
-| `InventoryStorageManagerComponent` | 引擎原生库存管理器组件 | PlayerBase.c, SCR_StaminaConsumption.c |
+| `InventoryStorageManagerComponent` | 引擎原生库存管理器组件 | PlayerBase.c |
 | `ScriptedInventoryStorageManagerComponent` | 脚本化库存管理器基类（`modded` 基类） | SCR_InventoryStorageManagerComponent_Override.c |
 | `BaseInventoryStorageComponent.GetTotalWeight()` | 单个存储格重量 | SCR_EncumbranceCache.c |
 
@@ -137,7 +138,7 @@
 | `EPhysicsLayerPresets.Projectile` | 物理层预设枚举 | SCR_TerrainDetection.c |
 | `vector` | 三维向量类型 | 全局通用 |
 | `vector.Up` | 世界向上方向常量 | SCR_TerrainDetection.c |
-| `vector.Zero` | 零向量常量 | PlayerBase.c, SCR_StaminaUpdateCoordinator.c |
+| `vector.Zero` | 零向量常量 | PlayerBase.c, SCR_RSS_UpdateCoordinator.c |
 
 ---
 
@@ -146,9 +147,9 @@
 | API | 说明 | 来源文件 |
 |-----|------|---------|
 | `CharacterAnimationComponent` | 角色动画组件 | PlayerBase.c, SCR_SwimmingState.c |
-| `CharacterAnimationComponent.GetCommandHandler()` | 获取命令处理器组件 | PlayerBase.c, SCR_SpeedCalculation.c |
+| `CharacterAnimationComponent.GetCommandHandler()` | 获取命令处理器组件 | PlayerBase.c, SCR_RSS_SpeedCalculator.c |
 | `CharacterCommandHandlerComponent` | 命令处理器组件（用于判断游泳/攀爬等状态） | SCR_SwimmingState.c |
-| `ECharacterStance` | 姿态枚举 | SCR_StaminaConsumption.c, SCR_StaminaRecovery.c |
+| `ECharacterStance` | 姿态枚举 | PlayerBase.c, SCR_RSS_SpeedCalculator.c |
 | `ECharacterStance.STAND` / `CROUCH` / `PRONE` | 姿态枚举值 | SCR_StanceTransitionManager.c |
 
 ---
@@ -188,9 +189,9 @@
 
 | API | 说明 | 来源文件 |
 |-----|------|---------|
-| `TimeAndWeatherManagerEntity` | 时间与天气管理器实体 | SCR_EnvironmentFactor.c |
-| `TimeAndWeatherManagerEntity.GetWindSpeed()` | 获取当前风速（m/s） | SCR_EnvironmentFactor.c |
-| `TimeAndWeatherManagerEntity.GetWindDirection()` | 获取当前风向（角度） | SCR_EnvironmentFactor.c |
+| `TimeAndWeatherManagerEntity` | 时间与天气管理器实体 | SCR_RSS_EnvironmentFactor.c |
+| `TimeAndWeatherManagerEntity.GetWindSpeed()` | 获取当前风速（m/s） | SCR_RSS_EnvironmentFactor.c |
+| `TimeAndWeatherManagerEntity.GetWindDirection()` | 获取当前风向（角度） | SCR_RSS_EnvironmentFactor.c |
 
 ---
 
