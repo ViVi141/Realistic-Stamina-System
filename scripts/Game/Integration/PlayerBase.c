@@ -1225,24 +1225,15 @@ modded class SCR_CharacterControllerComponent
 
         if (controlled)
         {
-            // CPR 等模组可能在 OnInit 时关掉体力组件；接管时再解析一次。
             if (!m_pStaminaComponent)
             {
-                m_pStaminaComponent = SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
-                    owner,
-                    GetStaminaComponent());
+                m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(GetStaminaComponent());
                 if (m_pStaminaComponent)
                 {
                     m_pStaminaComponent.SetAllowNativeStaminaSystem(false);
                     m_pStaminaComponent.SetTargetStamina(
                         SCR_RSS_MetabolismMath.INITIAL_STAMINA_AFTER_ACFT);
                 }
-            }
-            else
-            {
-                SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
-                    owner,
-                    m_pStaminaComponent);
             }
 
             // Workbench/听主机：OnControlled 与 LocalControlledEntity 可能不同步，
@@ -1468,9 +1459,7 @@ modded class SCR_CharacterControllerComponent
             }
         }
         
-        m_pStaminaComponent = SCR_RSS_StaminaComponentCompat.ResolveAndEnsureActive(
-            owner,
-            GetStaminaComponent());
+        m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(GetStaminaComponent());
 
         if (m_pStaminaComponent)
         {

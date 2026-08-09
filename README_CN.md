@@ -164,14 +164,13 @@ Realistic-Stamina-System/
 │   ├── Integration/                      # modded 入口层（高冲突面）
 │   │   ├── PlayerBase.c                  # modded SCR_CharacterControllerComponent
 │   │   ├── PlayerBase_UpdateLoop.c       # 主更新循环扩展
-│   │   ├── SCR_StaminaOverride.c         # 拦截引擎体力条
 │   │   ├── SCR_RSS_ServerBootstrap.c
 │   │   ├── SCR_RSS_InventoryOverride.c
 │   │   ├── SCR_PlayerBaseIntegrationHelpers.c
 │   │   ├── SCR_PlayerBaseLoop.c
 │   │   ├── SCR_PlayerBaseRpcHandler.c
 │   │   ├── SCR_PlayerBaseVehicleHelper.c
-│   │   └── SCR_RSS_StaminaComponentCompat.c
+│   │   └── SCR_StaminaOverride.c         # 拦截引擎体力条
 │   ├── RSS/
 │   │   ├── Core/                         # 体力核心（~30）
 │   │   │   ├── SCR_RSS_MetabolismModel.c / MetabolismMath.c
