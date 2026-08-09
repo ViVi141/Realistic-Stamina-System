@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [6.1.3] - 2026-08-09
+
+### 拆分 / 清理
+
+- **移除第三方体力兼容层** — 删除 `SCR_RSS_StaminaComponentCompat`（原用于 Conflict PVE Remixed 等 prefab `Enabled 0` 时 `Activate` 重开组件）；`PlayerBase` 改回普通 `Cast(GetStaminaComponent())`
+- 该兼容将独立为新模组维护；与 CPR 联用需另装兼容模组或改 prefab
+- 配置版本 / ConfigManager → **6.1.3**
+
 ## [6.1.2] - 2026-08-09
 
 ### 表现 / 音频
