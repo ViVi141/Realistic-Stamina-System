@@ -1,17 +1,17 @@
-# Realistic Stamina System (RSS) v6.1.4
+# Realistic Stamina System (RSS) v6.1.5
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.1.4-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.1.5-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
 
 
 - **GUID**: `68649101601CC93D`
-- **Config version**: **6.1.4**
+- **Config version**: **6.1.5**
 - **Recommended game**: Arma Reforger **1.7+**
 
 > The **Chinese README** (`README_CN.md`) is the full narrative (features, formulas, version history). This English file keeps release notes and an expanded feature/tech summary aligned to the current tree.
@@ -61,6 +61,11 @@ v_meas → P(v) [MetabolismModel]
 EliteStandard · **StandardMilsim** (default) · TacticalAction · Custom — baked in `SCR_RSS_SettingsPresetBake`.
 
 Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
+
+## v6.1.5 Updates
+
+**2026-08-13** — See `CHANGELOG.md` **[6.1.5]**
+Breath SFX re-enabled with a local Settings toggle; less false panting on easy run; AI stamina calc off by default; config **6.1.5**.
 
 ## v6.1.4 Updates
 

@@ -18,9 +18,32 @@ class SCR_RSS_BreathSoundDriver
     protected float m_fVolumeSmoothed = 0.0;
     protected int m_iJitterSeed = 1;
 
-    void Update(float worldTimeSec, float respiratory01)
+    //! 本地开关（Settings → Breath Sounds）；默认开，只影响本机
+    protected static bool s_bLocalEnabled = true;
+
+    //! @return 本机是否允许播放呼吸音效
+    static bool GetLocalEnabled()
+    {
+        return s_bLocalEnabled;
+    }
+
+    //! @param enabled true 播放，false 立即停掉本机呼吸音
+    static void SetLocalEnabled(bool enabled)
+    {
+        s_bLocalEnabled = enabled;
+    }
+
+    //! @return 常量总开关且本机开关都开时才播放
+    static bool IsPlaybackEnabled()
     {
         if (!SCR_RSS_Constants.V6_BREATH_SOUND_ENABLED)
+            return false;
+        return s_bLocalEnabled;
+    }
+
+    void Update(float worldTimeSec, float respiratory01)
+    {
+        if (!IsPlaybackEnabled())
         {
             DisarmCycle(true);
             return;

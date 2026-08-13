@@ -713,7 +713,7 @@ class SCR_RSS_Constants
     //! 原生 SCR_StaminaBlurEffect：Exhaustion > 此值开模糊
     static const float V6_EXHAUSTION_NATIVE_BLUR_THRESHOLD = 0.45;
     //! 呼吸/心跳采样开关（节奏由 CardioDrive 驱动）
-    static const bool V6_BREATH_SOUND_ENABLED = false;
+    static const bool V6_BREATH_SOUND_ENABLED = true;
     static const bool V6_HEARTBEAT_SOUND_ENABLED = false;
     //! 心跳分档滞回（相对 Cardiac 轴）
     static const float V6_HEARTBEAT_TIER_MID_ENTER = 0.38;
@@ -724,7 +724,8 @@ class SCR_RSS_Constants
     //! RSS-CPCR（CP–W′ 耦合心肺响应正演）总开关
     static const bool V6_CARDIO_DRIVE_ENABLED = true;
     //! 超额功率归一：excessNorm=(P-CP)/CP 达到此值 → 超额分量≈1
-    static const float V6_CARDIO_EXCESS_REF = 0.40;
+    //! 1.50：慢跑 ACSM 常已高于 CP（约 +70%），0.40 会把 Run 直接顶满，一开跑就喘
+    static const float V6_CARDIO_EXCESS_REF = 1.50;
     static const float V6_CARDIO_AEROBIC_STRAIN_START = 0.55;
     static const float V6_CARDIO_W_EXCESS = 0.45;
     static const float V6_CARDIO_W_WPRIME = 0.35;
@@ -737,10 +738,11 @@ class SCR_RSS_Constants
     static const float V6_CARDIO_BREATH_TAU_DOWN_SEC = 28.0;
     //! 可闻门限：心跳刻意更高，避免轻喘就 thrub
     static const float V6_CARDIO_HEART_AUDIBLE = 0.22;
-    static const float V6_CARDIO_BREATH_AUDIBLE = 0.06;
+    //! 0.32：需明显抬升才出声。0.06 时呼吸轴刚离开静息就会播 regenerate 喘气采样
+    static const float V6_CARDIO_BREATH_AUDIBLE = 0.32;
     //! 表现音量（PlaySound + SoundManager.SetVolume）；心跳整体压低
     static const float V6_PRESENTATION_VOL_SMOOTH = 0.14;
-    static const float V6_BREATH_VOL_MIN = 0.28;
+    static const float V6_BREATH_VOL_MIN = 0.14;
     static const float V6_BREATH_VOL_MAX = 0.95;
     static const float V6_HEARTBEAT_VOL_MIN = 0.10;
     static const float V6_HEARTBEAT_VOL_MAX = 0.38;

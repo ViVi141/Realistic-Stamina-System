@@ -1,11 +1,12 @@
 // RSS Settings SubMenu
-//   所有人：HUD (Local) — 只影响自己，不经过服务器
+//   所有人：HUD (Local) / Breath Sounds — 只影响自己，不经过服务器
 //   管理员额外：预设 + HUD Server Default + Debug/MudSlip/AICombat
 
 class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 {
     protected SCR_ComboBoxComponent m_wPresetSelector;
     protected SCR_SpinBoxComponent m_wHUDLocal;
+    protected SCR_SpinBoxComponent m_wBreathSound;
     protected SCR_SpinBoxComponent m_wHUDServer;
     protected SCR_SpinBoxComponent m_wDebugToggle;
     protected SCR_SpinBoxComponent m_wMudSlipToggle;
@@ -24,6 +25,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
 
         m_wPresetSelector  = FindComboBox("PresetSelector");
         m_wHUDLocal        = FindSpinBox("ToggleHUD");
+        m_wBreathSound     = FindSpinBox("ToggleBreathSound");
         m_wHUDServer       = FindSpinBox("ToggleServerHUD");
         m_wDebugToggle     = FindSpinBox("ToggleDebug");
         m_wMudSlipToggle   = FindSpinBox("ToggleMudSlip");
@@ -54,8 +56,10 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     {
         super.OnTabHide();
 
-        // 本地 HUD：所有人立即生效
+        // 本地 HUD / 呼吸音：所有人立即生效
         SCR_RSS_StaminaHUDComponent.SetLocalHUDEnabled(GetSpin(m_wHUDLocal));
+        if (m_wBreathSound)
+            SCR_RSS_BreathSoundDriver.SetLocalEnabled(GetSpin(m_wBreathSound));
 
         // 管理员：服务器开关写入
         if (m_bIsAdmin)
@@ -114,8 +118,9 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     //------------------------------------------------------------------------------------------------
     protected void LoadFromSettings()
     {
-        // HUD Local：始终读本地覆盖
+        // HUD / 呼吸音：始终读本地覆盖
         SetSpin(m_wHUDLocal, SCR_RSS_StaminaHUDComponent.GetLocalHUDEnabled());
+        SetSpin(m_wBreathSound, SCR_RSS_BreathSoundDriver.GetLocalEnabled());
 
         if (!m_bIsAdmin)
         {
@@ -300,6 +305,7 @@ class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
     {
         RegisterDescriptionFocus("PresetSelector");
         RegisterDescriptionFocus("ToggleHUD");
+        RegisterDescriptionFocus("ToggleBreathSound");
         RegisterDescriptionFocus("ToggleServerHUD");
         RegisterDescriptionFocus("ToggleDebug");
         RegisterDescriptionFocus("ToggleMudSlip");

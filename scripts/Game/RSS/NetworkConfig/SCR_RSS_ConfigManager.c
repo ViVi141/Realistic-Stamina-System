@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "6.1.4";
+    protected static const string CURRENT_VERSION = "6.1.5";
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -64,12 +64,13 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bDataExportEnabled = true;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_Settings.m_bEnableMudSlipMechanism = false;  // NOTE: disabled pending camera tuning (see SCR_RSS_Constants design note)
-        m_Settings.m_bEnableAIStaminaCombatEffects = true;
+        m_Settings.m_bEnableAIStaminaCombatEffects = false;
+        m_Settings.m_bDisableAIStaminaCalc = true;
         m_bIsLoaded = true;
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip OFF (tuning pending), AI stamina combat ON.");
+        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip OFF (tuning pending), AI stamina calc OFF.");
         return;
         #endif
 
@@ -92,6 +93,8 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fSprintSpeedMultiplier = 1.3;
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             m_Settings.m_iDataExportIntervalMs = 1000;
+            m_Settings.m_bDisableAIStaminaCalc = true;
+            m_Settings.m_bEnableAIStaminaCombatEffects = false;
 
             m_bIsLoaded = true;
             m_fLastLoadTime = 0.0;
@@ -208,6 +211,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             m_Settings.m_bEnableMudSlipMechanism = false;
             m_Settings.m_bEnableAIStaminaCombatEffects = false;
+            m_Settings.m_bDisableAIStaminaCalc = true;
             
             if (CanWriteConfig())
             {
@@ -556,10 +560,12 @@ class SCR_RSS_ConfigManager
         m_Settings.m_bDataExportEnabled = false;
         #ifdef WORKBENCH
             m_Settings.m_bEnableMudSlipMechanism = true;
-            m_Settings.m_bEnableAIStaminaCombatEffects = true;
+            m_Settings.m_bEnableAIStaminaCombatEffects = false;
+            m_Settings.m_bDisableAIStaminaCalc = true;
         #else
             m_Settings.m_bEnableMudSlipMechanism = false;
             m_Settings.m_bEnableAIStaminaCombatEffects = false;
+            m_Settings.m_bDisableAIStaminaCalc = true;
         #endif
         m_Settings.m_iDataExportIntervalMs = 1000;
         m_Settings.m_fStaminaDrainMultiplier = 1.0;

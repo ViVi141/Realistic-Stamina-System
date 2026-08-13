@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.1.4
+# Realistic Stamina System (RSS) v6.1.5
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.1.4-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.1.5-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.4**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.5**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -224,6 +224,13 @@ Realistic-Stamina-System/
     └── README.md
 ```
 
+
+## v6.1.5 版本更新 / v6.1.5 Updates
+
+**2026-08-13**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.1.5]**）
+
+- **呼吸音** — 重新开启；Settings 本机 Breath Sounds 开关；收紧假喘门限
+- **AI 体力默认关** — `m_bDisableAIStaminaCalc` 默认 true；配置版本 **6.1.5**
 
 ## v6.1.4 版本更新 / v6.1.4 Updates
 
@@ -1053,7 +1060,8 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.1.4** (当前版本) - 外部 API W′ 焦耳字段 + 文档双语/开发者指南（见上文 v6.1.4 与 CHANGELOG）
+- **v6.1.5** (当前版本) - 呼吸音开关 / 假喘收紧 / AI 体力默认关（见上文 v6.1.5 与 CHANGELOG）
+- **v6.1.4** - 外部 API W′ 焦耳字段 + 文档双语/开发者指南（见上文 v6.1.4 与 CHANGELOG）
 - **v6.1.3** - 移除 CPR 等体力组件重开兼容层（见上文 v6.1.3 与 CHANGELOG）
 - **v6.1.2** - W′→引擎 STA/Exhaustion 表现 + 呼吸音默认关（见上文 v6.1.2 与 CHANGELOG）
 - **v6.1.1** - Walk/滚轮 DynamicSpeed 修复 + 死路径清理（见上文 v6.1.1 与 CHANGELOG）

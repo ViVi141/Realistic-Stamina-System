@@ -335,7 +335,7 @@ class SCR_RSS_SettingsSync
             s.m_bEnableMudSlipMechanism = bools[bi++];
             s.m_bEnableAIStaminaCombatEffects = bools[bi++];
             s.m_bDisableAIAllCalc = false;
-            s.m_bDisableAIStaminaCalc = false;
+            s.m_bDisableAIStaminaCalc = true;
         }
         else if (bools && bools.Count() >= SCR_RSS_Settings.SETTINGS_BOOLS_SIZE_LEGACY_16)
         {
@@ -358,7 +358,7 @@ class SCR_RSS_SettingsSync
             s.m_bEnableMudSlipMechanism = bools[bi++];
             s.m_bEnableAIStaminaCombatEffects = false;
             s.m_bDisableAIAllCalc = false;
-            s.m_bDisableAIStaminaCalc = false;
+            s.m_bDisableAIStaminaCalc = true;
         }
         else if (bools && bools.Count() >= SCR_RSS_Settings.SETTINGS_BOOLS_SIZE_LEGACY)
         {
@@ -381,7 +381,7 @@ class SCR_RSS_SettingsSync
             s.m_bEnableMudSlipMechanism = false;
             s.m_bEnableAIStaminaCombatEffects = false;
             s.m_bDisableAIAllCalc = false;
-            s.m_bDisableAIStaminaCalc = false;
+            s.m_bDisableAIStaminaCalc = true;
         }
 
         // 数据导出开关仅服务器生效，客户端收到配置后强制关闭，避免客户端写文件

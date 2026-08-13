@@ -104,14 +104,9 @@ class SCR_RSS_CardioDrive
         float excessDrive = excessNorm / excessRef;
         if (excessDrive > 1.0)
             excessDrive = 1.0;
-        // 欠 CP 时略抑制，避免巡航假喘
-        if (m_fPowerW < m_fCpW * 0.92)
-        {
-            float below = (m_fCpW - m_fPowerW) / m_fCpW;
-            if (below > 0.35)
-                below = 0.35;
-            excessDrive = excessDrive * (1.0 - below);
-        }
+        // 巡航带不计入超额：P < 1.12×CP 时视为可持续，避免 Walk/贴 CP 慢跑假喘
+        if (m_fPowerW < m_fCpW * 1.12)
+            excessDrive = 0.0;
 
         float empty = 1.0 - m_fWPrime01;
         float wPrimeStrain = empty * empty;

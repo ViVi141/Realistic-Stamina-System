@@ -1,0 +1,21 @@
+RSS v6.1.5 Change Notes
+=======================
+From 6.1.4 → 6.1.5 (config 6.1.5). Breath SFX + AI stamina default.
+Keep server & clients on the same mod build.
+
+[EN]
+• Breath sounds: re-enabled; Settings → RSS “Breath Sounds” is a local client
+  toggle (does not sync). Less false panting on easy Run (higher audible
+  threshold / excess ref; cruise band below 1.12×CP).
+• AI stamina calc off by default (Disable AI Stamina). Combat effects stay off.
+  Existing RealisticStaminaSystem.json is not overwritten.
+
+[中文]
+• 呼吸音：重新开启；设置 → RSS「Breath Sounds」为本机开关，不同步服务器。
+  收紧假喘（可闻门限 / 超额参考；P<1.12×CP 巡航不计超额）。
+• AI 体力计算默认关闭；实验性 AI 战斗效果仍默认关。
+  已有 RealisticStaminaSystem.json 不会被自动改写。
+
+Full log: CHANGELOG.md [6.1.5] / [6.1.4] / [6.1.3]
+
+Author: ViVi141 | License: AGPL-3.0

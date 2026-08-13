@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [6.1.5] - 2026-08-13
+
+### 表现 / 设置
+
+- **呼吸音** — 重新开启 `V6_BREATH_SOUND_ENABLED`；Settings → RSS 增加本机 **Breath Sounds** 开关（不经服务器）
+- **假喘** — 提高可闻门限与超额满幅参考；`P < 1.12×CP` 巡航带不计超额，避免一开跑就喘气
+- **AI 体力默认关** — `m_bDisableAIStaminaCalc` 默认 true；实验性 AI 战斗效果默认关
+- 配置版本 / ConfigManager → **6.1.5**
+
 ## [6.1.4] - 2026-08-09
 
 ### API / 文档

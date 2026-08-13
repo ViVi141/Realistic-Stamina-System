@@ -24,6 +24,13 @@ class SCR_RSS_SettingsDescriptions
             return true;
         }
 
+        if (widgetName == "ToggleBreathSound")
+        {
+            title = "Breath Sounds";
+            body = "Plays RSS exertion breathing (inhale/exhale) driven by the cardiorespiratory axis. Local client preference only; does not change stamina or server configuration. Off stops playback immediately.";
+            return true;
+        }
+
         if (widgetName == "ToggleServerHUD")
         {
             title = "HUD Server Default";
