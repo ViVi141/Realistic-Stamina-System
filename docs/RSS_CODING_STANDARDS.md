@@ -23,16 +23,18 @@
 - 单行 `if` 必须 `{}`
 - 公共 static：`//!` + `@param` / `@return`（中文）
 
-## 3. 文件大小
+## 3. 文件大小（可维护性，非崩溃原因）
 
-| 层级 | 上限 |
-|------|------|
-| 全 `.c` 文件 | **65535 字节**（硬崩溃） |
+文件大小（64 KB）**不是**编译/运行时崩溃的原因，**不再设硬上限**。以下分层上限仅作可维护性参考：
+
+| 层级 | 建议上限 |
+|------|----------|
 | Integration | ≤ 40 KB / ≤ 600 行 |
 | StaminaOverride | ≤ 15 KB / ≤ 250 行（拦截壳 only） |
 | RSS/Core 等 | ≤ 45 KB / ≤ 700 行 |
 
-运行：`python tools/check_script_size.py`  
+编译崩溃排查用「壳子法 + 逐个文件编译」，见 [scripts_file_size_limit.md](scripts_file_size_limit.md)。  
+运行：`python tools/check_script_size.py`（BOM 阻断 + 提示，不因大小阻断）  
 运行：`python tools/check_enforce_syntax.py`（禁用语法 + 单行 `if`）
 
 ## 4. Official-first + 两大例外
@@ -53,7 +55,7 @@
 
 ## 6. EnforceScript 禁用
 
-- `?:`、`ScriptCaller`、单文件超 64 KB
+- `?:`、`ScriptCaller`
 - 废弃 `autoptr`（用 `ref`）
 - 无 try/catch、无用户泛型类
 

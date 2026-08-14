@@ -52,17 +52,15 @@ class SCR_RSS_RainWetWeight
                 }
 
                 float elapsed = currentTime - rainStopTime;
-                float duration = SCR_RSS_EnvConstants.ENV_RAIN_WEIGHT_DURATION;
-                if (elapsed >= duration)
+                // 指数干燥：蒸发率 ∝ 剩余水分（线性衰减不物理，故弃用 ENV_RAIN_WEIGHT_DURATION）
+                float decayRate = SCR_RSS_EnvConstants.ENV_RAIN_WEIGHT_DECAY_RATE;
+                rainWeight = rainPeakWeight * Math.Pow(2.718281828459045, -decayRate * elapsed);
+                if (rainWeight < 0.1)
                 {
                     rainWeight = 0.0;
                     rainStopTime = -1.0;
                     rainPeakWeight = 0.0;
                     lastRainIntensity = 0.0;
-                }
-                else
-                {
-                    rainWeight = rainPeakWeight * (1.0 - elapsed / duration);
                 }
             }
         }

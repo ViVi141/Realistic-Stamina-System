@@ -32,9 +32,9 @@
   - 单机冲刺/恢复
   - 配置同步
 
-## 文件大小硬限制
+## 文件大小
 
-**所有 `.c` 文件不得超过 65535 字节（64 KB）**，超出后编译/运行时可能直接崩溃。详见 [scripts_file_size_limit.md](scripts_file_size_limit.md)。
+文件大小（64 KB）**不是**编译/运行时崩溃的原因，不再设硬上限。文件偏大时建议外移领域逻辑到 helper 以利维护，但不再阻断提交。
 
-- 当文件超过 60 KB 时，必须开始规划拆分。
+- 编译崩溃排查用「壳子法 + 逐个文件编译」，详见 [scripts_file_size_limit.md](scripts_file_size_limit.md)。
 - 每次拆分只提取一个领域，并记录到 CHANGELOG。

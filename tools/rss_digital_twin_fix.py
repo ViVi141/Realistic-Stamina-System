@@ -241,6 +241,7 @@ class RSSConstants:
     W_PRIME_MAX_JOULES = 20000.0
     W_PRIME_RECOVERY_W_PER_S = 12.0
     SPRINT_POWER_CAP_WATTS = 2400.0
+    W_PRIME_RECOVERY_MODE = 0.0
 
     def __init__(self, **kwargs):
         # 构建 lowercase -> uppercase 映射（优化器传 lowercase，类属性是 uppercase）
@@ -379,8 +380,8 @@ class EnvironmentFactor:
         return base_drain + extra_per_tick
 
     def get_heat_stress_multiplier(self, indoor: bool = False) -> float:
-        """与 SCR_EnvironmentFactor.GetHeatStressMultiplier 一致（26°C 起算，每 +1°C +2%）。"""
-        threshold = 26.0
+        """与 SCR_EnvironmentFactor.GetHeatStressMultiplier 一致（热中性上界 27°C 起算，每 +1°C +2%）。"""
+        threshold = 27.0
         temp = self.temperature
         if temp < threshold:
             mult = 1.0
@@ -490,10 +491,13 @@ class RSSDigitalTwin:
             self.constants, 'W_PRIME_MAX_JOULES', V6_W_PRIME_MAX_JOULES_DEFAULT)
         sprint_cap = getattr(
             self.constants, 'SPRINT_POWER_CAP_WATTS', V6_SPRINT_POWER_CAP_WATTS_DEFAULT)
+        w_prime_mode = getattr(
+            self.constants, 'W_PRIME_RECOVERY_MODE', 0.0)
         self.v6_cp_state = V6CriticalPowerState(
             cp0=self._critical_power_watts(),
             w_prime_max=float(w_prime_max),
-            sprint_power_cap=float(sprint_cap))
+            sprint_power_cap=float(sprint_cap),
+            w_prime_recovery_mode=float(w_prime_mode))
 
     def _critical_power_watts(self) -> float:
         cp0 = getattr(self.constants, 'CRITICAL_POWER_WATTS', 0.0)
@@ -2483,10 +2487,13 @@ V6_SPRINT_WPRIME_STA_RELIEF = 1.0
 LOADED_RUN_DRAIN_START_KG = 12.0
 LOADED_RUN_DRAIN_REF_KG = 30.0
 LOADED_RUN_DRAIN_MAX_MULT = 4.5
+LOADED_GAIT_TAX_ENABLED = 1.0
 
 
 def loaded_gait_stamina_drain_multiplier(load_weight_kg: float, movement_phase: int) -> float:
     """与 SCR_RSS_MetabolismModel.GetLoadedGaitStaminaDrainMultiplier 同形。"""
+    if LOADED_GAIT_TAX_ENABLED < 0.5:
+        return 1.0
     if movement_phase < 2:
         return 1.0
     if load_weight_kg <= LOADED_RUN_DRAIN_START_KG:
@@ -2501,10 +2508,9 @@ def loaded_gait_stamina_drain_multiplier(load_weight_kg: float, movement_phase: 
 
 V6_FATIGUE_I_MAX = 1.0
 V6_FATIGUE_K_RECOVERY = 0.0008
-V6_FATIGUE_K_LOAD = 0.15
 V6_FATIGUE_K_SLOPE = 8.0
-V6_FATIGUE_K_TERRAIN = 0.25
-V6_MAX_FATIGUE_PENALTY = 0.3
+# 注意：K_LOAD / K_TERRAIN / MAX_FATIGUE_PENALTY 已在上方定义（对齐 C 的 0.10/0.18/0.2），
+# 此处不再重复定义，避免覆盖漂移（审计 2.4）。
 RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1
 V6_CP_ENV_FLOOR = 0.55
 V6_STANDING_REST_WATTS = 100.0
@@ -2855,10 +2861,12 @@ class V6CriticalPowerState:
 
     def __init__(self, cp0: float = V6_CRITICAL_POWER_WATTS_DEFAULT,
                  w_prime_max: float = V6_W_PRIME_MAX_JOULES_DEFAULT,
-                 sprint_power_cap: float = V6_SPRINT_POWER_CAP_WATTS_DEFAULT):
+                 sprint_power_cap: float = V6_SPRINT_POWER_CAP_WATTS_DEFAULT,
+                 w_prime_recovery_mode: float = 0.0):
         self.cp0 = cp0
         self.w_prime_max_joules = w_prime_max
         self.sprint_power_cap_watts = sprint_power_cap
+        self.w_prime_recovery_mode = w_prime_recovery_mode
         self.reset_to_full()
 
         # 上下文（SetRuntimeContext）
@@ -2926,7 +2934,7 @@ class V6CriticalPowerState:
 
     # ── Skiba vs 线性恢复判断 ──
     def _uses_skiba_recovery(self) -> bool:
-        return self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W
+        return self.w_prime_recovery_mode < 0.5
 
     # ── 欠 CP 深度：P→0 满速，P→(CP−margin) → floor（与 C 同形）──
     def _compute_under_cp_recovery_depth01(self, power_watts: float, cp: float) -> float:

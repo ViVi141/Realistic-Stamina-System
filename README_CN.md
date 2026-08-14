@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.1.5
+# Realistic Stamina System (RSS) v6.1.7
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.1.5-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.1.7-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.5**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.1.7**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -224,6 +224,25 @@ Realistic-Stamina-System/
     └── README.md
 ```
 
+
+## v6.1.7 版本更新 / v6.1.7 Updates
+
+**2026-08-14**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.1.7]**）
+
+- **三档预设重新调优** — 修复孪生后重跑 optimize-tiers + repair-tiers，三档 CP/W′/sprint_cap 重新标定（Elite CP 889.7→907.8 等）
+- **W′ 耗尽限速** — 启用 CP 巡航限速（`V6_APPLY_CP_METABOLIC_SPEED_CAP`）+ 绝对速度限速（`V6_TRY_MOVEMENT_MAX_SPEED`）
+- **已知限制** — 滚轮可绕过最大速度层超速（引擎限制，可接受）
+- 配置版本 **6.1.7**
+
+## v6.1.6 版本更新 / v6.1.6 Updates
+
+**2026-08-14**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.1.6]**）
+
+- **数学审计修复** — Skiba/线性 W′ 恢复按档位显式分派（Standard/Tactical 线性恢复生效）；权威文档 §1–§7 对齐代码
+- **常量收敛** — Custom 档 energy_coeff 消除 300× 漂移；sprint_power_cap 对齐；ConfigBridge fallback 统一引用
+- **环境拟真** — 热应激统一热中性带 [18,27]°C；雨衰改指数；游泳去垂直双重计入
+- **EPOC / 步态税** — EPOC 采样/结算 CP 统一（动态 CP）；负重步态税加开关
+- 配置版本 **6.1.6**
 
 ## v6.1.5 版本更新 / v6.1.5 Updates
 
@@ -1060,7 +1079,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.1.5** (当前版本) - 呼吸音开关 / 假喘收紧 / AI 体力默认关（见上文 v6.1.5 与 CHANGELOG）
+- **v6.1.7** (当前版本) - 三档预设重调优 / W′ 耗尽限速（见上文 v6.1.7 与 CHANGELOG）
 - **v6.1.4** - 外部 API W′ 焦耳字段 + 文档双语/开发者指南（见上文 v6.1.4 与 CHANGELOG）
 - **v6.1.3** - 移除 CPR 等体力组件重开兼容层（见上文 v6.1.3 与 CHANGELOG）
 - **v6.1.2** - W′→引擎 STA/Exhaustion 表现 + 呼吸音默认关（见上文 v6.1.2 与 CHANGELOG）

@@ -2,7 +2,7 @@
 // 从 SCR_StaminaConstants.c 拆分出所有通过 SCR_RSS_ConfigManager 动态获取配置的方法
 // 保留在 SCR_RSS_Constants 中的仅为 static const 常量和简单返回常量的 getter
 //
-// 拆分原因：SCR_StaminaConstants.c 超过 EnforceScript 65535 字节编译限制
+// 拆分原因：从 SCR_StaminaConstants.c 拆出，便于维护与逐个文件编译排查
 // 日期：2026-05-08
 
 class SCR_RSS_ConfigBridge
@@ -25,7 +25,7 @@ class SCR_RSS_ConfigBridge
                 return Math.Max(coeff, ENERGY_TO_STAMINA_COEFF_MIN);
             }
         }
-        return 9.5e-07; // Hardcore fallback (2026-05，原7.17e-07)
+        return SCR_RSS_Constants.ENERGY_TO_STAMINA_COEFF; // Hardcore fallback
     }
     
     // 获取基础恢复率（从配置管理器）
@@ -38,7 +38,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.base_recovery_rate;
         }
-        return 0.00010; // Hardcore fallback (2026-05，原0.000153)
+        return SCR_RSS_Constants.BASE_RECOVERY_RATE; // Hardcore fallback
     }
     
     // 获取站姿恢复倍数（从配置管理器）
@@ -51,7 +51,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.standing_recovery_multiplier;
         }
-        return 0.85; // Hardcore fallback (2026-05，原1.103)
+        return SCR_RSS_Constants.STANDING_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
     
     // 获取蹲姿恢复倍数（从配置管理器）
@@ -64,7 +64,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.crouching_recovery_multiplier;
         }
-        return 1.6; // Hardcore fallback (2026-05，原1.5)
+        return SCR_RSS_Constants.CROUCHING_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
 
     // 获取趴姿恢复倍数（从配置管理器）
@@ -77,7 +77,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.prone_recovery_multiplier;
         }
-        return 1.9; // Hardcore fallback (2026-05，原2.344)
+        return SCR_RSS_Constants.PRONE_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
     
     // 获取负重恢复惩罚系数（从配置管理器）
@@ -90,7 +90,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.load_recovery_penalty_coeff;
         }
-        return 0.0002; // Hardcore fallback (2026-05，原5.4e-05)
+        return SCR_RSS_Constants.LOAD_RECOVERY_PENALTY_COEFF; // Hardcore fallback
     }
     
     // 获取负重恢复惩罚指数（从配置管理器）
@@ -103,7 +103,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.load_recovery_penalty_exponent;
         }
-        return 2.0; // 负重恢复惩罚指数（平方关系，不变）
+        return SCR_RSS_Constants.LOAD_RECOVERY_PENALTY_EXPONENT; // 平方关系
     }
     
     // 获取负重速度惩罚系数（从配置管理器）
@@ -261,7 +261,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.fast_recovery_multiplier;
         }
-        return 1.6; // Hardcore fallback (2026-05，原2.395)
+        return SCR_RSS_Constants.FAST_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
 
     // 获取中等恢复倍数（从配置管理器）
@@ -274,7 +274,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.medium_recovery_multiplier;
         }
-        return 1.0; // Hardcore fallback (2026-05，原1.137)
+        return SCR_RSS_Constants.MEDIUM_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
 
     // 获取慢速恢复倍数（从配置管理器）
@@ -287,7 +287,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.slow_recovery_multiplier;
         }
-        return 0.35; // Hardcore fallback (2026-05，原0.476)
+        return SCR_RSS_Constants.SLOW_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
 
     // 获取最低体力阈值（从配置管理器）
@@ -300,7 +300,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return Math.Clamp(params.min_recovery_stamina_threshold, 0.0, 0.5);
         }
-        return 0.2; // 回退到硬编码默认值 0.2
+        return SCR_RSS_Constants.MIN_RECOVERY_STAMINA_THRESHOLD; // 回退默认值
     }
 
     // 获取最低体力时所需静止时间（从配置管理器）
@@ -313,7 +313,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return Math.Max(params.min_recovery_rest_time_seconds, 0.0);
         }
-        return 5.0; // Hardcore fallback (2026-05，原3.0s)
+        return SCR_RSS_Constants.MIN_RECOVERY_REST_TIME_SECONDS; // Hardcore fallback
     }
 
     // ==================== Sprint参数配置方法 ====================
@@ -392,7 +392,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.marginal_decay_threshold;
         }
-        return 0.8; // 默认值（80%体力）
+        return SCR_RSS_Constants.MARGINAL_DECAY_THRESHOLD; // 默认值
     }
 
     // 获取边际效应衰减系数（从配置管理器）
@@ -405,7 +405,7 @@ class SCR_RSS_ConfigBridge
             if (params)
                 return params.marginal_decay_coeff;
         }
-        return 1.1; // 默认值
+        return SCR_RSS_Constants.MARGINAL_DECAY_COEFF; // 默认值
     }
 
     // ==================== 动作消耗参数配置方法 ====================
@@ -980,6 +980,23 @@ class SCR_RSS_ConfigBridge
                 return params.sprint_power_cap_watts;
         }
         return SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT;
+    }
+
+    //! W′ 恢复模式：0 = Skiba 双指数（Elite），1 = 线性 w_prime_recovery_w_per_s
+    static int GetWPrimeRecoveryMode()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (settings)
+        {
+            SCR_RSS_Params params = settings.GetActiveParams();
+            if (params)
+            {
+                if (params.w_prime_recovery_mode > 0.5)
+                    return 1;
+                return 0;
+            }
+        }
+        return 0;
     }
 
 }

@@ -1,6 +1,6 @@
 // 载具体力恢复辅助模块
 // 从 PlayerBase.c 拆分，处理载具内的体力恢复逻辑
-// 拆分原因：PlayerBase.c 超过 EnforceScript 65535 字节编译限制
+// 拆分原因：从 PlayerBase.c 拆出，便于维护与逐个文件编译排查
 // 日期：2026-05-08
 
 class SCR_PlayerBaseVehicleHelper

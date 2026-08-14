@@ -42,7 +42,7 @@ impl EnvironmentFactor {
     }
 
     pub fn get_heat_stress_multiplier(&self, indoor: bool) -> f64 {
-        let threshold = 26.0;
+        let threshold = 27.0;
         let mut mult = if self.temperature < threshold {
             1.0
         } else {

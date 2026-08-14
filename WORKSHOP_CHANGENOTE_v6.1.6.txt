@@ -1,0 +1,33 @@
+RSS v6.1.6 Change Notes
+=======================
+From 6.1.5 → 6.1.6 (config 6.1.6). Math-model audit fixes + constants convergence + env realism.
+Keep server & clients on the same mod build.
+
+[EN]
+• W′ recovery dispatch: now per-preset (Elite = Skiba biexponential; Standard /
+  Tactical = linear). Previously all presets used Skiba, so Standard/Tactical
+  linear recovery was dead code.
+• Constants convergence: Custom preset energy_to_stamina_coeff had a ~300× drift
+  vs tuned presets — now aligned to Standard; sprint_power_cap aligned.
+• Environment realism: unified heat-stress thermoneutral band [18,27]°C; rain wet
+  weight now decays exponentially (drying); swimming horizontal drag no longer
+  double-counts vertical velocity.
+• EPOC uses dynamic CP on both sampling and settlement; loaded-gait stamina tax
+  gained an enable switch (V6_LOADED_GAIT_TAX_ENABLED).
+• Authoritative math docs §1–§7 re-aligned to actual code/baked values (CN+EN).
+  Existing RealisticStaminaSystem.json is not overwritten.
+
+[中文]
+• W′ 恢复分派：改为按档位（Elite=Skiba 双指数；Standard/Tactical=线性）。
+  此前三档全走 Skiba，Standard/Tactical 的线性恢复是死代码。
+• 常量收敛：Custom 档 energy_to_stamina_coeff 曾比调校档漂移约 300 倍，现对齐
+  Standard；sprint_power_cap 对齐。
+• 环境拟真：热应激统一热中性带 [18,27]°C；降雨湿重改指数衰减（干燥）；游泳水平
+  阻力不再重复计入垂直速度。
+• EPOC 采样与结算统一用动态 CP；负重步态税新增开关（V6_LOADED_GAIT_TAX_ENABLED）。
+• 权威数学文档 §1–§7 对齐实际代码/烘焙值（中英）。
+  已有 RealisticStaminaSystem.json 不会被自动改写。
+
+Full log: CHANGELOG.md [6.1.6] / [6.1.5] / [6.1.4]
+
+Author: ViVi141 | License: AGPL-3.0

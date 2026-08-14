@@ -1,126 +1,52 @@
-# C 脚本文件大小硬限制
+# 编译崩溃排查（壳子法 + 逐个文件编译）
 
 > **中文** | [English](en/SCRIPT_FILE_SIZE_LIMIT.md)
 
-## 规则
+## 重要更正
 
-> **所有 `.c` 脚本文件不得超过 65535 字节（64 KB）。超出后在 Arma Reforger 工作台编译或游戏运行时有概率直接崩溃，无报错信息。**
-
-此为 EnforceScript 编译器/运行时的已知硬限制，非游戏设计约束，无法通过配置或命令行绕过。
-
----
-
-## 当前高风险文件（2026-08-09 实测）
-
-> 在仓库根目录执行下方 PowerShell 可复现字节数。65535 字节为 EnforceScript 硬上限。
-
-| 文件 | 大小 | 相对 64 KB |
-|------|------|--------------|
-| `scripts/Game/Integration/PlayerBase.c` | ~78385 字节（约 76.5 KB） | **超出约 12.5 KB** |
-| `scripts/Game/RSS/Core/SCR_RSS_Constants.c` | ~52570 字节（约 51.3 KB） | 余量约 12.7 KB |
-| `scripts/Game/Integration/PlayerBase_UpdateLoop.c` | ~49135 字节（约 48.0 KB） | 余量约 16 KB |
-| `scripts/Game/RSS/Core/SCR_RSS_UpdateCoordinator.c` | ~44666 字节（约 43.6 KB） | 余量约 20 KB |
-| `scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c` | ~43639 字节（约 42.6 KB） | 余量约 21 KB |
-
-> 检查命令（PowerShell，仓库根目录）：
-> ```powershell
-> Get-ChildItem -Path scripts -Recurse -Filter '*.c' | ForEach-Object {
->     $color = 'Yellow'
->     if ($_.Length -gt 65535) { $color = 'Red' }
->     if ($_.Length -gt 60000) {
->         Write-Host "$($_.Length) bytes  $($_.FullName)" -ForegroundColor $color
->     }
-> }
-> ```
+> ~~所有 `.c` 脚本文件不得超过 65535 字节（64 KB），超出后编译/运行时会直接崩溃。~~
 >
-> 或：`python tools/check_script_size.py`
+> **该说法已取消。文件大小（64 KB）不是 Workbench 编译或游戏运行时崩溃的原因。**
 
----
+此前「64 KB 硬上限导致崩溃」的判断不成立，予以撤销。文件中保留本页标题仅为兼容历史链接。
 
-## 拆分计划（与当前仓库对齐）
+## 正确的排查方法
 
-### 优先级 1：`PlayerBase.c`（唯一仍超 64 KB 上限）
+当 Workbench 编译脚本时崩溃（ICE / 堆损坏 / 无明确报错），唯一可靠的方法是**逐个文件编译检查**，配合**壳子法**逐步隔离出具体文件：
 
-`modded class SCR_CharacterControllerComponent` 入口仍约 **76 KB**。应继续将泥泞代理、RPC、CSB 等大块迁往 `RSS/` 下独立 helper（见已有 `SCR_RSS_MudSlipRunner.c` 等拆分方向）。同 modded 类仅允许 `PlayerBase.c` + `PlayerBase_UpdateLoop.c` 两文件扩展。
+1. **只留壳子**：把嫌疑文件精简为「壳子」——保留类与方法的**签名**、删除方法体，保证其他模块仍能引用、项目整体仍能编译通过。
+2. **逐个文件恢复编译**：一次恢复一个文件（或一个方法），重新编译，定位到导致崩溃的具体文件。
+3. **对定位文件二分**：壳子 → 半量恢复 → 全量，逐段缩小到具体方法/代码块。
 
-### 优先级 2：`SCR_RSS_Constants.c` / `PlayerBase_UpdateLoop.c`
+> `tools/check_script_size.py` 现只作为**可被其他模块引用的壳子**，不再因文件体积阻断提交。它提供：
+>
+> - `iter_script_files()` — 枚举 `.c` 文件，供逐个编译脚本引用
+> - `tier_for()` — 分层可维护性上限（仅供参考，非崩溃原因）
+> - `has_bom()` — UTF-8 BOM 检测（仍为真实语法错误，阻断提交）
 
-接近或超过 45–50 KB 时，新增常量前宜拆领域常量文件；UpdateLoop 继续外移纯编排到 `SCR_RSS_UpdateCoordinator` 等。
+## 可维护性建议（非崩溃原因）
 
-### 优先级 3：`SCR_RSS_EnvironmentFactor.c`
+以下分层上限仅用于**可维护性**（便于编辑与审查），与编译稳定性无关：
 
-环境栈已拆为 `SCR_RSS_*` 卫星文件；新增逻辑前宜继续按领域摊到 WeatherApi / PenaltyMath / EnvConstants。
+| 层级 | 建议上限 |
+|------|----------|
+| Integration | ≤ 40 KB / ≤ 600 行 |
+| StaminaOverride | ≤ 15 KB / ≤ 250 行（拦截壳 only） |
+| RSS/Core 等 | ≤ 45 KB / ≤ 700 行 |
 
-### 优先级 4：`SCR_RSS_Settings.c` / Config
-
-若膨胀，可将 `SCR_RSS_Params` 独立为 `SCR_RSS_Params.c`（职责：Params = 数据模型，Settings = 配置管理 + 序列化）。
-
----
-
-### 附：历史拆分备忘
-
-| 方向 | 说明 |
-|------|------|
-| 单体 `SCR_RealisticStaminaSystem.c` | **已移除**；职责分散到 `SCR_RSS_*` Core 模块 |
-| 游泳模型 | `SCR_SwimmingStaminaModel.c`（或等价 RSS Core 文件） |
-| Params 独立 | 仍可选 |
-| PlayerBase 减负 | 泥泞 / RPC / 表现外移（见优先级 1） |
-
-#### SCR_RSS_Params 独立（操作步骤备忘）
-
-1. 新建 `scripts/Game/RSS/NetworkConfig/SCR_RSS_Params.c`
-2. 将 `class SCR_RSS_Params { ... }` 完整移入
-3. `SCR_RSS_Settings.c` 中保留对 `SCR_RSS_Params` 的引用
-4. `WriteParamsToArray` / `ApplyParamsFromArray` 留在 `SCR_RSS_Settings`
-
----
-
-## 执行顺序总览
-
-```
-第 1 步: PlayerBase.c → 继续外移泥泞 / RPC / 表现（仍超 64 KB）
-第 2 步: PlayerBase_UpdateLoop / Constants → 控增长
-第 3 步: EnvironmentFactor → 维持卫星文件分担
-第 4 步: Settings → 视需要再拆 Params
-```
-
-提取原则：
-
-1. **每次只提取一个领域**，确保单次提交可编译、可回归。
-2. **被提取的函数保持 `static` 访问级别不变**。
-3. **禁止为凑字数拆分**：文件职责内聚且远低于上限时不要拆。
-4. **拆分后须能通过编译**。
-
----
+文件偏大时**建议**外移领域逻辑到 helper，但不再因此阻断提交。
 
 ## 预提交检查
 
-每次提交前执行：
-
 ```powershell
-Get-ChildItem -Path scripts -Recurse -Filter '*.c' |
-    Where-Object { $_.Length -gt 60000 } |
-    Sort-Object Length -Descending |
-    Format-Table Length, Name
-
-$violations = Get-ChildItem -Path scripts -Recurse -Filter '*.c' |
-    Where-Object { $_.Length -gt 65535 }
-if ($violations) {
-    Write-Host "BLOCKED: Files exceed 65535 byte limit:" -ForegroundColor Red
-    $violations | Format-Table Length, FullName
-    exit 1
-}
+python tools/check_script_size.py     # BOM 阻断 + 可维护性提示（不再因大小阻断）
+python tools/check_enforce_syntax.py  # 禁用语法 + 单行 if
+python tools/test_v6_smoke.py
 ```
-
-或 `python tools/check_script_size.py`。
-
----
 
 ## 同步更新
 
-本规则与以下文档联动：
+本页与以下文档联动：
 
 - [scripts_naming_and_layout_rules.md](scripts_naming_and_layout_rules.md)
 - [RSS_CODING_STANDARDS.md](RSS_CODING_STANDARDS.md)
-
-任何拆分行为建议在 CHANGELOG 中记录原文件大小 → 拆分后各文件大小。

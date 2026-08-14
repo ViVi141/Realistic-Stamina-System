@@ -42,5 +42,8 @@ desktop.ini
 *.tmp
 *.temp
 
+# embed_json_to_c backup artifacts
+*.backup
+
 # Rust build artifacts
 tools/rust_pipeline_v6/target/

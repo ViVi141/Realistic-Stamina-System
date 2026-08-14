@@ -73,7 +73,7 @@ PlayerBase_UpdateLoop
 细则以 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md) 为准，摘要：
 
 1. **禁止** EnforceScript 三元 `?:`；单行 `if` 必须 `{}`。
-2. **单文件 ≤ 65535 字节**；`PlayerBase.c` 已超上限，只做外移、禁止再堆逻辑。
+2. **文件大小非崩溃原因**（不设 64 KB 硬上限）；`PlayerBase.c` 偏大，宜继续外移、勿再堆逻辑。
 3. **Integration 薄壳**：公式放 `RSS/Core/` 等；勿在 `PlayerBase` 内联 Pandolf。
 4. 限速只走 **`SCR_RSS_SpeedBridge` → `SetSpeedLimit`**，勿单独 `OverrideMaxSpeed` 盖掉灌木减速。
 5. **有氧权威**在 `m_fTargetStamina`；W′ **不改**有氧权威；表现可用 `ApplyTransientEngineStamina`。
@@ -130,7 +130,7 @@ Workbench：编译本 addon → 单机冲刺/恢复 →（若动配置）看服�
 | 中文 | English | 用途 |
 |------|---------|------|
 | [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md) | [`en/CODING_STANDARDS.md`](en/CODING_STANDARDS.md) | 编码权威 |
-| [`scripts_file_size_limit.md`](scripts_file_size_limit.md) | [`en/SCRIPT_FILE_SIZE_LIMIT.md`](en/SCRIPT_FILE_SIZE_LIMIT.md) | 64 KB 硬限与拆分 |
+| [`scripts_file_size_limit.md`](scripts_file_size_limit.md) | [`en/SCRIPT_FILE_SIZE_LIMIT.md`](en/SCRIPT_FILE_SIZE_LIMIT.md) | 编译崩溃排查（壳子法） |
 | [`RSS_v6_计算逻辑权威版.md`](RSS_v6_计算逻辑权威版.md) | [`en/V6_CALCULATION_LOGIC.md`](en/V6_CALCULATION_LOGIC.md) | 数学权威 |
 | [`engine_api_usage.md`](engine_api_usage.md) | [`en/ENGINE_API_USAGE.md`](en/ENGINE_API_USAGE.md) | 引擎 API 清单 |
 | [`RSS_已知问题_限速与滑步.md`](RSS_已知问题_限速与滑步.md) | [`en/KNOWN_ISSUES_SPEED_SLIP.md`](en/KNOWN_ISSUES_SPEED_SLIP.md) | 限速/滑步已知约束 |

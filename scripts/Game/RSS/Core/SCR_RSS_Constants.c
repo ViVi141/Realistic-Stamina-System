@@ -558,7 +558,8 @@ class SCR_RSS_Constants
     //! true：对物理水平速度做硬/软钳（ClampOwnerHorizontalSpeed）。false：只靠 SetSpeedLimit（接近 v3.23.1）。
     static const bool V6_APPLY_HORIZONTAL_SPEED_CLAMP = false;
     //! true：W′ 解除武装后若 v_meas≫v_limit，强制软/硬钳物理速度。
-    //! false（默认）：不与引擎抢位移；透支只扣 STA/W′（见 V6_APPLY_CP_METABOLIC_SPEED_CAP）。
+    //! false（2026-08-14 回退）：物理钳与引擎移动系统每帧互殴 → v_meas 在 3.1↔1.2 间 Bang-Bang 振荡（滑步）。
+    //!   根治须走「动态速度覆盖」（SetDynamicSpeed + SetShouldApplyDynamicSpeedOverride）锁滚轮，非事后钳物理。
     static const bool V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false;
     //! 超过限速多少 m/s 才触发上项纠偏
     static const float V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15;
@@ -574,8 +575,9 @@ class SCR_RSS_Constants
     //! 代谢/CP 反解用坡度绝对值上限（%）。更陡只记账展示，不继续把巡航顶拧成爬行。
     static const float V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
-    //! false（默认）：不精确伺服速度；P>CP 时武装烧 W′、解除武装加 STA 透支税。
-    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = false;
+    //! true（2026-08-14 启用）：W′ 耗尽后经 SetSpeedLimit 压 CP 巡航指令速度（正常移动正确限速）。
+    //!   已知限制：滚轮(SetDynamicSpeed)能绕过最大速度层超速（引擎限制，可接受）；勿开物理钳（振荡）或动态速度覆盖（锁死）。
+    static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
     //! true：步态目标用 March 档（Walk/Run/Sprint ≈ 1.4/2.8/4.5，可经预设改）。
     //! false：步态目标用引擎空载顶（Walk/Run/Sprint ≈ 1.45/3.8/5.5），仍乘负重与坡度。
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
@@ -586,8 +588,9 @@ class SCR_RSS_Constants
     //! 实时读数相对「一次解限标定」低于此比例时，视为被限速污染，回退标定缓存。
     static const float V6_ENGINE_TOP_LIVE_MIN_RATIO = 0.90;
     //! true：试跑 CharacterMovementComponent.SetMovementMaxSpeed(绝对 m/s)，与 SetSpeedLimit 并行。
+    //! true（2026-08-14 启用）：压移动组件真实最大速度，配合 CP 巡航限速（正常移动正确限速）。
     //! 单位若非 m/s 或导致滑步/锁死，改 false。销毁/关限速时恢复原生 GetMovementMaxSpeed。
-    static const bool V6_TRY_MOVEMENT_MAX_SPEED = false;
+    static const bool V6_TRY_MOVEMENT_MAX_SPEED = true;
     //! 引擎 Walk 顶速回退（m/s）；与实机空载 Walk 顶接近
     static const float ENGINE_WALK_TOP_MS = 1.45;
     //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。
@@ -655,8 +658,7 @@ class SCR_RSS_Constants
     static const float V6_CP_FATIGUE_K = 0.18;
     static const float V6_CP_ENV_FLOOR = 0.55;
 
-    // Skiba W′ 双指数再填充（CP ≤ 此阈值启用；代谢尺度 CP≈700–850 仍走 Skiba）
-    static const float V6_SKIBA_ELITE_CP_THRESHOLD_W = 2000.0;
+    // Skiba W′ 双指数再填充（分派已改为按档位 w_prime_recovery_mode，见 CriticalPowerModel.UsesSkibaRecovery）
     static const float V6_W_PRIME_K_FAST = 0.15;
     //! 慢相：约 3–4 min（深度=1）从半池补到接近满池
     static const float V6_W_PRIME_K_SLOW = 0.010;
@@ -763,4 +765,5 @@ class SCR_RSS_Constants
     static const float LOADED_RUN_DRAIN_START_KG = 12.0;
     static const float LOADED_RUN_DRAIN_REF_KG = 30.0;
     static const float LOADED_RUN_DRAIN_MAX_MULT = 4.5;
+    static const float V6_LOADED_GAIT_TAX_ENABLED = 1.0; // 0.0 = 关闭负重步态税（仅靠质量进功率）；1.0 = 启用
 }

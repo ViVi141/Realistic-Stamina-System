@@ -24,8 +24,8 @@ class SCR_RSS_EnvironmentFactor
     protected static int s_iSignalWetness       = -1; // ERSS_EnvSignal.WETNESS
     
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
-    protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于线性湿重衰减）
-    protected float m_fRainPeakWeight = 0.0; // 停雨瞬间的湿重峰值（kg），供线性衰减基准
+    protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于指数湿重衰减）
+    protected float m_fRainPeakWeight = 0.0; // 停雨瞬间的湿重峰值（kg），供指数衰减基准
     protected TimeAndWeatherManagerEntity m_pCachedWeatherManager; // 缓存的天气管理器引用
     protected float m_fLastRainIntensity = 0.0; // 上次检测到的降雨强度（用于衰减计算）
     protected IEntity m_pCachedOwner; // 缓存的角色实体引用（用于室内检测）
@@ -737,7 +737,7 @@ class SCR_RSS_EnvironmentFactor
     }
 
     // 优先尝试使用 GetRainIntensity() API，如果没有则回退到字符串匹配
-    // 停止降雨后，湿重使用二次方衰减（更自然的蒸发过程）
+    // 停止降雨后，湿重使用指数衰减（蒸发率 ∝ 剩余水分）
     
     void ForceUpdate(float currentTime, IEntity owner = null, float swimmingWetWeight = 0.0)
     {
@@ -987,7 +987,7 @@ class SCR_RSS_EnvironmentFactor
         return ReadSignalWetness();
     }
     
-    // 降雨中：按强度非线性累积；停雨后：60秒线性衰减至0
+    // 降雨中：按强度非线性累积；停雨后：指数衰减（τ≈60s，湿重<0.1kg 归零）
     protected void CalculateRainWetWeight(float currentTime)
     {
         float rainWeight = m_fCachedRainWeight;

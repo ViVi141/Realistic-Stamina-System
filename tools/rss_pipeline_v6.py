@@ -80,6 +80,7 @@ V6_DEFAULTS = {
     "w_prime_max_joules": 20000.0,
     "w_prime_recovery_w_per_s": 12.0,
     "sprint_power_cap_watts": 2400.0,
+    "w_prime_recovery_mode": 0.0,
     "v5_walk_speed_ms": 1.4,
     "v5_run_speed_ms": 3.20,
     "v5_sprint_speed_ms": 4.5,
@@ -112,6 +113,14 @@ TIER_PHILOSOPHY = {
     "EliteStandard": "低 combat_ease + 低 recovery_ease → 最拟真/最硬核",
     "StandardMilsim": "战斗/恢复折中 → 拟真与可玩性平衡",
     "TacticalAction": "高 combat_ease + 高 recovery_ease → 战斗最宽容",
+}
+
+# W′ 恢复模式按档位固定：Elite=Skiba(0)，Standard/Tactical=线性(1)。
+# 该字段是离散分派（不进 NSGA 搜索空间），导出时按档位固定，避免被 V6_DEFAULTS 重置为 0。
+W_PRIME_RECOVERY_MODE_BY_TIER = {
+    "EliteStandard": 0.0,
+    "StandardMilsim": 1.0,
+    "TacticalAction": 1.0,
 }
 
 NUM_MO_OBJECTIVES = 5
@@ -1164,6 +1173,8 @@ def _refresh_preset_metrics(params: Dict, fast_mode: bool = False) -> Dict:
 def _write_preset_export(preset_name: str, export: Dict, out_path: Path) -> None:
     export = dict(export)
     export["_philosophy"] = TIER_PHILOSOPHY[preset_name]
+    if preset_name in W_PRIME_RECOVERY_MODE_BY_TIER:
+        export["w_prime_recovery_mode"] = W_PRIME_RECOVERY_MODE_BY_TIER[preset_name]
     slug = preset_name.lower()
     v6_path = out_path / f"optimized_rss_config_{slug}_v6.json"
     with v6_path.open("w", encoding="utf-8") as f:
@@ -1342,6 +1353,8 @@ def _write_preset_pair(
     v6_export = {k: merged[k] for k in HARDCORE_PARAM_REFS if k in merged}
     for k in V6_DEFAULTS:
         v6_export[k] = params[k]
+    if preset_name in W_PRIME_RECOVERY_MODE_BY_TIER:
+        v6_export["w_prime_recovery_mode"] = W_PRIME_RECOVERY_MODE_BY_TIER[preset_name]
     v6_export["_metrics_v6"] = {
         "sustain_ease": metrics[0],
         "mobility_ease": metrics[1],

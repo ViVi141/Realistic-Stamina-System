@@ -2,15 +2,16 @@
 
 > **中文** | [English](en/V6_CALCULATION_LOGIC.md)
 >
-> **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-09）  
+> **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-14 审计对齐）  
 > 取代 v5 及更早文档中「意志力平台期 / Givoni / 旧模块名」描述。以本文件与源码为准。  
+> ⚠️ 2026-08-14 数学审计：§1–§7 已按实际代码/烘焙值修正；历史漂移记录见 [RSS_数学模型审计_2026-08-14.md](RSS_数学模型审计_2026-08-14.md)。  
 > **6.1.x 限速默认**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（drain-only：代谢超额扣 STA/W′，默认不压 CP 巡航 `SetSpeedLimit`）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
 
 ---
 
 ## 1. 北极星闭环
 
-每 **17 ms** tick：
+每 tick 双回路（速度伺服 **17 ms** / 玩家 CallLater；体力积分 **0.2 s**；AI 100 ms）：
 
 ```
 v_meas → P(v) [MetabolismModel]
@@ -19,7 +20,9 @@ v_meas → P(v) [MetabolismModel]
       → SetSpeedLimit [SpeedBridge]
 ```
 
-**测速消耗**：`v_drain = min(v_meas, v_limit_applied)`；**当 v_meas > v_limit + 0.12 m/s** 时，**W′** 按实测速度记账；**疲劳积分**仍用 `v_drain` 功率（超额先走 W′）。
+> **执行顺序说明**：`SetSpeedLimit`（invert）在 PhaseA 先执行，`P(v)`/`TickPower`（更新 CP–W′）在 PhaseB 后执行，故 invert 使用的是**上一 tick 的 CP/W′ 快照**。这是离散控制环的标准 1-tick 延迟（17 ms，对玩家不可感知），非缺陷。
+
+**测速消耗**：代谢 `v_drain = v_meas`（已移除 min 到 v_limit）；EPOC 峰值采样与疲劳积分仍用 `min(v_meas, v_limit)`。**当 v_meas > v_limit + 0.12 m/s** 时，**W′** 按实测速度记账（超额先走 W′）。
 
 ---
 
@@ -42,17 +45,17 @@ v_meas → P(v) [MetabolismModel]
 
 ### 3.1 Pandolf + ACSM 混合
 
-- Walk / v < 2.0 m/s：Pandolf（Santee 陡下坡、fitness bonus）
-- Run/Sprint：ACSM `P = a + b·v + c·v²`，在 2.0–2.4 m/s **C¹ 混合**
+- Walk / Idle：`v ≤ 1.97 m/s` 走 **LCDA**（背包式）；`>1.97` 走 Pandolf（Santee 陡下坡、fitness bonus）
+- Run/Sprint：ACSM `P = a + b·v + c·v²`，在 2.0–2.4 m/s **线性交叉淡入**（C⁰，非 C¹）
 
 ### 3.2 有氧消耗
 
 ```
-drain_rate_per_s = P × energy_to_stamina_coeff
-drain_per_tick = drain_rate_per_s × 0.2
+aerobic_drain_rate_per_s = min(P, CP) × energy_to_stamina_coeff × 0.72   // 0.72 = V6_STAMINA_DRAIN_CALIBRATION
+drain_per_0p2s = drain_rate_per_s × 0.2
 ```
 
-**v6 已移除**玩家路径 `load_metabolic_dampening` 与 effort 补偿 fudge。
+玩家路径的 `load_metabolic_dampening` 仍存在（`MetabolismPowerWatts` 尾步，由 `GetLoadMetabolicDampening()` 门控）；effort 补偿 fudge 已移除。
 
 ---
 
@@ -65,7 +68,7 @@ CP₀ = critical_power_watts（三档预设）
 CP_load  = CP₀ × (1 − 0.002 × max(0, L_kg − 10))
 CP_slope = CP_load × (1 − 0.015 × g²)   当 g>0（g=grade%×0.01）
 CP_env   = CP_slope × envCpMult
-CP_final = CP_env × (1 − 0.18 × Fatigue_norm) × fatigueCpMult
+CP_final = CP_env × (1 − 0.18 × Fatigue_norm)    // 下限 0.82；无独立 fatigueCpMult 因子
 ```
 
 下坡 **不对 CP 加成**（坡度消耗由 Pandolf 承担，防双重计数）。
@@ -80,8 +83,10 @@ dW′/dt = −max(0, P − CP_final)   [J/s]
 
 | 档位 | 机制 |
 |------|------|
-| **Elite** (CP≤410 W) | Skiba 双指数：`k_fast=0.15`, `k_slow=0.008`, `W′_lim=0.5·W′_max` |
+| **Elite** (CP≤410 W) | Skiba 双指数：`k_fast=0.15`, `k_slow=0.010`, `W′_lim=0.5·W′_max` |
 | **Standard/Tactical** | 线性 `w_prime_recovery_w_per_s`（不再用时间 CD 锁 Sprint） |
+
+> ⚠️ **当前实现**：`UsesSkibaRecovery()` 以 `cp0 ≤ 2000 W` 判定，三档预设 CP 均 ≤1030 W，故**三档全走 Skiba**，线性分支暂为死代码（待修，见审计 §2.1）。
 
 ### 4.4 Sprint 速度
 
@@ -90,7 +95,7 @@ v_sprint = invert(P_available)
 P_available = min(sprint_power_cap, CP + W′/Δt)
 ```
 
-Elite 默认 `sprint_power_cap_watts = 1450`（35 kg 全 Sprint 至 ANA 门槛 ≤15 s）。
+Elite 烘焙 `sprint_power_cap_watts = 2355`（35 kg 全 Sprint 至 ANA 门槛 ≤15 s）。
 
 ---
 
@@ -111,9 +116,9 @@ Elite 默认 `sprint_power_cap_watts = 1450`（35 kg 全 Sprint 至 ANA 门槛 �
 ### 6.1 积分疲劳 I(t)
 
 ```
-dI/dt = w·P − R
+dI/dt = w·max(P−CP, 0) − R    // 仅对超 CP 功率积分；下坡坡项归零
 w = 1 + k_load·(L/W) + k_slope·G² + k_terrain·(η−1)
-R = k_recovery × (1 − I/I_max)²   （静止/低 P）
+R = k_recovery × (1 − I/I_max)² × P   （静止/低 P 时）
 ```
 
 输出：`GetCpFatigueMultiplier()`、`GetFatigueIntegralNorm()` → CP 与 W′ k_fast/k_slow。
@@ -133,10 +138,12 @@ R = k_recovery × (1 − I/I_max)²   （静止/低 P）
 
 | 参数 | Elite | Standard | Tactical |
 |------|-------|----------|----------|
-| CP (W) | 400 | 420 | 480 |
-| W′_max (J) | 20000 | 24000 | 28000 |
-| sprint_cap (W) | 1450 | 1350 | 1500 |
-| W′ 恢复 | Skiba | 线性 15 W/s | 线性 18 W/s |
+| CP (W) | 889.74 | 1010.81 | 1029.80 |
+| W′_max (J) | 21322 | 31038 | 31655 |
+| sprint_cap (W) | 2355 | 2724 | 2748 |
+| W′ 恢复 | Skiba | 线性 11.86 W/s | 线性 14.28 W/s |
+
+> 实值以 `SCR_RSS_SettingsPresetBake.c` 与 `tools/optimized_rss_config_*_v6.json` 为准（二者一致）。W′ 恢复的 Skiba/线性分派当前未按档位生效（见 §4.3 注）。
 
 ---
 

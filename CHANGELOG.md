@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+## [6.1.7] - 2026-08-14
+
+### 优化管线与预设
+
+- **三档预设重新调优** — 修复孪生后重跑 `optimize-tiers`（300 trials/档）+ `repair-tiers`，三档 CP/W′/sprint_cap 在新模型下重新标定（Elite CP 889.7→907.8、Standard 1010.8→1031.0、Tactical 1029.8→1080.6）
+- **W′ 恢复分派导出补丁** — `rss_pipeline_v6.py` 新增 `W_PRIME_RECOVERY_MODE_BY_TIER`，optimize-tiers 导出时按档位固定 `w_prime_recovery_mode`（Elite=Skiba、Standard/Tactical=线性），避免被 V6_DEFAULTS 重置
+- **预设阶梯守卫** — `test_v6_smoke.py` 的 `baked_preset_drift_guard` 从硬编码旧值改为「档位阶梯单调性守卫」（重新调优后不误报）
+
+### W′ 耗尽限速
+
+- **启用 CP 巡航限速** — `V6_APPLY_CP_METABOLIC_SPEED_CAP=true`：W′ 耗尽后经 SetSpeedLimit 压 CP 巡航指令速度
+- **启用绝对速度限速** — `V6_TRY_MOVEMENT_MAX_SPEED=true`：压移动组件真实最大速度（SetMovementMaxSpeed）
+- **已知限制** — 滚轮(`SetDynamicSpeed`)可绕过最大速度层超速（引擎限制，可接受）；物理钳（振荡）与动态速度覆盖（锁死）已试并排除，注释留档
+- 配置版本 / ConfigManager → **6.1.7**
+
+## [6.1.6] - 2026-08-14
+
+### 数学审计修复
+
+- **Skiba/线性 W′ 恢复分派** — 由 `CP ≤ 2000 W` 阈值近似改为**按档位显式分派**（新增 `w_prime_recovery_mode` 字段，0=Skiba / 1=线性）；Standard/Tactical 线性恢复从死代码恢复生效；C/Python/Rust 三端同步
+- **权威文档对齐** — `RSS_v6_计算逻辑权威版.md` §1–§7 按实际代码/烘焙值修正（Walk=LCDA、`v_drain=v_meas`、疲劳 `(P−CP)`、三档烘焙值、`k_slow=0.010` 等，中英双语）
+- **孪生疲劳常量覆盖** — `rss_digital_twin_fix.py` 二次定义覆盖（`k_load 0.10→0.15` 等）对齐 C
+
+### 常量收敛
+
+- **Custom 档 300× 漂移** — `energy_to_stamina_coeff` `3.5e-5` → `1.117e-7`（对齐 Standard）；`sprint_power_cap_watts` `1200` → `2400`
+- **ConfigBridge 半桥半常量** — 14 处 fallback 字面量统一引用 `SCR_RSS_Constants.*`
+- **死常量/漂移** — 删 `V6_SKIBA_ELITE_CP_THRESHOLD_W`；Rust `V6_W_PRIME_K_SLOW` `0.008` → `0.010`
+
+### 环境拟真
+
+- **热应激统一** — 三套阈值（26/30/18-27°C）统一为热中性带 [18, 27]°C
+- **降雨湿重** — 线性衰减改**指数衰减**（蒸发率 ∝ 剩余水分）
+- **游泳** — 3D 模型水平阻力改用 `vH`，修复垂直速度双重计入
+
+### 其他
+
+- **EPOC CP 统一** — 采样与结算均用动态 CP（`EpocState.m_fEffectiveCpWatts`）
+- **负重步态税开关** — 新增 `V6_LOADED_GAIT_TAX_ENABLED`
+- **审计存档** — 新增 `docs/RSS_数学模型审计_2026-08-14.md`
+- 配置版本 / ConfigManager → **6.1.6**
+
 ## [6.1.5] - 2026-08-13
 
 ### 表现 / 设置

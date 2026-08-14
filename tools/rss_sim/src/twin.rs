@@ -67,7 +67,9 @@ impl RSSDigitalTwin {
         } else {
             V6_SPRINT_POWER_CAP_WATTS_DEFAULT
         };
-        let v6_cp_state = V6CriticalPowerState::new(cp0, constants.w_prime_max_joules, sprint_cap);
+        let w_prime_mode = constants.w_prime_recovery_mode;
+        let mut v6_cp_state = V6CriticalPowerState::new(cp0, constants.w_prime_max_joules, sprint_cap);
+        v6_cp_state.set_w_prime_recovery_mode(w_prime_mode);
 
         let mut out = Self {
             constants,

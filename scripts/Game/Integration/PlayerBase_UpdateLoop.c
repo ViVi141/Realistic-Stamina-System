@@ -767,6 +767,7 @@ modded class SCR_CharacterControllerComponent
                     float cpForEpoc = -1.0;
                     if (cpModel)
                         cpForEpoc = cpModel.GetEffectiveCriticalPowerWatts();
+                    m_pEpocState.SetEffectiveCpWatts(cpForEpoc);
                     float powerForEpoc = SCR_RSS_DrainCalculator.GetEpocSamplePowerWatts(
                         loc.currentSpeed,
                         m_fAppliedSpeedLimitMs,

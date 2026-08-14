@@ -143,18 +143,11 @@ class SCR_RSS_SwimmingStaminaModel
         float horizontalPower = 0.0;
         if (vH > SCR_RSS_SwimConstants.SWIMMING_MIN_SPEED)
         {
-            // [修复] 计算合速度（包括垂直分量），然后应用阻力公式
-            // 物理原理：P_total ∝ |v_total|^3 = (sqrt(v_x^2 + v_y^2))^3
-            // 而不是：|v_x|^3 + |v_y|^3
-            float vTotal = Math.Sqrt(vH * vH + vY * vY);
-            // CRITICAL FIX: Clamp vTotal before cubing to prevent overflow.
-            // Unclamped 7.0m/s gives 42,875W which exceeds SWIMMING_MAX_TOTAL_POWER (2000)
-            // but the intermediate multiplication may overflow on some platforms.
-            vTotal = Math.Clamp(vTotal, 0.0, 7.0);
-            float vTotalCubed = vTotal * vTotal * vTotal; // 合速度的立方
+            // 水平阻力功率只用水平速度 vH（垂直分量已由 C 段垂直功率单独结算，避免 vY 双重计入）
+            float vHClamped = Math.Clamp(vH, 0.0, 7.0);
+            float vHCubed = vHClamped * vHClamped * vHClamped;
 
-            // 使用合速度计算阻力功率
-            horizontalPower = 0.5 * SCR_RSS_SwimConstants.SWIMMING_WATER_DENSITY * vTotalCubed *
+            horizontalPower = 0.5 * SCR_RSS_SwimConstants.SWIMMING_WATER_DENSITY * vHCubed *
                               SCR_RSS_SwimConstants.SWIMMING_DRAG_COEFFICIENT * SCR_RSS_SwimConstants.SWIMMING_FRONTAL_AREA;
             
             // 人体效率/游戏平衡折中

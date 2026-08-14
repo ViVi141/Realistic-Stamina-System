@@ -8,12 +8,10 @@ class SCR_RSS_Params
 {
     // 能量到体力转换系数
     // 将 Pandolf 能量消耗模型（W/kg）转换为游戏体力消耗率（%/s）
-    // Optuna 优化范围：0.000015 - 0.000050
-    // EliteStandard: 0.000025（精英拟真）
-    // TacticalAction: 0.000020（战术动作）
+    // v6 标定后：三档约 1.06e-7 ~ 1.70e-7（Elite 1.70e-7 / Standard 1.117e-7 / Tactical 1.056e-7）
     // 说明：值越小，体力消耗越慢，玩家可以运动更长时间
     // --- 消耗与恢复基础 ---
-    float energy_to_stamina_coeff = 0.000035;
+    float energy_to_stamina_coeff = 1.117e-07;
 
     // 基础恢复率（每0.2秒）
     // 决定玩家在静止时的体力恢复速度
@@ -337,5 +335,8 @@ class SCR_RSS_Params
 
     float w_prime_recovery_w_per_s = 12.0;
 
-    float sprint_power_cap_watts = 1200.0;
+    float sprint_power_cap_watts = 2400.0; // 对齐 V6_SPRINT_POWER_CAP_WATTS_DEFAULT（原 1200 为 v4 旧值）
+
+    // W′ 恢复模式：0.0 = Skiba 双指数（Elite）；1.0 = 线性 w_prime_recovery_w_per_s（Standard/Tactical）
+    float w_prime_recovery_mode = 0.0;
 }

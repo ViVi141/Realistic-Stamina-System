@@ -2,7 +2,7 @@
 // 从 SCR_StaminaConstants.c 拆分出的调试批次系统
 // 提供批次化的调试输出：每秒一波次，帧末统一刷新
 //
-// 拆分原因：SCR_StaminaConstants.c 超过 EnforceScript 65535 字节编译限制
+// 拆分原因：从 SCR_StaminaConstants.c 拆出，便于维护与逐个文件编译排查
 // 日期：2026-05-08
 
 class SCR_RSS_DebugBatchManager

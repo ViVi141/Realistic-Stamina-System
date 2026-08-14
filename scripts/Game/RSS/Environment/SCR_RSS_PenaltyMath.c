@@ -38,11 +38,11 @@ class SCR_RSS_PenaltyMath
 
     static float CalculateHeatStressPenalty(float temperature)
     {
-        if (temperature <= SCR_RSS_EnvConstants.ENV_TEMPERATURE_HEAT_THRESHOLD)
+        if (temperature <= SCR_RSS_EnvConstants.ENV_THERMONEUTRAL_HIGH)
             return 0.0;
 
         float heatPenaltyCoeff = SCR_RSS_ConfigBridge.GetEnvTemperatureHeatPenaltyCoeff();
-        return (temperature - SCR_RSS_EnvConstants.ENV_TEMPERATURE_HEAT_THRESHOLD) * heatPenaltyCoeff;
+        return (temperature - SCR_RSS_EnvConstants.ENV_THERMONEUTRAL_HIGH) * heatPenaltyCoeff;
     }
 
     static void CalculateColdStressPenalty(float temperature, out float coldStressPenalty, out float coldStaticPenalty)
@@ -72,20 +72,20 @@ class SCR_RSS_PenaltyMath
 
     static float AdjustEnergyForTemperature(float basePower, float temperature, float windSpeed)
     {
-        float tEff = temperature - 1.35 * Math.Sqrt(windSpeed);
+        float tEff = temperature - 1.35 * Math.Sqrt(Math.Max(windSpeed, 0.0));
         float extraWatts = 0.0;
-        const float T_LOW = 18.0;
-        const float T_HIGH = 27.0;
+        float tLow = SCR_RSS_EnvConstants.ENV_THERMONEUTRAL_LOW;
+        float tHigh = SCR_RSS_EnvConstants.ENV_THERMONEUTRAL_HIGH;
 
-        if (tEff < T_LOW)
+        if (tEff < tLow)
         {
-            float dt = T_LOW - tEff;
-            extraWatts = 0.15 * (dt * dt);
+            float dt = tLow - tEff;
+            extraWatts = SCR_RSS_EnvConstants.ENV_COLD_STRESS_K * (dt * dt);
         }
-        else if (tEff > T_HIGH)
+        else if (tEff > tHigh)
         {
-            float dtHot = tEff - T_HIGH;
-            extraWatts = 2.0 * (dtHot * dtHot);
+            float dtHot = tEff - tHigh;
+            extraWatts = SCR_RSS_EnvConstants.ENV_HEAT_STRESS_K * (dtHot * dtHot);
         }
 
         float coeff = SCR_RSS_ConfigBridge.GetEnergyToStaminaCoeff();
@@ -96,7 +96,7 @@ class SCR_RSS_PenaltyMath
     //! 热应激倍数（基于气温阈值 + 室内减免）
     static float CalculateHeatStressMultiplier(float currentTemp, bool isIndoor)
     {
-        const float heatStressThreshold = 26.0;
+        float heatStressThreshold = SCR_RSS_EnvConstants.ENV_THERMONEUTRAL_HIGH;
         float multiplier = 1.0;
 
         if (currentTemp >= heatStressThreshold)

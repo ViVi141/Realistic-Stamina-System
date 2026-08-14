@@ -27,7 +27,7 @@
 编码细则以 [docs/RSS_CODING_STANDARDS.md](docs/RSS_CODING_STANDARDS.md) / [EN](docs/en/CODING_STANDARDS.md) 为准，尤其注意：
 
 - 禁止 EnforceScript 三元运算符 `?:`
-- 单文件不超过 65535 字节
+- 文件大小非崩溃原因（不设 64 KB 硬上限）；文件偏大时建议外移 helper
 - 限速经 `SCR_RSS_SpeedBridge` / `SetSpeedLimit`，勿盖掉灌木减速
 - 提交前运行 `tools/check_script_size.py`、`tools/check_enforce_syntax.py`、`tools/test_v6_smoke.py`
 

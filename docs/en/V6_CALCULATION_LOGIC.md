@@ -2,15 +2,16 @@
 
 > [中文](../RSS_v6_计算逻辑权威版.md) | **English**
 >
-> **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-09)  
+> **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-14 audit-aligned)  
 > Supersedes v5 and older “willpower plateau / Givoni / legacy module names”. Source wins.  
+> ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [RSS_数学模型审计_2026-08-14.md](../RSS_数学模型审计_2026-08-14.md).  
 > **6.1.x speed default**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (drain-only: metabolic overspend hits STA/W′; do not press CP-cruise `SetSpeedLimit` by default). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
 
 ---
 
 ## 1. North-star loop
 
-Every **17 ms** tick:
+Per-tick dual loop (speed servo **17 ms** / player CallLater; stamina integration **0.2 s**; AI 100 ms):
 
 ```
 v_meas → P(v) [MetabolismModel]
@@ -19,7 +20,9 @@ v_meas → P(v) [MetabolismModel]
       → SetSpeedLimit [SpeedBridge]
 ```
 
-**Drain speed**: `v_drain = min(v_meas, v_limit_applied)`; when **`v_meas > v_limit + 0.12 m/s`**, **W′** books measured speed; **fatigue integral** still uses `v_drain` power (excess goes to W′ first).
+> **Execution-order note**: `SetSpeedLimit` (invert) runs in PhaseA first; `P(v)`/`TickPower` (CP–W′ update) run in PhaseB after, so invert uses the **previous tick's CP/W′ snapshot**. This is a standard 1-tick delay in a discrete control loop (17 ms, imperceptible), not a defect.
+
+**Drain speed**: metabolism `v_drain = v_meas` (no min to v_limit); EPOC peak sampling and fatigue integral still use `min(v_meas, v_limit)`. When **`v_meas > v_limit + 0.12 m/s`**, **W′** books measured speed (excess goes to W′ first).
 
 ---
 
@@ -42,17 +45,17 @@ v_meas → P(v) [MetabolismModel]
 
 ### 3.1 Pandolf + ACSM blend
 
-- Walk / v < 2.0 m/s: Pandolf (Santee steep downhill, fitness bonus)
-- Run/Sprint: ACSM `P = a + b·v + c·v²`, **C¹ blend** over 2.0–2.4 m/s
+- Walk / Idle: `v ≤ 1.97 m/s` uses **LCDA** (backpacking); `>1.97` uses Pandolf (Santee steep downhill, fitness bonus)
+- Run/Sprint: ACSM `P = a + b·v + c·v²`, **linear crossfade** over 2.0–2.4 m/s (C⁰, not C¹)
 
 ### 3.2 Aerobic drain
 
 ```
-drain_rate_per_s = P × energy_to_stamina_coeff
-drain_per_tick = drain_rate_per_s × 0.2
+aerobic_drain_rate_per_s = min(P, CP) × energy_to_stamina_coeff × 0.72   // 0.72 = V6_STAMINA_DRAIN_CALIBRATION
+drain_per_0p2s = drain_rate_per_s × 0.2
 ```
 
-**v6 removed** player-path `load_metabolic_dampening` and effort-compensation fudge.
+Player-path `load_metabolic_dampening` **still exists** (`MetabolismPowerWatts` tail step, gated by `GetLoadMetabolicDampening()`); effort-compensation fudge was removed.
 
 ---
 
@@ -65,7 +68,7 @@ CP₀ = critical_power_watts (three presets)
 CP_load  = CP₀ × (1 − 0.002 × max(0, L_kg − 10))
 CP_slope = CP_load × (1 − 0.015 × g²)   when g>0 (g=grade%×0.01)
 CP_env   = CP_slope × envCpMult
-CP_final = CP_env × (1 − 0.18 × Fatigue_norm) × fatigueCpMult
+CP_final = CP_env × (1 − 0.18 × Fatigue_norm)    // floor 0.82; no separate fatigueCpMult factor
 ```
 
 Downhill does **not** boost CP (slope cost stays in Pandolf — avoid double count).
@@ -80,8 +83,10 @@ dW′/dt = −max(0, P − CP_final)   [J/s]
 
 | Preset | Mechanism |
 |--------|-----------|
-| **Elite** (CP≤410 W) | Skiba biexponential: `k_fast=0.15`, `k_slow=0.008`, `W′_lim=0.5·W′_max` |
+| **Elite** (CP≤410 W) | Skiba biexponential: `k_fast=0.15`, `k_slow=0.010`, `W′_lim=0.5·W′_max` |
 | **Standard/Tactical** | Linear `w_prime_recovery_w_per_s` (no timed Sprint CD lock) |
+
+> ⚠️ **Current implementation**: `UsesSkibaRecovery()` checks `cp0 ≤ 2000 W`, so all three presets (CP ≤ 1030 W) use Skiba; the linear branch is currently dead code (pending fix, see audit §2.1).
 
 ### 4.4 Sprint speed
 
@@ -90,7 +95,7 @@ v_sprint = invert(P_available)
 P_available = min(sprint_power_cap, CP + W′/Δt)
 ```
 
-Elite default `sprint_power_cap_watts = 1450` (35 kg full Sprint to ANA gate ≤15 s).
+Elite baked `sprint_power_cap_watts = 2355` (35 kg full Sprint to ANA gate ≤15 s).
 
 ---
 
@@ -111,9 +116,9 @@ Elite default `sprint_power_cap_watts = 1450` (35 kg full Sprint to ANA gate ≤
 ### 6.1 Integral fatigue I(t)
 
 ```
-dI/dt = w·P − R
+dI/dt = w·max(P−CP, 0) − R    // integrates only power above CP; downhill slope term zeroed
 w = 1 + k_load·(L/W) + k_slope·G² + k_terrain·(η−1)
-R = k_recovery × (1 − I/I_max)²   (stationary / low P)
+R = k_recovery × (1 − I/I_max)² × P   (stationary / low P)
 ```
 
 Outputs: `GetCpFatigueMultiplier()`, `GetFatigueIntegralNorm()` → CP and W′ k_fast/k_slow.
@@ -133,10 +138,12 @@ Post-exercise delayed drain ∝ **peak intent metabolic power** (`GetEpocSampleP
 
 | Param | Elite | Standard | Tactical |
 |-------|-------|----------|----------|
-| CP (W) | 400 | 420 | 480 |
-| W′_max (J) | 20000 | 24000 | 28000 |
-| sprint_cap (W) | 1450 | 1350 | 1500 |
-| W′ recovery | Skiba | linear 15 W/s | linear 18 W/s |
+| CP (W) | 889.74 | 1010.81 | 1029.80 |
+| W′_max (J) | 21322 | 31038 | 31655 |
+| sprint_cap (W) | 2355 | 2724 | 2748 |
+| W′ recovery | Skiba | linear 11.86 W/s | linear 14.28 W/s |
+
+> Actual values are `SCR_RSS_SettingsPresetBake.c` + `tools/optimized_rss_config_*_v6.json` (both consistent). Skiba/linear W′ dispatch is not yet tiered (see §4.3 note).
 
 ---
 

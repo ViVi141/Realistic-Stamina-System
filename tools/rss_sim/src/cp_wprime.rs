@@ -1,6 +1,6 @@
 use crate::constants::{
     V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_TACTICAL_SHORT_BURST_SEC, V6_CP_ENV_FLOOR,
-    V6_CRITICAL_POWER_WATTS_DEFAULT, V6_SKIBA_ELITE_CP_THRESHOLD_W,
+    V6_CRITICAL_POWER_WATTS_DEFAULT,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, V6_W_PRIME_K_FAST, V6_W_PRIME_K_SLOW,
     V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT, V6_W_PRIME_LIM_RATIO,
     V6_W_PRIME_RECOVERY_POWER_MARGIN_W, V6_WPRIME_EMPTY_FLOOR_JOULES,
@@ -45,6 +45,7 @@ pub struct V6CriticalPowerState {
     pub cp0: f64,
     pub w_prime_max_joules: f64,
     pub sprint_power_cap_watts: f64,
+    pub w_prime_recovery_mode: f64,
 
     pub w_prime_joules: f64,
     pub cooldown_until_sec: f64,
@@ -67,6 +68,7 @@ impl V6CriticalPowerState {
             cp0,
             w_prime_max_joules: w_prime_max,
             sprint_power_cap_watts: sprint_power_cap,
+            w_prime_recovery_mode: 0.0,
             w_prime_joules: 0.0,
             cooldown_until_sec: -1.0,
             sprint_start_sec: -1.0,
@@ -146,8 +148,12 @@ impl V6CriticalPowerState {
         self.compute_cp_base_watts() * self.fatigue_cp_multiplier
     }
 
+    pub fn set_w_prime_recovery_mode(&mut self, mode: f64) {
+        self.w_prime_recovery_mode = mode;
+    }
+
     fn uses_skiba_recovery(&self) -> bool {
-        self.cp0 <= V6_SKIBA_ELITE_CP_THRESHOLD_W
+        self.w_prime_recovery_mode < 0.5
     }
 
     fn apply_w_prime_recovery(&mut self, _power_watts: f64, _cp: f64, dt: f64) {

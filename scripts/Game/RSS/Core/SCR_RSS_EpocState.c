@@ -8,6 +8,7 @@ class SCR_RSS_EpocState
     float m_fSpeedBeforeStop = 0.0;
     float m_fPeakPowerWatts = 0.0;
     float m_fLastPowerWatts = 0.0;
+    float m_fEffectiveCpWatts = 0.0;
 
     float GetEpocDelayStartTime()
     {
@@ -59,6 +60,16 @@ class SCR_RSS_EpocState
         return m_fLastPowerWatts;
     }
 
+    float GetEffectiveCpWatts()
+    {
+        return m_fEffectiveCpWatts;
+    }
+
+    void SetEffectiveCpWatts(float cpWatts)
+    {
+        m_fEffectiveCpWatts = cpWatts;
+    }
+
     //! 运动 tick：跟踪近期峰值（供 EPOC ∝ P_peak）
     //! 调用方须传 GetEpocSamplePowerWatts（限速内意图功率）；峰值只在运动中衰减。
     void UpdateExercisePowerSample(float powerWatts, float currentSpeedMs, float timeDeltaSec = 0.0)
@@ -102,5 +113,6 @@ class SCR_RSS_EpocState
         m_fSpeedBeforeStop = 0.0;
         m_fPeakPowerWatts = 0.0;
         m_fLastPowerWatts = 0.0;
+        m_fEffectiveCpWatts = 0.0;
     }
 }

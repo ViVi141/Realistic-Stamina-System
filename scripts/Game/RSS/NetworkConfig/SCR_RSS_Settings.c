@@ -13,7 +13,8 @@
 class SCR_RSS_Settings
 {
     // ==================== Sync helpers ====================
-    static const int PARAMS_ARRAY_SIZE = 63;  // v6: +CP/W'/sprint cap
+    static const int PARAMS_ARRAY_SIZE = 64;  // v6.1.x: +CP/W'/sprint cap +W' recovery mode
+    static const int PARAMS_ARRAY_SIZE_V6 = 63;  // v6.0.0: CP/W'/sprint cap（无恢复模式）
     static const int PARAMS_ARRAY_SIZE_V5 = 59;
     static const int PARAMS_ARRAY_SIZE_LEGACY = 49;  // v3.22.x 网络包无蹲姿恢复槽
     static const int SETTINGS_FLOATS_SIZE = 17;
@@ -25,7 +26,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("6.1.5", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.1.7", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]

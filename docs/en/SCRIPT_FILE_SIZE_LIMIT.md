@@ -1,122 +1,50 @@
-# EnforceScript `.c` file size hard limit
+# Compile-crash isolation (shell method + per-file compile)
 
 > [中文](../scripts_file_size_limit.md) | **English**
 
-## Rule
+## Correction
 
-> **Every `.c` script file must be ≤ 65535 bytes (64 KB). Exceeding this can crash Workbench compile or runtime with no useful error.**
-
-This is an EnforceScript compiler/runtime hard limit, not a game-design knob. It cannot be bypassed by config or CLI flags.
-
----
-
-## Current high-risk files (measured 2026-08-09)
-
-> Reproduce sizes from repo root with the PowerShell below. 65535 bytes is the hard cap.
-
-| File | Size | vs 64 KB |
-|------|------|----------|
-| `scripts/Game/Integration/PlayerBase.c` | ~78385 bytes (~76.5 KB) | **~12.5 KB over** |
-| `scripts/Game/RSS/Core/SCR_RSS_Constants.c` | ~52570 bytes (~51.3 KB) | ~12.7 KB headroom |
-| `scripts/Game/Integration/PlayerBase_UpdateLoop.c` | ~49135 bytes (~48.0 KB) | ~16 KB headroom |
-| `scripts/Game/RSS/Core/SCR_RSS_UpdateCoordinator.c` | ~44666 bytes (~43.6 KB) | ~20 KB headroom |
-| `scripts/Game/RSS/Environment/SCR_RSS_EnvironmentFactor.c` | ~43639 bytes (~42.6 KB) | ~21 KB headroom |
-
-> PowerShell (repo root):
-> ```powershell
-> Get-ChildItem -Path scripts -Recurse -Filter '*.c' | ForEach-Object {
->     $color = 'Yellow'
->     if ($_.Length -gt 65535) { $color = 'Red' }
->     if ($_.Length -gt 60000) {
->         Write-Host "$($_.Length) bytes  $($_.FullName)" -ForegroundColor $color
->     }
-> }
-> ```
+> ~~Every `.c` file must be ≤ 65535 bytes (64 KB), or compile/runtime will crash.~~
 >
-> Or: `python tools/check_script_size.py`
+> **Retracted. File size (64 KB) is NOT the cause of Workbench compile or runtime crashes.**
 
----
+The earlier "64 KB hard limit causes crashes" theory does not hold and is withdrawn. This page keeps its title only for historical link compatibility.
 
-## Split plan (aligned with current repo)
+## Correct isolation method
 
-### Priority 1: `PlayerBase.c` (only file still over 64 KB)
+When Workbench crashes while compiling scripts (ICE / heap corruption / no useful error), the only reliable way is **per-file compile checking** with the **shell method** to isolate the exact file:
 
-`modded class SCR_CharacterControllerComponent` entry is still ~**76 KB**. Keep moving mud proxies, RPC, CSB-sized blocks into `RSS/` helpers (see existing `SCR_RSS_MudSlipRunner.c`). Same modded class may only grow via `PlayerBase.c` + `PlayerBase_UpdateLoop.c`.
+1. **Keep only a shell**: strip the suspect file to a shell — keep class/method **signatures**, delete bodies — so other modules can still reference it and the project still compiles.
+2. **Restore and compile one file at a time** to find the file that triggers the crash.
+3. **Bisect within that file**: shell → half restored → full, narrowing to the exact method/block.
 
-### Priority 2: `SCR_RSS_Constants.c` / `PlayerBase_UpdateLoop.c`
+> `tools/check_script_size.py` is now only a **shell importable by other modules** and no longer blocks on size. It provides:
+>
+> - `iter_script_files()` — enumerate `.c` files for per-file compile scripts
+> - `tier_for()` — per-layer maintainability caps (advisory only, not a crash cause)
+> - `has_bom()` — UTF-8 BOM detection (still a real syntax error, blocks commit)
 
-Near 45–50 KB: split domain constants before adding more; keep pushing pure orchestration out of UpdateLoop into `SCR_RSS_UpdateCoordinator`, etc.
+## Maintainability guidance (not a crash cause)
 
-### Priority 3: `SCR_RSS_EnvironmentFactor.c`
+These per-layer caps are for **maintainability** only (easier editing/review); they do not affect compile stability:
 
-Environment stack already has `SCR_RSS_*` satellites; new logic should go to WeatherApi / PenaltyMath / EnvConstants.
+| Layer | Suggested cap |
+|-------|---------------|
+| Integration | ≤ 40 KB / ≤ 600 lines |
+| StaminaOverride | ≤ 15 KB / ≤ 250 lines (intercept shell only) |
+| RSS/Core etc. | ≤ 45 KB / ≤ 700 lines |
 
-### Priority 4: `SCR_RSS_Settings.c` / Config
+Prefer extracting domain logic into helpers when a file grows large, but size no longer blocks commits.
 
-If growth continues, extract `SCR_RSS_Params` into `SCR_RSS_Params.c` (Params = data model; Settings = config + serialization).
-
----
-
-### Historical split notes
-
-| Direction | Notes |
-|-----------|-------|
-| Monolith `SCR_RealisticStaminaSystem.c` | **Removed**; responsibilities live in `SCR_RSS_*` Core |
-| Swim model | `SCR_SwimmingStaminaModel.c` (or equivalent RSS Core file) |
-| Params extract | Still optional |
-| PlayerBase slim-down | Mud / RPC / presentation extract (priority 1) |
-
-#### Optional `SCR_RSS_Params` extract
-
-1. Create `scripts/Game/RSS/NetworkConfig/SCR_RSS_Params.c`
-2. Move `class SCR_RSS_Params { ... }` intact
-3. Keep references in `SCR_RSS_Settings.c`
-4. Leave `WriteParamsToArray` / `ApplyParamsFromArray` on Settings
-
----
-
-## Execution order
-
-```
-1. PlayerBase.c → keep extracting mud / RPC / presentation (still > 64 KB)
-2. PlayerBase_UpdateLoop / Constants → control growth
-3. EnvironmentFactor → keep satellites sharing load
-4. Settings → split Params if needed
-```
-
-Extract principles:
-
-1. **One domain per change**, compile + regress each time.
-2. Keep extracted functions **`static`** as before.
-3. **Do not split for size vanity** when cohesive and far under the cap.
-4. Must still **compile** after the split.
-
----
-
-## Pre-commit check
+## Pre-commit checks
 
 ```powershell
-Get-ChildItem -Path scripts -Recurse -Filter '*.c' |
-    Where-Object { $_.Length -gt 60000 } |
-    Sort-Object Length -Descending |
-    Format-Table Length, Name
-
-$violations = Get-ChildItem -Path scripts -Recurse -Filter '*.c' |
-    Where-Object { $_.Length -gt 65535 }
-if ($violations) {
-    Write-Host "BLOCKED: Files exceed 65535 byte limit:" -ForegroundColor Red
-    $violations | Format-Table Length, FullName
-    exit 1
-}
+python tools/check_script_size.py     # BOM block + maintainability hints (no size block)
+python tools/check_enforce_syntax.py  # banned syntax + single-line if
+python tools/test_v6_smoke.py
 ```
-
-Or `python tools/check_script_size.py`.
-
----
 
 ## Related docs
 
 - [scripts_naming_and_layout_rules.md](../scripts_naming_and_layout_rules.md) (Chinese)
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) / [RSS_CODING_STANDARDS.md](../RSS_CODING_STANDARDS.md)
-
-Record size before/after in CHANGELOG when splitting.

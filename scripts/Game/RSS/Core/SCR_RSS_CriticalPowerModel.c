@@ -133,12 +133,8 @@ class SCR_RSS_CriticalPowerModel
 
     protected bool UsesSkibaRecovery()
     {
-        float cp0 = SCR_RSS_ConfigBridge.GetCriticalPowerWatts();
-        if (cp0 <= 1.0)
-            cp0 = SCR_RSS_Constants.V6_CRITICAL_POWER_WATTS_DEFAULT;
-        if (cp0 <= SCR_RSS_Constants.V6_SKIBA_ELITE_CP_THRESHOLD_W)
-            return true;
-        return false;
+        // 按档位显式分派（不再用 CP 阈值近似）：Elite=Skiba，Standard/Tactical=线性
+        return SCR_RSS_ConfigBridge.GetWPrimeRecoveryMode() == 0;
     }
 
     //! 欠 CP 越深回充越快：P→0 为满速率，P→(CP−margin) 收敛到 floor。

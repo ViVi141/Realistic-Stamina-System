@@ -1,0 +1,27 @@
+RSS v6.1.7 Change Notes
+=======================
+From 6.1.6 → 6.1.7 (config 6.1.7). Tier presets re-tuned + W' exhaustion speed cap.
+Keep server & clients on the same mod build.
+
+[EN]
+• Tier presets re-tuned: after fixing the digital twin, optimize-tiers + repair-tiers
+  re-ran, so Elite/Standard/Tactical CP/W'/sprint_cap are recalibrated (e.g. Elite CP
+  889.7 → 907.8). Feel of all three tiers will shift slightly.
+• W' exhaustion speed cap now ON: when W' is spent, movement is capped to the CP cruise
+  speed (SetSpeedLimit + SetMovementMaxSpeed). Normal movement is correctly limited.
+• Known limitation (accepted): the mouse wheel (SetDynamicSpeed) can still push speed
+  above the cap — this is an engine input-layer limit we cannot block without locking
+  the movement phase. Existing RealisticStaminaSystem.json is not overwritten.
+
+[中文]
+• 三档预设重新调优：修复数字孪生后重跑 optimize-tiers + repair-tiers，三档 CP/W′/
+  sprint_cap 重新标定（如 Elite CP 889.7 → 907.8）。三档手感会略有变化。
+• W′ 耗尽限速开启：W′ 耗尽后按 CP 巡航速度限速（SetSpeedLimit + SetMovementMaxSpeed），
+  正常移动被正确限制。
+• 已知限制（可接受）：鼠标滚轮（SetDynamicSpeed）仍可把速度推到限速之上——这是引擎输入
+  层的限制，强行锁定会导致移动相位锁死，故不处理。
+  已有 RealisticStaminaSystem.json 不会被自动改写。
+
+Full log: CHANGELOG.md [6.1.7] / [6.1.6] / [6.1.5]
+
+Author: ViVi141 | License: AGPL-3.0

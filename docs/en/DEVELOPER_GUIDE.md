@@ -72,7 +72,7 @@ PlayerBase_UpdateLoop
 Authority: [`CODING_STANDARDS.md`](CODING_STANDARDS.md). Summary:
 
 1. **No** EnforceScript ternary `?:`; single-line `if` must use `{}`.
-2. **File ≤ 65535 bytes**; `PlayerBase.c` is already over — only extract, never pile more logic.
+2. **File size is not a crash cause** (no 64 KB hard cap); `PlayerBase.c` is large — keep extracting, never pile more logic.
 3. **Thin Integration**: formulas live in `RSS/Core/` etc.; no inline Pandolf in `PlayerBase`.
 4. Speed limits only via **`SCR_RSS_SpeedBridge` → `SetSpeedLimit`**; do not solo `OverrideMaxSpeed` and wipe foliage slowdown.
 5. **Aerobic authority** is `m_fTargetStamina`; W′ must **not** change it; presentation may use `ApplyTransientEngineStamina`.
@@ -127,7 +127,7 @@ Minimal manual checklist:
 | Chinese | English | Role |
 |---------|---------|------|
 | [`RSS_CODING_STANDARDS.md`](../RSS_CODING_STANDARDS.md) | [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Coding authority |
-| [`scripts_file_size_limit.md`](../scripts_file_size_limit.md) | [`SCRIPT_FILE_SIZE_LIMIT.md`](SCRIPT_FILE_SIZE_LIMIT.md) | 64 KB hard limit |
+| [`scripts_file_size_limit.md`](../scripts_file_size_limit.md) | [`SCRIPT_FILE_SIZE_LIMIT.md`](SCRIPT_FILE_SIZE_LIMIT.md) | Compile-crash isolation (shell method) |
 | [`RSS_v6_计算逻辑权威版.md`](../RSS_v6_计算逻辑权威版.md) | [`V6_CALCULATION_LOGIC.md`](V6_CALCULATION_LOGIC.md) | Math authority |
 | [`engine_api_usage.md`](../engine_api_usage.md) | [`ENGINE_API_USAGE.md`](ENGINE_API_USAGE.md) | Engine API catalog |
 | [`RSS_已知问题_限速与滑步.md`](../RSS_已知问题_限速与滑步.md) | [`KNOWN_ISSUES_SPEED_SLIP.md`](KNOWN_ISSUES_SPEED_SLIP.md) | Speed / slip constraints |

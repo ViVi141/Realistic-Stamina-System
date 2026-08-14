@@ -66,6 +66,7 @@ class SCR_RSS_StaminaState
             m_fAnaerobicBurst = cpModel.GetPool01();
     }
 
+    //! 裸池阈值版：仅无 CP 模型时作无状态 fallback（有 CP 模型请走 IsSprintAllowedWithCp → 施密特闩锁）
     bool IsSprintAllowed()
     {
         if (m_bCollapseState)

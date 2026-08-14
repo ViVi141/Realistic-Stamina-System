@@ -338,8 +338,11 @@ class SCR_RSS_MetabolismModel
     }
 
     //! 负重 Run/Sprint 步态税（Walk/Idle=1）。负载从 START→REF 升到 MAX_MULT。
+    //! 有意与「质量已进 Pandolf/ACSM 功率」叠加：功率项是质量阻力，本项是负重下的步态生物力学代价，非双重计数。
     static float GetLoadedGaitStaminaDrainMultiplier(float loadWeightKg, int movementPhase)
     {
+        if (SCR_RSS_Constants.V6_LOADED_GAIT_TAX_ENABLED < 0.5)
+            return 1.0;
         if (movementPhase < 2)
             return 1.0;
         if (loadWeightKg <= SCR_RSS_Constants.LOADED_RUN_DRAIN_START_KG)

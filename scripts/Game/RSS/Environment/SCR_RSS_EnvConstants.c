@@ -1,4 +1,4 @@
-//! 环境相关常量（从 SCR_RSS_Constants.c 拆分以控制 64KB 上限）
+//! 环境相关常量（从 SCR_RSS_Constants.c 拆分以利维护；文件大小非崩溃原因）
 class SCR_RSS_EnvConstants
 {
     
@@ -13,8 +13,8 @@ class SCR_RSS_EnvConstants
     // 降雨湿重参数
     static const float ENV_RAIN_WEIGHT_MIN = 2.0; // kg，小雨时的湿重
     static const float ENV_RAIN_WEIGHT_MAX = 8.0; // kg，暴雨时的湿重
-    static const float ENV_RAIN_WEIGHT_DURATION = 60.0; // 秒，停止降雨后湿重持续时间
-    static const float ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167; // 每秒衰减率（60秒内完全消失）
+    static const float ENV_RAIN_WEIGHT_DURATION = 60.0; // [弃用] 线性衰减时长，已改为指数干燥
+    static const float ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167; // 指数干燥时间常数倒数（1/s；τ≈60s，蒸发率∝剩余水分）
     
     // 湿重饱和上限（防止游泳湿重+降雨湿重叠加导致数值爆炸）
     static const float ENV_MAX_TOTAL_WET_WEIGHT = 10.0; // kg，总湿重上限（游泳+降雨）
@@ -110,11 +110,17 @@ class SCR_RSS_EnvConstants
     static const float ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG = 0.35; // 极力克制：FOV 高频抖易诱发晕动症，优先靠 Roll
     
     // 气温相关常量
-    static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值
+    static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值（严重档参考；性能衰减热中性上界见 ENV_THERMONEUTRAL_HIGH）
     static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF   = 0.02; // [SOFT fallback] 每高1°C恢复率降低2%
     static const float ENV_TEMPERATURE_COLD_THRESHOLD       =  5.0; // [HARD] °C，北约STANAG冷应激阈值（原0°C几乎不触发，提升至5°C使温带地图生效）
     static const float ENV_TEMPERATURE_COLD_STATIC_PENALTY  = 0.03; // [SOFT fallback] 低温静态消耗增加
     static const float ENV_TEMPERATURE_COLD_RECOVERY_PENALTY = 0.05; // [SOFT fallback] 低温恢复率惩罚
+
+    // 统一热调节模型：热中性带 [LOW, HIGH]（运动状态），带外二次惩罚；冷侧含风寒，热侧含室内减免
+    static const float ENV_THERMONEUTRAL_LOW  = 18.0; // [HARD] °C，运动热中性下界（低于此开始寒战产热）
+    static const float ENV_THERMONEUTRAL_HIGH = 27.0; // [HARD] °C，运动热中性上界（高于此心血管漂移/散热成本二次上升）
+    static const float ENV_COLD_STRESS_K = 0.15;     // 冷应力二次系数（W 量级，风寒后 ΔT²）
+    static const float ENV_HEAT_STRESS_K = 2.0;      // 热应力二次系数（W 量级，ΔT²）
     
     // 地表湿度相关常量
     static const float ENV_SURFACE_WETNESS_SOAK_RATE = 1.0; // kg/秒，趴下时的湿重增加速率

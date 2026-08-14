@@ -1,4 +1,4 @@
-//! Settings/Params array sync (split from SCR_RSS_Settings.c for 64KB / ICE relief)
+//! Settings/Params array sync (split from SCR_RSS_Settings.c for maintainability / ICE isolation)
 class SCR_RSS_SettingsSync
 {
     // ==================== Full sync helpers ====================
@@ -71,6 +71,7 @@ class SCR_RSS_SettingsSync
         outArr.Insert(p.w_prime_max_joules);
         outArr.Insert(p.w_prime_recovery_w_per_s);
         outArr.Insert(p.sprint_power_cap_watts);
+        outArr.Insert(p.w_prime_recovery_mode);
     }
 
     static void ApplyParamsFromArray(SCR_RSS_Params p, array<float> values)
@@ -124,7 +125,19 @@ class SCR_RSS_SettingsSync
             migratedV6.Insert(SCR_RSS_Constants.V6_W_PRIME_MAX_JOULES_DEFAULT);
             migratedV6.Insert(SCR_RSS_Constants.V6_W_PRIME_RECOVERY_W_PER_S_DEFAULT);
             migratedV6.Insert(SCR_RSS_Constants.V6_SPRINT_POWER_CAP_WATTS_DEFAULT);
+            migratedV6.Insert(0.0);  // w_prime_recovery_mode：Skiba（默认）
             ApplyParamsFromArray(p, migratedV6);
+            return;
+        }
+
+        if (values.Count() == SCR_RSS_Settings.PARAMS_ARRAY_SIZE_V6)
+        {
+            array<float> migratedV7 = new array<float>();
+            int n;
+            for (n = 0; n < SCR_RSS_Settings.PARAMS_ARRAY_SIZE_V6; n++)
+                migratedV7.Insert(values[n]);
+            migratedV7.Insert(0.0);  // w_prime_recovery_mode：Skiba（默认）
+            ApplyParamsFromArray(p, migratedV7);
             return;
         }
 
@@ -197,6 +210,7 @@ class SCR_RSS_SettingsSync
             p.w_prime_max_joules = values[i++];
             p.w_prime_recovery_w_per_s = values[i++];
             p.sprint_power_cap_watts = values[i++];
+            p.w_prime_recovery_mode = values[i++];
         }
     }
 

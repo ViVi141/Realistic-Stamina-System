@@ -405,6 +405,69 @@ def _wprime_engine_fx_map_ok() -> bool:
     return True
 
 
+def _elite_baked_params() -> tuple:
+    """烘焙 Elite 档 CP/sprint_cap/W′_max（与 SettingsPresetBake.c 对齐）。"""
+    from rss_pipeline_v6 import load_preset_params
+
+    p = load_preset_params("EliteStandard")
+    return (
+        float(p["critical_power_watts"]),
+        float(p["sprint_power_cap_watts"]),
+        float(p["w_prime_max_joules"]),
+    )
+
+
+def _elite_sprint_duration_ok() -> bool:
+    """Elite 烘焙档 35kg 全冲刺到 ANA 门槛 ≤ 15s（doc §4.4 硬约束）。"""
+    cp, cap, w_max = _elite_baked_params()
+    return simulate_v6_sprint_seconds(35.0, cp, sprint_cap_w=cap, w_prime_max=w_max) <= 15.0
+
+
+def _baked_preset_drift_guard_ok() -> bool:
+    """三档阶梯叙事守卫：CP/sprint_cap/W′恢复单调递增（Elite≤Standard≤Tactical），W′_max Elite 最小。
+
+    不硬编码具体数值（重新调优后数值会变），只守护「档位不倒置」这一叙事。
+    """
+    from rss_pipeline_v6 import load_preset_params
+
+    names = ("EliteStandard", "StandardMilsim", "TacticalAction")
+    p = {n: load_preset_params(n) for n in names}
+    e, s, t = p["EliteStandard"], p["StandardMilsim"], p["TacticalAction"]
+
+    def monotonic(key: str) -> bool:
+        return (
+            float(e[key]) <= float(s[key]) <= float(t[key])
+        )
+
+    if not monotonic("critical_power_watts"):
+        return False
+    if not monotonic("sprint_power_cap_watts"):
+        return False
+    if not monotonic("w_prime_recovery_w_per_s"):
+        return False
+    if not (float(e["w_prime_max_joules"]) <= float(s["w_prime_max_joules"])):
+        return False
+    return True
+
+
+def _wprime_recovery_dispatch_ok() -> bool:
+    """Skiba/线性按档位显式分派：Elite=Skiba(0)，Standard/Tactical=线性(1)。"""
+    from rss_pipeline_v6 import load_preset_params
+
+    expected = {"EliteStandard": 0.0, "StandardMilsim": 1.0, "TacticalAction": 1.0}
+    for name, mode in expected.items():
+        p = load_preset_params(name)
+        if abs(float(p.get("w_prime_recovery_mode", 0.0)) - mode) > 0.01:
+            return False
+    skiba = V6CriticalPowerState(cp0=889.0, w_prime_recovery_mode=0.0)
+    linear = V6CriticalPowerState(cp0=1010.0, w_prime_recovery_mode=1.0)
+    if not skiba._uses_skiba_recovery():
+        return False
+    if linear._uses_skiba_recovery():
+        return False
+    return True
+
+
 SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 5.5),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
@@ -422,7 +485,9 @@ SCENARIOS = [
     ("cp_load_penalty", lambda: compute_cp_watts(400.0, 35.0, 0.0) < 400.0),
     ("wprime_discharge", lambda: _wprime_discharge_ok()),
     ("wprime_discharge_run", lambda: _wprime_discharge_run_ok()),
-    ("elite_sprint_duration", lambda: simulate_v6_sprint_seconds(35.0, 400.0) <= 15.0),
+    ("elite_sprint_duration", lambda: _elite_sprint_duration_ok()),
+    ("baked_preset_drift_guard", lambda: _baked_preset_drift_guard_ok()),
+    ("wprime_recovery_dispatch", lambda: _wprime_recovery_dispatch_ok()),
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
     ("mobility_run_speed", lambda: _mobility_ok()),

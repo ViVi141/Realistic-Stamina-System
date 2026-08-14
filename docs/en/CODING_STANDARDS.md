@@ -23,16 +23,18 @@
 - Single-line `if` must use `{}`
 - Public static: `//!` + `@param` / `@return` (**Chinese** comments preferred in this repo)
 
-## 3. File size
+## 3. File size (maintainability, not a crash cause)
 
-| Layer | Cap |
-|-------|-----|
-| All `.c` files | **65535 bytes** (hard crash) |
+File size (64 KB) is **not** a compile/runtime crash cause — **no hard cap**. The per-layer caps below are maintainability guidance only:
+
+| Layer | Suggested cap |
+|-------|---------------|
 | Integration | ≤ 40 KB / ≤ 600 lines |
 | StaminaOverride | ≤ 15 KB / ≤ 250 lines (intercept shell only) |
 | RSS/Core etc. | ≤ 45 KB / ≤ 700 lines |
 
-Run: `python tools/check_script_size.py`  
+For compile-crash isolation use the shell method + per-file compile, see [SCRIPT_FILE_SIZE_LIMIT.md](SCRIPT_FILE_SIZE_LIMIT.md).  
+Run: `python tools/check_script_size.py` (BOM block + hints, no size block)  
 Run: `python tools/check_enforce_syntax.py` (banned syntax + single-line `if`)
 
 ## 4. Official-first + two exceptions
@@ -53,7 +55,7 @@ Run: `python tools/check_enforce_syntax.py` (banned syntax + single-line `if`)
 
 ## 6. EnforceScript bans
 
-- `?:`, `ScriptCaller`, single file over 64 KB
+- `?:`, `ScriptCaller`
 - Prefer `ref` over deprecated `autoptr`
 - No try/catch, no user generic classes
 

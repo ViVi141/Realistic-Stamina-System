@@ -141,7 +141,7 @@ class SCR_RSS_StaminaNetRate
             peakP = epocState.GetPeakPowerWatts();
             if (peakP <= 1.0)
                 peakP = epocState.GetLastPowerWatts();
-            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP);
+            epocDrainRate = SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(speedBeforeStop, peakP, epocState.GetEffectiveCpWatts());
         }
 
         float movementDrainRate = ResolveMovementDrainForNet(useSwimmingModel, currentSpeed, totalDrainRate);
@@ -324,7 +324,7 @@ class SCR_RSS_StaminaNetRate
                     peakP = epocState.GetLastPowerWatts();
             }
             fixedFinalDrain = fixedFinalDrain + SCR_RSS_RecoveryCalculator.CalculateEpocDrainRate(
-                epocState.GetSpeedBeforeStop(), peakP);
+                epocState.GetSpeedBeforeStop(), peakP, epocState.GetEffectiveCpWatts());
         }
 
         for (int i = 0; i < SEGMENTS; i++)

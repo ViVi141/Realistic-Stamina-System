@@ -804,6 +804,7 @@ class SCR_RSS_UpdateCoordinator
             terrainFactorForConsumption = tick.terrainFactor;
         }
 
+        // 负重体力消耗倍率：仅游泳路径读取（陆地恒 1.0；陆地步态税走 GetLoadedGaitStaminaDrainMultiplier）
         float encumbranceStaminaDrainMultiplier = 1.0;
         if (tick.useSwimmingModel)
         {
