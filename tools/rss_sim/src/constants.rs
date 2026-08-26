@@ -14,8 +14,14 @@ pub const V6_WPRIME_OVERSPEED_HYSTERESIS: f64 = 0.05;
 pub const V6_WPRIME_OVERSPEED_REARM: f64 = 0.40;
 /// Joules below this count as empty for AvailableP (match game V6_WPRIME_EMPTY_FLOOR_JOULES).
 pub const V6_WPRIME_EMPTY_FLOOR_JOULES: f64 = 5.0;
-/// Match game: CP invert below Run floor demotes to Walk band (not hard lift to floor).
+/// Match game: CP invert below Run floor skips out-of-band SetSpeedLimit (not Walk m/s).
+/// Game also forces Walk gait via SetDynamicSpeed(0.5); twins do not simulate that.
 pub const V6_RUN_GAIT_DEMOTE_TO_WALK: bool = true;
+/// Min SetSpeedLimit vs current-phase engine top (exhausted Run still uses this).
+pub const V6_GAIT_SPEED_LIMIT_MIN_FRAC: f64 = 0.50;
+/// P−CP tax while holding Run/Sprint after W′ empty.
+pub const V6_GAIT_EXCESS_STA_TAX_MULT: f64 = 10.0;
+pub const V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC: f64 = 0.004;
 /// Soft-Run band below floor (m/s); deeper gray demotes Walk (match game).
 pub const V6_RUN_SOFT_BAND_BELOW_FLOOR_MS: f64 = 0.25;
 pub const V6_WALK_START_MIN_MS: f64 = 0.35;
@@ -98,6 +104,7 @@ pub const V5_BURST_COOLDOWN_SHORT_DEFAULT: f64 = 75.0;
 pub const WALK_VELOCITY_THRESHOLD: f64 = 3.2;
 pub const RUN_VELOCITY_THRESHOLD: f64 = 3.8;
 pub const EXHAUSTION_LIMP_SPEED: f64 = 1.0;
+pub const ENGINE_WALK_TOP_MS: f64 = 1.45;
 pub const MIN_SPEED_MULTIPLIER: f64 = 0.15;
 pub const V5_WALK_SPEED_MS_DEFAULT: f64 = 1.4;
 pub const V5_RUN_SPEED_MS_DEFAULT: f64 = 2.8;

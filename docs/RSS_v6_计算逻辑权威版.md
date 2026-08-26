@@ -5,7 +5,7 @@
 > **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-14 审计对齐）  
 > 取代 v5 及更早文档中「意志力平台期 / Givoni / 旧模块名」描述。以本文件与源码为准。  
 > ⚠️ 2026-08-14 数学审计：§1–§7 已按实际代码/烘焙值修正；历史漂移记录见 [RSS_数学模型审计_2026-08-14.md](RSS_数学模型审计_2026-08-14.md)。  
-> **限速默认（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：代谢超额只扣 STA/W′）。巡航反解坡度钳到 15%、η 不进速度伺服、地板 `V6_CP_HIKE_FLOOR_MS=1.0`（禁止 15°/29 kg 反解成 0.4 m/s 爬行；消耗仍用实测坡度）。已知限制：滚轮 `SetDynamicSpeed` 可绕过最大速度层（引擎限制）；物理钳保持关闭（防 Bang-Bang 振荡）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
+> **限速默认（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：代谢超额只扣 STA/W′）。巡航反解坡度钳到 15%、η 不进速度伺服；Walk 反解地板 `V6_CP_HIKE_FLOOR_MS=1.0`（`GetMetabolicSpeedCapMs` 与 UpdateCoordinator 均走 `InvertCruiseCapMs`，禁止裸反解）。CP 巡航帽只写在**当前步态带内**（Run 约 0.5–1.0× 相位顶，且 ≥ `V6_RUN_GAIT_FLOOR_MS` 2.2 或软带 1.95–2.2）；反解掉出 Run 带时**不**把 Walk/爬行速度写到 Run 相位（滑步）。W′ 空且仍按住移动时改切引擎 Walk 档（`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`：`SetDynamicSpeed(0.5)` + override，与 CapsLock 同款）。已知限制：滚轮 `SetDynamicSpeed` 可在步态带内绕过最大速度层（引擎限制）；物理钳保持关闭（防 Bang-Bang 振荡）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
 
 ---
 
@@ -104,7 +104,7 @@ Elite 烘焙 `sprint_power_cap_watts = 2355`（35 kg 全 Sprint 至 ANA 门槛 �
 ## 5. 有氧池与速度
 
 - **无主条平台期**：Run 速度 = 相位目标 m/s（Elite 1.4/2.8/4.0）× 负重
-- **低 STA**（<5%）：`GetDynamicLimpMultiplier` + `CollapseTransition` 5 s 阻尼
+- **低 STA**（<5%）：`GetDynamicLimpMultiplier`（Walk 顶 1.45 m/s，地板 1.0）+ `CollapseTransition` 5 s 阻尼。条空仍按住 Run 时限速托 0.5× 相位顶（疲惫慢跑），避免把爬行倍率写进 Run 相位。
 - **Sprint 门禁**：`IsSprintAllowedWithCp`（有氧阈值 + **W′ 超速施密特闩锁**；**不再**因短冲上时间 CD）
   - 关闭带：池 ≤ `anaerobic_sprint_enable_threshold + V6_WPRIME_OVERSPEED_HYSTERESIS`（默认 ≈25%）
   - 再开带：池 > `threshold + V6_WPRIME_OVERSPEED_REARM`（默认 ≈60%）；禁止在 ≈20–25% 按住冲刺时 Sprint↔Run 震荡

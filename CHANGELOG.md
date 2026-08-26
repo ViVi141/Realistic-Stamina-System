@@ -27,7 +27,15 @@
 - **手持称重纠偏** — 过滤 `GetHeldGadget()` 隐藏挂件误计；无 IN_HAND gadget 时采当前武器；游泳路径补施加倍率；`CalibrateUncappedEngineTopsOnce` / `EnsureSignalsRegistered` / `CalculatePostureMultiplier` 补空指针防护
 - **专服崩溃防护** — 手持采样要求实体仍在世界中、武器优先 `GetCurrentSlot`；`GetMaxSpeed`/信号读取/负重轮询/RPC/战斗兴奋剂在 `GetGame`/`GetWorld` 为空时直接返回，避免进退服与 AI tick 窗口 Access violation
 - **全仓专服崩溃扫描** — 新增 `SCR_RSS_RuntimeGuard`；跳跃/翻越、室内检测、载具恢复、数据导出、调试批次、屏效/滤镜、体力 tick 的 `CallLater`、GameMode 引导队列、析构限速恢复均在世界/队列为空时跳过。`World` 为 sealed 原生类型，不能作 `out` 参数，取世界用 `GetWorldOrNull()`
-- **W′ 耗尽后陡坡爬行** — 巡航限速反解不再按网格局部 15–18° 把人钉到 0.4 m/s。速度伺服坡度钳到 15%、地形 η 不进反解、地板 1.0 m/s（约 3.6 km/h 负重徒步）；消耗仍按实测坡度。帽内高于 CP 时 STA 承担 P−CP，避免「体力 80% 却爬行且不掉条」
+- **W′ 耗尽后陡坡爬行** — 巡航限速反解不再按网格局部 15–18° 把人钉到 0.4 m/s。速度伺服坡度钳到 15%、地形 η 不进反解、Walk 地板 1.0 m/s（约 3.6 km/h 负重徒步）；消耗仍按实测坡度。帽内高于 CP 时 STA 承担 P−CP，避免「体力 80% 却爬行且不掉条」
+- **步态带内限速 + 能量税** — CP 巡航帽只写在当前步态带内（`SetSpeedLimit` ≥ 0.5× 相位顶）。Run 反解掉出 2.2 m/s 带时不再把 Walk/爬行速度压到 Run 相位（滑步）；W′ 空仍硬跑则 STA 按 P−CP 收步态税（约 10×、上限 0.4%/s），**即使物理略超 v_limit 也不改走更便宜的 12× 小超额**。低体力步行恢复区只在 Walk 生效（不再把 Run 2.7 m/s 当成慢跑回血）。不写 `SetMovementTypeWanted`
+- **Walk 代谢帽对齐徒步地板** — `GetMetabolicSpeedCapMs` 改为走 `InvertCruiseCapMs`（坡度/η 钳 + 1.0 m/s 地板），不再用裸反解把 Walk `v_limit` 拧到 ~0.5 m/s；`GetMetabolicCorrectedSpeedMultiplier` 低于帽时仍托 0.5× 步态下限；`MovementMaxSpeed` 试跑不再用裸 abs 冲掉该地板
+- **Idle 不再钉死起步** — 站立相位写 `0.999` 而不是 `0`（过渡器曾把 0 托成 0.01 m/s ≈ 倍率 0.0027）。从静止起步若上一帧低于 0.5× 步态带则立刻抬到目标，不再按 1.25/s 爬行
+- **条空跛行不再拧出步态带** — 精疲力尽后仍按住 Run 时，`SetSpeedLimit` / `MovementMaxSpeed` 立刻托 0.5× 相位顶（疲惫慢跑），不再按 1.25/s 往 0.15 爬行倍率缓降（Run 动画对爬行指令 = 滑步）。跛行绝对速改用 Walk 顶 1.45 m/s（地板 1.0），不再误用相位阈值 3.2。切 Walk 后才是 ~1 m/s 跛行；下坡重力滑行仍在（物理钳关）
+- **Sprint→Run 不再写 1.0 清源** — 玩家路径始终 `SetSpeedLimit≤0.999`，避免冲刺落地瞬间 uncapped（日志 `最终倍=1`）
+- **步行恢复只认 Walk** — `Run惯性`（引擎 Idle）不再把 HUD/判定当成步行回血；过脊时坡度符号翻转立刻跟上，减轻下坡仍按上坡反解把 `最终倍` 拧到 0.5×
+- **硬跑步态税降到现实量级** — W′ 空后 29 kg 上坡硬跑不再顶满 2.5%/s（约 32 s 抽干 80%）。改为 10×、上限 0.4%/s（陡坡硬跑约 3–4 min 掉完 80%；下坡更低）
+- **掉出 Run 带改切引擎 Walk 档** — W′ 解除武装且 CP 反解低于 Run 地板、仍按住移动时，用 CapsLock 同款切 Walk。**按住 W 则保持 Walk**（下坡反解回到 Run 带也不自动改跑，避免过脊 Walk 动画对 3 m/s 物理）。松开 W（0.25 s 去抖）或 W′ 再武装后还原滚轮。
 
 ## [6.1.7] - 2026-08-14
 

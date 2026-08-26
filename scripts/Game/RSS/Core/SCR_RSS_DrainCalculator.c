@@ -211,10 +211,9 @@ class SCR_RSS_DrainCalculator
     }
 
     //! Run 巡航帽：
-    //!   ≥ Run 地板 → 保留；
-    //!   近地板灰区（floor−SOFT_BAND～floor）→ 软 Run 保留反解；
-    //!   更深灰区 / < Walk 顶 → 降 Walk（硬钳开时改抬到 Run 地板）。
-    //! 深灰区若仍软 Run（日志 1.8），Run 动画会回灌到 ~encumbrance×Run顶（≈2.4）互殴。
+    //!   ≥ Run 地板 / 近地板软带 → 返回帽（仍在 Run 步态内，可写 SetSpeedLimit）；
+    //!   更深灰区：硬钳开则抬到 Run 地板；否则返回 -1（不越步态压速）。
+    //!   游戏侧 W′ 空时由 V6_CP_OUT_OF_BAND_WALK_OVERRIDE 切引擎 Walk 档。
     //! @param rawCapMs CP/巡航反解（可已含平路 2.4 帽，亦可未含）
     static float ResolveRunCruiseCapMs(
         float rawCapMs,
@@ -244,30 +243,31 @@ class SCR_RSS_DrainCalculator
             return floorMs;
 
         float walkTopMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
-        // 近地板：保留软 Run（避免 2.05→1.48 悬崖）；更深则降 Walk
         float softRunFloor = floorMs - SCR_RSS_Constants.V6_RUN_SOFT_BAND_BELOW_FLOOR_MS;
         if (softRunFloor < walkTopMs)
             softRunFloor = walkTopMs;
         if (capMs >= softRunFloor)
             return capMs;
 
-        float walkCapMs = capMs;
-        if (criticalPowerWatts > 1.0)
-        {
-            walkCapMs = InvertCruiseCapMs(
-                criticalPowerWatts, totalWeightKg, gradePercent, terrainFactor, 1);
-        }
+        // 掉出 Run 步态带：禁止把 Run 相位 SetSpeedLimit 拧到 Walk/爬行。
+        return -1.0;
+    }
 
-        if (walkCapMs > walkTopMs)
-            walkCapMs = walkTopMs;
-
-        float walkMinMs = SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS;
-        if (walkMinMs < SCR_RSS_Constants.V6_WALK_START_MIN_MS)
-            walkMinMs = SCR_RSS_Constants.V6_WALK_START_MIN_MS;
-        if (walkCapMs < walkMinMs)
-            walkCapMs = walkMinMs;
-
-        return walkCapMs;
+    //! 限速倍率不得低于当前相位顶速的 k 倍（防滑步）。
+    //! 条空跛行也托下限：把 1 m/s 写进 Run 相位 = 滑步。切 Walk 后相位顶约 1.45，0.5× 与跛行同量级。
+    //! @param isExhausted 保留签名；下限对跛行同样生效。
+    static float ClampSpeedLimitFractionToGaitBand(float frac, bool isExhausted)
+    {
+        float minFrac = SCR_RSS_Constants.V6_GAIT_SPEED_LIMIT_MIN_FRAC;
+        if (minFrac < 0.2)
+            minFrac = 0.2;
+        if (minFrac > 0.9)
+            minFrac = 0.9;
+        if (frac < minFrac)
+            frac = minFrac;
+        if (isExhausted)
+            return frac;
+        return frac;
     }
 
     //! 回退：按移动相位返回 v5 行军档理论上限（m/s）
@@ -357,7 +357,7 @@ class SCR_RSS_DrainCalculator
                     totalWeightKg,
                     terrainFactor,
                     cp);
-                if (evalSpeed > cruiseOnly + 0.05)
+                if (cruiseOnly > 0.05 && evalSpeed > cruiseOnly + 0.05)
                     return cruiseOnly;
             }
             return -1.0;
@@ -375,9 +375,11 @@ class SCR_RSS_DrainCalculator
                 invertPhase = 1;
         }
 
-        float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+        // 与 UpdateCoordinator / 孪生 InvertCruiseCapMs 同路：坡度钳 + η 钳 + Walk 徒步地板。
+        // 禁止走裸 InvertSpeedForPowerWatts：否则 20% 坡 + η=1.44 会把 Walk 拧到 ~0.5 m/s（滑步）。
+        float capMs = InvertCruiseCapMs(
             targetP, totalWeightKg, gradePercent, terrainFactor, invertPhase);
-        // Run：平路上限 + 低于地板则降 Walk；Walk 反解本身不再套 2.4 平路帽
+        // Run：平路上限 + 带内保留；掉出 Run 带则跳过越步态限速
         if (!isSprintPhase && invertPhase != 1)
         {
             capMs = ResolveRunCruiseCapMs(
@@ -420,13 +422,14 @@ class SCR_RSS_DrainCalculator
             cpModel,
             speedForEval);
         if (capMs < 0.0)
-            return appliedSpeedMultiplier;
+            return ClampSpeedLimitFractionToGaitBand(appliedSpeedMultiplier, isExhausted);
 
         float appliedMs = appliedSpeedMultiplier * engineBaseMs;
-        if (appliedMs <= capMs + 0.01)
-            return appliedSpeedMultiplier;
-
-        float nextFrac = Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
+        float nextFrac = appliedSpeedMultiplier;
+        if (appliedMs > capMs + 0.01)
+            nextFrac = Math.Clamp(capMs / engineBaseMs, 0.01, 3.0);
+        // 已低于帽时也要托步态下限：否则 coordinator 写出 0.37、帽=0.52 会 early-return 跳过 0.5×
+        nextFrac = ClampSpeedLimitFractionToGaitBand(nextFrac, isExhausted);
         float deadband = SCR_RSS_Constants.V6_SPEED_LIMIT_DEADBAND_FRAC;
         if (Math.AbsFloat(nextFrac - appliedSpeedMultiplier) <= deadband)
             return appliedSpeedMultiplier;
@@ -434,7 +437,8 @@ class SCR_RSS_DrainCalculator
     }
 
     //! STA 透支附加罚（%/s）。
-    //! - 代谢限速开：武装只烧 W′；解除武装时超限速罚 P(v)−P(limit)，帽内高于 CP 罚 P−CP。
+    //! - 代谢限速开：武装只烧 W′；解除武装后 Run/Sprint 按 P−CP 步态税（即使 phys 略超 v_limit）。
+    //!   Walk 超限速仍走 P(v)−P(limit)×12。
     //! - 代谢限速关：不压速，解除武装后按 P(v)−CP 罚 STA；武装时只烧 W′。
     //! @param wPrimeOverspeedArmed 须与 TickPower 同用施密特武装态（勿用 pool>rearm 近似，
     //!   否则 25–60% 滞回带会 W′ 与 STA 税双计）。
@@ -458,6 +462,7 @@ class SCR_RSS_DrainCalculator
 
         bool drainOnlyMode = !SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled();
         float unpaidW = 0.0;
+        bool useGaitExcessTax = false;
 
         if (drainOnlyMode)
         {
@@ -467,6 +472,7 @@ class SCR_RSS_DrainCalculator
             if (effectiveCriticalPowerWatts <= 1.0)
                 return 0.0;
             unpaidW = pMeas - effectiveCriticalPowerWatts;
+            useGaitExcessTax = true;
         }
         else
         {
@@ -481,18 +487,22 @@ class SCR_RSS_DrainCalculator
                     appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
                 unpaidW = pMeas - pLimitArmed;
             }
-            else if (IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
+            else if (IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs)
+                && movementPhase < 2)
             {
+                // Walk：相对 v_limit 的小超额，走 12×。Run/Sprint 即使 phys 略超限速
+                // 仍按 P−CP 步态税，避免「贴帽满税、滑出反而更便宜」。
                 float pLimit = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
                     appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
                 unpaidW = pMeas - pLimit;
             }
             else
             {
-                // 帽内但仍高于可持续功率（徒步地板 > 真反解）：STA 承担 P−CP
+                // 帽内、未越步态压速、或 Run 物理略超限速：STA 承担 P−CP
                 if (effectiveCriticalPowerWatts <= 1.0)
                     return 0.0;
                 unpaidW = pMeas - effectiveCriticalPowerWatts;
+                useGaitExcessTax = true;
             }
         }
 
@@ -504,9 +514,19 @@ class SCR_RSS_DrainCalculator
         perSec = perSec * SCR_RSS_MetabolismModel.GetLoadedGaitStaminaDrainMultiplier(
             loadKg, movementPhase);
         float taxMult = SCR_RSS_Constants.V6_OVERSPEED_STA_TAX_MULT;
-        if (drainOnlyMode)
+        if (useGaitExcessTax && movementPhase >= 2)
+            taxMult = SCR_RSS_Constants.V6_GAIT_EXCESS_STA_TAX_MULT;
+        else if (drainOnlyMode && !useGaitExcessTax)
+            taxMult = SCR_RSS_Constants.V6_CP_EXCESS_STA_TAX_MULT;
+        else if (drainOnlyMode && movementPhase < 2)
             taxMult = SCR_RSS_Constants.V6_CP_EXCESS_STA_TAX_MULT;
         perSec = perSec * taxMult;
+        if (useGaitExcessTax && movementPhase >= 2)
+        {
+            float taxMax = SCR_RSS_Constants.V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC;
+            if (perSec > taxMax)
+                perSec = taxMax;
+        }
         return perSec;
     }
 }

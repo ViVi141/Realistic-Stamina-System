@@ -13,8 +13,10 @@ Related switches (`SCR_RSS_Constants`; source wins):
 - `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false` (**off** CP-cruise physics bypass clamp)
 - `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (**default on since v6.1.7**: after W′ depletion, press CP/aerobic cruise via SetSpeedLimit; ≤6.1.5 default off, drain-only)
 - `V6_USE_MARCH_GAIT_SPEEDS = false` (March band off)
-- `V6_RUN_GAIT_FLOOR_MS = 2.2` (Run gait band floor; demote to Walk when metabolic cap is on and below floor)
-- `V6_RUN_GAIT_DEMOTE_TO_WALK = true` (auto-disabled if hard clamp on → raise floor instead)
+- `V6_RUN_GAIT_FLOOR_MS = 2.2` (Run gait band floor; below this and past the soft band, skip out-of-band cruise cap)
+- `V6_RUN_GAIT_DEMOTE_TO_WALK = true` (true = do not write Walk m/s onto Run via `SetSpeedLimit`; after W′ empty, switch to engine Walk gait — see `V6_CP_OUT_OF_BAND_WALK_OVERRIDE`; hard clamp on still raises the floor)
+- `V6_CP_OUT_OF_BAND_WALK_OVERRIDE = true` (after W′ empty and invert out of Run band, `SetDynamicSpeed(0.5)` forces Walk)
+- `V6_GAIT_SPEED_LIMIT_MIN_FRAC = 0.50` (min `SetSpeedLimit` vs phase top; exhausted Run still uses this to avoid slide)
 - `V6_WALK_START_MIN_MS = 0.35` (absolute Walk floor)
 
 ### Conclusion (foot-slide)
@@ -29,6 +31,8 @@ Related switches (`SCR_RSS_Constants`; source wins):
 ---
 
 ## 1. Walk floor too high (≥ ~1 m/s); vanilla can be slower
+
+> **v6.1.7+ CP-cruise path**: after W′ depletion, Walk is intentionally floored at `V6_CP_HIKE_FLOOR_MS=1.0` so metabolic invert does not crush `v_limit` to ~0.5 m/s (Walk anim vs ~1.7 m/s physics = slide). “Should drop below 1.0” below applies only to the March intent floor (`V6_WALK_START_MIN_MS=0.35`), not to the disarmed metabolic cap.
 
 ### Symptom
 
@@ -58,12 +62,12 @@ Related switches (`SCR_RSS_Constants`; source wins):
 ### Confirmed constraints
 
 - No reliable anim playback-rate API; `CharacterCommand` overwrites anim vars.
-- **Do not** fake Walk alignment with `SetDynamicSpeed(0.5)` (locks phase).
+- **Do not** write Walk m/s onto the Run phase via `SetSpeedLimit` (slide). Out of the Run band, use CapsLock-style `SetDynamicSpeed(0.5)+SetShouldApplyDynamicSpeedOverride` (`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`). The wheel is locked while the override is on; restore after releasing W / W′ refill.
 
 ### Mitigation
 
 - Default: `V6_APPLY_HORIZONTAL_SPEED_CLAMP = false`.
-- Limits only via `SetSpeedLimit` (min-merge with foliage, etc.).
+- Limits via `SetSpeedLimit` (min-merge with foliage, etc.); out-of-band Run also switches to engine Walk gait.
 - Since v6.1.7: CP metabolic cap on by default (`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`); ≤6.1.5 default off.
 
 ---
@@ -107,10 +111,13 @@ Related switches (`SCR_RSS_Constants`; source wins):
 - Sample engine top **once**.
 - **No** physics clamp; excess paid in STA/W′.
 - Since v6.1.7 `V6_APPLY_CP_METABOLIC_SPEED_CAP` is on by default: flat/uphill presses cruise; downhill/extreme grades skip physics-clamp logic.
-- Cruise invert: speed-servo grade clamped to 15%, terrain η excluded from invert, floor `V6_CP_HIKE_FLOOR_MS=1.0` (~3.6 km/h packed hike). Mesh 15–18° + 29 kg no longer inverts to a 0.4 m/s crawl; drain still uses measured grade, and STA pays P−CP when moving above CP inside the cap.
-- Run gait band (only meaningful with metabolic cap on): CP invert ≥ `V6_RUN_GAIT_FLOOR_MS` stays Run; lower may demote to Walk.
+- Cruise invert: speed-servo grade clamped to 15%, terrain η excluded from invert; Walk floor `V6_CP_HIKE_FLOOR_MS=1.0` (~3.6 km/h packed hike). Mesh 15–18° + 29 kg no longer crushes **Walk** to a 0.4 m/s crawl; drain still uses measured grade.
+- Run gait band: write the cruise cap only if CP invert ≥ `V6_RUN_GAIT_FLOOR_MS` (or the soft band). Out of band: do **not** write Walk m/s onto Run via `SetSpeedLimit`. After W′ empty while still holding movement, switch to engine Walk gait (`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`; HUD `步态覆盖=on`, `类型=Walk`, ~1.0–1.45 m/s). Releasing W restores the mouse wheel. `SetSpeedLimit` stays ≥ 0.5× phase top.
 
 ### Retest
 
 - Occasional `v_meas` slightly above limit is OK (do not enable physics clamp).
-- With metabolic cap on: if Walk demotions are too frequent, lower `V6_RUN_GAIT_FLOOR_MS` slightly; confirm `V6_RUN_GAIT_DEMOTE_TO_WALK=true` and hard clamp off.
+- Steep loaded, W′ disarmed (~<25%), still holding W: HUD `步态覆盖=on`, `类型=Walk`, `v_meas` about 1.0–1.45 m/s. Crossing a crest downhill **stays Walk** (no override flicker, no Walk anim vs 3 m/s physics). About 0.25 s after releasing W, `步态覆盖=off`.
+- After switching to Walk (~10–13°, 29 kg, W′ empty): `v_limit` should be about **1.0 m/s** (hike floor) and `最终倍` ≥ 0.5× Walk top. Do not accept `v_limit≈0.5` with Walk anim vs ~1.7 m/s physics (slide).
+- Standing Idle: `最终倍` should be about **0.999** (keep the limit source), not `0.0027` / HUD `倍率0x`. The first Run/Walk frame after pressing W should enter the gait band immediately, not crawl at `v_limit≈0.48`.
+- Exhausted while still holding Run: after `Exhausted: limp speed`, `最终倍` should snap to about **0.5×** (exhausted jog ~1.8 m/s), not slew toward 0.15 at 1.25/s. After switching to Walk, `v_limit` should be about **1.0 m/s**. Downhill `v_meas` may still exceed command (physics clamp off).

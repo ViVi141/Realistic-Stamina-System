@@ -167,6 +167,7 @@ class SCR_RSS_UpdateCoordinator
     {
         if (!controller)
             return 1.0;
+        controller.RSS_SetRunCruiseCapMs(0.0);
         
         IEntity ownerForStairs = controller.GetOwner();
         bool shouldSuppressSlope = false;
@@ -321,9 +322,9 @@ class SCR_RSS_UpdateCoordinator
                     applyRunCpCruise = false;
             }
             bool sprintOverspeedArmed = wPrimeOverspeedArmed;
-            // Run：W′ 解除武装时套 CP∩有氧巡航顶。
-            // Walk：同样套有氧能力顶（Walk 意图负重罚更轻，且旧逻辑豁免 CP，会出现
-            // 「Run 耗尽 W′ 降速后切 Walk 反而更快」）。
+            // Run：W′ 解除武装时仅在步态带内套 CP∩有氧巡航顶。
+            // 反解掉出 Run 带则不写越步态限速（Resolve 返回 -1），改收 P−CP。
+            // Walk：仍套有氧能力顶（Walk 意图负重罚更轻）。
             if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()
                 && (isWalkPhase || applyRunCpCruise))
             {
@@ -384,7 +385,8 @@ class SCR_RSS_UpdateCoordinator
                             totalWeightKg,
                             runTerrain,
                             cpEffW);
-                        if (theoreticalTargetSpeed > runCruiseCapMs)
+                        controller.RSS_SetRunCruiseCapMs(runCruiseCapMs);
+                        if (runCruiseCapMs > 0.05 && theoreticalTargetSpeed > runCruiseCapMs)
                             theoreticalTargetSpeed = runCruiseCapMs;
                     }
                     else
@@ -410,7 +412,7 @@ class SCR_RSS_UpdateCoordinator
                             if (cpCapMs > 0.05 && cpCapMs < cruiseCapMs)
                                 cruiseCapMs = cpCapMs;
                         }
-                        // Run 带：≥地板保留；<地板则降 Walk（硬钳开时仍抬地板）
+                        // Run 带：≥地板保留；软带内保留；更低则跳过越步态限速（改收 STA 税）
                         cruiseCapMs = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
                             cruiseCapMs,
                             runPhase,
@@ -418,7 +420,8 @@ class SCR_RSS_UpdateCoordinator
                             totalWeightKg,
                             runTerrain,
                             cpEffW);
-                        if (theoreticalTargetSpeed > cruiseCapMs)
+                        controller.RSS_SetRunCruiseCapMs(cruiseCapMs);
+                        if (cruiseCapMs > 0.05 && theoreticalTargetSpeed > cruiseCapMs)
                             theoreticalTargetSpeed = cruiseCapMs;
                     }
                 }
@@ -496,21 +499,30 @@ class SCR_RSS_UpdateCoordinator
                     finalSpeedMultiplier = theoreticalTargetSpeed / sprintEngineOriginal;
                 finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.01, 3.0);
             }
+            finalSpeedMultiplier = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(
+                finalSpeedMultiplier, isExhausted);
         }
         else
         {
-            // 非Run/Sprint模式，使用原来的速度倍数方法保持向后兼容
-            finalSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateFinalSpeedMultiplier(
-                runBaseSpeedMultiplier,
-                encumbranceSpeedPenalty,
-                isSprinting,
-                currentMovementPhase,
-                isExhausted,
-                canSprint,
-                staminaPercent,
-                currentSpeed,
-                currentWorldTime,
-                sprintStartTime);
+            // Idle：保持限速源但不压指令速（0.999）。禁止走 Idle→0→0.01 m/s 钉死起步。
+            if (currentMovementPhase == 0)
+            {
+                finalSpeedMultiplier = 0.999;
+            }
+            else
+            {
+                finalSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateFinalSpeedMultiplier(
+                    runBaseSpeedMultiplier,
+                    encumbranceSpeedPenalty,
+                    isSprinting,
+                    currentMovementPhase,
+                    isExhausted,
+                    canSprint,
+                    staminaPercent,
+                    currentSpeed,
+                    currentWorldTime,
+                    sprintStartTime);
+            }
         }
         
         return finalSpeedMultiplier;
@@ -865,7 +877,13 @@ class SCR_RSS_UpdateCoordinator
 
         float walkRecoveryThreshold = SCR_RSS_Constants.GetWalkRecoveryZoneThreshold();
         float walkRecoveryRatePerTick = SCR_RSS_Constants.GetWalkRecoveryZoneRate();
-        if (!tick.useSwimmingModel && !tick.isSprintActive && tick.staminaPercent < walkRecoveryThreshold && tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+        bool inWalkRecoveryZone = false;
+        if (!tick.useSwimmingModel && !tick.isSprintActive && tick.staminaPercent < walkRecoveryThreshold)
+        {
+            if (tick.currentMovementPhase == 1 && tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+                inWalkRecoveryZone = true;
+        }
+        if (inWalkRecoveryZone)
         {
             result.totalDrainRate = -walkRecoveryRatePerTick;
             result.baseDrainRateByVelocity = -walkRecoveryRatePerTick;

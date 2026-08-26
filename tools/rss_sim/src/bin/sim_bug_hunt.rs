@@ -10,7 +10,7 @@ use rss_sim::constants::{
     V6_WPRIME_OVERSPEED_REARM,
 };
 use rss_sim::cp_wprime::V6CriticalPowerState;
-use rss_sim::drain::refresh_wprime_overspeed_armed;
+use rss_sim::drain::{refresh_wprime_overspeed_armed, resolve_run_cruise_cap_ms};
 use rss_sim::metabolism::{compute_cp_watts, invert_speed_for_power_watts, metabolism_power_watts};
 
 const BODY: f64 = 90.0;
@@ -42,7 +42,7 @@ fn cruise_v(cp: f64, total: f64, grade: f64, skip_flat_cap_downhill: bool) -> f6
         V6_AEROBIC_CRUISE_MAX_MS.min(inv.max(0.05))
     };
     if cap > 0.05 && cap < V6_RUN_GAIT_FLOOR_MS {
-        cap = V6_RUN_GAIT_FLOOR_MS;
+        cap = resolve_run_cruise_cap_ms(cap, RUN, grade, total, 1.0, cp);
     }
     cap
 }
@@ -276,12 +276,12 @@ fn main() {
         println!(
             "[用例7] Run CP巡航地板: Invert={inv:.2} → 应用={capped:.2}  (地板={V6_RUN_GAIT_FLOOR_MS})"
         );
-        if inv < V6_RUN_GAIT_FLOOR_MS - 0.05 && capped < V6_RUN_GAIT_FLOOR_MS - 0.01 {
+        if inv < V6_RUN_GAIT_FLOOR_MS - 0.05 && capped > 0.05 && capped < V6_RUN_GAIT_FLOOR_MS - 0.01 {
             bugs.push(Bug {
-                id: "RUN_GAIT_FLOOR_MISSING",
+                id: "RUN_GAIT_OUT_OF_BAND_CAP",
                 severity: "高",
                 detail: format!(
-                    "CP 反解 {inv:.2} 落入 Walk 带，巡航未抬到地板 {V6_RUN_GAIT_FLOOR_MS} → Walk 动画/滑步"
+                    "CP 反解 {inv:.2} 掉出 Run 带，巡航仍写成 {capped:.2}（应跳过越步态帽）"
                 ),
             });
         }

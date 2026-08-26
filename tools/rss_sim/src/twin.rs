@@ -2,11 +2,10 @@ use crate::constants::{
     RssConstants, EPOC_MAX_POWER_EXCESS_RATIO, EXHAUSTION_LIMP_SPEED,
     LOADED_RUN_DRAIN_MAX_MULT, LOADED_RUN_DRAIN_REF_KG, LOADED_RUN_DRAIN_START_KG,
     MIN_SPEED_MULTIPLIER, MOVEMENT_IDLE, MOVEMENT_RUN, MOVEMENT_SPRINT, MOVEMENT_WALK,
-    RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, RUN_VELOCITY_THRESHOLD,
+    RSS_IDLE_SPEED_THRESHOLD_MPS, RSS_PLAYER_TICK_SEC, ENGINE_WALK_TOP_MS,
     SPRINT_ENCUMBRANCE_PENALTY_MULT, SPRINT_GAIT_MIN_OVER_RUN_RATIO, STAMINA_TICK_SEC,
     V6_AEROBIC_CRUISE_MAX_MS, V6_CRITICAL_POWER_WATTS_DEFAULT, V6_STAMINA_DRAIN_CALIBRATION,
     V6_SPRINT_POWER_CAP_WATTS_DEFAULT, V6_WALK_START_MIN_MS, VELOCITY_HORIZ_CAP_MS,
-    WALK_VELOCITY_THRESHOLD,
 };
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
@@ -750,10 +749,19 @@ impl RSSDigitalTwin {
         }
     }
 
+    fn get_dynamic_limp_speed_ms(&self, encumbrance_penalty: f64) -> f64 {
+        let mut limp_ms = ENGINE_WALK_TOP_MS * (1.0 - encumbrance_penalty);
+        if limp_ms < EXHAUSTION_LIMP_SPEED {
+            limp_ms = EXHAUSTION_LIMP_SPEED;
+        }
+        if limp_ms > ENGINE_WALK_TOP_MS {
+            limp_ms = ENGINE_WALK_TOP_MS;
+        }
+        limp_ms
+    }
+
     fn get_dynamic_limp_multiplier(&self, encumbrance_penalty: f64) -> f64 {
-        let mut max_walk_speed = WALK_VELOCITY_THRESHOLD * (1.0 - encumbrance_penalty);
-        max_walk_speed = clip_f64(max_walk_speed, EXHAUSTION_LIMP_SPEED, RUN_VELOCITY_THRESHOLD);
-        max_walk_speed / self.constants.game_max_speed
+        self.get_dynamic_limp_speed_ms(encumbrance_penalty) / self.constants.game_max_speed
     }
 
     fn calculate_v6_phase_speed_multiplier(
@@ -1066,7 +1074,7 @@ impl RSSDigitalTwin {
                     tf,
                     cp_eff,
                 );
-                if theoretical_target > cruise_cap {
+                if cruise_cap > 0.05 && theoretical_target > cruise_cap {
                     theoretical_target = cruise_cap;
                 }
             }
@@ -1106,7 +1114,7 @@ impl RSSDigitalTwin {
                 tf,
                 cp_eff,
             );
-            if theoretical_target > run_cruise {
+            if run_cruise > 0.05 && theoretical_target > run_cruise {
                 theoretical_target = run_cruise;
             }
         } else if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
@@ -1140,7 +1148,7 @@ impl RSSDigitalTwin {
                 tf,
                 cp_eff,
             );
-            if theoretical_target > cruise_cap {
+            if cruise_cap > 0.05 && theoretical_target > cruise_cap {
                 theoretical_target = cruise_cap;
             }
         }

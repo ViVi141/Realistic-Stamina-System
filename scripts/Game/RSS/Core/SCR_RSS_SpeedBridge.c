@@ -4,9 +4,9 @@
 //! RSS 必须只写入独立 source 参与 min 合并；禁止再单独 OverrideMaxSpeed，
 //! 否则会盖掉 Foliage/铁丝网等已合并的限速。
 //!
-//! 不写 SetDynamicSpeed 假按 Walk（会锁死相位）；只走 SetSpeedLimit。
-//! CP 反解低于 Run 地板时：DrainCalculator.ResolveRunCruiseCapMs 降 Walk 带目标（只改
-//! SetSpeedLimit 绝对值；分母仍用当前相位顶速）。硬钳开时改回抬地板。
+//! 默认只走 SetSpeedLimit。CP 反解掉出 Run 带时：ResolveRunCruiseCapMs 跳过越步态帽；
+//! 若 V6_CP_OUT_OF_BAND_WALK_OVERRIDE，另用 CapsLock 同款 SetDynamicSpeed(0.5) 切 Walk 档
+//! （动画与位移同档）。硬钳开时 Resolve 改回抬地板。
 
 class RSS_StaminaSpeedLimitToken : Managed
 {
@@ -40,6 +40,56 @@ class SCR_RSS_SpeedBridge
     static bool IsCpMetabolicSpeedCapEnabled()
     {
         return SCR_RSS_Constants.V6_APPLY_CP_METABOLIC_SPEED_CAP;
+    }
+
+    //! 是否在掉出 Run 带时用引擎 Walk 动态速度覆盖（见 V6_CP_OUT_OF_BAND_WALK_OVERRIDE）。
+    static bool IsCpOutOfBandWalkOverrideEnabled()
+    {
+        return SCR_RSS_Constants.V6_CP_OUT_OF_BAND_WALK_OVERRIDE;
+    }
+
+    //! 开始 CapsLock 同款 Walk 覆盖。已在 Walk 档则不抢所有权。
+    //! @param savedSpeed 成功时写入覆盖前的 GetDynamicSpeed
+    //! @return true 已由 RSS 持有覆盖
+    static bool TryBeginWalkDynamicSpeedOverride(CharacterControllerComponent ctrl, out float savedSpeed)
+    {
+        savedSpeed = 1.0;
+        if (!ctrl)
+            return false;
+
+        float walkSpd = SCR_RSS_Constants.ENGINE_WALK_DYNAMIC_SPEED;
+        float current = ctrl.GetDynamicSpeed();
+        if (Math.AbsFloat(current - walkSpd) <= 0.02)
+            return false;
+
+        savedSpeed = current;
+        ctrl.SetDynamicSpeed(walkSpd);
+        ctrl.SetShouldApplyDynamicSpeedOverride(true);
+        return true;
+    }
+
+    //! 覆盖期间每 tick 再钉一次，防止走路键抬起把滚轮还原。
+    static void HoldWalkDynamicSpeedOverride(CharacterControllerComponent ctrl)
+    {
+        if (!ctrl)
+            return;
+        ctrl.SetDynamicSpeed(SCR_RSS_Constants.ENGINE_WALK_DYNAMIC_SPEED);
+        ctrl.SetShouldApplyDynamicSpeedOverride(true);
+    }
+
+    //! 还原覆盖前的动态速度并关掉 override。
+    static void EndWalkDynamicSpeedOverride(CharacterControllerComponent ctrl, float savedSpeed)
+    {
+        if (!ctrl)
+            return;
+
+        float restore = savedSpeed;
+        if (restore < 0.0)
+            restore = 0.0;
+        if (restore > 1.0)
+            restore = 1.0;
+        ctrl.SetDynamicSpeed(restore);
+        ctrl.SetShouldApplyDynamicSpeedOverride(false);
     }
 
     //! 是否试跑 MovementComponent 绝对顶速（见 V6_TRY_MOVEMENT_MAX_SPEED）。

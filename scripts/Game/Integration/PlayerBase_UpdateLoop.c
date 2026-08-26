@@ -229,13 +229,18 @@ modded class SCR_CharacterControllerComponent
         loc.isExhausted = SCR_RSS_MetabolismMath.IsExhausted(loc.staminaPercent);
         if (loc.isExhausted)
         {
-            float limpSpeedMultiplier = SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier(loc.encumbranceSpeedPenalty);
-            float compensatedLimpMultiplier = Math.Clamp(limpSpeedMultiplier * m_fAnimSpeedCompensation, 0.01, 1.0);
+            float limpAbs = SCR_RSS_MetabolismMath.GetDynamicLimpSpeedMs(loc.encumbranceSpeedPenalty);
+            limpAbs = limpAbs * m_fAnimSpeedCompensation;
+            if (limpAbs < SCR_RSS_Constants.EXHAUSTION_LIMP_SPEED)
+                limpAbs = SCR_RSS_Constants.EXHAUSTION_LIMP_SPEED;
             if (IsPlayerControlled())
             {
-                float limpAbs = compensatedLimpMultiplier * GetOriginalEngineMaxSpeed_Run();
                 float phaseTop = GetRssSpeedLimitEngineBaseMs();
+                if (phaseTop < 0.1)
+                    phaseTop = GetOriginalEngineMaxSpeed_Run();
                 float limpFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(limpAbs, phaseTop);
+                limpFrac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(limpFrac, false);
+                limpAbs = limpFrac * phaseTop;
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, limpFrac);
                 m_fLastRssSpeedMultiplierApplied = limpFrac;
                 float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
@@ -246,6 +251,8 @@ modded class SCR_CharacterControllerComponent
             }
             else
             {
+                float limpSpeedMultiplier = SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier(loc.encumbranceSpeedPenalty);
+                float compensatedLimpMultiplier = Math.Clamp(limpSpeedMultiplier * m_fAnimSpeedCompensation, 0.01, 1.0);
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, compensatedLimpMultiplier);
             }
 
@@ -331,7 +338,7 @@ modded class SCR_CharacterControllerComponent
         if (loc.customSprintSpeedMult != 1.0)
             loc.finalSpeedMultiplier = loc.finalSpeedMultiplier * loc.customSprintSpeedMult;
 
-        if (m_pSprintBlockSpeedTransition)
+        if (m_pSprintBlockSpeedTransition && !loc.isExhausted)
         {
             bool sprintAllowed = GetRssSprintAllowed();
             // 过渡与落盘限速必须共用同一 engineBase（按有效相位，Walk 不可再用 Run 分母）
@@ -424,11 +431,10 @@ modded class SCR_CharacterControllerComponent
                     cruiseDisarmed = true;
             }
 
-            // Walk 相位顶是硬顶；Run→Walk 过渡残留绝对速不得写成清源的 1.0
-            bool keepSpeedSource = cruiseDisarmed;
+            // 始终保住 RSS 限速源：SetSpeedLimit(1.0) 会拆掉 source，Sprint→Run 会瞬间 uncapped。
+            bool keepSpeedSource = true;
             if (loc.phaseNow == 1 || loc.effectivePhase == 1)
             {
-                keepSpeedSource = true;
                 float walkTopMs = loc.storedEngineBase;
                 if (walkTopMs > 0.1 && desiredAbsMs > walkTopMs)
                     desiredAbsMs = walkTopMs;
@@ -436,12 +442,10 @@ modded class SCR_CharacterControllerComponent
 
             float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
                 desiredAbsMs, loc.storedEngineBase, keepSpeedSource);
-            desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
-            if (keepSpeedSource)
-            {
-                if (desiredFrac >= 0.999)
-                    desiredFrac = 0.999;
-            }
+            if (!loc.isExhausted)
+                desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
+            if (desiredFrac >= 0.999)
+                desiredFrac = 0.999;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, desiredFrac);
             float slewedAbsMs = desiredFrac * loc.storedEngineBase;
             float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
@@ -495,6 +499,31 @@ modded class SCR_CharacterControllerComponent
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, aiFrac);
             m_fLastRssSpeedMultiplierApplied = aiFrac;
         }
+
+        if (IsPlayerControlled())
+        {
+            bool inVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
+            bool wPrimeEmpty = true;
+            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            {
+                if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                    m_pAnaerobicBurst.GetCpModel()))
+                    wPrimeEmpty = false;
+            }
+            bool holdingMove = false;
+            CharacterInputContext moveCtx = GetInputContext();
+            if (moveCtx)
+                holdingMove = moveCtx.IsMoving();
+            if (loc.isSprintingNow)
+                holdingMove = true;
+            vector moveInput = GetMovementInput();
+            float moveInputSq = moveInput[0] * moveInput[0] + moveInput[2] * moveInput[2];
+            if (moveInputSq > 0.04)
+                holdingMove = true;
+            RSS_UpdateCpOutOfBandWalkOverride(
+                loc.isSwimmingForSpeed, inVehicle, holdingMove, wPrimeEmpty);
+        }
+
         if (IsPlayerControlled())
             m_sLastSpeedSource = "Client";
         else
@@ -621,8 +650,11 @@ modded class SCR_CharacterControllerComponent
             if (m_pAnaerobicBurst)
                 cpModel = m_pAnaerobicBurst.GetCpModel();
 
-            // 禁 Sprint 时按 Run 相位做代谢压速，避免 phase=3 + W′≈0 走冲刺功率悬崖
+            // 禁 Sprint 时按 Run 相位做代谢压速，避免 phase=3 + W′≈0 走冲刺功率悬崖。
+            // 惯性滑行引擎 phase=Idle：用有效相位，否则跳过巡航帽导致过脊后限速乱跳。
             int metabPhase = loc.phaseNow;
+            if (loc.phaseNow == 0 && loc.effectivePhase >= 1)
+                metabPhase = loc.effectivePhase;
             if (!GetRssSprintAllowed())
             {
                 if (metabPhase == 3)
@@ -657,6 +689,7 @@ modded class SCR_CharacterControllerComponent
                         hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
                     m_fAppliedSpeedLimitMs = safeCap;
                     m_fLastRssSpeedMultiplierApplied = hardFrac;
+                    loc.finalSpeedMultiplier = hardFrac;
                     if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
                         SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
                     if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
@@ -684,8 +717,8 @@ modded class SCR_CharacterControllerComponent
                     SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, correctedSpeed);
                     m_fLastRssSpeedMultiplierApplied = correctedSpeed;
                     m_fAppliedSpeedLimitMs = correctedSpeed * engineBase;
+                    loc.finalSpeedMultiplier = correctedSpeed;
                 }
-                loc.finalSpeedMultiplier = correctedSpeed;
             }
         }
 

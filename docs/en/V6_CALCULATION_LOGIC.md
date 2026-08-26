@@ -5,7 +5,7 @@
 > **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-14 audit-aligned)  
 > Supersedes v5 and older “willpower plateau / Givoni / legacy module names”. Source wins.  
 > ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [RSS_数学模型审计_2026-08-14.md](../RSS_数学模型审计_2026-08-14.md).  
-> **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Cruise invert clamps grade to 15%, ignores terrain η for speed, and floors at `V6_CP_HIKE_FLOOR_MS=1.0` (no 0.4 m/s crawl on 15°/29 kg; drain still uses measured grade). Known limit: the mouse wheel (`SetDynamicSpeed`) can bypass the max-speed layer (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
+> **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Cruise invert clamps grade to 15% and ignores terrain η for speed; Walk invert floors at `V6_CP_HIKE_FLOOR_MS=1.0` (`GetMetabolicSpeedCapMs` and UpdateCoordinator both use `InvertCruiseCapMs`, not a raw invert). The CP cruise cap is **in-gait only** (Run about 0.5–1.0× phase top, and ≥ `V6_RUN_GAIT_FLOOR_MS` 2.2 or the 1.95–2.2 soft band). If invert falls out of the Run band, do **not** write Walk/crawl speed onto the Run phase (foot-slide). After W′ empty while still holding movement, switch to engine Walk gait (`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`: CapsLock-style `SetDynamicSpeed(0.5)` + override). Known limit: the mouse wheel (`SetDynamicSpeed`) can still bypass the max-speed layer in-band (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
 
 ---
 
@@ -104,7 +104,7 @@ Elite baked `sprint_power_cap_watts = 2355` (35 kg full Sprint to ANA gate ≤15
 ## 5. Aerobic pool and speed
 
 - **No main-bar plateau**: Run speed = phase target m/s (Elite 1.4/2.8/4.0) × load
-- **Low STA** (<5%): `GetDynamicLimpMultiplier` + `CollapseTransition` 5 s damping
+- **Low STA** (<5%): `GetDynamicLimpMultiplier` (Walk top 1.45 m/s, floor 1.0) + `CollapseTransition` 5 s damping. Exhausted while still holding Run keeps ≥0.5× phase top (exhausted jog) so crawl multipliers are not written onto Run.
 - **Sprint gate**: `IsSprintAllowedWithCp` (aerobic threshold + **W′ overspeed Schmitt latch**; **no** short-burst timed CD)
   - Off band: pool ≤ `anaerobic_sprint_enable_threshold + V6_WPRIME_OVERSPEED_HYSTERESIS` (default ≈25%)
   - Rearm band: pool > `threshold + V6_WPRIME_OVERSPEED_REARM` (default ≈60%); prevents Sprint↔Run chatter around ≈20–25% while holding Sprint

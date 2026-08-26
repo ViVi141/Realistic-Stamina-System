@@ -496,6 +496,11 @@ modded class SCR_CharacterControllerComponent
     //! V6_TRY_MOVEMENT_MAX_SPEED：首次采样的原生 MovementMaxSpeed，用于恢复
     protected float m_fRssNativeMovementMaxSpeed = -1.0;
     protected bool m_bRssNativeMovementMaxSpeedCaptured = false;
+    //! ResolveRunCruiseCapMs 本 tick 结果：0=未算，<0=掉出 Run 带，≥地板=在带内
+    protected float m_fRssLastRunCruiseCapMs = 0.0;
+    protected bool m_bRssCpWalkOverrideActive = false;
+    protected float m_fRssCpWalkOverrideSavedSpeed = 1.0;
+    protected float m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected float m_fLastSpeedSlewTimeSec = -1.0;
     protected float m_fSmoothedGradePercentForSpeed = 0.0;
@@ -570,6 +575,7 @@ modded class SCR_CharacterControllerComponent
             World worldForSpeed = SCR_RSS_RuntimeGuard.GetWorldOrNull();
             if (worldForSpeed)
             {
+                RSS_ReleaseCpWalkOverride();
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
                 RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
             }
@@ -710,6 +716,14 @@ modded class SCR_CharacterControllerComponent
 
         // 原生若像「倍率」(≤1.5) 而非 m/s，则按相位顶换算，避免把顶速写成 0.8 这种假绝对值
         float writeMs = absMs;
+        float gaitPhaseTop = m_fLastRssEngineBaseForLimit;
+        if (gaitPhaseTop < 0.1)
+            gaitPhaseTop = GetRssSpeedLimitEngineBaseMs();
+        if (gaitPhaseTop < 0.1)
+            gaitPhaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        float minAbs = gaitPhaseTop * SCR_RSS_Constants.V6_GAIT_SPEED_LIMIT_MIN_FRAC;
+        if (writeMs < minAbs)
+            writeMs = minAbs;
         if (m_bRssNativeMovementMaxSpeedCaptured && m_fRssNativeMovementMaxSpeed > 0.0
             && m_fRssNativeMovementMaxSpeed <= 1.5)
         {
@@ -718,7 +732,8 @@ modded class SCR_CharacterControllerComponent
                 phaseTop = GetRssSpeedLimitEngineBaseMs();
             if (phaseTop < 0.1)
                 phaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-            float frac = absMs / phaseTop;
+            // 用已托步态下限的 writeMs，勿用裸 absMs，否则 0.5× 地板会被 0.52/phaseTop 冲掉
+            float frac = writeMs / phaseTop;
             if (frac > 1.0)
                 frac = 1.0;
             if (frac < 0.01)
@@ -730,6 +745,9 @@ modded class SCR_CharacterControllerComponent
             if (writeMs > m_fRssNativeMovementMaxSpeed)
                 writeMs = m_fRssNativeMovementMaxSpeed;
         }
+
+        if (writeMs < minAbs)
+            writeMs = minAbs;
 
         SCR_RSS_SpeedBridge.ApplyAbsoluteMovementMaxSpeed(owner, writeMs);
     }
@@ -993,6 +1011,109 @@ modded class SCR_CharacterControllerComponent
         return m_fLastRssSpeedMultiplierApplied;
     }
 
+    //! 本 tick Run 巡航帽（ResolveRunCruiseCapMs）。0=未计算。
+    void RSS_SetRunCruiseCapMs(float capMs)
+    {
+        m_fRssLastRunCruiseCapMs = capMs;
+    }
+
+    float RSS_GetRunCruiseCapMs()
+    {
+        return m_fRssLastRunCruiseCapMs;
+    }
+
+    bool RSS_IsCpWalkOverrideActive()
+    {
+        return m_bRssCpWalkOverrideActive;
+    }
+
+    //! W′ 解除武装且反解掉出 Run 带时套引擎 Walk 档。
+    //! 按住移动则保持（不因下坡反解回到 Run 带而自动改跑）；松开移动或 W′ 再武装才还原。
+    void RSS_UpdateCpOutOfBandWalkOverride(bool isSwimming, bool isInVehicle, bool holdingMove, bool wPrimeEmpty)
+    {
+        if (!SCR_RSS_SpeedBridge.IsCpOutOfBandWalkOverrideEnabled())
+        {
+            RSS_ReleaseCpWalkOverride();
+            return;
+        }
+        if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+        {
+            RSS_ReleaseCpWalkOverride();
+            return;
+        }
+        if (isSwimming || isInVehicle)
+        {
+            RSS_ReleaseCpWalkOverride();
+            return;
+        }
+
+        float capMs = m_fRssLastRunCruiseCapMs;
+        bool outOfBand = false;
+        if (capMs < -0.01)
+            outOfBand = true;
+
+        bool want = false;
+        if (wPrimeEmpty)
+        {
+            if (m_bRssCpWalkOverrideActive)
+            {
+                if (holdingMove)
+                {
+                    want = true;
+                    m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
+                }
+                else
+                {
+                    float dt = GetSpeedUpdateIntervalMs() / 1000.0;
+                    if (dt < 0.01)
+                        dt = 0.01;
+                    if (dt > 0.5)
+                        dt = 0.5;
+                    m_fRssCpWalkOverrideReleaseHoldSec = m_fRssCpWalkOverrideReleaseHoldSec + dt;
+                    if (m_fRssCpWalkOverrideReleaseHoldSec < SCR_RSS_Constants.V6_CP_WALK_OVERRIDE_RELEASE_HOLD_SEC)
+                        want = true;
+                }
+            }
+            else if (holdingMove && outOfBand)
+            {
+                want = true;
+            }
+        }
+
+        if (want)
+        {
+            if (m_bRssCpWalkOverrideActive)
+            {
+                SCR_RSS_SpeedBridge.HoldWalkDynamicSpeedOverride(this);
+                return;
+            }
+
+            float savedSpeed = 1.0;
+            if (SCR_RSS_SpeedBridge.TryBeginWalkDynamicSpeedOverride(this, savedSpeed))
+            {
+                m_fRssCpWalkOverrideSavedSpeed = savedSpeed;
+                m_bRssCpWalkOverrideActive = true;
+                m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
+                if (IsRssDebugEnabled())
+                    Print("[RSS] CP walk override on");
+            }
+            return;
+        }
+
+        RSS_ReleaseCpWalkOverride();
+    }
+
+    void RSS_ReleaseCpWalkOverride()
+    {
+        if (!m_bRssCpWalkOverrideActive)
+            return;
+        SCR_RSS_SpeedBridge.EndWalkDynamicSpeedOverride(this, m_fRssCpWalkOverrideSavedSpeed);
+        m_bRssCpWalkOverrideActive = false;
+        m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
+        if (IsRssDebugEnabled())
+            Print("[RSS] CP walk override off");
+    }
+
     //! 限速倍率斜率限制：压住后期 CP/坡度反解引起的 SetSpeedLimit 抖动
     float RSS_SlewSpeedLimitFraction(float targetFrac, float currentTimeSec)
     {
@@ -1023,7 +1144,14 @@ modded class SCR_CharacterControllerComponent
 
         float slewed = target;
         if (delta > maxStep)
-            slewed = prev + maxStep;
+        {
+            // 从 Idle 钉死的 ~0.01 起步：立刻抬到目标，勿按 1.25/s 爬 0.5 s
+            float gaitFloor = SCR_RSS_Constants.V6_GAIT_SPEED_LIMIT_MIN_FRAC;
+            if (prev < gaitFloor && target >= gaitFloor)
+                slewed = target;
+            else
+                slewed = prev + maxStep;
+        }
         else if (delta < -maxStep)
             slewed = prev - maxStep;
 
@@ -1061,6 +1189,19 @@ modded class SCR_CharacterControllerComponent
         if (dt > 0.5)
             dt = 0.5;
         m_fLastGradeSmoothTimeSec = currentTimeSec;
+
+        // 过脊：符号翻转时立刻跟上实测坡度，避免仍按上坡反解把下坡 v_limit 拧到 0.5×。
+        float signFlipEps = 2.0;
+        if (m_fSmoothedGradePercentForSpeed > signFlipEps && raw < -signFlipEps)
+        {
+            m_fSmoothedGradePercentForSpeed = raw;
+            return m_fSmoothedGradePercentForSpeed;
+        }
+        if (m_fSmoothedGradePercentForSpeed < -signFlipEps && raw > signFlipEps)
+        {
+            m_fSmoothedGradePercentForSpeed = raw;
+            return m_fSmoothedGradePercentForSpeed;
+        }
 
         // 峭壁进出：限制坡度变化速率，避免巡航顶从 0.3↔2.0 瞬跳触发 SNAP_UP
         float maxDeltaPerSec = 55.0;
@@ -1297,6 +1438,7 @@ modded class SCR_CharacterControllerComponent
             World worldForSpeed = SCR_RSS_RuntimeGuard.GetWorldOrNull();
             if (worldForSpeed)
             {
+                RSS_ReleaseCpWalkOverride();
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
                 RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
             }

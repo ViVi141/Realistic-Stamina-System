@@ -874,7 +874,7 @@ class SCR_RSS_DebugDisplay
         float walkRecoveryThreshold = SCR_RSS_Constants.GetWalkRecoveryZoneThreshold();
         if (!tick.useSwimmingModel && !tick.isSprintActive && tick.staminaPercent < walkRecoveryThreshold)
         {
-            if (tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+            if (tick.effectiveMovementPhase == 1 && tick.currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
                 walkRecoveryZone = true;
         }
 
@@ -988,15 +988,20 @@ class SCR_RSS_DebugDisplay
             tick.gradePercent,
             tick.terrainFactor,
             tick.effectiveMovementPhase);
+        string walkOverrideStr = "off";
+        if (controller.RSS_IsCpWalkOverrideActive())
+            walkOverrideStr = "on";
+
         string line3Tail = string.Format(
-            " | env=%1 步行恢复=%2 EPOC=%3 上限=%4%% P_fat=%5W 超速记账=%6 超速罚=%7%/s",
+            " | env=%1 步行恢复=%2 EPOC=%3 上限=%4%% P_fat=%5W 超速记账=%6 超速罚=%7%/s 步态覆盖=%8",
             Math.Round(tick.environmentMult * 1000.0) / 1000.0,
             walkRecStr,
             epocStr,
             Math.Round(tick.targetStaminaCap * 100.0),
             Math.Round(fatiguePowerDbg),
             overspeedStr,
-            Math.Round(tick.overspeedExtraDrainPerSec * 10000.0) / 100.0);
+            Math.Round(tick.overspeedExtraDrainPerSec * 10000.0) / 100.0,
+            walkOverrideStr);
         string line3 = line3Head + line3Tail;
         AppendDrainDebugLine(line3);
     }

@@ -65,7 +65,7 @@ PlayerBase_UpdateLoop
   → SCR_RSS_SprintGate（可选：W′ → transient GetStamina / Exhaustion 表现）
 ```
 
-**默认限速策略（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：超额只扣 STA/W′）。物理硬钳保持关闭，禁止为「贴限」拧 `Physics` 速度（滑步）。
+**默认限速策略（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：超额只扣 STA/W′）。巡航帽只写在当前步态带内；掉出 Run 带则不把 Walk 速度写进 Run，W′ 空时改切引擎 Walk 档（`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`）。物理硬钳保持关闭，禁止为「贴限」拧 `Physics` 速度（滑步）。
 
 ---
 

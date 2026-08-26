@@ -445,9 +445,9 @@ class SCR_RSS_SpeedCalculator
             finalSpeedMultiplier = walkBaseSpeedMultiplier * (1.0 - encumbrancePenalty);
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.2, 0.9);
         }
-        else // Idle
+        else // Idle：禁止写 0。0 × 引擎顶经过渡器托成 0.01 m/s，倍率 ≈ 0.0027，站着把起步钉死。
         {
-            finalSpeedMultiplier = 0.0;
+            finalSpeedMultiplier = 0.999;
         }
         
         // 静止起步检测：如果当前速度很低但处于移动阶段，给予起步补偿

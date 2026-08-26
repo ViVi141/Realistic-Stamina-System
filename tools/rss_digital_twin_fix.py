@@ -29,6 +29,7 @@ RSS_PLAYER_TICK_SEC = 0.017
 VELOCITY_HORIZ_CAP_MS = 7.0
 
 # 与 SCR_RSS_Constants.c 一致（v6 速度 / 跛行）
+ENGINE_WALK_TOP_MS = 1.45
 WALK_VELOCITY_THRESHOLD = 3.2
 RUN_VELOCITY_THRESHOLD = 3.8
 EXHAUSTION_LIMP_SPEED = 1.0
@@ -1125,12 +1126,19 @@ class RSSDigitalTwin:
     def _v5_sprint_speed_ms(self) -> float:
         return float(getattr(self.constants, 'V5_SPRINT_SPEED_MS', V5_SPRINT_SPEED_MS_DEFAULT))
 
+    def get_dynamic_limp_speed_ms(self, encumbrance_penalty: float) -> float:
+        """与 SCR_RSS_MetabolismMath.GetDynamicLimpSpeedMs 一致。"""
+        limp_ms = ENGINE_WALK_TOP_MS * (1.0 - encumbrance_penalty)
+        if limp_ms < EXHAUSTION_LIMP_SPEED:
+            limp_ms = EXHAUSTION_LIMP_SPEED
+        if limp_ms > ENGINE_WALK_TOP_MS:
+            limp_ms = ENGINE_WALK_TOP_MS
+        return float(limp_ms)
+
     def get_dynamic_limp_multiplier(self, encumbrance_penalty: float) -> float:
         """与 SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier 一致。"""
-        max_walk_speed = WALK_VELOCITY_THRESHOLD * (1.0 - encumbrance_penalty)
-        max_walk_speed = float(np.clip(max_walk_speed, EXHAUSTION_LIMP_SPEED, RUN_VELOCITY_THRESHOLD))
         game_max = getattr(self.constants, 'GAME_MAX_SPEED', 5.5)
-        return max_walk_speed / game_max
+        return self.get_dynamic_limp_speed_ms(encumbrance_penalty) / game_max
 
     def calculate_v6_phase_speed_multiplier(
         self,
@@ -1381,7 +1389,7 @@ class RSSDigitalTwin:
                     cp_eff,
                     self.constants,
                 )
-                if theoretical_target > cruise_cap:
+                if cruise_cap > 0.05 and theoretical_target > cruise_cap:
                     theoretical_target = cruise_cap
         elif phase == MovementType.WALK:
             # Walk：CP 反解 + 不得超过同条件 Run 有氧巡航帽（禁止切 Walk 比降速 Run 更快）
@@ -1418,7 +1426,7 @@ class RSSDigitalTwin:
                 cp_eff,
                 self.constants,
             )
-            if theoretical_target > run_cruise:
+            if run_cruise > 0.05 and theoretical_target > run_cruise:
                 theoretical_target = run_cruise
         elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
             # Run: CP intersect aerobic cruise max
@@ -1449,7 +1457,7 @@ class RSSDigitalTwin:
                 cp_eff,
                 self.constants,
             )
-            if theoretical_target > cruise_cap:
+            if cruise_cap > 0.05 and theoretical_target > cruise_cap:
                 theoretical_target = cruise_cap
 
         return float(theoretical_target)
@@ -1960,6 +1968,8 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
 V6_OVERSPEED_STA_TAX_MULT = 12.0
 V6_CP_EXCESS_STA_TAX_MULT = 0.75
+V6_GAIT_EXCESS_STA_TAX_MULT = 10.0
+V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC = 0.004
 V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05
 V6_WPRIME_OVERSPEED_REARM = 0.40
 V6_W_PRIME_RECOVERY_POWER_MARGIN_W = 40.0
@@ -2056,6 +2066,7 @@ def get_client_overspeed_excess_drain_per_second(
         if effective_critical_power_watts <= 1.0:
             return 0.0
         unpaid_w = p_meas - float(effective_critical_power_watts)
+        use_gait_excess_tax = True
     elif armed:
         if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
             return 0.0
@@ -2068,15 +2079,18 @@ def get_client_overspeed_excess_drain_per_second(
             applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
         )
         unpaid_w = p_meas - p_limit
-    elif is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+        use_gait_excess_tax = False
+    elif is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) and movement_phase < 2:
         p_limit = metabolism_power_watts(
             applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
         )
         unpaid_w = p_meas - p_limit
+        use_gait_excess_tax = False
     else:
         if effective_critical_power_watts <= 1.0:
             return 0.0
         unpaid_w = p_meas - float(effective_critical_power_watts)
+        use_gait_excess_tax = True
 
     if unpaid_w <= 1.0:
         return 0.0
@@ -2087,9 +2101,15 @@ def get_client_overspeed_excess_drain_per_second(
     load_kg = max(total_weight_kg - character_weight_kg, 0.0)
     per_sec = per_sec * loaded_gait_stamina_drain_multiplier(load_kg, movement_phase)
     tax_mult = V6_OVERSPEED_STA_TAX_MULT
-    if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
+    if use_gait_excess_tax and movement_phase >= 2:
+        tax_mult = V6_GAIT_EXCESS_STA_TAX_MULT
+    elif (not V6_APPLY_CP_METABOLIC_SPEED_CAP) and movement_phase < 2:
         tax_mult = V6_CP_EXCESS_STA_TAX_MULT
     per_sec = per_sec * tax_mult
+    if use_gait_excess_tax and movement_phase >= 2:
+        tax_max = float(V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC)
+        if per_sec > tax_max:
+            per_sec = tax_max
     return per_sec
 
 
@@ -2186,7 +2206,7 @@ def get_metabolic_speed_cap_ms(
                 effective_cp_watts,
                 None,
             )
-            if eval_speed > cruise_only + 0.05:
+            if cruise_only > 0.05 and eval_speed > cruise_only + 0.05:
                 return float(cruise_only)
         return -1.0
 
@@ -2258,12 +2278,14 @@ def get_metabolic_corrected_speed_multiplier(
         overspeed_armed=overspeed_armed,
     )
     if cap_ms < 0.0:
-        return applied_speed_multiplier
+        return clamp_speed_limit_fraction_to_gait_band(applied_speed_multiplier)
 
     applied_ms = applied_speed_multiplier * engine_base_ms
-    if applied_ms <= cap_ms + 0.01:
-        return applied_speed_multiplier
-    return float(np.clip(cap_ms / engine_base_ms, 0.01, 3.0))
+    next_frac = float(applied_speed_multiplier)
+    if applied_ms > cap_ms + 0.01:
+        next_frac = float(np.clip(cap_ms / engine_base_ms, 0.01, 3.0))
+    next_frac = clamp_speed_limit_fraction_to_gait_band(next_frac)
+    return next_frac
 
 
 @dataclass
@@ -2301,11 +2323,32 @@ V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
 V6_RUN_GAIT_FLOOR_MS = 2.2
 V6_RUN_GAIT_DEMOTE_TO_WALK = True
+# Game-only: CapsLock-style SetDynamicSpeed(0.5) when W' empty and invert out of Run band.
+# Twins do not simulate CharacterController.SetDynamicSpeed.
+V6_CP_OUT_OF_BAND_WALK_OVERRIDE = True
 V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25
 V6_WALK_START_MIN_MS = 0.35
 V6_CP_INVERT_GRADE_ABS_MAX_PCT = 15.0
 V6_CP_INVERT_TERRAIN_MAX = 1.0
 V6_CP_HIKE_FLOOR_MS = 1.0
+V6_GAIT_SPEED_LIMIT_MIN_FRAC = 0.50
+V6_GAIT_EXCESS_STA_TAX_MULT = 10.0
+V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC = 0.004
+
+
+def clamp_speed_limit_fraction_to_gait_band(frac: float, is_exhausted: bool = False) -> float:
+    """与 SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand 同形。条空也托下限。"""
+    _ = is_exhausted
+    min_frac = float(V6_GAIT_SPEED_LIMIT_MIN_FRAC)
+    if min_frac < 0.2:
+        min_frac = 0.2
+    if min_frac > 0.9:
+        min_frac = 0.9
+    if frac < min_frac:
+        return min_frac
+    return float(frac)
+
+
 V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
 # Match game SCR_RSS_Constants: enabled since v6.1.7 (W′ depletion presses CP cruise via SetSpeedLimit).
 V6_APPLY_CP_METABOLIC_SPEED_CAP = True
@@ -2439,27 +2482,15 @@ def resolve_run_cruise_cap_ms(
     if (not demote) or horiz_clamp:
         return floor_ms
 
-    # Near-floor soft Run only; deeper gray demotes Walk (avoids 1.8↔2.42 thrash)
+    # Near-floor soft Run only; out of band: skip cap (do not press Walk onto Run).
     soft_run_floor = floor_ms - soft_band
     if soft_run_floor < walk_top:
         soft_run_floor = walk_top
     if cap_ms >= soft_run_floor:
         return cap_ms
 
-    walk_cap = cap_ms
-    if critical_power_watts > 1.0:
-        walk_cap = invert_cruise_cap_ms(
-            critical_power_watts,
-            total_weight_kg,
-            grade_percent,
-            terrain_factor,
-            MovementType.WALK,
-        )
-    if walk_cap > walk_top:
-        walk_cap = walk_top
-    if walk_cap < walk_min:
-        walk_cap = walk_min
-    return float(walk_cap)
+    # Out of Run gait band: do not press Walk/crawl onto Run phase (foot-slide).
+    return -1.0
 
 
 LCDA_REST_W_PER_KG = 1.05

@@ -100,24 +100,26 @@ class SCR_RSS_MetabolismMath
     
     // ==================== 核心计算函数 ====================
     
-    // 获取基于当前负重惩罚的“跛行”速度倍率
-    // 该倍率对应于当前负重下的最大允许Walk速度，而非固定1m/s。
+    // 跛行绝对速度（m/s）：Walk 引擎顶 × 负重，地板 EXHAUSTION_LIMP_SPEED。
+    // 禁止用 WALK_VELOCITY_THRESHOLD（3.2，相位边界）当步行顶，否则跛行≈2 m/s。
+    static float GetDynamicLimpSpeedMs(float encumbrancePenalty)
+    {
+        float limpMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+        limpMs = limpMs * (1.0 - encumbrancePenalty);
+        float minLimp = EXHAUSTION_LIMP_SPEED;
+        if (limpMs < minLimp)
+            limpMs = minLimp;
+        float walkTop = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+        if (limpMs > walkTop)
+            limpMs = walkTop;
+        return limpMs;
+    }
+
+    // 获取基于当前负重惩罚的“跛行”速度倍率（相对 GAME_MAX_SPEED）
     // @param encumbrancePenalty 负重造成的速度降低比例 (0.0-1.0)
-    // @return 速度倍率（相对于 GAME_MAX_SPEED）
     static float GetDynamicLimpMultiplier(float encumbrancePenalty)
     {
-        // 先计算未受负重影响的步行上限
-        float maxWalkSpeed = WALK_VELOCITY_THRESHOLD;
-        
-        // 施加负重惩罚（减速）
-        maxWalkSpeed *= (1.0 - encumbrancePenalty);
-        
-        // 保证不低于最小跛行速度，也不超过奔跑阈值
-        float minLimp = EXHAUSTION_LIMP_SPEED;
-        float runThresh = RUN_VELOCITY_THRESHOLD;
-        maxWalkSpeed = Math.Clamp(maxWalkSpeed, minLimp, runThresh);
-        
-        return maxWalkSpeed / GAME_MAX_SPEED;
+        return GetDynamicLimpSpeedMs(encumbrancePenalty) / GAME_MAX_SPEED;
     }
     
     // 计算负重百分比（供其他系统使用）

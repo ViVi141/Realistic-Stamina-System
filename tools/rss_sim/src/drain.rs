@@ -3,9 +3,10 @@ use crate::constants::{
     MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_WALK_SPEED_MS_DEFAULT,
     V6_AEROBIC_CRUISE_MAX_MS, V6_APPLY_HORIZONTAL_SPEED_CLAMP, V6_CP_HIKE_FLOOR_MS,
     V6_CP_INVERT_GRADE_ABS_MAX_PCT, V6_CP_INVERT_TERRAIN_MAX, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
+    V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC, V6_GAIT_EXCESS_STA_TAX_MULT, V6_GAIT_SPEED_LIMIT_MIN_FRAC,
     V6_OVERSPEED_STA_TAX_MULT, V6_RUN_GAIT_DEMOTE_TO_WALK, V6_RUN_GAIT_FLOOR_MS,
     V6_RUN_SOFT_BAND_BELOW_FLOOR_MS,
-    V6_STAMINA_DRAIN_CALIBRATION, V6_WALK_START_MIN_MS,
+    V6_STAMINA_DRAIN_CALIBRATION,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{
@@ -164,9 +165,9 @@ pub fn resolve_run_cruise_cap_ms(
     raw_cap_ms: f64,
     movement_phase: i32,
     grade_percent: f64,
-    total_weight_kg: f64,
-    terrain_factor: f64,
-    critical_power_watts: f64,
+    _total_weight_kg: f64,
+    _terrain_factor: f64,
+    _critical_power_watts: f64,
 ) -> f64 {
     if movement_phase == MOVEMENT_WALK {
         return raw_cap_ms;
@@ -181,10 +182,6 @@ pub fn resolve_run_cruise_cap_ms(
     let demote = V6_RUN_GAIT_DEMOTE_TO_WALK;
     let soft_band = V6_RUN_SOFT_BAND_BELOW_FLOOR_MS;
     let horiz_clamp = V6_APPLY_HORIZONTAL_SPEED_CLAMP;
-    let mut walk_min = V6_CP_HIKE_FLOOR_MS;
-    if walk_min < V6_WALK_START_MIN_MS {
-        walk_min = V6_WALK_START_MIN_MS;
-    }
     let walk_top = V5_WALK_SPEED_MS_DEFAULT;
 
     if grade_percent >= 0.0 && cap_ms > cruise_max {
@@ -199,7 +196,7 @@ pub fn resolve_run_cruise_cap_ms(
         return floor_ms;
     }
 
-    // Near-floor soft Run; deeper gray demotes Walk (avoids 1.8↔2.42 thrash)
+    // Near-floor soft Run only; out of band: skip cap (do not press Walk onto Run).
     let mut soft_run_floor = floor_ms - soft_band;
     if soft_run_floor < walk_top {
         soft_run_floor = walk_top;
@@ -208,23 +205,7 @@ pub fn resolve_run_cruise_cap_ms(
         return cap_ms;
     }
 
-    let mut walk_cap = cap_ms;
-    if critical_power_watts > 1.0 {
-        walk_cap = invert_cruise_cap_ms(
-            critical_power_watts,
-            total_weight_kg,
-            grade_percent,
-            terrain_factor,
-            MOVEMENT_WALK,
-        );
-    }
-    if walk_cap > walk_top {
-        walk_cap = walk_top;
-    }
-    if walk_cap < walk_min {
-        walk_cap = walk_min;
-    }
-    walk_cap
+    -1.0
 }
 
 pub fn get_client_overspeed_excess_drain_per_second(
@@ -258,14 +239,17 @@ pub fn get_client_overspeed_excess_drain_per_second(
         );
     }
 
-    let unpaid_w = if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
+    let mut use_gait_excess_tax = false;
+    let unpaid_w;
+    if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
         if armed {
             return 0.0;
         }
         if effective_critical_power_watts <= 1.0 {
             return 0.0;
         }
-        p_meas - effective_critical_power_watts
+        unpaid_w = p_meas - effective_critical_power_watts;
+        use_gait_excess_tax = true;
     } else if armed {
         if !is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
             return 0.0;
@@ -282,8 +266,10 @@ pub fn get_client_overspeed_excess_drain_per_second(
             terrain_factor,
             movement_phase,
         );
-        p_meas - p_limit
-    } else if is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
+        unpaid_w = p_meas - p_limit;
+    } else if is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms)
+        && movement_phase < 2
+    {
         let p_limit = metabolism_power_watts(
             applied_limit_ms,
             total_weight_kg,
@@ -291,13 +277,14 @@ pub fn get_client_overspeed_excess_drain_per_second(
             terrain_factor,
             movement_phase,
         );
-        p_meas - p_limit
+        unpaid_w = p_meas - p_limit;
     } else {
         if effective_critical_power_watts <= 1.0 {
             return 0.0;
         }
-        p_meas - effective_critical_power_watts
-    };
+        unpaid_w = p_meas - effective_critical_power_watts;
+        use_gait_excess_tax = true;
+    }
     if unpaid_w <= 1.0 {
         return 0.0;
     }
@@ -309,12 +296,19 @@ pub fn get_client_overspeed_excess_drain_per_second(
     );
     let load_kg = (total_weight_kg - character_weight_kg).max(0.0);
     per_sec *= loaded_gait_stamina_drain_multiplier(load_kg, movement_phase);
-    let tax_mult = if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
-        crate::constants::V6_CP_EXCESS_STA_TAX_MULT
-    } else {
-        V6_OVERSPEED_STA_TAX_MULT
-    };
+    let mut tax_mult = V6_OVERSPEED_STA_TAX_MULT;
+    if use_gait_excess_tax && movement_phase >= 2 {
+        tax_mult = V6_GAIT_EXCESS_STA_TAX_MULT;
+    } else if !V6_APPLY_CP_METABOLIC_SPEED_CAP && movement_phase < 2 {
+        tax_mult = crate::constants::V6_CP_EXCESS_STA_TAX_MULT;
+    }
     per_sec *= tax_mult;
+    if use_gait_excess_tax && movement_phase >= 2 {
+        let tax_max = V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC;
+        if per_sec > tax_max {
+            per_sec = tax_max;
+        }
+    }
     per_sec
 }
 
@@ -392,7 +386,7 @@ pub fn get_metabolic_speed_cap_ms(
                 terrain_factor,
                 effective_cp_watts,
             );
-            if eval_speed > cruise_only + 0.05 {
+            if cruise_only > 0.05 && eval_speed > cruise_only + 0.05 {
                 return cruise_only;
             }
         }
@@ -432,6 +426,20 @@ pub fn get_metabolic_speed_cap_ms(
     cap_ms
 }
 
+pub fn clamp_speed_limit_fraction_to_gait_band(frac: f64, _is_exhausted: bool) -> f64 {
+    let mut min_frac = V6_GAIT_SPEED_LIMIT_MIN_FRAC;
+    if min_frac < 0.2 {
+        min_frac = 0.2;
+    }
+    if min_frac > 0.9 {
+        min_frac = 0.9;
+    }
+    if frac < min_frac {
+        return min_frac;
+    }
+    frac
+}
+
 pub fn get_metabolic_corrected_speed_multiplier(
     applied_speed_multiplier: f64,
     current_speed_ms: f64,
@@ -468,11 +476,12 @@ pub fn get_metabolic_corrected_speed_multiplier(
         speed_for_eval,
     );
     if cap_ms < 0.0 {
-        return applied_speed_multiplier;
+        return clamp_speed_limit_fraction_to_gait_band(applied_speed_multiplier, is_exhausted);
     }
     let applied_ms = applied_speed_multiplier * engine_base_ms;
-    if applied_ms <= cap_ms + 0.01 {
-        return applied_speed_multiplier;
+    let mut next_frac = applied_speed_multiplier;
+    if applied_ms > cap_ms + 0.01 {
+        next_frac = clip_f64(cap_ms / engine_base_ms, 0.01, 3.0);
     }
-    clip_f64(cap_ms / engine_base_ms, 0.01, 3.0)
+    clamp_speed_limit_fraction_to_gait_band(next_frac, is_exhausted)
 }

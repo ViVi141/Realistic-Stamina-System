@@ -20,6 +20,9 @@ from rss_digital_twin_fix import (
     is_metabolic_overspeed_accounting,
     invert_speed_for_power_watts,
     invert_cruise_cap_ms,
+    resolve_run_cruise_cap_ms,
+    get_metabolic_speed_cap_ms,
+    get_metabolic_corrected_speed_multiplier,
     metabolism_power_watts,
     simulate_v6_sprint_seconds,
     RSSDigitalTwin,
@@ -135,20 +138,47 @@ def _overspeed_excess_drain_ok() -> bool:
     )
     if tax_armed != 0.0:
         return False
-    # 解除武装 + 物理超限速：v6.1.7 起代谢伺服开，走 12× 路径
-    # unpaid = P(v_meas)−P(v_limit)，实测 ≈0.081 %/s（仅滚轮绕过限速时触发）
+    # 解除武装 + 物理超限速：Run 仍走 P−CP 步态税（上限 0.4%/s），不得因略超 v_limit 变便宜
     tax_disarmed = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
     )
-    if tax_disarmed <= 0.0:
+    if tax_disarmed < 0.0005:
         return False
-    if tax_disarmed > 0.15:
+    if tax_disarmed > 0.004 + 1e-9:
         return False
     # P≪CP 且不超限速：税为 0
     tax_ok = get_client_overspeed_excess_drain_per_second(
         0.8, 3.5, 0.1, 125.0, 0.0, 1.0, 1, 2000.0, False
     )
     return tax_ok == 0.0
+
+
+def _run_cruise_out_of_band_skips_cap_ok() -> bool:
+    # 日志工况：29 kg、27% 坡。Run 反解掉出步态带时不得把 Walk/爬行帽写到 Run。
+    raw = invert_cruise_cap_ms(715.0, 118.868, 27.0, 1.35, 2)
+    cap = resolve_run_cruise_cap_ms(raw, 2, 27.0, 118.868, 1.35, 715.0)
+    if cap >= 0.0:
+        return False
+    return True
+
+
+def _gait_excess_sta_tax_ok() -> bool:
+    # W′ 空、帽内硬跑（v≈limit）：走 P−CP 步态税，约 0.05–0.4 %/s，不得为 0。
+    tax = get_client_overspeed_excess_drain_per_second(
+        2.5, 2.5, 0.0, 118.868, 27.0, 1.35, 2, 715.0, False
+    )
+    if tax < 0.0005:
+        return False
+    if tax > 0.004 + 1e-9:
+        return False
+    tax_overspeed = get_client_overspeed_excess_drain_per_second(
+        3.1, 2.2, 0.0, 118.868, 27.0, 1.35, 2, 715.0, False
+    )
+    if tax_overspeed < 0.0005:
+        return False
+    if tax_overspeed > 0.004 + 1e-9:
+        return False
+    return True
 
 
 def _cruise_hike_floor_ok() -> bool:
@@ -160,6 +190,91 @@ def _cruise_hike_floor_ok() -> bool:
         return False
     raw = invert_speed_for_power_watts(715.0, 118.868, 27.0, 1.35, 1)
     if raw >= v:
+        return False
+    return True
+
+
+def _walk_metabolic_cap_hike_floor_ok() -> bool:
+    # 实机：W′ 空、Walk、~20% 坡、29 kg、η=1.44、CP=716。裸反解 ~0.5 m/s；
+    # 代谢帽必须走 InvertCruiseCapMs（地板 1.0），不得把 v_limit 写成 0.45–0.58。
+    cap = get_metabolic_speed_cap_ms(
+        1.8,
+        1,
+        118.868,
+        20.4,
+        1.44,
+        False,
+        716.0,
+        w_prime_pool01=0.0,
+        speed_for_power_eval_ms=1.8,
+        overspeed_armed=False,
+    )
+    if cap < 0.99:
+        return False
+    if cap > 1.45:
+        return False
+    walk_top = 1.45
+    coord_frac = 1.0 / walk_top
+    frac = get_metabolic_corrected_speed_multiplier(
+        coord_frac,
+        1.8,
+        1,
+        118.868,
+        20.4,
+        1.44,
+        False,
+        walk_top,
+        716.0,
+        w_prime_pool01=0.0,
+        applied_speed_limit_ms=1.0,
+        overspeed_armed=False,
+    )
+    if frac * walk_top < 0.99:
+        return False
+    low = get_metabolic_corrected_speed_multiplier(
+        0.41,
+        1.8,
+        1,
+        118.868,
+        20.4,
+        1.44,
+        False,
+        walk_top,
+        716.0,
+        w_prime_pool01=0.0,
+        applied_speed_limit_ms=0.58,
+        overspeed_armed=False,
+    )
+    if low < 0.50 - 1e-9:
+        return False
+    return True
+
+
+def _exhausted_run_keeps_gait_floor_ok() -> bool:
+    # 条空仍按住 Run：代谢帽跳过，但不得把 0.15 爬行倍率写进 Run 相位。
+    frac = get_metabolic_corrected_speed_multiplier(
+        0.15,
+        3.0,
+        2,
+        118.868,
+        10.0,
+        1.35,
+        True,
+        3.64,
+        716.0,
+        w_prime_pool01=0.0,
+        overspeed_armed=False,
+    )
+    if frac < 0.50 - 1e-9:
+        return False
+    twin = RSSDigitalTwin(RSSConstants())
+    limp_ms = twin.get_dynamic_limp_speed_ms(0.0743022)
+    if limp_ms < 0.99:
+        return False
+    if limp_ms > 1.45 + 1e-9:
+        return False
+    wrong_phase_threshold_ms = 3.2 * (1.0 - 0.0743022)
+    if limp_ms >= wrong_phase_threshold_ms - 0.1:
         return False
     return True
 
@@ -488,6 +603,10 @@ SCENARIOS = [
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
     ("cruise_hike_floor", lambda: _cruise_hike_floor_ok()),
+    ("walk_metabolic_cap_hike_floor", lambda: _walk_metabolic_cap_hike_floor_ok()),
+    ("exhausted_run_keeps_gait_floor", lambda: _exhausted_run_keeps_gait_floor_ok()),
+    ("run_cruise_out_of_band_skips_cap", lambda: _run_cruise_out_of_band_skips_cap_ok()),
+    ("gait_excess_sta_tax", lambda: _gait_excess_sta_tax_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),
     (
         "downhill_same_speed_savings",

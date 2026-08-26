@@ -2,7 +2,7 @@
 //!
 //! 现状规则摘要：
 //! 1. W′ 施密特：≤25% 解除武装，须回 >60% 再武装
-//! 2. 解除武装后 Run 套 CP∩2.4 巡航限速，且不低于 V6_RUN_GAIT_FLOOR（2.2）
+//! 2. 解除武装后 Run 只在步态带内套 CP∩2.4 巡航；掉出 Run 带则不压 Walk 速度
 //! 3. 解除武装且非冲刺：W′ 放电功率钳到 CP
 //! 4. 物理钳默认关（只走 SetSpeedLimit；V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=false）
 //!
@@ -10,11 +10,11 @@
 //!   cargo run --manifest-path tools/rss_sim/Cargo.toml --bin sim_cp_cruise --no-default-features --release
 
 use rss_sim::constants::{
-    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS, V6_RUN_GAIT_FLOOR_MS,
+    V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V6_AEROBIC_CRUISE_MAX_MS,
     V6_WPRIME_OVERSPEED_HYSTERESIS, V6_WPRIME_OVERSPEED_REARM,
 };
 use rss_sim::cp_wprime::V6CriticalPowerState;
-use rss_sim::drain::refresh_wprime_overspeed_armed;
+use rss_sim::drain::{refresh_wprime_overspeed_armed, resolve_run_cruise_cap_ms};
 use rss_sim::metabolism::{compute_cp_watts, invert_speed_for_power_watts, metabolism_power_watts};
 
 const BODY_KG: f64 = 90.0;
@@ -53,9 +53,7 @@ fn cruise_cap_ms(
             cap = cp_cap;
         }
     }
-    if cap > 0.05 && cap < V6_RUN_GAIT_FLOOR_MS {
-        cap = V6_RUN_GAIT_FLOOR_MS;
-    }
+    cap = resolve_run_cruise_cap_ms(cap, MOVEMENT_RUN, grade_pct, total_kg, terrain, cp_eff);
     cap
 }
 
@@ -127,8 +125,10 @@ fn run_scenario(sc: Scenario) {
 
         let v_limit = if armed {
             sc.intent_run_ms
-        } else {
+        } else if v_cruise > 0.05 {
             v_cruise
+        } else {
+            sc.intent_run_ms
         };
 
         if !armed && disarmed_at < 0.0 {
@@ -252,7 +252,7 @@ fn main() {
     println!();
     println!("解读:");
     println!("  • 武装阶段 v≈3.5，P≫CP → W′ 下降");
-    println!("  • 穿过 ≤25% 解除武装 → v_limit = max(Invert(CP), {V6_RUN_GAIT_FLOOR_MS})");
+    println!("  • 穿过 ≤25% 解除武装 → 带内写 CP∩2.4 巡航；掉出 Run 带则不压 Walk 速度");
     println!("  • 现状: 只写 SetSpeedLimit，不改 Physics；v_meas 可能略高于 v_limit");
     println!("  • W′ 放电钳到 CP → 巡航不再被跑飞抽干");
     println!("  • 对比档仅作历史：物理钳会压 v_meas 但实机会滑步，已默认关闭");

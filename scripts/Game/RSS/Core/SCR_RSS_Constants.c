@@ -41,8 +41,8 @@ class SCR_RSS_Constants
     static const float EXHAUSTION_THRESHOLD = 0.0; // 0.0（0点）
     static const float EXHAUSTION_LIMP_SPEED = 1.0; // @fallback m/s（跛行速度）
     static const float SPRINT_ENABLE_THRESHOLD = 0.25; // @fallback 体力≥25%时才能Sprint；疲劳时肌肉无法爆发冲刺（原0.18）
-    static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
-    static const float WALK_RECOVERY_ZONE_PER_TICK = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
+    static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15% 且处于 Walk 时转为恢复（不含 Idle/Run 惯性）
+    static const float WALK_RECOVERY_ZONE_PER_TICK = 0.002; // 低体力 Walk 每0.2s恢复0.2%（即每秒1%）
     
     // 目标平均速度（m/s）- 基于用户需求：2英里在15分27秒内完成
     // 2英里 ≈ 3218.7米，时间927秒，平均速度 ≈ 3.47 m/s
@@ -569,9 +569,21 @@ class SCR_RSS_Constants
     //! W′ 耗尽后巡航限速地板（m/s）。约 3.6 km/h 负重徒步；禁止反解成爬行。
     static const float V6_CP_HIKE_FLOOR_MS = 1.0;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
-    //! true（2026-08-14 启用）：W′ 耗尽后经 SetSpeedLimit 压 CP 巡航指令速度（正常移动正确限速）。
-    //!   已知限制：滚轮(SetDynamicSpeed)能绕过最大速度层超速（引擎限制，可接受）；勿开物理钳（振荡）或动态速度覆盖（锁死）。
+    //! true（2026-08-14 启用）：W′ 耗尽后仅在**当前步态带内**经 SetSpeedLimit 压 CP 巡航。
+    //! 反解掉出 Run 带时不把 Walk 速度写到 Run 相位（滑步）；若 V6_CP_OUT_OF_BAND_WALK_OVERRIDE
+    //! 则改用引擎 Walk 动态速度覆盖（与 CapsLock 同款），否则只收 P−CP 能量税。
+    //!   已知限制：滚轮(SetDynamicSpeed)仍可在步态带内绕过最大速度层；勿开物理钳（振荡）。
     static const bool V6_APPLY_CP_METABOLIC_SPEED_CAP = true;
+    //! true：W′ 解除武装且 CP 反解掉出 Run 带、仍按住移动时，SetDynamicSpeed(0.5)+override。
+    //! 动画切 Walk。一旦切入，按住 W 就保持 Walk（下坡反解回到 Run 带也不自动改回跑，避免过脊滑步）。
+    //! 松开 W（含短时去抖）或 W′ 再武装后还原滚轮。不抢玩家已在 0.5 的 CapsLock 走路。
+    static const bool V6_CP_OUT_OF_BAND_WALK_OVERRIDE = true;
+    //! 原版 SCR_PlayerController.WALK_SPEED：动态速度 0.5 = Walk 档，不是「半速跑步」。
+    static const float ENGINE_WALK_DYNAMIC_SPEED = 0.5;
+    //! 松开移动后还要这么久才还原覆盖，避免 IsMoving 一帧假阴性把 Walk 拧回跑。
+    static const float V6_CP_WALK_OVERRIDE_RELEASE_HOLD_SEC = 0.25;
+    //! SetSpeedLimit 相对当前相位引擎顶的下限。低于此动画与位移脱节。条空仍按住 Run 时同样生效。
+    static const float V6_GAIT_SPEED_LIMIT_MIN_FRAC = 0.50;
     //! true：步态目标用 March 档（Walk/Run/Sprint ≈ 1.4/2.8/4.5，可经预设改）。
     //! false：步态目标用引擎空载顶（Walk/Run/Sprint ≈ 1.45/3.8/5.5），仍乘负重与坡度。
     static const bool V6_USE_MARCH_GAIT_SPEEDS = false;
@@ -593,11 +605,10 @@ class SCR_RSS_Constants
     //! Run 步态带下沿（m/s）。CP 反解低于此值视为撑不住 Run。
     //! 须 > ENGINE_WALK_TOP，且 ≤ V6_AEROBIC_CRUISE_MAX_MS。
     static const float V6_RUN_GAIT_FLOOR_MS = 2.2;
-    //! true（且硬钳关）：深灰区降 Walk；近地板软 Run 带宽见下。
-    //! false 或硬钳开：仍抬到 V6_RUN_GAIT_FLOOR_MS（硬钳+低于地板 → 滑步）。
+    //! true（且硬钳关）：反解低于 Run 地板时不把 Run 压到 Walk 速度（越步态会滑步）；改收 STA 税。
+    //! false 或硬钳开：仍抬到 V6_RUN_GAIT_FLOOR_MS。
     static const bool V6_RUN_GAIT_DEMOTE_TO_WALK = true;
-    //! 软 Run 带宽（m/s）：仅 floor−此值～floor 保留代谢反解；更深（如 1.8）降 Walk，
-    //! 避免 Run 动画回灌到 ~enc×Run顶（日志 1.8↔2.42）互殴。
+    //! 软 Run 带宽（m/s）：floor−此值～floor 仍写巡航帽；更深则跳过越步态限速。
     static const float V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25;
     //! Walk 起步/意图绝对速度硬托底（m/s）。勿再用 0.8，否则重装/疲惫 Walk 抬得过高。
     static const float V6_WALK_START_MIN_MS = 0.35;
@@ -691,9 +702,14 @@ class SCR_RSS_Constants
     //! 代谢限速开启时：相对 v_limit 的小超额 STA 税倍率。
     //! 预设 coeff 极小，裸超额≈0.05%/s；约 12× → ~0.5%/s 量级。
     static const float V6_OVERSPEED_STA_TAX_MULT = 12.0;
-    //! 不压速模式（代谢限速关）：相对 CP 的全功率超额税倍率。
-    //! 税基是 P(v)−CP（可达上千瓦），不可再用 12×；约 0.75× → 重装上坡快跑 ~0.3–0.7%/s。
+    //! 不压速模式（代谢限速关）：相对 CP 的全功率超额税倍率（Walk / 旧路径）。
+    //! 税基是 P(v)−CP（可达上千瓦），不可再用 12×。
     static const float V6_CP_EXCESS_STA_TAX_MULT = 0.75;
+    //! W′ 空仍按住 Run/Sprint：P−CP 步态超额税。
+    //! 倍率须小：29 kg 上坡 P−CP 常 >2000 W，80× 会瞬间顶满上限。
+    static const float V6_GAIT_EXCESS_STA_TAX_MULT = 10.0;
+    //! 步态超额税上限（0.004=0.4%/s）。硬跑约 3–4 min 抽干 80% STA，不是 30 s。
+    static const float V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC = 0.004;
     //! W′ 施密特关闭带偏移：池 ≤ 冲刺阈值 + 此值时解除超速/Sprint 武装（默认阈 0.20 → ≈25%）
     static const float V6_WPRIME_OVERSPEED_HYSTERESIS = 0.05;
     //! W′ 施密特再开带偏移：池须回到 冲刺阈值 + 此值才再允许超速/Sprint（默认 → ≈60%），避免阈值附近速度震荡

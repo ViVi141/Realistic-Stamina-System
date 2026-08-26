@@ -79,6 +79,12 @@ class SCR_RSS_SprintBlockSpeedTransition
         currentEngineBaseMs = Math.Max(currentEngineBaseMs, 0.1);
         lastEngineBaseMs = Math.Max(lastEngineBaseMs, 0.1);
 
+        // Idle 曾把目标托成 0.01 m/s；若当前已有可用限速，保持之，避免站着缓降到爬行。
+        if (targetAbsoluteSpeedMs <= 0.02 && m_fCurrentSmoothedAbsMs > 0.5)
+        {
+            return Math.Clamp(m_fCurrentSmoothedAbsMs / currentEngineBaseMs, 0.01, 3.0);
+        }
+
         if (m_fCurrentSmoothedAbsMs <= 0.01)
             m_fCurrentSmoothedAbsMs = targetAbsoluteSpeedMs;
 

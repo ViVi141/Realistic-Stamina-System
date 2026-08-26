@@ -64,7 +64,7 @@ PlayerBase_UpdateLoop
   → SCR_RSS_SprintGate (optional: W′ → transient GetStamina / Exhaustion FX)
 ```
 
-**Default speed policy (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Physics hard clamps stay off — do not twist horizontal `Physics` velocity to “stick” to `v_limit` (foot-slide).
+**Default speed policy (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). The cruise cap is in-gait only; out of the Run band, do not crush Walk speeds onto Run via `SetSpeedLimit` — after W′ empty, switch to engine Walk gait (`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`). Physics hard clamps stay off — do not twist horizontal `Physics` velocity to “stick” to `v_limit` (foot-slide).
 
 ---
 
