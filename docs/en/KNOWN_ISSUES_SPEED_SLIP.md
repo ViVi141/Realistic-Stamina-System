@@ -3,14 +3,15 @@
 > [中文](../RSS_已知问题_限速与滑步.md) | **English**
 
 Recorded: 2026-07-24  
-Updated: 2026-08-09 — aligned with **6.1.x drain-only** defaults: `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (CP/aerobic cruise cap does not write `SetSpeedLimit` by default; overspend drains STA/W′ only).
+Updated: 2026-08-09 — aligned with **6.1.x drain-only** defaults: `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (CP/aerobic cruise cap does not write `SetSpeedLimit` by default; overspend drains STA/W′ only).  
+Updated: 2026-08-26 — **since v6.1.7 the default is `= true`** (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`); entries below marked "default off / drain-only" apply to ≤6.1.5 only.
 
 Related switches (`SCR_RSS_Constants`; source wins):
 
 - `V6_APPLY_STAMINA_SPEED_LIMIT = true` (encumbrance/slope still write `SetSpeedLimit`)
 - `V6_APPLY_HORIZONTAL_SPEED_CLAMP = false` (**off** horizontal physics hard/soft clamp)
 - `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false` (**off** CP-cruise physics bypass clamp)
-- `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (**default off**: do not fight engine locomotion; if on, press CP/aerobic cruise via SetSpeedLimit)
+- `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (**default on since v6.1.7**: after W′ depletion, press CP/aerobic cruise via SetSpeedLimit; ≤6.1.5 default off, drain-only)
 - `V6_USE_MARCH_GAIT_SPEEDS = false` (March band off)
 - `V6_RUN_GAIT_FLOOR_MS = 2.2` (Run gait band floor; demote to Walk when metabolic cap is on and below floor)
 - `V6_RUN_GAIT_DEMOTE_TO_WALK = true` (auto-disabled if hard clamp on → raise floor instead)
@@ -63,7 +64,7 @@ Related switches (`SCR_RSS_Constants`; source wins):
 
 - Default: `V6_APPLY_HORIZONTAL_SPEED_CLAMP = false`.
 - Limits only via `SetSpeedLimit` (min-merge with foliage, etc.).
-- Default: no CP metabolic cap (`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`).
+- Since v6.1.7: CP metabolic cap on by default (`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`); ≤6.1.5 default off.
 
 ---
 
@@ -105,7 +106,7 @@ Related switches (`SCR_RSS_Constants`; source wins):
 
 - Sample engine top **once**.
 - **No** physics clamp; excess paid in STA/W′.
-- If temporarily enabling `V6_APPLY_CP_METABOLIC_SPEED_CAP`: flat/uphill may press cruise; downhill/extreme grades skip physics-clamp logic.
+- Since v6.1.7 `V6_APPLY_CP_METABOLIC_SPEED_CAP` is on by default: flat/uphill presses cruise; downhill/extreme grades skip physics-clamp logic.
 - Run gait band (only meaningful with metabolic cap on): CP invert ≥ `V6_RUN_GAIT_FLOOR_MS` stays Run; lower may demote to Walk.
 
 ### Retest

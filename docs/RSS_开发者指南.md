@@ -38,7 +38,8 @@
 
 ```text
 scripts/Game/
-  Integration/          # modded 入口：PlayerBase.c + PlayerBase_UpdateLoop.c（同 class 仅这两文件）
+  Integration/          # modded 入口：PlayerBase.c + PlayerBase_UpdateLoop.c（同 class 仅这两文件）；
+                        # 另有引擎顶速采样助手 SCR_PlayerBaseEngineTopSampler.c（独立 class）
   RSS/
     Core/               # 代谢、CP–W′、消耗/恢复、速度、协调器、常量
     Environment/        # 天气/地形/惩罚（自建栈；引擎只采样）
@@ -64,7 +65,7 @@ PlayerBase_UpdateLoop
   → SCR_RSS_SprintGate（可选：W′ → transient GetStamina / Exhaustion 表现）
 ```
 
-**默认限速策略（6.1.x）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（drain-only：超额扣 STA/W′，默认不拿 CP 巡航顶去压位移）。物理硬钳默认关，禁止为「贴限」拧 `Physics` 速度（滑步）。
+**默认限速策略（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：超额只扣 STA/W′）。物理硬钳保持关闭，禁止为「贴限」拧 `Physics` 速度（滑步）。
 
 ---
 

@@ -748,24 +748,6 @@ class SCR_RSS_ConfigBridge
         return SCR_RSS_Constants.V5_SPRINT_SPEED_MS_DEFAULT;
     }
 
-    //! @deprecated 兼容别名，请用 GetMarchWalkSpeedMs
-    static float GetV5WalkSpeedMs()
-    {
-        return GetMarchWalkSpeedMs();
-    }
-
-    //! @deprecated 兼容别名，请用 GetMarchRunSpeedMs
-    static float GetV5RunSpeedMs()
-    {
-        return GetMarchRunSpeedMs();
-    }
-
-    //! @deprecated 兼容别名，请用 GetMarchSprintSpeedMs
-    static float GetV5SprintSpeedMs()
-    {
-        return GetMarchSprintSpeedMs();
-    }
-
     //! W′ 池耗尽后禁止 Sprint 的阈值（0–1）
     static float GetWPrimeSprintEnableThreshold()
     {
@@ -777,12 +759,6 @@ class SCR_RSS_ConfigBridge
                 return params.anaerobic_sprint_enable_threshold;
         }
         return SCR_RSS_Constants.V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT;
-    }
-
-    //! @deprecated 兼容别名，请用 GetWPrimeSprintEnableThreshold
-    static float GetAnaerobicSprintEnableThreshold()
-    {
-        return GetWPrimeSprintEnableThreshold();
     }
 
     static float GetBurstCooldownFullSeconds()
@@ -827,12 +803,6 @@ class SCR_RSS_ConfigBridge
         return 0.12;
     }
 
-    //! @deprecated 兼容别名，请用 GetWPrimeDrainPerSec
-    static float GetAnaerobicDrainPerSec()
-    {
-        return GetWPrimeDrainPerSec();
-    }
-
     static float GetAerobicEfficiencyFactor()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -855,12 +825,6 @@ class SCR_RSS_ConfigBridge
                 return Math.Clamp(params.anaerobic_efficiency_factor, 0.5, 2.5);
         }
         return SCR_RSS_Constants.ANAEROBIC_EFFICIENCY_FACTOR;
-    }
-
-    //! @deprecated 兼容别名，请用 GetWPrimeEfficiencyFactor
-    static float GetAnaerobicEfficiencyFactor()
-    {
-        return GetWPrimeEfficiencyFactor();
     }
 
     //! v6：预设锚点 3.5 表示「相对 P(v) 中性」；低于锚点 Sprint 更省力，高于更费力

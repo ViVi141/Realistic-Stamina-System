@@ -5,7 +5,7 @@
 > **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-14 审计对齐）  
 > 取代 v5 及更早文档中「意志力平台期 / Givoni / 旧模块名」描述。以本文件与源码为准。  
 > ⚠️ 2026-08-14 数学审计：§1–§7 已按实际代码/烘焙值修正；历史漂移记录见 [RSS_数学模型审计_2026-08-14.md](RSS_数学模型审计_2026-08-14.md)。  
-> **6.1.x 限速默认**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（drain-only：代谢超额扣 STA/W′，默认不压 CP 巡航 `SetSpeedLimit`）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
+> **限速默认（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：代谢超额只扣 STA/W′）。已知限制：滚轮 `SetDynamicSpeed` 可绕过最大速度层（引擎限制）；物理钳保持关闭（防 Bang-Bang 振荡）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
 
 ---
 
@@ -57,6 +57,8 @@ drain_per_0p2s = drain_rate_per_s × 0.2
 
 玩家路径的 `load_metabolic_dampening` 仍存在（`MetabolismPowerWatts` 尾步，由 `GetLoadMetabolicDampening()` 门控）；effort 补偿 fudge 已移除。
 
+**手持重物加成**：`SCR_RSS_EncumbranceCache` 称重真正握在手里的东西——`GetHeldGadgetComponent()` 且 `GetMode()==IN_HAND` 的 gadget（过滤 `GetHeldGadget()` 回退的隐藏腕表/指南针）；无 IN_HAND gadget 时采当前武器（`GetCurrentWeapon` / 槽位 `GetWeaponEntity`）。重量用 `InventoryItemComponent.GetTotalWeight()`（含附件）。武器已在 `GetTotalWeightOfAllStorages()` 中计入 Pandolf 负载，此处只加消耗乘数 `1 + V6_HELD_ITEM_DRAIN_COEFF(2.0) × (heldKg / 90)`，上限 `V6_HELD_ITEM_DRAIN_MULT_MAX(1.5)`。陆地快/完整路径与游泳消耗侧均施加。
+
 ---
 
 ## 4. CP–W′
@@ -86,7 +88,7 @@ dW′/dt = −max(0, P − CP_final)   [J/s]
 | **Elite** (CP≤410 W) | Skiba 双指数：`k_fast=0.15`, `k_slow=0.010`, `W′_lim=0.5·W′_max` |
 | **Standard/Tactical** | 线性 `w_prime_recovery_w_per_s`（不再用时间 CD 锁 Sprint） |
 
-> ⚠️ **当前实现**：`UsesSkibaRecovery()` 以 `cp0 ≤ 2000 W` 判定，三档预设 CP 均 ≤1030 W，故**三档全走 Skiba**，线性分支暂为死代码（待修，见审计 §2.1）。
+> ✅ **已修复（2026-08-14 审计 §2.1 / 第 4 项）**：`UsesSkibaRecovery()` 按档位显式分派（`SCR_RSS_ConfigBridge.GetWPrimeRecoveryMode()`，源自 `w_prime_recovery_mode` 字段）：Elite=Skiba，Standard/Tactical=线性。
 
 ### 4.4 Sprint 速度
 
@@ -143,7 +145,7 @@ R = k_recovery × (1 − I/I_max)² × P   （静止/低 P 时）
 | sprint_cap (W) | 2355 | 2724 | 2748 |
 | W′ 恢复 | Skiba | 线性 11.86 W/s | 线性 14.28 W/s |
 
-> 实值以 `SCR_RSS_SettingsPresetBake.c` 与 `tools/optimized_rss_config_*_v6.json` 为准（二者一致）。W′ 恢复的 Skiba/线性分派当前未按档位生效（见 §4.3 注）。
+> 实值以 `SCR_RSS_SettingsPresetBake.c` 与 `tools/optimized_rss_config_*_v6.json` 为准（二者一致）。W′ 恢复的 Skiba/线性分派已按档位生效（见 §4.3）。
 
 ---
 

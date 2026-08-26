@@ -474,8 +474,9 @@ class SCR_RSS_DebugDisplay
         string sprintInfo = FormatSprintInfo(params.isSprinting, params.currentMovementPhase);
         string encumbranceInfo = FormatEncumbranceInfo(params.debugCurrentWeight, params.combatEncumbrancePercent);
         
-        // 获取地形信息
-        float currentTimeForDebug = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
+        float currentTimeForDebug = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTimeForDebug))
+            return;
         string terrainInfo = FormatTerrainInfo(params.terrainDetector, params.owner, currentTimeForDebug);
         
         // 获取环境因子信息
@@ -539,7 +540,9 @@ class SCR_RSS_DebugDisplay
         // 若本秒内已有批次输出，跳过避免重复
         if (SCR_RSS_DebugBatchManager.WasBatchJustFlushed())
             return;
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float currentTime = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+            return;
         if (currentTime < m_fNextStatusLogTime)
             return;
         

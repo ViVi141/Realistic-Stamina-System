@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### 文档-代码漂移同步（2026-08-26）
+
+- **CP 限速开关描述对齐** — 权威文档 / 开发者指南 / 已知问题（中英 6 处）从「6.1.x drain-only 默认关」更新为「v6.1.7 起默认开」（代码 `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` 自 6.1.7 生效，文档滞后）
+- **Skiba 分派描述对齐** — 权威文档 §4.3/§7 移除「三档全走 Skiba、线性为死代码」的过期警告，改为「已按 `w_prime_recovery_mode` 档位分派」（6.1.6 已修，文档滞后）
+- **数字孪生三端同步** — `rss_digital_twin_fix.py` 与 `rss_sim/constants.rs` 的 `V6_APPLY_CP_METABOLIC_SPEED_CAP` 由 `false` 对齐为 `true`；`test_v6_smoke.py` 的 `downhill_phys_clamp_policy` / `overspeed_excess_drain` 断言更新为 6.1.7 策略（12× 路径），26/26 通过
+
+### v4 残留与零引用弃用清理
+
+- **Constants** — 移除零引用：`WALK_RECOVERY_ZONE_RATE`、`EPOC_DRAIN_RATE`（别名）、`GRADE_UPHILL/DOWNHILL_COEFF`、`HIGH_GRADE_THRESHOLD/MULTIPLIER`（v4 Pandolf 坡度系数）、`WILLPOWER_THRESHOLD`（v4 意志力平台期）、`STAMINA_EXPONENT_LEGACY`（v4 Minetti 指数）
+- **ConfigBridge** — 移除 6 个零引用兼容别名（`GetV5*SpeedMs`、`GetAnaerobicSprintEnableThreshold`、`GetAnaerobicDrainPerSec`、`GetAnaerobicEfficiencyFactor`）
+- **SpeedCalculator / MetabolismMath** — 移除 `GetV5AbsoluteSpeedMs`、`CalculateSpeedMultiplierByStamina`（含 v4 双稳态模型注释块）；README_CN 同步
+- **PlayerBase** — 移除零引用的 `GetSprintCooldownUntil()`（`GetSprintStartTime()` 仍被引用，保留）
+- **保留** — 仍被引用的弃用项不动：`V5_BURST_COOLDOWN_*`（迁移/烘焙用）、`GetCooldownUntilSec/IsOnCooldown`（复制槽）、`anaerobicPercent`（公开 API 字段）
+
+### 巨型文件拆分（续）
+
+- **PlayerBase.c** — 引擎顶速采样簇（解限标定缓存 + 实时污染检测，约 110 行）拆至 `SCR_PlayerBaseEngineTopSampler.c`；公开转发签名不变
+- **EnvironmentFactor.c** — 全局信号读取子域（`ERSS_EnvSignal` 枚举、静态信号缓存、注册/重置、4 个 ReadSignal）拆至 `SCR_RSS_EnvSignalReader.c`；`ResetGlobalSignalsCache()` 公开 API 保留为转发
+
+### 新功能：手持物品影响消耗
+
+- **实现手持重物额外消耗**（原 `SCR_RSS_StaminaConsumptionCalculator` TODO）— `SCR_RSS_EncumbranceCache` 称重 IN_HAND gadget（过滤 `GetHeldGadget` 的隐藏腕表回退）或当前武器；`InventoryItemComponent.GetTotalWeight()`；消耗乘数 `1 + 2.0 × (heldKg / 90)`，上限 1.5；陆地快/完整路径与游泳消耗侧均施加；4 kg 步枪 ≈ +9% 消耗（武器质量已在 Pandolf 负重中，此处只加倍率）
+- **手持称重纠偏** — 过滤 `GetHeldGadget()` 隐藏挂件误计；无 IN_HAND gadget 时采当前武器；游泳路径补施加倍率；`CalibrateUncappedEngineTopsOnce` / `EnsureSignalsRegistered` / `CalculatePostureMultiplier` 补空指针防护
+- **专服崩溃防护** — 手持采样要求实体仍在世界中、武器优先 `GetCurrentSlot`；`GetMaxSpeed`/信号读取/负重轮询/RPC/战斗兴奋剂在 `GetGame`/`GetWorld` 为空时直接返回，避免进退服与 AI tick 窗口 Access violation
+- **全仓专服崩溃扫描** — 新增 `SCR_RSS_RuntimeGuard`；跳跃/翻越、室内检测、载具恢复、数据导出、调试批次、屏效/滤镜、体力 tick 的 `CallLater`、GameMode 引导队列、析构限速恢复均在世界/队列为空时跳过
+
 ## [6.1.7] - 2026-08-14
 
 ### 优化管线与预设

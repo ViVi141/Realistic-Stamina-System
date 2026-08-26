@@ -567,8 +567,12 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
-            RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
+            World worldForSpeed;
+            if (SCR_RSS_RuntimeGuard.TryGetWorld(worldForSpeed))
+            {
+                SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+                RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
+            }
         }
 
         m_bRssStaminaLoopActive = false;
@@ -634,13 +638,6 @@ modded class SCR_CharacterControllerComponent
     {
         return -1.0;
     }
-
-    //! @deprecated 同上
-    float GetSprintCooldownUntil()
-    {
-        return -1.0;
-    }
-
 
     bool HasRssData()
     {
@@ -788,62 +785,19 @@ modded class SCR_CharacterControllerComponent
         return GetOriginalEngineMaxSpeed_Run();
     }
 
-    //! 一次解限标定的相位顶速（不随 OverrideMaxSpeed 缩小的参考）
-    //! 禁止周期性 SetSpeedLimit(1.0)：会瞬间 OverrideMaxSpeed(1) → 尖峰/滑步
-    protected float m_fCachedEngineMaxWalkMs = -1.0;
-    protected float m_fCachedEngineMaxRunMs = -1.0;
-    protected float m_fCachedEngineMaxSprintMs = -1.0;
-    protected bool m_bEngineTopUncappedCalibrated = false;
+    //! 引擎顶速采样（解限标定缓存 / 实时污染检测）已拆至 SCR_PlayerBaseEngineTopSampler
+    protected ref SCR_PlayerBaseEngineTopSampler m_pEngineTopSampler;
 
-    protected float GetEngineTopFallbackMs(int movementPhase)
+    protected SCR_PlayerBaseEngineTopSampler GetEngineTopSampler()
     {
-        if (movementPhase == 3)
-            return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-        if (movementPhase == 1)
-            return SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
-        return SCR_RSS_MetabolismMath.GAME_MAX_SPEED * SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
+        if (!m_pEngineTopSampler)
+            m_pEngineTopSampler = new SCR_PlayerBaseEngineTopSampler();
+        return m_pEngineTopSampler;
     }
 
-    protected float GetCachedEngineTopMs(int movementPhase)
+    //! 标定后恢复用倍率：优先最近应用的限速倍率，回退上次体力倍率，钳到（0,1]
+    protected float GetEngineTopRestoreMult()
     {
-        if (movementPhase == 3)
-            return m_fCachedEngineMaxSprintMs;
-        if (movementPhase == 1)
-            return m_fCachedEngineMaxWalkMs;
-        return m_fCachedEngineMaxRunMs;
-    }
-
-    //! 不解限读取动画相位顶速（可每 tick 调用）
-    protected void SampleLiveEngineTops(out float walkMs, out float runMs, out float sprintMs)
-    {
-        walkMs = -1.0;
-        runMs = -1.0;
-        sprintMs = -1.0;
-        if (!m_pAnimComponent)
-            return;
-        walkMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 1);
-        runMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
-        sprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
-    }
-
-    protected float PickLiveEngineTopMs(int movementPhase, float walkMs, float runMs, float sprintMs)
-    {
-        if (movementPhase == 3)
-            return sprintMs;
-        if (movementPhase == 1)
-            return walkMs;
-        return runMs;
-    }
-
-    //! 仅首次：短暂抬限到 1.0 标定真实顶速（之后实时路径用此缓存做污染检测）
-    protected void CalibrateUncappedEngineTopsOnce()
-    {
-        if (m_bEngineTopUncappedCalibrated)
-            return;
-        if (!m_pAnimComponent)
-            return;
-
-        IEntity ownerEnt = GetOwner();
         float restoreMult = m_fLastRssSpeedMultiplierApplied;
         if (restoreMult < 0.01)
             restoreMult = m_fLastSpeedMultiplier;
@@ -851,70 +805,13 @@ modded class SCR_CharacterControllerComponent
             restoreMult = 1.0;
         if (restoreMult > 1.0)
             restoreMult = 1.0;
-
-        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, 1.0);
-        m_fCachedEngineMaxWalkMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 1);
-        m_fCachedEngineMaxRunMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 2);
-        m_fCachedEngineMaxSprintMs = m_pAnimComponent.GetMaxSpeed(1.0, 0.0, 3);
-        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerEnt, restoreMult);
-        m_bEngineTopUncappedCalibrated = true;
+        return restoreMult;
     }
 
     protected float GetDynamicOriginalEngineMaxSpeed(int movementPhase)
     {
-        float fallback = GetEngineTopFallbackMs(movementPhase);
-
-        if (!m_pAnimComponent)
-        {
-            float cachedOnly = GetCachedEngineTopMs(movementPhase);
-            if (cachedOnly > 0.5)
-                return cachedOnly;
-            return fallback;
-        }
-
-        // 实时路径：不解限 GetMaxSpeed → 算 OverrideMaxSpeed 因数分母
-        if (SCR_RSS_Constants.V6_ENGINE_TOP_LIVE_SAMPLE)
-        {
-            CalibrateUncappedEngineTopsOnce();
-
-            float liveWalk;
-            float liveRun;
-            float liveSprint;
-            SampleLiveEngineTops(liveWalk, liveRun, liveSprint);
-            float live = PickLiveEngineTopMs(movementPhase, liveWalk, liveRun, liveSprint);
-            float uncapped = GetCachedEngineTopMs(movementPhase);
-
-            if (live > 0.5)
-            {
-                // live 接近解限标定 → API 不受 OverrideMaxSpeed 影响，可用实时值（含姿态变化）
-                if (uncapped <= 0.5)
-                    return live;
-
-                float minRatio = SCR_RSS_Constants.V6_ENGINE_TOP_LIVE_MIN_RATIO;
-                if (minRatio < 0.5)
-                    minRatio = 0.5;
-                if (live >= uncapped * minRatio)
-                    return live;
-
-                // live 明显低于标定 → 多半已被当前限速缩放，回退解限缓存避免 frac→1
-                return uncapped;
-            }
-
-            if (uncapped > 0.5)
-                return uncapped;
-            return fallback;
-        }
-
-        // 旧路径：缓存命中则直接返回；否则解限测一次
-        float cached = GetCachedEngineTopMs(movementPhase);
-        if (cached > 0.5)
-            return cached;
-
-        CalibrateUncappedEngineTopsOnce();
-        cached = GetCachedEngineTopMs(movementPhase);
-        if (cached > 0.5)
-            return cached;
-        return fallback;
+        return GetEngineTopSampler().GetDynamicOriginalEngineMaxSpeed(
+            GetOwner(), m_pAnimComponent, GetEngineTopRestoreMult(), movementPhase);
     }
 
     void RSS_UpdateStatusLogSnapshot(
@@ -993,8 +890,8 @@ modded class SCR_CharacterControllerComponent
             RSS_NotifyEntityDeleting();
             return;
         }
-        World world = GetGame().GetWorld();
-        if (!world)
+        World world;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorld(world))
             return;
         
         vector velocity = GetVelocity();
@@ -1378,6 +1275,15 @@ modded class SCR_CharacterControllerComponent
         // pending 桥接回调入口 guard 后 return 且不再 CallLater。
     }
 
+    protected void RSS_ScheduleNextStaminaTick()
+    {
+        ScriptCallQueue q = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+        if (!q)
+            return;
+        m_bRssStaminaLoopActive = true;
+        q.CallLater(SCR_PlayerBaseLoop.Tick, GetSpeedUpdateIntervalMs(), false, this);
+    }
+
     //! 实体即将被删除时调用：清理所有引用、停止 CallLater 循环、注销静态注册表
     void RSS_NotifyEntityDeleting()
     {
@@ -1389,8 +1295,12 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
-            RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
+            World worldForSpeed;
+            if (SCR_RSS_RuntimeGuard.TryGetWorld(worldForSpeed))
+            {
+                SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
+                RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
+            }
         }
 
         RSS_RemoveScheduledCallbacks();
@@ -1892,6 +1802,8 @@ modded class SCR_CharacterControllerComponent
 
     protected void RSS_CombatStim_OnTickTransitions()
     {
+        if (!GetGame() || !GetGame().GetWorld())
+            return;
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
         int oldPhase = m_iCombatStimPhase;
         float oldEndsAt = m_fCombatStimPhaseEndsAt;
@@ -1931,6 +1843,8 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerEnt = GetOwner();
         ChimeraCharacter ch = ChimeraCharacter.Cast(ownerEnt);
         if (!ch)
+            return;
+        if (!GetGame() || !GetGame().GetWorld())
             return;
 
         float wt = GetGame().GetWorld().GetWorldTime() / 1000.0;
@@ -1986,6 +1900,8 @@ modded class SCR_CharacterControllerComponent
         if (!Replication.IsServer())
             return;
         if (!SCR_RSS_ConfigManager.GetSettings() || !SCR_RSS_ConfigManager.GetSettings().m_bDataExportEnabled)
+            return;
+        if (!GetGame() || !GetGame().GetWorld())
             return;
 
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
@@ -2050,6 +1966,8 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner)
             return;
+        if (!GetGame())
+            return;
 
         PlayerManager pm = GetGame().GetPlayerManager();
         if (!pm)
@@ -2076,6 +1994,8 @@ modded class SCR_CharacterControllerComponent
     void RPC_ServerSyncSpeedMultiplier(float speedMultiplier, float serverTimestamp)
     {
         if (Replication.IsServer() || !m_pNetworkSyncManager)
+            return;
+        if (!GetGame() || !GetGame().GetWorld())
             return;
 
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;

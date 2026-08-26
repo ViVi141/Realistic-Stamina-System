@@ -37,6 +37,9 @@ class SCR_RSS_EncumbranceCache
     protected bool m_bEncumbranceCacheValid = false; // 缓存是否有效
     protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent; // 缓存的库存组件引用
     protected SCR_InventoryStorageManagerComponent m_pCachedInventoryManager; // 缓存的库存管理器组件（避免每 tick FindComponent）
+    protected SCR_GadgetManagerComponent m_pCachedGadgetManager; // 缓存的 Gadget 管理器（IN_HAND 称重）
+    protected BaseWeaponManagerComponent m_pCachedWeaponManager; // 缓存的武器管理器（当前武器称重）
+    protected float m_fCachedHeldItemWeight = 0.0; // 缓存的手持物品重量（kg）；IN_HAND gadget 或当前武器
     protected float m_fLastCheckTime = 0.0; // 上次检查时间（秒）
     protected const float ENCUMBRANCE_CHECK_INTERVAL = 0.5; // 轮询间隔（秒），perf: 0.2→0.5，事件驱动已覆盖变更
 
@@ -50,9 +53,12 @@ class SCR_RSS_EncumbranceCache
         m_fCachedEncumbranceSpeedPenalty = 0.0;
         m_fCachedBodyMassPercent = 0.0;
         m_fCachedEncumbranceStaminaDrainMultiplier = 1.0;
+        m_fCachedHeldItemWeight = 0.0;
         m_bEncumbranceCacheValid = false;
         m_pCachedInventoryComponent = inventoryComponent;
         m_pCachedInventoryManager = null;
+        m_pCachedGadgetManager = null;
+        m_pCachedWeaponManager = null;
 
         // 如果提供了库存组件，初始化时计算一次负重
         if (m_pCachedInventoryComponent)
@@ -65,6 +71,9 @@ class SCR_RSS_EncumbranceCache
     {
         m_pCachedInventoryComponent = inventoryComponent;
         m_pCachedInventoryManager = null; // 重置，下次 UpdateCache 时重新查找
+        m_pCachedGadgetManager = null;
+        m_pCachedWeaponManager = null;
+        m_fCachedHeldItemWeight = 0.0;
         if (m_pCachedInventoryComponent)
             UpdateCache();
         else
@@ -87,6 +96,11 @@ class SCR_RSS_EncumbranceCache
         // 获取角色实体
         IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
         if (!ownerEntity)
+        {
+            m_bEncumbranceCacheValid = false;
+            return;
+        }
+        if (!ownerEntity.GetWorld())
         {
             m_bEncumbranceCacheValid = false;
             return;
@@ -117,6 +131,7 @@ class SCR_RSS_EncumbranceCache
         
         // 更新缓存值
         m_fCachedCurrentWeight = currentWeight;
+        m_fCachedHeldItemWeight = SampleHeldItemWeight(ownerEntity);
 
         // 计算有效负重（负载 = 载具/装备重量 - 基准装备重量）
         // GetTotalWeightOfAllStorages() 返回的是装备/背包重量，不含身体重量
@@ -140,7 +155,13 @@ class SCR_RSS_EncumbranceCache
         if (!m_pCachedInventoryComponent)
             return;
 
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float currentTime = 0.0;
+        if (!GetGame())
+            return;
+        World world = GetGame().GetWorld();
+        if (!world)
+            return;
+        currentTime = world.GetWorldTime() / 1000.0;
         if (m_bEncumbranceCacheValid && (currentTime - m_fLastCheckTime < ENCUMBRANCE_CHECK_INTERVAL))
             return;
         m_fLastCheckTime = currentTime;
@@ -151,6 +172,11 @@ class SCR_RSS_EncumbranceCache
         IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
         if (ownerEntity)
         {
+            if (!ownerEntity.GetWorld())
+            {
+                m_bEncumbranceCacheValid = false;
+                return;
+            }
             if (!m_pCachedInventoryManager)
                 m_pCachedInventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
             if (m_pCachedInventoryManager)
@@ -185,11 +211,117 @@ class SCR_RSS_EncumbranceCache
             return;
         }
         
+        // 手持物品独立于存储重量采样（拿起/放下会触发库存事件，此处兜底轮询）
+        m_fCachedHeldItemWeight = SampleHeldItemWeight(ownerEntity);
+
         // 如果重量变化超过0.1kg，重新计算缓存（避免微小浮点误差触发）
         if (Math.AbsFloat(currentWeight - m_fCachedCurrentWeight) > 0.1 || !m_bEncumbranceCacheValid)
         {
             UpdateCache();
         }
+    }
+
+    // 实体仍挂在世界里才可安全调 native（专服生成/删除窗口易出现悬空实体）
+    protected bool EntityIsUsable(IEntity ent)
+    {
+        if (!ent)
+            return false;
+        if (!ent.GetWorld())
+            return false;
+        return true;
+    }
+
+    // 实体物品总重（kg）：含 additional weight / 附件，避免只读属性集合漏计
+    protected float SampleEntityItemWeight(IEntity itemEntity)
+    {
+        if (!EntityIsUsable(itemEntity))
+            return 0.0;
+        InventoryItemComponent itemComponent = InventoryItemComponent.Cast(itemEntity.FindComponent(InventoryItemComponent));
+        if (!itemComponent)
+            return 0.0;
+        if (!EntityIsUsable(itemComponent.GetOwner()))
+            return 0.0;
+        return Math.Max(itemComponent.GetTotalWeight(), 0.0);
+    }
+
+    // 当前选中武器实体：优先 GetCurrentSlot（避免 GetCurrent 返回槽/武器混型）
+    protected IEntity ResolveCurrentWeaponEntity(IEntity ownerEntity)
+    {
+        if (!EntityIsUsable(ownerEntity))
+            return null;
+        if (m_pCachedWeaponManager)
+        {
+            if (m_pCachedWeaponManager.GetOwner() != ownerEntity)
+                m_pCachedWeaponManager = null;
+        }
+        if (!m_pCachedWeaponManager)
+            m_pCachedWeaponManager = BaseWeaponManagerComponent.Cast(ownerEntity.FindComponent(BaseWeaponManagerComponent));
+        if (!m_pCachedWeaponManager)
+            return null;
+        if (!EntityIsUsable(m_pCachedWeaponManager.GetOwner()))
+        {
+            m_pCachedWeaponManager = null;
+            return null;
+        }
+
+        WeaponSlotComponent slot = m_pCachedWeaponManager.GetCurrentSlot();
+        if (slot)
+        {
+            IEntity slottedWeapon = slot.GetWeaponEntity();
+            if (EntityIsUsable(slottedWeapon))
+                return slottedWeapon;
+        }
+
+        BaseWeaponComponent weaponComp = m_pCachedWeaponManager.GetCurrentWeapon();
+        if (!weaponComp)
+            weaponComp = m_pCachedWeaponManager.GetCurrent();
+        if (!weaponComp)
+            return null;
+
+        WeaponSlotComponent weaponSlot = WeaponSlotComponent.Cast(weaponComp);
+        if (weaponSlot)
+            return weaponSlot.GetWeaponEntity();
+        return weaponComp.GetOwner();
+    }
+
+    // 手持物品重量采样（kg）
+    // 1) 仅 EGadgetMode.IN_HAND 的 gadget（GetHeldGadget 会回退到隐藏腕表/指南针，必须过滤）
+    // 2) 无 IN_HAND gadget 时采当前武器（双手占用于持枪；武器已在存储总重中，此处只供 itemBonus）
+    protected float SampleHeldItemWeight(IEntity ownerEntity)
+    {
+        if (!EntityIsUsable(ownerEntity))
+            return 0.0;
+
+        IEntity heldGadgetEntity = null;
+        if (m_pCachedGadgetManager)
+        {
+            if (m_pCachedGadgetManager.GetOwner() != ownerEntity)
+                m_pCachedGadgetManager = null;
+        }
+        if (!m_pCachedGadgetManager)
+            m_pCachedGadgetManager = SCR_GadgetManagerComponent.Cast(ownerEntity.FindComponent(SCR_GadgetManagerComponent));
+        if (m_pCachedGadgetManager && EntityIsUsable(m_pCachedGadgetManager.GetOwner()))
+        {
+            SCR_GadgetComponent gadgetComp = m_pCachedGadgetManager.GetHeldGadgetComponent();
+            if (gadgetComp)
+            {
+                IEntity gadgetOwner = gadgetComp.GetOwner();
+                if (EntityIsUsable(gadgetOwner))
+                {
+                    if (gadgetComp.GetMode() == EGadgetMode.IN_HAND)
+                        heldGadgetEntity = gadgetOwner;
+                }
+            }
+        }
+        else
+        {
+            m_pCachedGadgetManager = null;
+        }
+
+        if (heldGadgetEntity)
+            return SampleEntityItemWeight(heldGadgetEntity);
+
+        return SampleEntityItemWeight(ResolveCurrentWeaponEntity(ownerEntity));
     }
     
     // ==================== 获取缓存值的方法 ====================
@@ -203,6 +335,15 @@ class SCR_RSS_EncumbranceCache
         return 0.0;
     }
     
+    // 获取缓存的手持物品重量
+    // @return 手持物品重量（kg），无手持或缓存无效时返回 0.0
+    float GetHeldItemWeight()
+    {
+        if (m_bEncumbranceCacheValid)
+            return m_fCachedHeldItemWeight;
+        return 0.0;
+    }
+
     // 获取缓存的速度惩罚
     // @return 速度惩罚值（0.0-0.5），如果缓存无效则返回0.0
     float GetSpeedPenalty()

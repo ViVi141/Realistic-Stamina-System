@@ -37,7 +37,8 @@ Mod ID / GUID: `Realistic Stamina System` / `68649101601CC93D`. Config version: 
 
 ```text
 scripts/Game/
-  Integration/          # modded entry: PlayerBase.c + PlayerBase_UpdateLoop.c (only these two for the same class)
+  Integration/          # modded entry: PlayerBase.c + PlayerBase_UpdateLoop.c (only these two for the same class);
+                        # plus engine top-speed sampler helper SCR_PlayerBaseEngineTopSampler.c (separate class)
   RSS/
     Core/               # metabolism, CP–W′, drain/recovery, speed, coordinator, constants
     Environment/        # weather/terrain/penalties (RSS-owned; engine is sample-only)
@@ -63,7 +64,7 @@ PlayerBase_UpdateLoop
   → SCR_RSS_SprintGate (optional: W′ → transient GetStamina / Exhaustion FX)
 ```
 
-**Default speed policy (6.1.x)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (drain-only: overspend hits STA/W′; do not push CP cruise caps onto locomotion by default). Physics hard clamps stay off — do not twist horizontal `Physics` velocity to “stick” to `v_limit` (foot-slide).
+**Default speed policy (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Physics hard clamps stay off — do not twist horizontal `Physics` velocity to “stick” to `v_limit` (foot-slide).
 
 ---
 

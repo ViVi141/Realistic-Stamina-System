@@ -3,14 +3,15 @@
 > **中文** | [English](en/KNOWN_ISSUES_SPEED_SLIP.md)
 
 记录日期：2026-07-24  
-更新：2026-08-09 — 对齐 **6.1.x drain-only** 默认：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（CP/有氧巡航顶默认不写 `SetSpeedLimit`；透支只扣 STA/W′）。
+更新：2026-08-09 — 对齐 **6.1.x drain-only** 默认：`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（CP/有氧巡航顶默认不写 `SetSpeedLimit`；透支只扣 STA/W′）。  
+更新：2026-08-26 — **v6.1.7 起默认改为 `= true`**（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度）；文中标注「默认关 / drain-only」的条目仅适用于 ≤6.1.5。
 
 相关开关（`SCR_RSS_Constants`，以源码为准）：
 
 - `V6_APPLY_STAMINA_SPEED_LIMIT = true`（负重/坡度等仍写 `SetSpeedLimit`）
 - `V6_APPLY_HORIZONTAL_SPEED_CLAMP = false`（**关**物理水平硬/软钳）
 - `V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = false`（**关** CP 巡航物理旁路钳）
-- `V6_APPLY_CP_METABOLIC_SPEED_CAP = false`（**默认关**：不与引擎抢位移；开则经 SetSpeedLimit 压 CP/有氧巡航顶）
+- `V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（**v6.1.7 起默认开**：W′ 耗尽后经 SetSpeedLimit 压 CP/有氧巡航顶；≤6.1.5 默认关，drain-only）
 - `V6_USE_MARCH_GAIT_SPEEDS = false`（March 档关）
 - `V6_RUN_GAIT_FLOOR_MS = 2.2`（Run 步态带下沿；代谢帽开启时低于则降 Walk）
 - `V6_RUN_GAIT_DEMOTE_TO_WALK = true`（硬钳开时自动失效，改回抬地板）
@@ -63,7 +64,7 @@
 
 - 默认：`V6_APPLY_HORIZONTAL_SPEED_CLAMP = false`。
 - 限速只走 `SetSpeedLimit`（与灌木等 min 合并）。
-- 默认不写 CP 代谢帽（`V6_APPLY_CP_METABOLIC_SPEED_CAP = false`）。
+- v6.1.7 起默认写 CP 代谢帽（`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`）；≤6.1.5 默认不写。
 
 ---
 
@@ -105,7 +106,7 @@
 
 - 引擎顶速**只测一次**。
 - **不开**物理钳；超额走 STA/W′。
-- 若临时开启 `V6_APPLY_CP_METABOLIC_SPEED_CAP`：平路/上坡可压巡航顶；下坡与极陡跳过物理钳逻辑。
+- v6.1.7 起默认开启 `V6_APPLY_CP_METABOLIC_SPEED_CAP`：平路/上坡压巡航顶；下坡与极陡跳过物理钳逻辑。
 - Run 步态带（仅代谢帽开启时有意义）：CP 反解 ≥ `V6_RUN_GAIT_FLOOR_MS` 留 Run；更低可降 Walk。
 
 ### 复测

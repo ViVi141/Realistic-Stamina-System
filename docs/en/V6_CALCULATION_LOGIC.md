@@ -5,7 +5,7 @@
 > **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-14 audit-aligned)  
 > Supersedes v5 and older “willpower plateau / Givoni / legacy module names”. Source wins.  
 > ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [RSS_数学模型审计_2026-08-14.md](../RSS_数学模型审计_2026-08-14.md).  
-> **6.1.x speed default**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = false` (drain-only: metabolic overspend hits STA/W′; do not press CP-cruise `SetSpeedLimit` by default). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
+> **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Known limit: the mouse wheel (`SetDynamicSpeed`) can bypass the max-speed layer (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
 
 ---
 
@@ -57,6 +57,8 @@ drain_per_0p2s = drain_rate_per_s × 0.2
 
 Player-path `load_metabolic_dampening` **still exists** (`MetabolismPowerWatts` tail step, gated by `GetLoadMetabolicDampening()`); effort-compensation fudge was removed.
 
+**Held-item bonus**: `SCR_RSS_EncumbranceCache` weighs what is actually in the hands — a gadget whose `GetHeldGadgetComponent().GetMode()` is `IN_HAND` (this filters out the hidden watch/compass that `GetHeldGadget()` falls back to); if no IN_HAND gadget, the current weapon (`GetCurrentWeapon` / slot `GetWeaponEntity`). Mass uses `InventoryItemComponent.GetTotalWeight()` (includes attachments). Weapon mass is already in `GetTotalWeightOfAllStorages()` for Pandolf; this path only applies drain multiplier `1 + V6_HELD_ITEM_DRAIN_COEFF(2.0) × (heldKg / 90)`, capped at `V6_HELD_ITEM_DRAIN_MULT_MAX(1.5)`. Applied on land (fast and full) and on the swimming drain side.
+
 ---
 
 ## 4. CP–W′
@@ -86,7 +88,7 @@ dW′/dt = −max(0, P − CP_final)   [J/s]
 | **Elite** (CP≤410 W) | Skiba biexponential: `k_fast=0.15`, `k_slow=0.010`, `W′_lim=0.5·W′_max` |
 | **Standard/Tactical** | Linear `w_prime_recovery_w_per_s` (no timed Sprint CD lock) |
 
-> ⚠️ **Current implementation**: `UsesSkibaRecovery()` checks `cp0 ≤ 2000 W`, so all three presets (CP ≤ 1030 W) use Skiba; the linear branch is currently dead code (pending fix, see audit §2.1).
+> ✅ **Fixed (2026-08-14 audit §2.1 / item 4)**: `UsesSkibaRecovery()` now dispatches explicitly per preset (`SCR_RSS_ConfigBridge.GetWPrimeRecoveryMode()`, from the `w_prime_recovery_mode` field): Elite=Skiba, Standard/Tactical=linear.
 
 ### 4.4 Sprint speed
 
@@ -143,7 +145,7 @@ Post-exercise delayed drain ∝ **peak intent metabolic power** (`GetEpocSampleP
 | sprint_cap (W) | 2355 | 2724 | 2748 |
 | W′ recovery | Skiba | linear 11.86 W/s | linear 14.28 W/s |
 
-> Actual values are `SCR_RSS_SettingsPresetBake.c` + `tools/optimized_rss_config_*_v6.json` (both consistent). Skiba/linear W′ dispatch is not yet tiered (see §4.3 note).
+> Actual values are `SCR_RSS_SettingsPresetBake.c` + `tools/optimized_rss_config_*_v6.json` (both consistent). Skiba/linear W′ dispatch is tiered per preset (see §4.3).
 
 ---
 

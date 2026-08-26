@@ -1,28 +1,13 @@
 // 环境因子模块
 // 负责处理环境因素对体力系统的影响（热应激、降雨湿重等）
 // 模块化拆分：从 PlayerBase.c 提取的独立功能模块
-
-enum ERSS_EnvSignal
-{
-    RAIN_INTENSITY,
-    WIND_SPEED,
-    TIME_OF_DAY,
-    WETNESS,
-    COUNT
-}
+// 信号读取子域（ERSS_EnvSignal / GameSignalsManager 静态缓存）见 SCR_RSS_EnvSignalReader.c
 
 class SCR_RSS_EnvironmentFactor
 {
     protected float m_fCachedHeatStressMultiplier = 1.0; // 缓存的热应激倍数
     protected float m_fCachedRainWeight = 0.0; // 缓存的降雨湿重（kg）
-    
-    // 枚举 ERSS_EnvSignal 提供编译期名称检查，避免信号名拼写错误
-    protected static ref GameSignalsManager s_pGlobalSignals;
-    protected static int s_iSignalRainIntensity = -1; // ERSS_EnvSignal.RAIN_INTENSITY
-    protected static int s_iSignalWindSpeed     = -1; // ERSS_EnvSignal.WIND_SPEED
-    protected static int s_iSignalTOD           = -1; // ERSS_EnvSignal.TIME_OF_DAY
-    protected static int s_iSignalWetness       = -1; // ERSS_EnvSignal.WETNESS
-    
+
     protected float m_fLastEnvironmentCheckTime = 0.0; // 上次环境检测时间
     protected float m_fRainStopTime = -1.0; // 停止降雨的时间（秒，绝对值，用于指数湿重衰减）
     protected float m_fRainPeakWeight = 0.0; // 停雨瞬间的湿重峰值（kg），供指数衰减基准
@@ -164,17 +149,7 @@ class SCR_RSS_EnvironmentFactor
         }
 
         // perf: 全局信号索引（静态，所有实例共享，仅首次注册）
-        if (!s_pGlobalSignals)
-        {
-            s_pGlobalSignals = GetGame().GetSignalsManager();
-            if (s_pGlobalSignals)
-            {
-                s_iSignalRainIntensity = s_pGlobalSignals.AddOrFindSignal("RainIntensity");
-                s_iSignalWindSpeed     = s_pGlobalSignals.AddOrFindSignal("WindSpeed");
-                s_iSignalTOD           = s_pGlobalSignals.AddOrFindSignal("TimeOfDay");
-                s_iSignalWetness       = s_pGlobalSignals.AddOrFindSignal("Wetness");
-            }
-        }
+        SCR_RSS_EnvSignalReader.EnsureSignalsRegistered();
 
         // perf: 缓存纬度（地图常数，初始化后永不变化）
         if (m_pCachedWeatherManager)
@@ -297,6 +272,8 @@ class SCR_RSS_EnvironmentFactor
         // 防御性编程：如果天气管理器丢失，尝试重新获取
         if (!m_pCachedWeatherManager)
         {
+            if (!GetGame())
+                return false;
             World world = GetGame().GetWorld();
             if (world)
             {
@@ -597,42 +574,25 @@ class SCR_RSS_EnvironmentFactor
     }
 
     
-    // ── 信号读取辅助（perf: 静态 GlobalSignalsManager 内存读取，回退到 C++ 桥接）──
-    // 使用 ERSS_EnvSignal 枚举命名索引，编译期可检查信号名一致性
+    // ── 信号读取辅助：委托 SCR_RSS_EnvSignalReader（静态信号缓存 + C++ 桥接回退）──
     protected float ReadSignalRainIntensity()
     {
-        if (s_pGlobalSignals && s_iSignalRainIntensity >= 0)
-            return s_pGlobalSignals.GetSignalValue(s_iSignalRainIntensity);
-        if (m_pCachedWeatherManager)
-            return m_pCachedWeatherManager.GetRainIntensity();
-        return 0.0;
+        return SCR_RSS_EnvSignalReader.ReadRainIntensity(m_pCachedWeatherManager);
     }
-    
+
     protected float ReadSignalWindSpeed()
     {
-        if (s_pGlobalSignals && s_iSignalWindSpeed >= 0)
-            return s_pGlobalSignals.GetSignalValue(s_iSignalWindSpeed);
-        if (m_pCachedWeatherManager)
-            return m_pCachedWeatherManager.GetWindSpeed();
-        return 0.0;
+        return SCR_RSS_EnvSignalReader.ReadWindSpeed(m_pCachedWeatherManager);
     }
-    
+
     protected float ReadSignalTOD()
     {
-        if (s_pGlobalSignals && s_iSignalTOD >= 0)
-            return s_pGlobalSignals.GetSignalValue(s_iSignalTOD);
-        if (m_pCachedWeatherManager)
-            return m_pCachedWeatherManager.GetTimeOfTheDay();
-        return 12.0;
+        return SCR_RSS_EnvSignalReader.ReadTimeOfDay(m_pCachedWeatherManager);
     }
-    
+
     protected float ReadSignalWetness()
     {
-        if (s_pGlobalSignals && s_iSignalWetness >= 0)
-            return s_pGlobalSignals.GetSignalValue(s_iSignalWetness);
-        if (m_pCachedWeatherManager)
-            return m_pCachedWeatherManager.GetCurrentWetness();
-        return 0.0;
+        return SCR_RSS_EnvSignalReader.ReadWetness(m_pCachedWeatherManager);
     }
 
     // 查询当前海拔（米）：有 owner 时用 SCR_TerrainHelper.GetTerrainY，否则用配置 m_fAltitudeMeters
@@ -697,6 +657,8 @@ class SCR_RSS_EnvironmentFactor
     // 云因子缓存包装（perf: 30s TTL，避免每5s做字符串匹配 + C++桥接）
     protected float GetCloudFactorCached()
     {
+        if (!GetGame() || !GetGame().GetWorld())
+            return m_fCachedCloudFactor;
         float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
         if (currentTime - m_fLastCloudFactorUpdateTime > CLOUD_FACTOR_CACHE_DURATION)
         {
@@ -1104,10 +1066,6 @@ class SCR_RSS_EnvironmentFactor
     //! 继续 GetSignalValue 会 Access violation。清空后由下一次 Initialize 重新绑定当前 GetGame。
     static void ResetGlobalSignalsCache()
     {
-        s_pGlobalSignals = null;
-        s_iSignalRainIntensity = -1;
-        s_iSignalWindSpeed = -1;
-        s_iSignalTOD = -1;
-        s_iSignalWetness = -1;
+        SCR_RSS_EnvSignalReader.ResetGlobalSignalsCache();
     }
 }

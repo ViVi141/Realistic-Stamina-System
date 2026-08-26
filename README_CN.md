@@ -512,7 +512,7 @@ Realistic-Stamina-System/
 
 #### 1. 体力-速度关系模型
 
-**【v6 当前】**：玩家主曲线为相位行军档 `CalculateV6PhaseSpeedMultiplier`（Walk/Run/Sprint 目标 m/s × 负重修正；STA &lt; ~5% 跛行）。`CalculateSpeedMultiplierByStamina` 仅作兼容转发。撞墙阻尼见 `SCR_RSS_CollapseTransition`（阈值 = `SMOOTH_TRANSITION_END`）。
+**【v6 当前】**：玩家主曲线为相位行军档 `CalculateV6PhaseSpeedMultiplier`（Walk/Run/Sprint 目标 m/s × 负重修正；STA &lt; ~5% 跛行）。legacy 转发 `CalculateSpeedMultiplierByStamina` 已随 v4 残留清理移除。撞墙阻尼见 `SCR_RSS_CollapseTransition`（阈值 = `SMOOTH_TRANSITION_END`）。
 
 **【历史 v3/v4 双稳态模型说明】**（下列平台期逻辑 **已从玩家主路径移除**，保留便于理解旧文档与部分 fallback 常量）：
 
@@ -1005,7 +1005,6 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 **`scripts/Game/RSS/Core/SCR_RSS_SpeedCalculator.c` / `SCR_RSS_MetabolismMath.c` / `SCR_RSS_MetabolismModel.c` / `SCR_RSS_CriticalPowerModel.c`** — v6 核心：
 - `CalculateV6PhaseSpeedMultiplier()`：相位行军档速度（**【v6】无意志力平台期**；低 STA 跛行）
-- `CalculateSpeedMultiplierByStamina()`：兼容转发到上述 v6 相位曲线
 - `SCR_RSS_MetabolismModel`：Pandolf + ACSM 混合代谢功率；`InvertSpeedForPowerWatts`
 - `SCR_RSS_CriticalPowerModel`：动态 CP、W′ 焦耳放电/再填充、Sprint 门禁相关状态
 - `SCR_RSS_CollapseTransition`：5 s 撞墙阻尼（阈值 = 跛行点）

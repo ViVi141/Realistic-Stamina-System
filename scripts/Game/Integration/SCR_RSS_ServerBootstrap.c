@@ -108,8 +108,9 @@ modded class SCR_BaseGameMode
         m_iRssLoadRetries = 0;
 
         super.OnGameStart();
-        if (GetGame())
-            GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
+        ScriptCallQueue startQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+        if (startQueue)
+            startQueue.CallLater(DeferredRssConfigLoad, 1000, false);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -127,8 +128,12 @@ modded class SCR_BaseGameMode
         }
 
         m_iRssLoadRetries++;
-        if (m_iRssLoadRetries <= RSS_LOAD_RETRY_MAX && GetGame())
-            GetGame().GetCallqueue().CallLater(DeferredRssConfigLoad, 1000, false);
+        if (m_iRssLoadRetries <= RSS_LOAD_RETRY_MAX)
+        {
+            ScriptCallQueue retryQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+            if (retryQueue)
+                retryQueue.CallLater(DeferredRssConfigLoad, 1000, false);
+        }
     }
 
     //------------------------------------------------------------------------------------------------
@@ -149,8 +154,9 @@ modded class SCR_BaseGameMode
         }
 
         m_bRssDataExportLoopRunning = true;
-        if (GetGame())
-            GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
+        ScriptCallQueue exportQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+        if (exportQueue)
+            exportQueue.CallLater(RssServerDataExportTick, 1000, false);
     }
 
     //------------------------------------------------------------------------------------------------
@@ -174,8 +180,9 @@ modded class SCR_BaseGameMode
             return;
         }
         SCR_RSS_DataExport.TryExport();
-        if (GetGame())
-            GetGame().GetCallqueue().CallLater(RssServerDataExportTick, 1000, false);
+        ScriptCallQueue tickQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+        if (tickQueue)
+            tickQueue.CallLater(RssServerDataExportTick, 1000, false);
         else
             m_bRssDataExportLoopRunning = false;
     }

@@ -182,8 +182,7 @@ modded class SCR_CharacterControllerComponent
                 m_fLastStaminaUpdateTime, m_fCurrentWetWeight,
                 GetSpeedUpdateIntervalMs(), IsRssDebugEnabled()))
         {
-            m_bRssStaminaLoopActive = true;
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.Tick, GetSpeedUpdateIntervalMs(), false, this);
+            RSS_ScheduleNextStaminaTick();
             return false;
         }
         
@@ -503,8 +502,7 @@ modded class SCR_CharacterControllerComponent
 
         if (!loc.isPlayer && SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
         {
-            m_bRssStaminaLoopActive = true;
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.Tick, GetSpeedUpdateIntervalMs(), false, this);
+            RSS_ScheduleNextStaminaTick();
             return false;
         }
 
@@ -1108,8 +1106,7 @@ modded class SCR_CharacterControllerComponent
             return;
         RSS_StaminaTickPhaseC(loc);
 
-        m_bRssStaminaLoopActive = true;
-        GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.Tick, GetSpeedUpdateIntervalMs(), false, this);
+        RSS_ScheduleNextStaminaTick();
     }
 
     void RSS_LoopStartSystem()
@@ -1122,9 +1119,7 @@ modded class SCR_CharacterControllerComponent
             return;
         if (!GetGame())
             return;
-        m_bRssStaminaLoopActive = true;
-        int intervalMs = GetSpeedUpdateIntervalMs();
-        GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.Tick, intervalMs, false, this);
+        RSS_ScheduleNextStaminaTick();
 
         if (IsRssDebugEnabled() && IsPlayerControlled())
         {
@@ -1133,12 +1128,16 @@ modded class SCR_CharacterControllerComponent
                 hasStamina = "1";
             PrintFormat(
                 "[RSS] Player stamina loop started (interval=%1ms, staminaComp=%2)",
-                intervalMs,
+                GetSpeedUpdateIntervalMs(),
                 hasStamina);
         }
         
         if (IsRssDebugEnabled())
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.CollectSpeedSampleBridge, SPEED_SAMPLE_INTERVAL_MS, false, this);
+        {
+            ScriptCallQueue sampleQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+            if (sampleQueue)
+                sampleQueue.CallLater(SCR_PlayerBaseLoop.CollectSpeedSampleBridge, SPEED_SAMPLE_INTERVAL_MS, false, this);
+        }
     }
 
     void EnsureRssStaminaLoopIfNeeded()
@@ -1164,8 +1163,12 @@ modded class SCR_CharacterControllerComponent
         if (m_iAiLoopRetryCount > AI_LOOP_MAX_RETRIES)
             return;
         RSS_LoopStartSystem();
-        if (!m_bRssStaminaLoopActive && GetGame())
-            GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
+        if (!m_bRssStaminaLoopActive)
+        {
+            ScriptCallQueue aiQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();
+            if (aiQueue)
+                aiQueue.CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
+        }
     }
 
 }

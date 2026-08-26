@@ -43,14 +43,6 @@ class SCR_RSS_Constants
     static const float SPRINT_ENABLE_THRESHOLD = 0.25; // @fallback 体力≥25%时才能Sprint；疲劳时肌肉无法爆发冲刺（原0.18）
     static const float WALK_RECOVERY_ZONE_THRESHOLD = 0.15; // 体力<15%时步行/慢跑转为恢复
     static const float WALK_RECOVERY_ZONE_PER_TICK = 0.002; // 低体力区域每0.2s恢复0.2%（即每秒1%）
-    static const float WALK_RECOVERY_ZONE_RATE = WALK_RECOVERY_ZONE_PER_TICK; // @deprecated 请用 WALK_RECOVERY_ZONE_PER_TICK
-    
-    // 坡度修正系数
-    // @deprecated v4 Pandolf 坡度系数；v6 坡度由 MetabolismModel/Tobler 处理，零引用保留兼容
-    static const float GRADE_UPHILL_COEFF = 0.12; // 每1%上坡增加12%消耗
-    static const float GRADE_DOWNHILL_COEFF = 0.05; // 每1%下坡减少5%消耗（假设）
-    static const float HIGH_GRADE_THRESHOLD = 15.0; // 15%（高坡度阈值）
-    static const float HIGH_GRADE_MULTIPLIER = 1.2; // 高坡度额外1.2×乘数
     
     // 目标平均速度（m/s）- 基于用户需求：2英里在15分27秒内完成
     // 2英里 ≈ 3218.7米，时间927秒，平均速度 ≈ 3.47 m/s
@@ -59,10 +51,6 @@ class SCR_RSS_Constants
     // 目标Run速度（m/s）- 0kg 下实测 Run 最大 3.8 m/s
     static const float TARGET_RUN_SPEED = 3.8; // m/s
     static const float TARGET_RUN_SPEED_MULTIPLIER = TARGET_RUN_SPEED / GAME_MAX_SPEED;
-    
-    // 意志力平台期阈值（体力百分比）
-    // 体力高于此值时，保持恒定目标速度（模拟意志力克服早期疲劳）
-    static const float WILLPOWER_THRESHOLD = 0.35; // 35% — Hardcore：疲劳感更早体现（原25%）
     
     // 平滑过渡起点（体力百分比）
     // 在35%-5%之间使用平滑过渡，避免突兀的"撞墙"效果
@@ -396,7 +384,6 @@ class SCR_RSS_Constants
     // 拟真向延长至 2 秒；若影响手感可再降低（现实为分钟级）
     static const float EPOC_DELAY_SECONDS = 2.0; // EPOC延迟时间（秒）
     static const float EPOC_DRAIN_PER_TICK = 0.001; // EPOC期间的基础消耗率（每0.2秒）- 模拟维持高代谢水平
-    static const float EPOC_DRAIN_RATE = EPOC_DRAIN_PER_TICK; // @deprecated 请用 EPOC_DRAIN_PER_TICK
     //! EPOC 相对 CP 的超额倍率上限：0.5 → 最多 1.5× 基础 EPOC（约 0.75%/s）
     static const float EPOC_MAX_POWER_EXCESS_RATIO = 0.5;
     //! 运动中峰值功率向当前功率衰减（W/s），避免一次冲刺污染后续停步罚
@@ -651,6 +638,12 @@ class SCR_RSS_Constants
     //! v6 ACSM 功率→STA 标定：联合 energy_to_stamina_coeff，使 38kg@3.2m/s 约 8–10s/1%
     static const float V6_STAMINA_DRAIN_CALIBRATION = 0.72;
 
+    //! 手持物品额外消耗：每「手持重量占体重比」增加的消耗倍率系数。
+    //! 手持无背负结构，单位重量代谢代价高于背载；4 kg 步枪 ≈ +9%（4/90×2.0）。
+    static const float V6_HELD_ITEM_DRAIN_COEFF = 2.0;
+    //! 手持物品消耗倍率上限（防异常重量刷出极端倍率）
+    static const float V6_HELD_ITEM_DRAIN_MULT_MAX = 1.5;
+
     // v6 动态 CP 修正（LF/TF，系数经 bench 标定，下坡不对 CP 加成）
     static const float V6_CP_LOAD_REF_KG = 10.0;
     static const float V6_CP_LOAD_DECAY_PER_KG = 0.002;
@@ -683,9 +676,6 @@ class SCR_RSS_Constants
     static const float V6_SPRINT_AEROBIC_DRAIN_FACTOR = 1.0;
     //! W′ 放电时 Sprint STA 附加系数：1.0 = 无额外减免
     static const float V6_SPRINT_WPRIME_STA_RELIEF = 1.0;
-
-    //! @deprecated v6 玩家速度不再使用 Minetti 指数；AI 迁移后删除
-    static const float STAMINA_EXPONENT_LEGACY = 0.6;
 
     //! 陆地静止/运动分界（m/s）：ExerciseTracker、ResolveMovementDrain、EPOC 取消、恢复对齐
     static const float RSS_IDLE_SPEED_THRESHOLD_MPS = 0.1;

@@ -21,6 +21,16 @@ class SCR_RSS_StaminaConsumptionCalculator
             return drainRate;
         return drainRate * (1.0 + rainBreath);
     }
+
+    // 手持重物消耗倍率：1 + coeff × (heldKg / 体重)，钳到 [1, V6_HELD_ITEM_DRAIN_MULT_MAX]
+    static float ComputeHeldItemDrainMultiplier(float heldItemWeightKg)
+    {
+        if (heldItemWeightKg <= 0.0)
+            return 1.0;
+        float heldFraction = heldItemWeightKg / SCR_RSS_Constants.CHARACTER_WEIGHT;
+        float itemBonus = 1.0 + SCR_RSS_Constants.V6_HELD_ITEM_DRAIN_COEFF * heldFraction;
+        return Math.Clamp(itemBonus, 1.0, SCR_RSS_Constants.V6_HELD_ITEM_DRAIN_MULT_MAX);
+    }
     
     // 计算体力消耗率
     // @param currentSpeed 当前速度 (m/s)
@@ -34,7 +44,8 @@ class SCR_RSS_StaminaConsumptionCalculator
     // @param fatigueSystem 疲劳积累系统模块引用
     // @param out baseDrainRateByVelocity 基础消耗率（输出，用于恢复计算）
     // @param environmentFactor 环境因子模块引用（v2.14.0新增）
-    // @param owner 角色实体引用（用于手持物品检测，v2.15.0新增）
+    // @param owner 角色实体引用（用于室内坡度抑制等，v2.15.0新增）
+    // @param heldItemWeightKg 手持物品重量（kg；0 = 无手持加成），由 EncumbranceCache 采样通路提供
     // @return 体力消耗率（每0.2秒）
     static float CalculateStaminaConsumption(
         float currentSpeed,
@@ -50,8 +61,15 @@ class SCR_RSS_StaminaConsumptionCalculator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         IEntity owner = null,
         bool isSprinting = false,
-        int currentMovementPhase = -1)
+        int currentMovementPhase = -1,
+        float heldItemWeightKg = 0.0)
     {
+        // ==================== 手持重物额外消耗 ====================
+        // 手持装备 IN_HAND 或当前武器由 EncumbranceCache 采样通路单独称重；
+        // 手持无背负结构，单位重量代谢代价高于背载（系数见 V6_HELD_ITEM_DRAIN_COEFF）。
+        // 武器质量已计入存储总重（Pandolf），此处只施加额外倍率，不再把枪重加进代谢负载。
+        float itemBonus = ComputeHeldItemDrainMultiplier(heldItemWeightKg);
+
         // ── 快路径（v3.20.0 性能优化）────────────────────────────────────
         // 非Sprint、非游泳的常规移动：跳过完整环境因子展开，使用缓存乘数。
         // 条件：不在Sprint（phase!=3 且 !isSprinting）且 baseDrainRateByVelocity 已由调用方预填。
@@ -89,6 +107,9 @@ class SCR_RSS_StaminaConsumptionCalculator
 
             // 应用负重消耗倍数
             fastDrain = fastDrain * encumbranceStaminaDrainMultiplier;
+
+            // 应用手持重物额外消耗
+            fastDrain = fastDrain * itemBonus;
 
             // CRITICAL FIX: Output preTempBase (before temperature adjustment) as
             // baseDrainRateByVelocity, matching the full-path behavior where
@@ -128,40 +149,6 @@ class SCR_RSS_StaminaConsumptionCalculator
             }
         }
 
-        // ==================== 手持重物额外消耗 ====================
-        const float itemBonus = 1.0; // 默认无额外消耗
-        
-        if (owner)
-        {
-            // 通过 InventoryStorageManagerComponent 检测玩家右手或双手插槽
-            // TODO: 实现手持物品检测逻辑
-            // 预留：根据物品重量或 Tag 判断的逻辑结构
-            // 示例逻辑：
-            /*
-            InventoryStorageManagerComponent inventoryManager = InventoryStorageManagerComponent.Cast(owner.FindComponent(InventoryStorageManagerComponent));
-            if (inventoryManager)
-            {
-                // 获取右手或双手插槽的物品
-                IEntity rightHandItem = inventoryManager.GetItemInSlot("RightHand");
-                IEntity twoHandedItem = inventoryManager.GetItemInSlot("TwoHanded");
-                
-                if (rightHandItem || twoHandedItem)
-                {
-                    // 检测到手持实体，增加消耗乘数
-                    itemBonus = 1.2; // 暂时固定为1.2倍，后续可根据物品重量或Tag调整
-                    
-                    // TODO: 根据物品重量或Tag调整消耗乘数
-                    // 例如：
-                    // float itemWeight = rightHandItem ? rightHandItem.GetWeight() : (twoHandedItem ? twoHandedItem.GetWeight() : 0.0);
-                    // if (itemWeight > 5.0) // 大于5kg的物品
-                    //     itemBonus = 1.5;
-                    // else if (itemWeight > 2.0) // 大于2kg的物品
-                    //     itemBonus = 1.2;
-                }
-            }
-            */
-        }
-        
         // 应用泥泞地形系数（修正地形因子）
         terrainFactor = terrainFactor + mudTerrainFactor;
         
@@ -282,6 +269,8 @@ class SCR_RSS_StaminaConsumptionCalculator
         float postureMultiplier = SCR_RSS_Constants.POSTURE_STAND_MULTIPLIER; // 默认站立姿态（1.0）
         if (currentSpeed > 0.05) // 只在移动时应用姿态修正
         {
+            if (!controller)
+                return postureMultiplier;
             ECharacterStance currentStance = controller.GetStance();
             if (currentStance == ECharacterStance.CROUCH)
             {

@@ -303,18 +303,6 @@ class SCR_RSS_SpeedCalculator
         return walkMs;
     }
 
-    //! @deprecated 兼容别名，请用 GetMarchAbsoluteSpeedMs
-    static float GetV5AbsoluteSpeedMs(
-        int currentMovementPhase,
-        bool isSprinting,
-        float scaledRunSpeed,
-        float encumbrancePenalty,
-        float anaerobicPercent = 1.0)
-    {
-        return GetMarchAbsoluteSpeedMs(
-            currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, anaerobicPercent);
-    }
-    
     // 计算最终绝对速度（米/秒）- 仅在Run和Sprint模式下
     // @param runBaseSpeedMultiplier Run的基础速度倍数
     // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）

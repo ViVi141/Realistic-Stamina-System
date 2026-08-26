@@ -42,7 +42,12 @@ modded class SCR_DesaturationEffect
             return;
         }
 
-        float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float nowSec = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(nowSec))
+        {
+            super.AddDesaturationEffect();
+            return;
+        }
         float phase = nowSec * m_fCombatStimODPulseFrequency * 2.0 * Math.PI;
         float breathBase = 0.5 - 0.5 * Math.Cos(phase);
         float normalized = Math.Pow(breathBase, m_fCombatStimODBreathCurve);

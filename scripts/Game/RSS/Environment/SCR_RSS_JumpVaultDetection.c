@@ -94,7 +94,9 @@ class SCR_RSS_JumpVaultDetector
             }
             
             // 跳跃冷却检查：使用 GetWorldTime 时间戳，不依赖更新频率
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float currentTime = 0.0;
+            if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+                return 0.0;
             if (currentTime - m_fLastJumpTime < SCR_RSS_Constants.JUMP_COOLDOWN_SEC)
             {
                 // 在冷却中，拦截动作输入，不让游戏引擎执行跳跃
@@ -208,8 +210,10 @@ class SCR_RSS_JumpVaultDetector
     {
         if (!owner || !controller)
             return 0.0;
-        
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+
+        float currentTime = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+            return 0.0;
         bool isClimbing = controller.IsClimbing();
         float totalCost = 0.0;
         
@@ -321,7 +325,9 @@ class SCR_RSS_JumpVaultDetector
     // 检查是否在跳跃冷却中（使用 GetWorldTime 时间戳判定）
     bool IsJumpOnCooldown()
     {
-        float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float currentTime = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+            return false;
         return (currentTime - m_fLastJumpTime) < SCR_RSS_Constants.JUMP_COOLDOWN_SEC;
     }
     

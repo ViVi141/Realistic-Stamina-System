@@ -43,8 +43,9 @@ class SCR_PlayerBaseVehicleHelper
 
         if (exerciseTracker)
         {
-            float vehicleCurrentTimeMs = GetGame().GetWorld().GetWorldTime();
-            exerciseTracker.Update(vehicleCurrentTimeMs, false, true);
+            float vehicleCurrentTimeMs = 0.0;
+            if (SCR_RSS_RuntimeGuard.TryGetWorldTimeMs(vehicleCurrentTimeMs))
+                exerciseTracker.Update(vehicleCurrentTimeMs, false, true);
         }
 
         float vehicleStaminaPercent = 1.0;
@@ -59,7 +60,9 @@ class SCR_PlayerBaseVehicleHelper
                 epocState, encumbranceCache, exerciseTracker, ctrl, null, true);
             float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
 
-            float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
+            float currentWorldTime = 0.0;
+            if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentWorldTime))
+                return true;
             if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 fatigueSystem.ProcessFatigueDecay(currentWorldTime, 0.0);
             float maxStaminaCap = 1.0;

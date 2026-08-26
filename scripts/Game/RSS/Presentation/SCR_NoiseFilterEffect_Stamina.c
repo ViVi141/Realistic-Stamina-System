@@ -33,14 +33,17 @@ modded class SCR_NoiseFilterEffect
                 float startTime = rssCtrl.GetSprintStartTime();
                 if (startTime >= 0.0)
                 {
-                    float now = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                    float elapsed = now - startTime;
-                    float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
-                    if (elapsed >= 0.0 && elapsed < burstDuration)
+                    float now = 0.0;
+                    if (SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(now))
                     {
-                        bool isSprintActive = rssCtrl.IsSprinting() || (rssCtrl.GetCurrentMovementPhase() == 3);
-                        if (isSprintActive)
-                            effectiveAudioState = ECharacterLifeState.INCAPACITATED;
+                        float elapsed = now - startTime;
+                        float burstDuration = SCR_RSS_Constants.GetTacticalSprintBurstDuration();
+                        if (elapsed >= 0.0 && elapsed < burstDuration)
+                        {
+                            bool isSprintActive = rssCtrl.IsSprinting() || (rssCtrl.GetCurrentMovementPhase() == 3);
+                            if (isSprintActive)
+                                effectiveAudioState = ECharacterLifeState.INCAPACITATED;
+                        }
                     }
                 }
             }

@@ -100,26 +100,6 @@ class SCR_RSS_MetabolismMath
     
     // ==================== 核心计算函数 ====================
     
-    // 根据体力百分比计算速度倍数（双稳态-应激性能模型）
-    // 
-    // 数学模型：基于双稳态-应激性能模型（Dual-State Stress Performance Model）
-    // 核心理念：士兵的性能不应是体力的简单幂函数，而应是"意志力维持"与"生理极限崩溃"的结合
-    //
-    // 速度性能分段（Performance Plateau）：
-    // 1. 平台期（Willpower Zone, Stamina 25% - 100%）：
-    //    只要体力高于25%，士兵可以强行维持设定的目标速度（3.8 m/s）。
-    //    这模拟了士兵在比赛或战斗中通过意志力克服早期疲劳。
-    // 2. 衰减期（Failure Zone, Stamina 0% - 25%）：
-    //    只有当体力掉入最后25%时，生理机能开始真正崩塌，速度迅速线性下降到跛行。
-    //
-    // @param staminaPercent 当前体力百分比 (0.0-1.0)
-    // @return 速度倍数（相对于游戏最大速度）
-    // @deprecated v6 保留 legacy 调用；新代码请用 CalculateV6PhaseSpeedMultiplier
-    static float CalculateSpeedMultiplierByStamina(float staminaPercent)
-    {
-        return SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(staminaPercent, 2, 0.0);
-    }
-
     // 获取基于当前负重惩罚的“跛行”速度倍率
     // 该倍率对应于当前负重下的最大允许Walk速度，而非固定1m/s。
     // @param encumbrancePenalty 负重造成的速度降低比例 (0.0-1.0)

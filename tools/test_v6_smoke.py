@@ -128,21 +128,22 @@ def _overspeed_accounting_ok() -> bool:
 
 
 def _overspeed_excess_drain_ok() -> bool:
-    # 不压速模式：武装透支只烧 W′，STA 税为 0
+    # 武装透支只烧 W′，STA 税为 0（drain-only 与代谢伺服两种模式一致）
     tax_armed = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 1.0, 125.0, 9.1, 2.24, 2, 380.0, True
     )
     if tax_armed != 0.0:
         return False
-    # 解除武装 + P≫CP：STA 透支税 > 0，且不应到「十余秒抽干」量级
+    # 解除武装 + 物理超限速：v6.1.7 起代谢伺服开，走 12× 路径
+    # unpaid = P(v_meas)−P(v_limit)，实测 ≈0.081 %/s（仅滚轮绕过限速时触发）
     tax_disarmed = get_client_overspeed_excess_drain_per_second(
         3.55, 1.15, 0.1, 125.0, 9.1, 2.24, 2, 380.0, False
     )
     if tax_disarmed <= 0.0:
         return False
-    if tax_disarmed > 0.02:
+    if tax_disarmed > 0.15:
         return False
-    # P≪CP：税为 0
+    # P≪CP 且不超限速：税为 0
     tax_ok = get_client_overspeed_excess_drain_per_second(
         0.8, 3.5, 0.1, 125.0, 0.0, 1.0, 1, 2000.0, False
     )
@@ -229,7 +230,7 @@ def _wprime_disarm_apply_path_ok() -> bool:
 
 
 def _downhill_phys_clamp_policy_ok() -> bool:
-    """不压速默认：物理钳关闭；代谢坡度±45；施密特滞回仍有效。"""
+    """v6.1.7 起默认：物理钳关闭；代谢限速开；代谢坡度±45；施密特滞回仍有效。"""
     from rss_digital_twin_fix import (
         apply_cp_cruise_physics_cap,
         clamp_grade_percent_for_metabolic_speed,
@@ -242,7 +243,7 @@ def _downhill_phys_clamp_policy_ok() -> bool:
 
     if V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP:
         return False
-    if V6_APPLY_CP_METABOLIC_SPEED_CAP:
+    if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
         return False
 
     # 物理钳关闭后任意坡度都不应 enforce

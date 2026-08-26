@@ -73,7 +73,9 @@ class SCR_RSS_DataExport
         if (!settings || !settings.m_bDataExportEnabled)
             return;
 
-        float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
+        float nowSec = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(nowSec))
+            return;
         float intervalSec = settings.m_iDataExportIntervalMs / 1000.0;
         if (intervalSec <= 0.0)
             intervalSec = 1.0;
@@ -87,6 +89,8 @@ class SCR_RSS_DataExport
 
     protected static void ExportToFile()
     {
+        if (!GetGame())
+            return;
         PlayerManager playerManager = GetGame().GetPlayerManager();
         if (!playerManager)
             return;
@@ -97,7 +101,10 @@ class SCR_RSS_DataExport
             return;
 
         RSS_ExportData exportData = new RSS_ExportData();
-        exportData.timestamp = GetGame().GetWorld().GetWorldTime();
+        float timestampMs = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeMs(timestampMs))
+            return;
+        exportData.timestamp = timestampMs;
         exportData.players = new array<ref RSS_ExportPlayerEntry>();
 
         for (int i = 0; i < playerIds.Count(); i++)
@@ -118,8 +125,9 @@ class SCR_RSS_DataExport
                 SCR_RSS_EnvironmentFactor env = ctrl.GetRssEnvironmentFactor();
                 if (env)
                 {
-                    float nowSec = GetGame().GetWorld().GetWorldTime() / 1000.0;
-                    env.ForceUpdate(nowSec, entity, 0.0);
+                    float nowSec = 0.0;
+                    if (SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(nowSec))
+                        env.ForceUpdate(nowSec, entity, 0.0);
                 }
             }
 

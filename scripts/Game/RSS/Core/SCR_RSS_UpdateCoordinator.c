@@ -124,6 +124,8 @@ class SCR_RSS_UpdateCoordinator
             }
         }
 
+        if (!GetGame() || !GetGame().GetWorld())
+            return 1.0;
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 秒
 
         float runBaseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateBaseSpeedMultiplier(
@@ -198,6 +200,8 @@ class SCR_RSS_UpdateCoordinator
         }
         
         // 计算速度倍数
+        if (!GetGame() || !GetGame().GetWorld())
+            return 1.0;
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
         
         // 室内（含楼梯间宽松判定）时硬归零，避免任何坡度速度惩罚
@@ -812,12 +816,23 @@ class SCR_RSS_UpdateCoordinator
                 encumbranceStaminaDrainMultiplier = tick.encumbranceCache.GetStaminaDrainMultiplier();
         }
 
+        // 手持物品重量（kg）：复用 EncumbranceCache 采样通路；缓存无效时 0（无加成）
+        float heldItemWeightKg = 0.0;
+        if (tick.encumbranceCache)
+            heldItemWeightKg = tick.encumbranceCache.GetHeldItemWeight();
+
         result.baseDrainRateByVelocityForModule = result.baseDrainRateByVelocity;
 
         if (tick.useSwimmingModel)
         {
             result.totalDrainRate = result.baseDrainRateByVelocity;
             result.totalDrainRate = result.totalDrainRate * totalEfficiencyFactor * fatigueFactor;
+            // 游泳路径不经 CalculateStaminaConsumption，手持加成在此单层施加（仅消耗侧）
+            if (result.totalDrainRate > 0.0)
+            {
+                result.totalDrainRate = result.totalDrainRate
+                    * SCR_RSS_StaminaConsumptionCalculator.ComputeHeldItemDrainMultiplier(heldItemWeightKg);
+            }
         }
         else
         {
@@ -835,7 +850,8 @@ class SCR_RSS_UpdateCoordinator
                 tick.environmentFactor,
                 tick.owner,
                 tick.isSprinting,
-                tick.currentMovementPhase);
+                tick.currentMovementPhase,
+                heldItemWeightKg);
             // 陆地：热/风/泥已在 CalculateStaminaConsumption 快路径施加；勿再乘 heatStressMultiplier（避免双重叠层）
         }
 

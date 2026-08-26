@@ -34,12 +34,11 @@ class SCR_RSS_IndoorDetection
             return false;
         if (!owner)
             return false;
-        if (owner)
-        {
-            float currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
-            if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
-                return m_bCachedIndoorState;
-        }
+        float currentTime = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+            return m_bCachedIndoorState;
+        if (currentTime - m_fLastIndoorCheckTime < INDOOR_CHECK_INTERVAL)
+            return m_bCachedIndoorState;
         return IsUnderCover(owner);
     }
 

@@ -90,6 +90,12 @@
 | `InventoryStorageManagerComponent` | 引擎原生库存管理器组件 | PlayerBase.c |
 | `ScriptedInventoryStorageManagerComponent` | 脚本化库存管理器基类（`modded` 基类） | SCR_InventoryStorageManagerComponent_Override.c |
 | `BaseInventoryStorageComponent.GetTotalWeight()` | 单个存储格重量 | SCR_EncumbranceCache.c |
+| `SCR_GadgetManagerComponent` | 手持装备管理组件 | SCR_RSS_EncumbranceCache.c |
+| `SCR_GadgetManagerComponent.GetHeldGadgetComponent()` | 当前 gadget 组件（可能含隐藏腕表回退，必须再判模式） | SCR_RSS_EncumbranceCache.c |
+| `SCR_GadgetComponent.GetMode()` / `EGadgetMode.IN_HAND` | 仅 IN_HAND 计入手持加成，排除隐藏槽挂件 | SCR_RSS_EncumbranceCache.c |
+| `InventoryItemComponent.GetTotalWeight()` | 物品总重（kg，含 additional weight / 附件） | SCR_RSS_EncumbranceCache.c |
+| `BaseWeaponManagerComponent.GetCurrentWeapon()` / `GetCurrent()` | 当前选中武器（或槽位） | SCR_RSS_EncumbranceCache.c |
+| `WeaponSlotComponent.GetWeaponEntity()` | 从武器槽解析出武器实体 | SCR_RSS_EncumbranceCache.c |
 
 ---
 
@@ -281,7 +287,7 @@
 | 实体系统 | 9 |
 | 角色控制器 | 8 |
 | 体力组件 | 4 |
-| 库存/负重 | 8 |
+| 库存/负重 | 14 |
 | 输入系统 | 6 |
 | 网络复制 | 5 |
 | 玩家管理 | 4 |
@@ -297,4 +303,4 @@
 | 调试/日志 | 3 |
 | 游戏模式 | 2 |
 | 载具检测 | 2 |
-| **合计** | **~111** |
+| **合计** | **~117** |

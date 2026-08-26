@@ -45,7 +45,8 @@ pub const V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_SKIP_GRADE: f64 = -2.0;
 pub const V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS: f64 = 0.40;
 pub const V6_METABOLIC_GRADE_ABS_MAX_PCT: f64 = 45.0;
 pub const V6_APPLY_HORIZONTAL_SPEED_CLAMP: bool = false;
-pub const V6_APPLY_CP_METABOLIC_SPEED_CAP: bool = false;
+/// Match game SCR_RSS_Constants: enabled since v6.1.7 (W′ depletion presses CP cruise via SetSpeedLimit).
+pub const V6_APPLY_CP_METABOLIC_SPEED_CAP: bool = true;
 pub const LCDA_REST_W_PER_KG: f64 = 1.05;
 pub const LCDA_STAND_NET_W_PER_KG: f64 = 0.19;
 pub const LCDA_SPEED_FRAC_COEFF: f64 = 1.78;

@@ -166,7 +166,6 @@ class RSSConstants:
     EXHAUSTION_THRESHOLD = 0.0
     SPRINT_ENABLE_THRESHOLD = 0.25  # Hardcore：原0.18
     SPRINT_SPEED_BOOST = 0.22  # Hardcore：原0.30
-    WILLPOWER_THRESHOLD = 0.35  # Hardcore：新增可配置参数（原0.25硬编码）
 
     TACTICAL_SPRINT_BURST_DURATION = 8.0
     TACTICAL_SPRINT_BURST_BUFFER_DURATION = 5.0
@@ -1171,7 +1170,7 @@ class RSSDigitalTwin:
         encumbrance_penalty: float,
         anaerobic_percent: float = 1.0,
     ) -> float:
-        """与 SCR_RSS_SpeedCalculator.GetV5AbsoluteSpeedMs 一致。"""
+        """与 SCR_RSS_SpeedCalculator.GetMarchAbsoluteSpeedMs 一致。"""
         stamina_scale = stamina_scale_from_run_multiplier(self.constants, scaled_run_speed)
         enc_mult = 1.0 - encumbrance_penalty
         if enc_mult < 0.5:
@@ -2297,7 +2296,8 @@ V6_RUN_GAIT_DEMOTE_TO_WALK = True
 V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25
 V6_WALK_START_MIN_MS = 0.35
 V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
-V6_APPLY_CP_METABOLIC_SPEED_CAP = False
+# Match game SCR_RSS_Constants: enabled since v6.1.7 (W′ depletion presses CP cruise via SetSpeedLimit).
+V6_APPLY_CP_METABOLIC_SPEED_CAP = True
 # Match game SCR_RSS_Constants: W' disarmed flat/uphill clamp; downhill allows small coast then clamp; steep skip.
 V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP = False
 V6_CP_CRUISE_OVERSPEED_EPS_MPS = 0.15

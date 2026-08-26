@@ -159,7 +159,9 @@ class SCR_RSS_UpdateLoopDebugOutput
         if (owner == SCR_PlayerController.GetLocalControlledEntity())
             return;
 
-        float nowMs = GetGame().GetWorld().GetWorldTime();
+        float nowMs = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeMs(nowMs))
+            return;
         if (nowMs < s_fNextGlobalAiDebugMs)
             return;
         s_fNextGlobalAiDebugMs = nowMs + 30000.0;
