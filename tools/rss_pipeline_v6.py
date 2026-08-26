@@ -76,10 +76,10 @@ PRESET_FILES = {
 }
 
 V6_DEFAULTS = {
-    "critical_power_watts": 1000.0,
+    "critical_power_watts": 1650.0,
     "w_prime_max_joules": 20000.0,
     "w_prime_recovery_w_per_s": 12.0,
-    "sprint_power_cap_watts": 2400.0,
+    "sprint_power_cap_watts": 3600.0,
     "w_prime_recovery_mode": 0.0,
     "v5_walk_speed_ms": 1.4,
     "v5_run_speed_ms": 3.20,
@@ -129,6 +129,12 @@ DEFAULT_MO_TRIALS = 1000
 DEFAULT_TIER_TRIALS = 300
 DEFAULT_FEASIBILITY_TRIALS = 150
 
+# CP 搜索：慢跑口径（29 kg 平路 Run 60 s 仍武装；Python 孪生为准）
+CP_SEARCH_LO = 1480.0
+CP_SEARCH_HI = 1850.0
+SPRINT_CAP_SEARCH_LO = 2200.0
+SPRINT_CAP_SEARCH_HI = 4000.0
+
 # 三档标尺：拉开 combat/recovery，并锚定 W′ 回充与负重阶梯
 # （combat 受 CP 双池影响时仍靠 param ladder 保证档位叙事）
 TIER_TARGETS = {
@@ -139,8 +145,9 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 10.0,
         "energy_to_stamina_coeff": 1.05e-7,
         "base_recovery_rate": 9.0e-5,
-        "critical_power_watts": 980.0,
+        "critical_power_watts": 1560.0,
         "w_prime_max_joules": 28500.0,
+        "sprint_power_cap_watts": 3400.0,
         # ~17:35 / ~72%（零负重 Run 2mi）
         "v5_run_speed_ms": 3.05,
     },
@@ -151,8 +158,9 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 13.0,
         "energy_to_stamina_coeff": 9.5e-8,
         "base_recovery_rate": 1.10e-4,
-        "critical_power_watts": 1000.0,
+        "critical_power_watts": 1680.0,
         "w_prime_max_joules": 30000.0,
+        "sprint_power_cap_watts": 3600.0,
         # ~16:45 / ~77%
         "v5_run_speed_ms": 3.20,
     },
@@ -163,8 +171,9 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 15.5,
         "energy_to_stamina_coeff": 7.5e-8,
         "base_recovery_rate": 1.25e-4,
-        "critical_power_watts": 1030.0,
+        "critical_power_watts": 1780.0,
         "w_prime_max_joules": 31500.0,
+        "sprint_power_cap_watts": 3800.0,
         # ~15:47 / ~83%
         "v5_run_speed_ms": 3.40,
     },
@@ -185,6 +194,7 @@ TIER_LADDER_ASC = (
     "w_prime_recovery_w_per_s",
     "w_prime_max_joules",
     "critical_power_watts",
+    "sprint_power_cap_watts",
     "v5_run_speed_ms",
 )
 TIER_LADDER_DESC = (
@@ -459,6 +469,54 @@ def _search_space_items() -> List[Tuple[str, float, float, bool]]:
     return items
 
 
+def _clamp_seed_to_search_space(params: Dict, tier: str = None) -> Dict:
+    """enqueue_trial 要求参数落在 suggest 区间内。"""
+    out = dict(params)
+    for name, low, high, _log in _search_space_items():
+        lo = float(low)
+        hi = float(high)
+        if name == "v5_run_speed_ms" and tier in TIER_RUN_SPEED_BOUNDS:
+            lo, hi = TIER_RUN_SPEED_BOUNDS[tier]
+        if name not in out:
+            if _log and lo > 0.0 and hi > 0.0:
+                out[name] = float(math.sqrt(lo * hi))
+            else:
+                out[name] = float(0.5 * (lo + hi))
+            continue
+        val = float(out[name])
+        if val < lo:
+            val = lo
+        elif val > hi:
+            val = hi
+        out[name] = val
+    return out
+
+
+def _tier_target_seed(tier: str) -> Dict:
+    params = dict(V6_DEFAULTS)
+    for name, low, high, log_scale in _search_space_items():
+        if log_scale and low > 0.0 and high > 0.0:
+            params[name] = float(math.sqrt(low * high))
+        else:
+            params[name] = float(0.5 * (low + high))
+    targets = TIER_TARGETS.get(tier, {})
+    for k, v in targets.items():
+        params[k] = float(v)
+    return _clamp_seed_to_search_space(params, tier)
+
+
+def _study_best_or_raise(study, label: str):
+    complete = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
+    if not complete:
+        raise RuntimeError(
+            f"[V6] {label}: no complete trials (all pruned). "
+            "Joint feasible set empty — check hard constraints / search space."
+        )
+    return study.best_trial
+
+
 def sample_lhs_params(n_samples: int, seed: int = 42) -> List[Dict]:
     """Latin Hypercube 采样（覆盖 SEARCH_SPACE_V4+V6）。"""
     rng = np.random.default_rng(seed)
@@ -517,9 +575,9 @@ def search_feasible_seeds(
             for p in batch:
                 cp = float(p.get("critical_power_watts", 0.0))
                 if cp < anchor.min_cp0:
-                    lifted = float(anchor.min_cp0) + (cp - 750.0) * 0.25
-                    if lifted > 1100.0:
-                        lifted = 1100.0
+                    lifted = float(anchor.min_cp0) + (cp - CP_SEARCH_LO) * 0.25
+                    if lifted > CP_SEARCH_HI:
+                        lifted = CP_SEARCH_HI
                     p["critical_power_watts"] = lifted
         except Exception:
             pass
@@ -565,6 +623,21 @@ def search_feasible_seeds(
             _add_seed(dict(trial.params))
             if len(seeds) >= target_count:
                 break
+
+    if len(seeds) < target_count:
+        fallback = [_tier_target_seed(tier) for tier in TIER_PHILOSOPHY]
+        reports = batch_evaluate_hard_constraints(
+            fallback, fast_mode=bool(fast_mode)
+        )
+        n_fb = 0
+        for params, report in zip(fallback, reports):
+            if report.all_hard_passed:
+                n_fb += 1
+                _add_seed(params)
+        print(
+            f"[V6] feasibility fallback (tier targets): "
+            f"{n_fb}/{len(fallback)} passed → seeds={len(seeds)}"
+        )
 
     seeds = seeds[:target_count]
     print(f"[V6] feasibility phase: found {len(seeds)} feasible seeds")
@@ -772,11 +845,11 @@ class RSSOptimizerV6:
     }
 
     SEARCH_SPACE_V6 = {
-        # 零负重 Run 2mi≤18:00：v5_run≥~2.98；三档靠 run 盖子拉开
-        "critical_power_watts": (750.0, 1100.0, False),
+        # 慢跑口径 CP：29kg 平路 Run 60s W′ 仍武装；冲刺帽上沿配合 ≤15 s
+        "critical_power_watts": (CP_SEARCH_LO, CP_SEARCH_HI, False),
         "w_prime_max_joules": (18000.0, 33000.0, False),
         "w_prime_recovery_w_per_s": (8.0, 16.0, False),
-        "sprint_power_cap_watts": (2200.0, 3000.0, False),
+        "sprint_power_cap_watts": (SPRINT_CAP_SEARCH_LO, SPRINT_CAP_SEARCH_HI, False),
         "v5_run_speed_ms": (2.98, 3.45, False),
     }
 
@@ -868,15 +941,21 @@ class RSSOptimizerV6:
 
         elapsed = time.time() - t0
         self.study = study
-        print(f"\n[V6] done ({elapsed:.0f}s), Pareto size={len(study.best_trials)}")
+        n_pareto = 0
+        try:
+            n_pareto = len(study.best_trials)
+        except ValueError:
+            n_pareto = 0
+        print(f"\n[V6] done ({elapsed:.0f}s), Pareto size={n_pareto}")
         for line in self.stats.summary_lines():
             print(line)
 
-        for i, t in enumerate(study.best_trials[:3]):
-            print(
-                f"  #{i + 1}: sustain={t.values[0]:.3f} mobility={t.values[1]:.3f} "
-                f"combat={t.values[2]:.3f} recovery={t.values[3]:.6f} drift={t.values[4]:.3f}"
-            )
+        if n_pareto > 0:
+            for i, t in enumerate(study.best_trials[:3]):
+                print(
+                    f"  #{i + 1}: sustain={t.values[0]:.3f} mobility={t.values[1]:.3f} "
+                    f"combat={t.values[2]:.3f} recovery={t.values[3]:.6f} drift={t.values[4]:.3f}"
+                )
         return study
 
 
@@ -956,21 +1035,15 @@ class TierOptimizerV6:
             sampler=optuna.samplers.TPESampler(seed=42),
         )
         for seed in seeds:
-            seed_params = dict(seed)
-            if self.tier in TIER_RUN_SPEED_BOUNDS:
-                lo, hi = TIER_RUN_SPEED_BOUNDS[self.tier]
-                run_v = float(
-                    seed_params.get(
-                        "v5_run_speed_ms",
-                        TIER_TARGETS[self.tier]["v5_run_speed_ms"],
-                    )
-                )
-                if run_v < lo:
-                    run_v = lo
-                elif run_v > hi:
-                    run_v = hi
-                seed_params["v5_run_speed_ms"] = run_v
+            seed_params = _clamp_seed_to_search_space(dict(seed), self.tier)
             study.enqueue_trial(seed_params)
+        if not seeds:
+            fallback = _tier_target_seed(self.tier)
+            study.enqueue_trial(fallback)
+            print(
+                f"[V6] optimize-tier {self.tier}: no feasible seeds, "
+                "enqueued tier-target fallback"
+            )
 
         print(
             f"[V6] optimize-tier {self.tier}: {self.n_trials} trials "
@@ -985,7 +1058,7 @@ class TierOptimizerV6:
         )
         elapsed = time.time() - t0
         self.study = study
-        best = study.best_trial
+        best = _study_best_or_raise(study, f"optimize-tier {self.tier}")
         m = best.user_attrs.get("metrics_v6", ())
         print(f"[V6] tier done ({elapsed:.0f}s) score={best.value:.4f}")
         if m:
@@ -1522,8 +1595,9 @@ def cmd_optimize_tiers(args: argparse.Namespace) -> int:
             feasibility_trials=feas,
         )
         study = opt.run()
+        best = _study_best_or_raise(study, f"optimize-tiers {tier}")
         export = _write_preset_pair(
-            tier, study.best_trial, out_path, fast_mode=args.fast
+            tier, best, out_path, fast_mode=args.fast
         )
         preset_exports[tier] = export
 

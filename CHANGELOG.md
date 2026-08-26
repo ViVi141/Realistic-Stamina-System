@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### CP 慢跑口径重标定
+
+- **硬约束 `run_wprime_armed_29kg_60s`** — 29 kg 平路 Run 60 s 后 W′ 须仍武装（池 >25%）、速度仍在 Run 带（≥2.2 m/s）、未切 Walk 覆盖。情景钉死 Elite 慢跑盖子（enc=0.34、v5_run=3.05），不吃 trial 的低负重/高速。CP 按「能慢跑」而非「能行军」搜索；Python/Rust 孪生同序 `game_player_tick`
+- **搜索空间** — `critical_power_watts` 1480–1850（原 750–1100）；`sprint_power_cap_watts` 上沿 4000，配合冲刺 ≤15 s
+- **35 kg Run 观测下限** — 慢跑口径下平路可接近 CP，硬门下限改为 0%/s，只封上限 2.6%/s
+- **门禁用 Python 慢跑约束** — Rust 同参 W′ 消耗偏少，`rss_sim_backend` 在 Rust 全过后再跑 Python `run_wprime_armed_29kg_60s`，与 C 孪生对齐
+- **optimize-tiers 重跑** — TPE 300 trials/档 + repair + embed。Elite CP 1519 / W′ 23426 / sprint_cap 3712；Standard 1528 / 30336 / 3735；Tactical 1595 / 31223 / 3882。冒烟 34/34
+
 ### 文档-代码漂移同步（2026-08-26）
 
 - **CP 限速开关描述对齐** — 权威文档 / 开发者指南 / 已知问题（中英 6 处）从「6.1.x drain-only 默认关」更新为「v6.1.7 起默认开」（代码 `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` 自 6.1.7 生效，文档滞后）
@@ -36,6 +44,9 @@
 - **步行恢复只认 Walk** — `Run惯性`（引擎 Idle）不再把 HUD/判定当成步行回血；过脊时坡度符号翻转立刻跟上，减轻下坡仍按上坡反解把 `最终倍` 拧到 0.5×
 - **硬跑步态税降到现实量级** — W′ 空后 29 kg 上坡硬跑不再顶满 2.5%/s（约 32 s 抽干 80%）。改为 10×、上限 0.4%/s（陡坡硬跑约 3–4 min 掉完 80%；下坡更低）
 - **掉出 Run 带改切引擎 Walk 档** — W′ 解除武装且 CP 反解低于 Run 地板、仍按住移动时，用 CapsLock 同款切 Walk。**按住 W 则保持 Walk**（下坡反解回到 Run 带也不自动改跑，避免过脊 Walk 动画对 3 m/s 物理）。松开 W（0.25 s 去抖）或 W′ 再武装后还原滚轮。
+- **孪生对齐 Walk 覆盖 + 引擎顶** — Python/Rust `game_player_tick` 在 W′ 解除武装且反解掉出 Run 带时切 Walk 并锁存；Walk 引擎顶用 `ENGINE_WALK_TOP_MS`（1.45），不再误用 Run 3.8 把步态下限抬到 ~1.9 m/s（4h 行军假抽干）。
+- **optimize-tiers 重跑** — 孪生对齐后 TPE 300 trials/档 + repair：Elite CP 907.8→804.7、Standard 1031.0→873.6、Tactical 1080.6→873.6；Tactical CP/sprint_cap 提到与 Standard 齐平以满足档位阶梯；已 embed `SCR_RSS_SettingsPresetBake.c`。
+- **步态覆盖不再假超速烧 W′** — 覆盖期间测速仍在引擎 Walk 顶内（约 ≤1.65 m/s）时，相对徒步地板 1.0 的 phys 超速不计：功率钳到 CP（上坡不烧 W′），下坡允许回充；Walk 12× STA 税同样免除。真滑步（≥~1.65）仍记账。C/Python/Rust 三端同步。
 
 ## [6.1.7] - 2026-08-14
 

@@ -10,8 +10,8 @@ use crate::constants::{
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
     get_client_overspeed_excess_drain_per_second, get_drain_velocity_ms, get_epoc_sample_velocity_ms,
-    get_metabolic_corrected_speed_multiplier, invert_cruise_cap_ms, is_metabolic_overspeed_accounting,
-    resolve_run_cruise_cap_ms,
+    get_metabolic_corrected_speed_multiplier, invert_cruise_cap_ms,
+    is_phys_overspeed_for_anaerobic_tick, resolve_run_cruise_cap_ms,
 };
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
@@ -45,6 +45,8 @@ pub struct RSSDigitalTwin {
     pub measured_velocity_ms: f64,
     pub applied_speed_limit_mult: f64,
     pub applied_speed_limit_ms: f64,
+    pub last_run_cruise_cap_ms: f64,
+    pub cp_walk_override_active: bool,
     pub fatigue: TwinFatigueSystem,
     pub v6_cp_state: V6CriticalPowerState,
     pub base_drain_rate_by_velocity: f64,
@@ -94,6 +96,8 @@ impl RSSDigitalTwin {
             measured_velocity_ms: 0.0,
             applied_speed_limit_mult: 1.0,
             applied_speed_limit_ms: -1.0,
+            last_run_cruise_cap_ms: 0.0,
+            cp_walk_override_active: false,
             fatigue: TwinFatigueSystem::default(),
             v6_cp_state,
             base_drain_rate_by_velocity: 0.0,
@@ -127,6 +131,8 @@ impl RSSDigitalTwin {
         self.measured_velocity_ms = 0.0;
         self.applied_speed_limit_mult = 1.0;
         self.applied_speed_limit_ms = -1.0;
+        self.last_run_cruise_cap_ms = 0.0;
+        self.cp_walk_override_active = false;
         self.environment_factor.heat_stress = 0.0;
         self.environment_factor.cold_stress = 0.0;
         self.environment_factor.cold_static_penalty = 0.0;
@@ -693,8 +699,11 @@ impl RSSDigitalTwin {
         }
         // Match PlayerBase_UpdateLoop phys overspeed power clamp
         if !is_sprinting {
-            let phys_overspeed =
-                is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms);
+            let phys_overspeed = is_phys_overspeed_for_anaerobic_tick(
+                measured_ms,
+                applied_limit_ms,
+                self.cp_walk_override_active,
+            );
             let cp_clamp = self.v6_cp_state.get_effective_critical_power_watts();
             if cp_clamp > 1.0 {
                 if !phys_overspeed {
@@ -724,6 +733,7 @@ impl RSSDigitalTwin {
                 w_prime_armed_for_tax,
                 self.constants.energy_to_stamina_coeff,
                 self.constants.character_weight,
+                self.cp_walk_override_active,
             );
         }
 
@@ -950,6 +960,7 @@ impl RSSDigitalTwin {
         let game_max = self.constants.game_max_speed;
         let max_pen = self.constants.encumbrance_speed_penalty_max;
         let exhausted = stamina_percent <= self.constants.exhaustion_threshold;
+        self.last_run_cruise_cap_ms = 0.0;
         let mut can_sprint = stamina_percent >= self.constants.sprint_enable_threshold;
         if can_sprint {
             if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
@@ -1074,6 +1085,7 @@ impl RSSDigitalTwin {
                     tf,
                     cp_eff,
                 );
+                self.last_run_cruise_cap_ms = cruise_cap;
                 if cruise_cap > 0.05 && theoretical_target > cruise_cap {
                     theoretical_target = cruise_cap;
                 }
@@ -1114,6 +1126,7 @@ impl RSSDigitalTwin {
                 tf,
                 cp_eff,
             );
+            self.last_run_cruise_cap_ms = run_cruise;
             if run_cruise > 0.05 && theoretical_target > run_cruise {
                 theoretical_target = run_cruise;
             }
@@ -1148,6 +1161,7 @@ impl RSSDigitalTwin {
                 tf,
                 cp_eff,
             );
+            self.last_run_cruise_cap_ms = cruise_cap;
             if cruise_cap > 0.05 && theoretical_target > cruise_cap {
                 theoretical_target = cruise_cap;
             }
@@ -1193,6 +1207,16 @@ impl RSSDigitalTwin {
     fn estimate_engine_original_max_speed(movement_phase: i32, constants: &RssConstants) -> f64 {
         if movement_phase == MOVEMENT_SPRINT {
             constants.game_max_speed
+        } else if movement_phase == MOVEMENT_WALK {
+            if crate::constants::V6_USE_MARCH_GAIT_SPEEDS {
+                let mut walk_ms = constants.v5_walk_speed_ms;
+                if walk_ms < 0.5 {
+                    walk_ms = ENGINE_WALK_TOP_MS;
+                }
+                walk_ms
+            } else {
+                ENGINE_WALK_TOP_MS
+            }
         } else {
             constants.game_max_speed * constants.target_run_speed_multiplier
         }
@@ -1292,6 +1316,46 @@ impl RSSDigitalTwin {
         (is_sprinting, effective_phase, can_sprint, exhausted)
     }
 
+    fn refresh_cp_walk_override(&mut self, intent_phase: i32) {
+        if !crate::constants::V6_CP_OUT_OF_BAND_WALK_OVERRIDE {
+            self.cp_walk_override_active = false;
+            return;
+        }
+        if !crate::constants::V6_APPLY_CP_METABOLIC_SPEED_CAP {
+            self.cp_walk_override_active = false;
+            return;
+        }
+
+        let mut holding_move = false;
+        if intent_phase >= MOVEMENT_WALK {
+            holding_move = true;
+        }
+
+        let mut w_prime_empty = true;
+        if self.v6_cp_state.refresh_and_get_overspeed_armed() {
+            w_prime_empty = false;
+        }
+
+        let mut out_of_band = false;
+        if self.last_run_cruise_cap_ms < -0.01 {
+            out_of_band = true;
+        }
+
+        let mut want = false;
+        if w_prime_empty {
+            if self.cp_walk_override_active {
+                if holding_move {
+                    want = true;
+                }
+            } else if holding_move {
+                if out_of_band {
+                    want = true;
+                }
+            }
+        }
+        self.cp_walk_override_active = want;
+    }
+
     fn _compute_engine_movement_phase(
         &self,
         intent_phase: i32,
@@ -1336,8 +1400,13 @@ impl RSSDigitalTwin {
         wind_drag: f64,
         enable_randomness: bool,
     ) -> f64 {
-        let (_, effective_phase, _, _) =
+        let (_, mut effective_phase, _, _) =
             self.resolve_movement_state(intent_phase, self.stamina, current_time);
+        if self.cp_walk_override_active {
+            if intent_phase >= MOVEMENT_WALK {
+                effective_phase = MOVEMENT_WALK;
+            }
+        }
 
         if intent_phase == MOVEMENT_SPRINT && self.sprint_start_time < 0.0 {
             if self.sprint_cooldown_until < 0.0 || current_time >= self.sprint_cooldown_until {
@@ -1345,7 +1414,7 @@ impl RSSDigitalTwin {
             }
         }
 
-        let theoretical_ms = self.calculate_actual_speed(
+        let mut theoretical_ms = self.calculate_actual_speed(
             self.stamina,
             current_weight,
             effective_phase,
@@ -1354,6 +1423,26 @@ impl RSSDigitalTwin {
             current_time,
             terrain_factor,
         );
+        let was_override = self.cp_walk_override_active;
+        self.refresh_cp_walk_override(intent_phase);
+        if self.cp_walk_override_active {
+            if !was_override {
+                if effective_phase != MOVEMENT_WALK {
+                    if intent_phase >= MOVEMENT_WALK {
+                        effective_phase = MOVEMENT_WALK;
+                        theoretical_ms = self.calculate_actual_speed(
+                            self.stamina,
+                            current_weight,
+                            effective_phase,
+                            self.measured_velocity_ms,
+                            grade_percent,
+                            current_time,
+                            terrain_factor,
+                        );
+                    }
+                }
+            }
+        }
         let engine_phase = if effective_phase == MOVEMENT_SPRINT {
             MOVEMENT_SPRINT
         } else if effective_phase == MOVEMENT_RUN {

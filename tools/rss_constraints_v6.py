@@ -25,8 +25,8 @@ SPRINT_COOLDOWN_MIN_SEC = 120.0
 DRAIN_VEL_TOLERANCE = 0.001
 OVERSPEED_EXPECTED = 0.5
 
-# 35 kg Run 稳态：W′ 可用时保持步态速度，超额消耗应落在可玩 band
-SUSTAIN_OBS_MIN_PCT_PER_S = 0.40
+# 35 kg Run 稳态：慢跑口径下平路可接近 CP，掉条可接近 0；硬门只封过快掉条
+SUSTAIN_OBS_MIN_PCT_PER_S = 0.0
 SUSTAIN_OBS_MAX_PCT_PER_S = 2.60
 SUSTAIN_OBS_HARD = True
 
@@ -50,6 +50,16 @@ TWO_MILE_MAX_SEC = TWO_MILE_SCORE_70_SEC
 TWO_MILE_HARD_MAX_SEC = TWO_MILE_SCORE_70_SEC
 TWO_MILE_TIMEOUT_SEC = 1800.0
 TWO_MILE_HARD = True
+
+# 29 kg 平路慢跑：60 s 后 W′ 仍武装（能慢跑，不是只能行军）
+# 情景钉死 Elite 慢跑盖子，不吃 trial 的低负重/高速（否则 Tactical 移动性把门禁卡死）
+RUN_WPRIME_ARMED_LOAD_KG = 29.0
+RUN_WPRIME_ARMED_DURATION_S = 60.0
+RUN_WPRIME_ARMED_MIN_POOL01 = 0.25
+RUN_WPRIME_ARMED_SCENARIO_ENC = 0.34
+RUN_WPRIME_ARMED_SCENARIO_V5_RUN_MS = 3.05
+# 实机关水平硬钳时测速常略高于指令；孪生每帧把 v_meas 写回指令，须补超速才走 P−CP 烧 W′
+RUN_WPRIME_ARMED_PHYS_OVERSHOOT_MS = 0.14
 
 TOOLS_DIR = Path(__file__).resolve().parent
 ELITE_PRESET_JSON_V6 = TOOLS_DIR / "optimized_rss_config_elitestandard_v6.json"
@@ -477,6 +487,98 @@ def check_march_cruise_below_cp(
     )
 
 
+def check_run_wprime_armed_29kg_60s(
+    params: Optional[Dict] = None,
+) -> ConstraintCheck:
+    """29 kg 平路 Run 60 s 后 W′ 仍武装，且速度仍在 Run 带（能慢跑，不是只能行军）。"""
+    from rss_digital_twin_fix import (
+        MovementType,
+        RSSConstants,
+        RSSDigitalTwin,
+        RSS_PLAYER_TICK_SEC,
+        Stance,
+        V6_RUN_GAIT_FLOOR_MS,
+        merge_game_aligned_params,
+    )
+
+    merged = merge_game_aligned_params(_load_elite_preset_params())
+    if params:
+        merged.update(
+            {k: float(v) for k, v in params.items() if not str(k).startswith("_")}
+        )
+    merged["encumbrance_speed_penalty_coeff"] = float(RUN_WPRIME_ARMED_SCENARIO_ENC)
+    merged["v5_run_speed_ms"] = float(RUN_WPRIME_ARMED_SCENARIO_V5_RUN_MS)
+    twin = RSSDigitalTwin(RSSConstants(**merged))
+    twin.reset()
+    dt = RSS_PLAYER_TICK_SEC
+    body_kg = float(getattr(twin.constants, "CHARACTER_WEIGHT", 90.0))
+    current_weight = body_kg + RUN_WPRIME_ARMED_LOAD_KG
+    t = 0.0
+    duration = float(RUN_WPRIME_ARMED_DURATION_S)
+    while t < duration:
+        twin.game_player_tick(
+            MovementType.RUN,
+            current_weight,
+            0.0,
+            1.0,
+            Stance.STAND,
+            t,
+            dt,
+            enable_randomness=False,
+        )
+        measured = float(twin._measured_velocity_ms)
+        if measured >= 0.1:
+            twin._measured_velocity_ms = measured + RUN_WPRIME_ARMED_PHYS_OVERSHOOT_MS
+        t += dt
+
+    pool01 = float(twin.v6_cp_state.pool01)
+    armed = bool(twin.v6_cp_state.refresh_and_get_overspeed_armed())
+    walk_override = bool(twin._cp_walk_override_active)
+    speed_ms = float(twin._measured_velocity_ms)
+    min_speed = float(V6_RUN_GAIT_FLOOR_MS)
+    still_run_band = True
+    if walk_override:
+        still_run_band = False
+    elif speed_ms + 1e-6 < min_speed:
+        still_run_band = False
+    pool_ok = pool01 > RUN_WPRIME_ARMED_MIN_POOL01
+    ok = False
+    if armed:
+        if pool_ok:
+            if still_run_band:
+                ok = True
+    margin = pool01 - RUN_WPRIME_ARMED_MIN_POOL01
+    if not still_run_band:
+        margin = speed_ms - min_speed
+        if margin > 0.0:
+            margin = -1.0
+    hint = ""
+    if not ok:
+        hint = (
+            "raise critical_power_watts so 29kg flat Run stays near CP "
+            "(W' remains armed at 60s, speed still in Run band)"
+        )
+    armed_i = 0
+    if armed:
+        armed_i = 1
+    override_i = 0
+    if walk_override:
+        override_i = 1
+    detail = (
+        f"pool={pool01:.3f} armed={armed_i} walk_override={override_i} "
+        f"v={speed_ms:.2f} m/s (need pool>{RUN_WPRIME_ARMED_MIN_POOL01:.2f}, "
+        f"v>={min_speed:.1f}, no Walk override)"
+    )
+    return ConstraintCheck(
+        "run_wprime_armed_29kg_60s",
+        ok,
+        detail,
+        hard=True,
+        margin=margin,
+        hint=hint,
+    )
+
+
 def evaluate_physio_anchors(
     load_kg: float = 35.0,
     cp0: float = 780.0,
@@ -501,6 +603,7 @@ def evaluate_physio_anchors(
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp0, w_prime_max, sprint_cap_w),
         check_march_cruise_below_cp(params=trial_params, cp0=cp0),
+        check_run_wprime_armed_29kg_60s(trial_params),
         check_sustain_run_observed(trial_params, duration_s=90.0),
         check_mobility_run_speed(
             0.0, MOBILITY_RUN_0KG_MIN_MS, MOBILITY_RUN_0KG_MAX_MS, "0kg", trial_params

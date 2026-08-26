@@ -118,6 +118,7 @@ Related switches (`SCR_RSS_Constants`; source wins):
 
 - Occasional `v_meas` slightly above limit is OK (do not enable physics clamp).
 - Steep loaded, W′ disarmed (~<25%), still holding W: HUD `步态覆盖=on`, `类型=Walk`, `v_meas` about 1.0–1.45 m/s. Crossing a crest downhill **stays Walk** (no override flicker, no Walk anim vs 3 m/s physics). About 0.25 s after releasing W, `步态覆盖=off`.
+- After override, uphill Walk (`v_meas`≈1.45, `v_limit`≈1.0): `超速记账=off`; W′ must **not** keep dumping. Downhill Walk with `P_met`<CP should recover. True slip (`v_meas`≥~1.65) may still show `on(phys)`.
 - After switching to Walk (~10–13°, 29 kg, W′ empty): `v_limit` should be about **1.0 m/s** (hike floor) and `最终倍` ≥ 0.5× Walk top. Do not accept `v_limit≈0.5` with Walk anim vs ~1.7 m/s physics (slide).
 - Standing Idle: `最终倍` should be about **0.999** (keep the limit source), not `0.0027` / HUD `倍率0x`. The first Run/Walk frame after pressing W should enter the gait band immediately, not crawl at `v_limit≈0.48`.
 - Exhausted while still holding Run: after `Exhausted: limp speed`, `最终倍` should snap to about **0.5×** (exhausted jog ~1.8 m/s), not slew toward 0.15 at 1.25/s. After switching to Walk, `v_limit` should be about **1.0 m/s**. Downhill `v_meas` may still exceed command (physics clamp off).

@@ -568,6 +568,9 @@ class SCR_RSS_Constants
     static const float V6_CP_INVERT_TERRAIN_MAX = 1.0;
     //! W′ 耗尽后巡航限速地板（m/s）。约 3.6 km/h 负重徒步；禁止反解成爬行。
     static const float V6_CP_HIKE_FLOOR_MS = 1.0;
+    //! 步态覆盖期间：测速不超过 Walk 顶 + 此值，则相对徒步地板的「超速」不计 W′/STA 税。
+    //! 引擎 Walk 无法慢于 ~1.45 m/s；1.0 地板对 1.45 动画是假超速。真滑步（≥~1.65）仍记账。
+    static const float V6_WALK_OVERRIDE_IN_BAND_SLACK_MS = 0.20;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! true（2026-08-14 启用）：W′ 耗尽后仅在**当前步态带内**经 SetSpeedLimit 压 CP 巡航。
     //! 反解掉出 Run 带时不把 Walk 速度写到 Run 相位（滑步）；若 V6_CP_OUT_OF_BAND_WALK_OVERRIDE

@@ -171,7 +171,8 @@ modded class SCR_CharacterControllerComponent
                     loc.terrainFactor,
                     loc.effectiveMovementPhase,
                     loc.drainParams.effectiveCriticalPowerWatts,
-                    wPrimeArmedForTax);
+                    wPrimeArmedForTax,
+                    RSS_IsCpWalkOverrideActive());
             }
         }
 

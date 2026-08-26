@@ -23,7 +23,7 @@
    生理锚点、契约测试 **硬失败 → prune trial**，不进入 Pareto 前沿。
 
 2. **分层场景（Tiered scenarios）**  
-   - **T0 硬约束**：drain 限速、代谢超速、冲刺 ≤15 s、冷却 ≥120 s、v6 W′ _burst  
+   - **T0 硬约束**：drain 限速、代谢超速、冲刺 ≤15 s、冷却 ≥120 s、v6 W′ burst、29 kg 平路 Run 60 s W′ 仍武装  
    - **T1 软约束（待孪生补齐后升格）**：35 kg / 4 h 行军 `aerobic_end ≥ 0.20`  
    - **T2 软目标**：v4 八场景 + **35 kg 稳态 Run 20 min**（sustain）  
    - **T3 软目标**：参数漂移（v4 Hardcore 参考 + v6 schema 默认）
@@ -51,7 +51,8 @@
 | `v5_sprint_burst_duration` | 满池抽干 ≤ 15 s | 无氧池（legacy） |
 | `v5_sprint_cooldown` | 抽干后冷却 ≥ 120 s | |
 | `v6_cp_sprint_burst_35kg` | W′ 冲刺 ≤ 15 s @ 35 kg | CP–W′ 模型 |
-| `zero_load_2mile_pt_ge70` | 零负重 Sprint 2 mi ≤ **18:00**（≥70 分）；软目标 **15:30**/85 分 | `game_player_tick` Sprint 积分 |
+| `run_wprime_armed_29kg_60s` | 29 kg 平路 Run 60 s 后 W′ 仍武装（pool>25%）、速度仍在 Run 带（≥2.2 m/s）、未切 Walk 覆盖。情景钉死 Elite 慢跑盖子（enc=0.34、v5_run=3.05），不吃 trial 移动性参数 | CP 按慢跑而非行军标定 |
+| `zero_load_2mile_pt_ge70` | 零负重 Run 2 mi ≤ **18:00**（≥70 分）；软目标 **15:30**/85 分 | `game_player_tick` 积分 |
 | `march_4h_aerobic_end_35kg` | 4 h 行军结束有氧 ≥ 0.20 | **当前 soft**（孪生无 fatigue cap） |
 
 实现：`rss_constraints_v6.evaluate_hard_constraints()`。  

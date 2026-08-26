@@ -1,6 +1,6 @@
 use crate::constants::{
     merge_game_aligned_params, RssConstants, MOVEMENT_RUN, MOVEMENT_WALK,
-    RSS_PLAYER_TICK_SEC, STANCE_STAND,
+    RSS_PLAYER_TICK_SEC, STANCE_STAND, V6_RUN_GAIT_FLOOR_MS,
 };
 use crate::cp_wprime::{simulate_v6_sprint_seconds, V5AnaerobicState};
 use crate::drain::{get_drain_velocity_ms, get_metabolic_overspeed_factor};
@@ -17,7 +17,7 @@ pub const SPRINT_BURST_MAX_SEC: f64 = 15.0;
 pub const SPRINT_COOLDOWN_MIN_SEC: f64 = 120.0;
 pub const DRAIN_VEL_TOLERANCE: f64 = 0.001;
 pub const OVERSPEED_EXPECTED: f64 = 0.5;
-pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.40;
+pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.0;
 pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 2.60;
 pub const SUSTAIN_OBS_HARD: bool = true;
 
@@ -37,6 +37,16 @@ pub const TWO_MILE_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
 pub const TWO_MILE_HARD_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
 pub const TWO_MILE_TIMEOUT_SEC: f64 = 1800.0;
 pub const TWO_MILE_HARD: bool = true;
+
+/// 29 kg flat Run: W′ still armed after 60 s (jog CP, not hike-only CP).
+pub const RUN_WPRIME_ARMED_LOAD_KG: f64 = 29.0;
+pub const RUN_WPRIME_ARMED_DURATION_S: f64 = 60.0;
+pub const RUN_WPRIME_ARMED_MIN_POOL01: f64 = 0.25;
+/// Pin Elite jog gait so Tactical mobility (low enc / high v5_run) cannot void the gate.
+pub const RUN_WPRIME_ARMED_SCENARIO_ENC: f64 = 0.34;
+pub const RUN_WPRIME_ARMED_SCENARIO_V5_RUN_MS: f64 = 3.05;
+/// Twin writes v_meas back to command each tick; game unclamped physics sits just above v_limit.
+pub const RUN_WPRIME_ARMED_PHYS_OVERSHOOT_MS: f64 = 0.14;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConstraintCheck {
@@ -603,6 +613,109 @@ pub fn check_march_cruise_below_cp(
     )
 }
 
+pub fn check_run_wprime_armed_29kg_60s(
+    params: Option<&HashMap<String, f64>>,
+) -> ConstraintCheck {
+    let mut merged = merge_game_aligned_params(&load_elite_preset_params());
+    if let Some(p) = params {
+        for (k, v) in p {
+            if !k.starts_with('_') {
+                merged.insert(k.clone(), *v);
+            }
+        }
+    }
+    merged.insert(
+        "encumbrance_speed_penalty_coeff".to_string(),
+        RUN_WPRIME_ARMED_SCENARIO_ENC,
+    );
+    merged.insert(
+        "v5_run_speed_ms".to_string(),
+        RUN_WPRIME_ARMED_SCENARIO_V5_RUN_MS,
+    );
+    let constants = RssConstants::from_params(&merged);
+    let body_kg = constants.character_weight;
+    let current_weight = body_kg + RUN_WPRIME_ARMED_LOAD_KG;
+    let mut twin = RSSDigitalTwin::new(constants);
+    twin.reset();
+    let dt = RSS_PLAYER_TICK_SEC;
+    let duration = RUN_WPRIME_ARMED_DURATION_S;
+    let mut t = 0.0;
+    while t < duration {
+        twin.game_player_tick(
+            MOVEMENT_RUN,
+            current_weight,
+            0.0,
+            1.0,
+            STANCE_STAND,
+            t,
+            dt,
+            0.0,
+            false,
+        );
+        let measured = twin.measured_velocity_ms;
+        if measured >= 0.1 {
+            twin.measured_velocity_ms = measured + RUN_WPRIME_ARMED_PHYS_OVERSHOOT_MS;
+        }
+        t += dt;
+    }
+    let pool01 = twin.v6_cp_state.pool01();
+    let armed = twin.v6_cp_state.refresh_and_get_overspeed_armed();
+    let walk_override = twin.cp_walk_override_active;
+    let speed_ms = twin.measured_velocity_ms;
+    let min_speed = V6_RUN_GAIT_FLOOR_MS;
+    let mut still_run_band = true;
+    if walk_override {
+        still_run_band = false;
+    } else if speed_ms + 1e-6 < min_speed {
+        still_run_band = false;
+    }
+    let pool_ok = pool01 > RUN_WPRIME_ARMED_MIN_POOL01;
+    let mut ok = false;
+    if armed {
+        if pool_ok {
+            if still_run_band {
+                ok = true;
+            }
+        }
+    }
+    let mut margin = pool01 - RUN_WPRIME_ARMED_MIN_POOL01;
+    if !still_run_band {
+        margin = speed_ms - min_speed;
+        if margin > 0.0 {
+            margin = -1.0;
+        }
+    }
+    let mut hint = String::new();
+    if !ok {
+        hint = "raise critical_power_watts so 29kg flat Run stays near CP (W' remains armed at 60s, speed still in Run band)"
+            .to_string();
+    }
+    let mut armed_i = 0;
+    if armed {
+        armed_i = 1;
+    }
+    let mut override_i = 0;
+    if walk_override {
+        override_i = 1;
+    }
+    make_check(
+        "run_wprime_armed_29kg_60s",
+        ok,
+        format!(
+            "pool={:.3} armed={} walk_override={} v={:.2} m/s (need pool>{:.2}, v>={:.1}, no Walk override)",
+            pool01,
+            armed_i,
+            override_i,
+            speed_ms,
+            RUN_WPRIME_ARMED_MIN_POOL01,
+            min_speed
+        ),
+        true,
+        margin,
+        hint,
+    )
+}
+
 pub fn evaluate_physio_anchors(
     load_kg: f64,
     cp0: f64,
@@ -635,6 +748,7 @@ pub fn evaluate_physio_anchors(
         check_v5_sprint_cooldown(),
         check_v6_cp_sprint_burst(load_kg, cp, w_prime_max, sprint_cap_w),
         check_march_cruise_below_cp(38.0, 1.7, trial_ref, cp),
+        check_run_wprime_armed_29kg_60s(trial_ref),
         check_sustain_run_observed(trial_ref, 90.0, fast_mode),
         check_mobility_run_speed(
             0.0,

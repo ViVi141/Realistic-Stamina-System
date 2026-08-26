@@ -1,12 +1,13 @@
 use crate::constants::{
-    LOADED_RUN_DRAIN_MAX_MULT, LOADED_RUN_DRAIN_REF_KG, LOADED_RUN_DRAIN_START_KG, MOVEMENT_RUN,
+    ENGINE_WALK_TOP_MS, LOADED_RUN_DRAIN_MAX_MULT, LOADED_RUN_DRAIN_REF_KG,
+    LOADED_RUN_DRAIN_START_KG, MOVEMENT_RUN,
     MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_WALK_SPEED_MS_DEFAULT,
     V6_AEROBIC_CRUISE_MAX_MS, V6_APPLY_HORIZONTAL_SPEED_CLAMP, V6_CP_HIKE_FLOOR_MS,
     V6_CP_INVERT_GRADE_ABS_MAX_PCT, V6_CP_INVERT_TERRAIN_MAX, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
     V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC, V6_GAIT_EXCESS_STA_TAX_MULT, V6_GAIT_SPEED_LIMIT_MIN_FRAC,
     V6_OVERSPEED_STA_TAX_MULT, V6_RUN_GAIT_DEMOTE_TO_WALK, V6_RUN_GAIT_FLOOR_MS,
-    V6_RUN_SOFT_BAND_BELOW_FLOOR_MS,
-    V6_STAMINA_DRAIN_CALIBRATION,
+    V6_RUN_SOFT_BAND_BELOW_FLOOR_MS, V6_STAMINA_DRAIN_CALIBRATION,
+    V6_WALK_OVERRIDE_IN_BAND_SLACK_MS,
 };
 use crate::math::clip_f64;
 use crate::metabolism::{
@@ -101,6 +102,28 @@ pub fn is_metabolic_overspeed_accounting(measured_ms: f64, applied_limit_ms: f64
         return false;
     }
     measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS
+}
+
+pub fn is_walk_override_in_band_cruise(cp_walk_override_active: bool, measured_ms: f64) -> bool {
+    if !cp_walk_override_active {
+        return false;
+    }
+    let ceiling = ENGINE_WALK_TOP_MS + V6_WALK_OVERRIDE_IN_BAND_SLACK_MS;
+    if measured_ms <= ceiling {
+        return true;
+    }
+    false
+}
+
+pub fn is_phys_overspeed_for_anaerobic_tick(
+    measured_ms: f64,
+    applied_limit_ms: f64,
+    cp_walk_override_active: bool,
+) -> bool {
+    if is_walk_override_in_band_cruise(cp_walk_override_active, measured_ms) {
+        return false;
+    }
+    is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms)
 }
 
 fn loaded_gait_stamina_drain_multiplier(load_weight_kg: f64, movement_phase: i32) -> f64 {
@@ -220,8 +243,13 @@ pub fn get_client_overspeed_excess_drain_per_second(
     w_prime_overspeed_armed: bool,
     energy_to_stamina_coeff: f64,
     character_weight_kg: f64,
+    cp_walk_override_active: bool,
 ) -> f64 {
     use crate::constants::V6_APPLY_CP_METABOLIC_SPEED_CAP;
+
+    if is_walk_override_in_band_cruise(cp_walk_override_active, measured_ms) {
+        return 0.0;
+    }
 
     let p_meas = metabolism_power_watts(
         measured_ms,

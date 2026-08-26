@@ -482,6 +482,8 @@ class RSSDigitalTwin:
         self._measured_velocity_ms = 0.0
         self._applied_speed_limit_mult = 1.0
         self._applied_speed_limit_ms = -1.0
+        self._last_run_cruise_cap_ms = 0.0
+        self._cp_walk_override_active = False
         self.environment_factor.heat_stress = 0.0
         self.environment_factor.cold_stress = 0.0
         self.environment_factor.cold_static_penalty = 0.0
@@ -1034,8 +1036,10 @@ class RSSDigitalTwin:
             # - 超速且 P>CP：放开，超额烧 W′
             # - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
             if not is_sprinting:
-                phys_overspeed = is_metabolic_overspeed_accounting(
-                    measured_ms, applied_limit_ms
+                phys_overspeed = is_phys_overspeed_for_anaerobic_tick(
+                    measured_ms,
+                    applied_limit_ms,
+                    self._cp_walk_override_active,
                 )
                 cp_clamp = self.v6_cp_state.get_effective_critical_power_watts()
                 if cp_clamp > 1.0:
@@ -1063,6 +1067,7 @@ class RSSDigitalTwin:
                     w_prime_armed_for_tax,
                     float(getattr(self.constants, 'ENERGY_TO_STAMINA_COEFF', 9.5e-07)),
                     bw,
+                    self._cp_walk_override_active,
                 )
             # ──
 
@@ -1284,6 +1289,7 @@ class RSSDigitalTwin:
         game_max = getattr(c, 'GAME_MAX_SPEED', 5.5)
         max_pen = getattr(c, 'ENCUMBRANCE_SPEED_PENALTY_MAX', 0.75)
         exhausted = stamina_percent <= getattr(c, 'EXHAUSTION_THRESHOLD', 0.0)
+        self._last_run_cruise_cap_ms = 0.0
 
         phase = movement_phase
         is_sprinting = phase == MovementType.SPRINT
@@ -1389,6 +1395,7 @@ class RSSDigitalTwin:
                     cp_eff,
                     self.constants,
                 )
+                self._last_run_cruise_cap_ms = cruise_cap
                 if cruise_cap > 0.05 and theoretical_target > cruise_cap:
                     theoretical_target = cruise_cap
         elif phase == MovementType.WALK:
@@ -1426,6 +1433,7 @@ class RSSDigitalTwin:
                 cp_eff,
                 self.constants,
             )
+            self._last_run_cruise_cap_ms = run_cruise
             if run_cruise > 0.05 and theoretical_target > run_cruise:
                 theoretical_target = run_cruise
         elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
@@ -1457,6 +1465,7 @@ class RSSDigitalTwin:
                 cp_eff,
                 self.constants,
             )
+            self._last_run_cruise_cap_ms = cruise_cap
             if cruise_cap > 0.05 and theoretical_target > cruise_cap:
                 theoretical_target = cruise_cap
 
@@ -1464,11 +1473,19 @@ class RSSDigitalTwin:
 
     @staticmethod
     def estimate_engine_original_max_speed(movement_phase: int, constants) -> float:
-        """与 PlayerBase.GetDynamicOriginalEngineMaxSpeed 无 AnimComponent 回退一致。"""
+        """与 GetEngineTopFallbackMs 一致：Walk 用引擎 Walk 顶，勿用 Run 3.8。"""
         game_max = getattr(constants, 'GAME_MAX_SPEED', 5.5)
-        run_mult = getattr(constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
         if movement_phase == MovementType.SPRINT:
             return float(game_max)
+        if movement_phase == MovementType.WALK:
+            use_march = bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', V6_USE_MARCH_GAIT_SPEEDS))
+            if use_march:
+                walk_ms = getattr(constants, 'V5_WALK_SPEED_MS', V5_WALK_SPEED_MS_DEFAULT)
+                if walk_ms < 0.5:
+                    walk_ms = ENGINE_WALK_TOP_MS
+                return float(walk_ms)
+            return float(ENGINE_WALK_TOP_MS)
+        run_mult = getattr(constants, 'TARGET_RUN_SPEED_MULTIPLIER', 3.8 / 5.5)
         return float(game_max * run_mult)
 
     def get_drain_velocity_ms(
@@ -1602,6 +1619,38 @@ class RSSDigitalTwin:
                 is_sprinting = False
         return is_sprinting, effective_phase, can_sprint, exhausted
 
+    def _refresh_cp_walk_override(self, intent_phase: int) -> None:
+        """Parity with PlayerBase.RSS_UpdateCpOutOfBandWalkOverride (no 0.25 s debounce)."""
+        if not V6_CP_OUT_OF_BAND_WALK_OVERRIDE:
+            self._cp_walk_override_active = False
+            return
+        if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
+            self._cp_walk_override_active = False
+            return
+
+        holding_move = False
+        if intent_phase >= MovementType.WALK:
+            holding_move = True
+
+        w_prime_empty = True
+        if self.v6_cp_state.refresh_and_get_overspeed_armed():
+            w_prime_empty = False
+
+        out_of_band = False
+        if self._last_run_cruise_cap_ms < -0.01:
+            out_of_band = True
+
+        want = False
+        if w_prime_empty:
+            if self._cp_walk_override_active:
+                if holding_move:
+                    want = True
+            else:
+                if holding_move:
+                    if out_of_band:
+                        want = True
+        self._cp_walk_override_active = want
+
     def game_player_tick(
         self,
         intent_phase: int,
@@ -1625,6 +1674,10 @@ class RSSDigitalTwin:
         is_sprinting, effective_phase, can_sprint, _ = self.resolve_movement_state(
             intent_phase, self.stamina, world_time_sec=current_time
         )
+        if self._cp_walk_override_active:
+            if intent_phase >= MovementType.WALK:
+                effective_phase = MovementType.WALK
+                is_sprinting = False
 
         if intent_phase == MovementType.SPRINT and self._sprint_start_time < 0.0:
             if self._sprint_cooldown_until < 0.0 or current_time >= self._sprint_cooldown_until:
@@ -1639,6 +1692,23 @@ class RSSDigitalTwin:
             current_time=current_time,
             terrain_factor=terrain_factor,
         )
+        was_override = self._cp_walk_override_active
+        self._refresh_cp_walk_override(intent_phase)
+        if self._cp_walk_override_active:
+            if not was_override:
+                if effective_phase != MovementType.WALK:
+                    if intent_phase >= MovementType.WALK:
+                        effective_phase = MovementType.WALK
+                        is_sprinting = False
+                        theoretical_ms = self.calculate_actual_speed(
+                            self.stamina,
+                            current_weight,
+                            effective_phase,
+                            self._measured_velocity_ms,
+                            grade_percent=grade_percent,
+                            current_time=current_time,
+                            terrain_factor=terrain_factor,
+                        )
         if effective_phase == MovementType.SPRINT:
             engine_phase = MovementType.SPRINT
         elif effective_phase == MovementType.RUN:
@@ -1966,6 +2036,7 @@ def get_drain_velocity_ms(measured_ms: float, theoretical_max_ms: float) -> floa
 
 
 V6_OVERSPEED_ACCOUNTING_EPS_MPS = 0.12
+V6_WALK_OVERRIDE_IN_BAND_SLACK_MS = 0.20
 V6_OVERSPEED_STA_TAX_MULT = 12.0
 V6_CP_EXCESS_STA_TAX_MULT = 0.75
 V6_GAIT_EXCESS_STA_TAX_MULT = 10.0
@@ -2050,8 +2121,12 @@ def get_client_overspeed_excess_drain_per_second(
     w_prime_overspeed_armed: bool = False,
     energy_to_stamina_coeff: float = 9.5e-07,
     character_weight_kg: float = 90.0,
+    cp_walk_override_active: bool = False,
 ) -> float:
     """Parity with GetClientOverspeedExcessDrainPerSecond (drain-only or limit tax)."""
+    if is_walk_override_in_band_cruise(cp_walk_override_active, measured_ms):
+        return 0.0
+
     p_meas = metabolism_power_watts(
         measured_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
     )
@@ -2129,6 +2204,27 @@ def is_metabolic_overspeed_accounting(measured_ms: float, applied_limit_ms: floa
     if applied_limit_ms <= 0.05:
         return False
     return measured_ms > applied_limit_ms + V6_OVERSPEED_ACCOUNTING_EPS_MPS
+
+
+def is_walk_override_in_band_cruise(cp_walk_override_active: bool, measured_ms: float) -> bool:
+    """Parity with SCR_RSS_DrainCalculator.IsWalkOverrideInBandCruise."""
+    if not cp_walk_override_active:
+        return False
+    ceiling = ENGINE_WALK_TOP_MS + V6_WALK_OVERRIDE_IN_BAND_SLACK_MS
+    if measured_ms <= ceiling:
+        return True
+    return False
+
+
+def is_phys_overspeed_for_anaerobic_tick(
+    measured_ms: float,
+    applied_limit_ms: float,
+    cp_walk_override_active: bool,
+) -> bool:
+    """Parity with SCR_RSS_DrainCalculator.IsPhysOverspeedForAnaerobicTick."""
+    if is_walk_override_in_band_cruise(cp_walk_override_active, measured_ms):
+        return False
+    return is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms)
 
 
 def get_metabolic_overspeed_factor(
@@ -2323,14 +2419,16 @@ V6_WALK_DOWNHILL_COAST_FACTOR_MIN = 0.42
 V6_AEROBIC_CRUISE_MAX_MS = 2.4
 V6_RUN_GAIT_FLOOR_MS = 2.2
 V6_RUN_GAIT_DEMOTE_TO_WALK = True
-# Game-only: CapsLock-style SetDynamicSpeed(0.5) when W' empty and invert out of Run band.
-# Twins do not simulate CharacterController.SetDynamicSpeed.
+# Match game: when W' disarmed and invert out of Run band, switch tick gait to Walk
+# (game uses SetDynamicSpeed(0.5); twins switch movement_phase / engine top).
 V6_CP_OUT_OF_BAND_WALK_OVERRIDE = True
+V6_USE_MARCH_GAIT_SPEEDS = False
 V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25
 V6_WALK_START_MIN_MS = 0.35
 V6_CP_INVERT_GRADE_ABS_MAX_PCT = 15.0
 V6_CP_INVERT_TERRAIN_MAX = 1.0
 V6_CP_HIKE_FLOOR_MS = 1.0
+V6_WALK_OVERRIDE_IN_BAND_SLACK_MS = 0.20
 V6_GAIT_SPEED_LIMIT_MIN_FRAC = 0.50
 V6_GAIT_EXCESS_STA_TAX_MULT = 10.0
 V6_GAIT_EXCESS_STA_TAX_MAX_PER_SEC = 0.004
@@ -2468,10 +2566,10 @@ def resolve_run_cruise_cap_ms(
         start_min = float(getattr(constants, 'V6_WALK_START_MIN_MS', V6_WALK_START_MIN_MS))
         if walk_min < start_min:
             walk_min = start_min
-        if bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', True)):
+        if bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', V6_USE_MARCH_GAIT_SPEEDS)):
             walk_top = float(getattr(constants, 'V5_WALK_SPEED_MS_DEFAULT', walk_top))
         else:
-            walk_top = float(getattr(constants, 'ENGINE_WALK_TOP_MS', 1.45))
+            walk_top = float(getattr(constants, 'ENGINE_WALK_TOP_MS', ENGINE_WALK_TOP_MS))
 
     if grade_percent >= 0.0 and cap_ms > cruise_max:
         cap_ms = cruise_max

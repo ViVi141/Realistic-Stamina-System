@@ -99,6 +99,30 @@ class SCR_RSS_DrainCalculator
         return measuredSpeedMs > appliedSpeedLimitMs + SCR_RSS_Constants.V6_OVERSPEED_ACCOUNTING_EPS_MPS;
     }
 
+    //! 步态覆盖已切引擎 Walk，且测速仍在 Walk 相位顶内。
+    //! 此时 v_limit 常被徒步地板托在 1.0，但动画顶约 1.45，不得当超速烧 W′/STA。
+    static bool IsWalkOverrideInBandCruise(bool cpWalkOverrideActive, float measuredSpeedMs)
+    {
+        if (!cpWalkOverrideActive)
+            return false;
+        float ceiling = SCR_RSS_Constants.ENGINE_WALK_TOP_MS
+            + SCR_RSS_Constants.V6_WALK_OVERRIDE_IN_BAND_SLACK_MS;
+        if (measuredSpeedMs <= ceiling)
+            return true;
+        return false;
+    }
+
+    //! TickPower / STA 税用：步态覆盖带内巡航视为未超速。
+    static bool IsPhysOverspeedForAnaerobicTick(
+        float measuredSpeedMs,
+        float appliedSpeedLimitMs,
+        bool cpWalkOverrideActive)
+    {
+        if (IsWalkOverrideInBandCruise(cpWalkOverrideActive, measuredSpeedMs))
+            return false;
+        return IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs);
+    }
+
     //! W′ 池是否仍可支撑「超限速按 v_meas 记账」
     //! 无 CP 模型时的无状态近似：须过再武装带（非 disarm 线），避免 25–60% 误判仍可超速
     static bool IsWPrimePoolAvailableForOverspeed(float wPrimePool01)
@@ -438,10 +462,11 @@ class SCR_RSS_DrainCalculator
 
     //! STA 透支附加罚（%/s）。
     //! - 代谢限速开：武装只烧 W′；解除武装后 Run/Sprint 按 P−CP 步态税（即使 phys 略超 v_limit）。
-    //!   Walk 超限速仍走 P(v)−P(limit)×12。
+    //!   Walk 超限速仍走 P(v)−P(limit)×12。步态覆盖且测速在 Walk 顶内：免此税（假超速）。
     //! - 代谢限速关：不压速，解除武装后按 P(v)−CP 罚 STA；武装时只烧 W′。
     //! @param wPrimeOverspeedArmed 须与 TickPower 同用施密特武装态（勿用 pool>rearm 近似，
     //!   否则 25–60% 滞回带会 W′ 与 STA 税双计）。
+    //! @param cpWalkOverrideActive 步态覆盖且带内巡航时免相对徒步地板的假超速税。
     static float GetClientOverspeedExcessDrainPerSecond(
         float measuredSpeedMs,
         float appliedSpeedLimitMs,
@@ -451,8 +476,12 @@ class SCR_RSS_DrainCalculator
         float terrainFactor,
         int movementPhase,
         float effectiveCriticalPowerWatts = -1.0,
-        bool wPrimeOverspeedArmed = false)
+        bool wPrimeOverspeedArmed = false,
+        bool cpWalkOverrideActive = false)
     {
+        if (IsWalkOverrideInBandCruise(cpWalkOverrideActive, measuredSpeedMs))
+            return 0.0;
+
         float pMeas = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
             measuredSpeedMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
 

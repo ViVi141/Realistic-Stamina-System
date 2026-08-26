@@ -185,6 +185,24 @@ def _dict_to_constraint_report(data: Dict):
     return report
 
 
+def _overlay_python_run_wprime_armed(report, params: Optional[Dict]):
+    """Rust 慢跑 W′ 门禁偏乐观（同参 Python 烧得更快）。以 Python 孪生为准，对齐 C。"""
+    from rss_constraints_v6 import ConstraintReport, check_run_wprime_armed_29kg_60s
+
+    py = check_run_wprime_armed_29kg_60s(params)
+    new_checks = []
+    replaced = False
+    for c in report.checks:
+        if c.name == "run_wprime_armed_29kg_60s":
+            new_checks.append(py)
+            replaced = True
+        else:
+            new_checks.append(c)
+    if not replaced:
+        new_checks.append(py)
+    return ConstraintReport(checks=new_checks)
+
+
 class _ReportBatch(list):
     """ConstraintReport 列表；附带 backend 标记（rust/python）。"""
 
@@ -221,8 +239,14 @@ def batch_evaluate_hard_constraints(
                 bool(fast_mode),
             )
             reports = _ReportBatch(_dict_to_constraint_report(row) for row in raw)
-            reports.backend = "rust"
-            return reports
+            overlaid = _ReportBatch()
+            for params, report in zip(clean, reports):
+                if report.all_hard_passed:
+                    overlaid.append(_overlay_python_run_wprime_armed(report, params))
+                else:
+                    overlaid.append(report)
+            overlaid.backend = "rust"
+            return overlaid
         except Exception:
             pass
 
@@ -245,7 +269,10 @@ def evaluate_hard_constraints(params: Optional[Dict] = None):
         try:
             pj = _params_json(params)
             data = rss_sim.evaluate_hard_constraints(pj if pj else None)
-            return _dict_to_constraint_report(data)
+            report = _dict_to_constraint_report(data)
+            if report.all_hard_passed:
+                report = _overlay_python_run_wprime_armed(report, params)
+            return report
         except Exception:
             pass
 

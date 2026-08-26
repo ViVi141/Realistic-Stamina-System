@@ -770,10 +770,13 @@ modded class SCR_CharacterControllerComponent
                     // - 未超速：功率钳到 CP（巡航不烧 W′）
                     // - 超速且 P>CP：放开，超额烧 W′
                     // - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
+                    // 步态覆盖带内：引擎 Walk 无法慢于相位顶，相对徒步地板 1.0 的假超速走巡航钳。
                     if (!loc.isSprintActive)
                     {
-                        bool physOverspeed = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
-                            loc.currentSpeed, m_fAppliedSpeedLimitMs);
+                        bool physOverspeed = SCR_RSS_DrainCalculator.IsPhysOverspeedForAnaerobicTick(
+                            loc.currentSpeed,
+                            m_fAppliedSpeedLimitMs,
+                            RSS_IsCpWalkOverrideActive());
                         float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
                         if (cpClamp > 1.0)
                         {
@@ -807,8 +810,10 @@ modded class SCR_CharacterControllerComponent
                         loc.terrainFactor,
                         loc.phaseNow,
                         cpForEpoc);
-                    bool overspeedNow = SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
-                        loc.currentSpeed, m_fAppliedSpeedLimitMs);
+                    bool overspeedNow = SCR_RSS_DrainCalculator.IsPhysOverspeedForAnaerobicTick(
+                        loc.currentSpeed,
+                        m_fAppliedSpeedLimitMs,
+                        RSS_IsCpWalkOverrideActive());
                     bool overspeedArmed = false;
                     if (cpModel)
                         overspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel);

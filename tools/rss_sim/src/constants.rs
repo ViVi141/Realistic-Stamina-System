@@ -15,8 +15,10 @@ pub const V6_WPRIME_OVERSPEED_REARM: f64 = 0.40;
 /// Joules below this count as empty for AvailableP (match game V6_WPRIME_EMPTY_FLOOR_JOULES).
 pub const V6_WPRIME_EMPTY_FLOOR_JOULES: f64 = 5.0;
 /// Match game: CP invert below Run floor skips out-of-band SetSpeedLimit (not Walk m/s).
-/// Game also forces Walk gait via SetDynamicSpeed(0.5); twins do not simulate that.
+/// Game switches gait via SetDynamicSpeed(0.5); twins switch movement_phase / engine top.
 pub const V6_RUN_GAIT_DEMOTE_TO_WALK: bool = true;
+pub const V6_CP_OUT_OF_BAND_WALK_OVERRIDE: bool = true;
+pub const V6_USE_MARCH_GAIT_SPEEDS: bool = false;
 /// Min SetSpeedLimit vs current-phase engine top (exhausted Run still uses this).
 pub const V6_GAIT_SPEED_LIMIT_MIN_FRAC: f64 = 0.50;
 /// P−CP tax while holding Run/Sprint after W′ empty.
@@ -28,6 +30,7 @@ pub const V6_WALK_START_MIN_MS: f64 = 0.35;
 pub const V6_CP_INVERT_GRADE_ABS_MAX_PCT: f64 = 15.0;
 pub const V6_CP_INVERT_TERRAIN_MAX: f64 = 1.0;
 pub const V6_CP_HIKE_FLOOR_MS: f64 = 1.0;
+pub const V6_WALK_OVERRIDE_IN_BAND_SLACK_MS: f64 = 0.20;
 pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
 pub const V6_ACSM_REST_W: f64 = 50.0;

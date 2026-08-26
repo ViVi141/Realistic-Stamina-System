@@ -962,8 +962,10 @@ class SCR_RSS_DebugDisplay
             tick.currentSpeed, tick.appliedSpeedLimitMs, tick.wPrimePool01, tick.isSprinting);
 
         string overspeedStr = "off";
-        if (SCR_RSS_DrainCalculator.IsMetabolicOverspeedAccounting(
-            tick.currentSpeed, tick.appliedSpeedLimitMs))
+        if (SCR_RSS_DrainCalculator.IsPhysOverspeedForAnaerobicTick(
+            tick.currentSpeed,
+            tick.appliedSpeedLimitMs,
+            controller.RSS_IsCpWalkOverrideActive()))
         {
             if (tick.isSprinting
                 && SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(tick.wPrimePool01))
