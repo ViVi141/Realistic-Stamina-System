@@ -11,7 +11,7 @@ use crate::constants::{
 use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
     get_client_overspeed_excess_drain_per_second, get_drain_velocity_ms, get_epoc_sample_velocity_ms,
-    get_metabolic_corrected_speed_multiplier, is_metabolic_overspeed_accounting,
+    get_metabolic_corrected_speed_multiplier, invert_cruise_cap_ms, is_metabolic_overspeed_accounting,
     resolve_run_cruise_cap_ms,
 };
 use crate::environment::EnvironmentFactor;
@@ -1044,7 +1044,7 @@ impl RSSDigitalTwin {
                 let run_phase = MOVEMENT_RUN;
                 let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
                 let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
-                let cp_cap_ms = invert_speed_for_power_watts(
+                let cp_cap_ms = invert_cruise_cap_ms(
                     cp_eff,
                     current_weight,
                     grade_percent,
@@ -1073,7 +1073,7 @@ impl RSSDigitalTwin {
         } else if phase == MOVEMENT_WALK {
             // Walk: CP invert + never exceed disarmed Run cruise (no Walk>Run inversion)
             let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
-            let walk_cap_ms = invert_speed_for_power_watts(
+            let walk_cap_ms = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,
@@ -1084,7 +1084,7 @@ impl RSSDigitalTwin {
                 theoretical_target = walk_cap_ms;
             }
             let mut run_cruise = V6_AEROBIC_CRUISE_MAX_MS;
-            let run_cp_cap = invert_speed_for_power_watts(
+            let run_cp_cap = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,
@@ -1117,7 +1117,7 @@ impl RSSDigitalTwin {
             }
             let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
             let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
-            let cp_cap_ms = invert_speed_for_power_watts(
+            let cp_cap_ms = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,

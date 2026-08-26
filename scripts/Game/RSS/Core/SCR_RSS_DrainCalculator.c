@@ -150,7 +150,7 @@ class SCR_RSS_DrainCalculator
             float cp = cpModel.GetEffectiveCriticalPowerWatts();
             if (cp <= 1.0)
                 return -1.0;
-            capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            capMs = InvertCruiseCapMs(
                 cp, totalWeightKg, gradePercent, terrainFactor, movementPhase);
         }
 
@@ -163,6 +163,41 @@ class SCR_RSS_DrainCalculator
         if (capMs > 0.05)
             return capMs;
         return -1.0;
+    }
+
+    //! 巡航限速反解：坡度/地形对速度伺服比对消耗更温和，并托在负重徒步地板上。
+    //! 消耗仍用实测坡度与 η；此处只决定 SetSpeedLimit。
+    static float InvertCruiseCapMs(
+        float criticalPowerWatts,
+        float totalWeightKg,
+        float gradePercent,
+        float terrainFactor,
+        int movementPhase)
+    {
+        if (criticalPowerWatts <= 1.0)
+            return 0.0;
+
+        float gradeForInvert = gradePercent;
+        float gradeLim = SCR_RSS_Constants.V6_CP_INVERT_GRADE_ABS_MAX_PCT;
+        if (gradeForInvert > gradeLim)
+            gradeForInvert = gradeLim;
+        if (gradeForInvert < -gradeLim)
+            gradeForInvert = -gradeLim;
+
+        float terrainForInvert = terrainFactor;
+        float terrainMax = SCR_RSS_Constants.V6_CP_INVERT_TERRAIN_MAX;
+        if (terrainForInvert > terrainMax)
+            terrainForInvert = terrainMax;
+        if (terrainForInvert < 0.5)
+            terrainForInvert = 0.5;
+
+        float capMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            criticalPowerWatts, totalWeightKg, gradeForInvert, terrainForInvert, movementPhase);
+
+        float hikeFloor = SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS;
+        if (capMs < hikeFloor)
+            capMs = hikeFloor;
+        return capMs;
     }
 
     //! 是否启用「低于 Run 地板 → 降 Walk 带」（硬钳开时强制关闭，防滑步）
@@ -219,14 +254,16 @@ class SCR_RSS_DrainCalculator
         float walkCapMs = capMs;
         if (criticalPowerWatts > 1.0)
         {
-            walkCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+            walkCapMs = InvertCruiseCapMs(
                 criticalPowerWatts, totalWeightKg, gradePercent, terrainFactor, 1);
         }
 
         if (walkCapMs > walkTopMs)
             walkCapMs = walkTopMs;
 
-        float walkMinMs = SCR_RSS_Constants.V6_WALK_START_MIN_MS;
+        float walkMinMs = SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS;
+        if (walkMinMs < SCR_RSS_Constants.V6_WALK_START_MIN_MS)
+            walkMinMs = SCR_RSS_Constants.V6_WALK_START_MIN_MS;
         if (walkCapMs < walkMinMs)
             walkCapMs = walkMinMs;
 
@@ -397,8 +434,8 @@ class SCR_RSS_DrainCalculator
     }
 
     //! STA 透支附加罚（%/s）。
-    //! - 代谢限速开：P(v_meas)−P(v_limit)，且须物理超限速；
-    //! - 代谢限速关（默认）：不压速，解除武装后按 P(v_meas)−CP 罚 STA；武装时只烧 W′。
+    //! - 代谢限速开：武装只烧 W′；解除武装时超限速罚 P(v)−P(limit)，帽内高于 CP 罚 P−CP。
+    //! - 代谢限速关：不压速，解除武装后按 P(v)−CP 罚 STA；武装时只烧 W′。
     //! @param wPrimeOverspeedArmed 须与 TickPower 同用施密特武装态（勿用 pool>rearm 近似，
     //!   否则 25–60% 滞回带会 W′ 与 STA 税双计）。
     static float GetClientOverspeedExcessDrainPerSecond(
@@ -433,19 +470,30 @@ class SCR_RSS_DrainCalculator
         }
         else
         {
-            if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
-                return 0.0;
-
             // 与 TickPower 一致：施密特武装且 P>CP → 只烧 W′，免 STA 税
             if (armed)
             {
+                if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
+                    return 0.0;
                 if (effectiveCriticalPowerWatts > 1.0 && pMeas > effectiveCriticalPowerWatts + 1.0)
                     return 0.0;
+                float pLimitArmed = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                    appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+                unpaidW = pMeas - pLimitArmed;
             }
-
-            float pLimit = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
-                appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
-            unpaidW = pMeas - pLimit;
+            else if (IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
+            {
+                float pLimit = SCR_RSS_MetabolismModel.MetabolismPowerWatts(
+                    appliedSpeedLimitMs, totalWeightKg, gradePercent, terrainFactor, true, movementPhase);
+                unpaidW = pMeas - pLimit;
+            }
+            else
+            {
+                // 帽内但仍高于可持续功率（徒步地板 > 真反解）：STA 承担 P−CP
+                if (effectiveCriticalPowerWatts <= 1.0)
+                    return 0.0;
+                unpaidW = pMeas - effectiveCriticalPowerWatts;
+            }
         }
 
         if (unpaidW <= 1.0)

@@ -567,8 +567,8 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            World worldForSpeed;
-            if (SCR_RSS_RuntimeGuard.TryGetWorld(worldForSpeed))
+            World worldForSpeed = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+            if (worldForSpeed)
             {
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
                 RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);
@@ -890,8 +890,7 @@ modded class SCR_CharacterControllerComponent
             RSS_NotifyEntityDeleting();
             return;
         }
-        World world;
-        if (!SCR_RSS_RuntimeGuard.TryGetWorld(world))
+        if (!SCR_RSS_RuntimeGuard.GetWorldOrNull())
             return;
         
         vector velocity = GetVelocity();
@@ -1295,8 +1294,8 @@ modded class SCR_CharacterControllerComponent
         IEntity ownerForSpeed = GetOwner();
         if (ownerForSpeed)
         {
-            World worldForSpeed;
-            if (SCR_RSS_RuntimeGuard.TryGetWorld(worldForSpeed))
+            World worldForSpeed = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+            if (worldForSpeed)
             {
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(ownerForSpeed, 1.0);
                 RSS_RestoreNativeMovementMaxSpeed(ownerForSpeed);

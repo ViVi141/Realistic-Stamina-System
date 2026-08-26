@@ -5,7 +5,7 @@
 > **版本**: 6.0.0 数学内核 | **对齐代码**: 6.1.x（2026-08-14 审计对齐）  
 > 取代 v5 及更早文档中「意志力平台期 / Givoni / 旧模块名」描述。以本文件与源码为准。  
 > ⚠️ 2026-08-14 数学审计：§1–§7 已按实际代码/烘焙值修正；历史漂移记录见 [RSS_数学模型审计_2026-08-14.md](RSS_数学模型审计_2026-08-14.md)。  
-> **限速默认（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：代谢超额只扣 STA/W′）。已知限制：滚轮 `SetDynamicSpeed` 可绕过最大速度层（引擎限制）；物理钳保持关闭（防 Bang-Bang 振荡）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
+> **限速默认（v6.1.7 起）**：`V6_APPLY_CP_METABOLIC_SPEED_CAP = true`（W′ 耗尽后经 `SetSpeedLimit` 压 CP 巡航指令速度；≤6.1.5 为 drain-only：代谢超额只扣 STA/W′）。巡航反解坡度钳到 15%、η 不进速度伺服、地板 `V6_CP_HIKE_FLOOR_MS=1.0`（禁止 15°/29 kg 反解成 0.4 m/s 爬行；消耗仍用实测坡度）。已知限制：滚轮 `SetDynamicSpeed` 可绕过最大速度层（引擎限制）；物理钳保持关闭（防 Bang-Bang 振荡）。W′ 可经 transient 驱动引擎晃动/模糊（见 `SCR_RSS_SprintGate`）。
 
 ---
 

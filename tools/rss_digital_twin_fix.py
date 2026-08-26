@@ -1358,7 +1358,7 @@ class RSSDigitalTwin:
             if not self.v6_cp_state.refresh_and_get_overspeed_armed():
                 run_phase = MovementType.RUN
                 cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
-                cp_cap_ms = invert_speed_for_power_watts(
+                cp_cap_ms = invert_cruise_cap_ms(
                     self.v6_cp_state.get_effective_critical_power_watts(),
                     current_weight,
                     grade_percent,
@@ -1386,7 +1386,7 @@ class RSSDigitalTwin:
         elif phase == MovementType.WALK:
             # Walk：CP 反解 + 不得超过同条件 Run 有氧巡航帽（禁止切 Walk 比降速 Run 更快）
             cp_eff = self.v6_cp_state.get_effective_critical_power_watts()
-            walk_cap_ms = invert_speed_for_power_watts(
+            walk_cap_ms = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,
@@ -1396,7 +1396,7 @@ class RSSDigitalTwin:
             if walk_cap_ms > 0.05 and theoretical_target > walk_cap_ms:
                 theoretical_target = walk_cap_ms
             run_cruise = float(V6_AEROBIC_CRUISE_MAX_MS)
-            run_cp_cap = invert_speed_for_power_watts(
+            run_cp_cap = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,
@@ -1427,7 +1427,7 @@ class RSSDigitalTwin:
                 run_phase = MovementType.RUN
             cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
             cp_eff = self.v6_cp_state.get_effective_critical_power_watts()
-            cp_cap_ms = invert_speed_for_power_watts(
+            cp_cap_ms = invert_cruise_cap_ms(
                 cp_eff,
                 current_weight,
                 grade_percent,
@@ -2056,19 +2056,27 @@ def get_client_overspeed_excess_drain_per_second(
         if effective_critical_power_watts <= 1.0:
             return 0.0
         unpaid_w = p_meas - float(effective_critical_power_watts)
-    else:
+    elif armed:
         if not is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
             return 0.0
-        if armed:
-            if (
-                effective_critical_power_watts > 1.0
-                and p_meas > effective_critical_power_watts + 1.0
-            ):
-                return 0.0
+        if (
+            effective_critical_power_watts > 1.0
+            and p_meas > effective_critical_power_watts + 1.0
+        ):
+            return 0.0
         p_limit = metabolism_power_watts(
             applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
         )
         unpaid_w = p_meas - p_limit
+    elif is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms):
+        p_limit = metabolism_power_watts(
+            applied_limit_ms, total_weight_kg, grade_percent, terrain_factor, movement_phase
+        )
+        unpaid_w = p_meas - p_limit
+    else:
+        if effective_critical_power_watts <= 1.0:
+            return 0.0
+        unpaid_w = p_meas - float(effective_critical_power_watts)
 
     if unpaid_w <= 1.0:
         return 0.0
@@ -2192,7 +2200,7 @@ def get_metabolic_speed_cap_ms(
         if movement_phase == MovementType.WALK:
             invert_phase = MovementType.WALK
 
-    cap_ms = invert_speed_for_power_watts(
+    cap_ms = invert_cruise_cap_ms(
         target_p,
         total_weight_kg,
         grade_percent,
@@ -2295,6 +2303,9 @@ V6_RUN_GAIT_FLOOR_MS = 2.2
 V6_RUN_GAIT_DEMOTE_TO_WALK = True
 V6_RUN_SOFT_BAND_BELOW_FLOOR_MS = 0.25
 V6_WALK_START_MIN_MS = 0.35
+V6_CP_INVERT_GRADE_ABS_MAX_PCT = 15.0
+V6_CP_INVERT_TERRAIN_MAX = 1.0
+V6_CP_HIKE_FLOOR_MS = 1.0
 V6_APPLY_HORIZONTAL_SPEED_CLAMP = False
 # Match game SCR_RSS_Constants: enabled since v6.1.7 (W′ depletion presses CP cruise via SetSpeedLimit).
 V6_APPLY_CP_METABOLIC_SPEED_CAP = True
@@ -2402,7 +2413,7 @@ def resolve_run_cruise_cap_ms(
     demote = bool(V6_RUN_GAIT_DEMOTE_TO_WALK)
     soft_band = float(V6_RUN_SOFT_BAND_BELOW_FLOOR_MS)
     horiz_clamp = bool(V6_APPLY_HORIZONTAL_SPEED_CLAMP)
-    walk_min = float(V6_WALK_START_MIN_MS)
+    walk_min = float(V6_CP_HIKE_FLOOR_MS)
     walk_top = float(V5_WALK_SPEED_MS_DEFAULT)
     if constants is not None:
         cruise_max = float(getattr(constants, 'V6_AEROBIC_CRUISE_MAX_MS', cruise_max))
@@ -2410,7 +2421,10 @@ def resolve_run_cruise_cap_ms(
         demote = bool(getattr(constants, 'V6_RUN_GAIT_DEMOTE_TO_WALK', demote))
         soft_band = float(getattr(constants, 'V6_RUN_SOFT_BAND_BELOW_FLOOR_MS', soft_band))
         horiz_clamp = bool(getattr(constants, 'V6_APPLY_HORIZONTAL_SPEED_CLAMP', horiz_clamp))
-        walk_min = float(getattr(constants, 'V6_WALK_START_MIN_MS', walk_min))
+        walk_min = float(getattr(constants, 'V6_CP_HIKE_FLOOR_MS', walk_min))
+        start_min = float(getattr(constants, 'V6_WALK_START_MIN_MS', V6_WALK_START_MIN_MS))
+        if walk_min < start_min:
+            walk_min = start_min
         if bool(getattr(constants, 'V6_USE_MARCH_GAIT_SPEEDS', True)):
             walk_top = float(getattr(constants, 'V5_WALK_SPEED_MS_DEFAULT', walk_top))
         else:
@@ -2434,7 +2448,7 @@ def resolve_run_cruise_cap_ms(
 
     walk_cap = cap_ms
     if critical_power_watts > 1.0:
-        walk_cap = invert_speed_for_power_watts(
+        walk_cap = invert_cruise_cap_ms(
             critical_power_watts,
             total_weight_kg,
             grade_percent,
@@ -2830,6 +2844,41 @@ def invert_speed_for_power_watts(
         else:
             lo = mid
     return (lo + hi) * 0.5
+
+
+def invert_cruise_cap_ms(
+    critical_power_watts: float,
+    total_weight_kg: float,
+    grade_percent: float,
+    terrain_factor: float,
+    movement_phase: int,
+) -> float:
+    """Parity with SCR_RSS_DrainCalculator.InvertCruiseCapMs."""
+    if critical_power_watts <= 1.0:
+        return 0.0
+    grade_lim = float(V6_CP_INVERT_GRADE_ABS_MAX_PCT)
+    grade_for_invert = float(grade_percent)
+    if grade_for_invert > grade_lim:
+        grade_for_invert = grade_lim
+    if grade_for_invert < -grade_lim:
+        grade_for_invert = -grade_lim
+    terrain_for_invert = float(terrain_factor)
+    terrain_max = float(V6_CP_INVERT_TERRAIN_MAX)
+    if terrain_for_invert > terrain_max:
+        terrain_for_invert = terrain_max
+    if terrain_for_invert < 0.5:
+        terrain_for_invert = 0.5
+    cap_ms = invert_speed_for_power_watts(
+        critical_power_watts,
+        total_weight_kg,
+        grade_for_invert,
+        terrain_for_invert,
+        movement_phase,
+    )
+    hike_floor = float(V6_CP_HIKE_FLOOR_MS)
+    if cap_ms < hike_floor:
+        cap_ms = hike_floor
+    return cap_ms
 
 
 def compute_cp_watts(

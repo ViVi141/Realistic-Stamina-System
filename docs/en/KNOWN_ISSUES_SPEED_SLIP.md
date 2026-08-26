@@ -107,6 +107,7 @@ Related switches (`SCR_RSS_Constants`; source wins):
 - Sample engine top **once**.
 - **No** physics clamp; excess paid in STA/W′.
 - Since v6.1.7 `V6_APPLY_CP_METABOLIC_SPEED_CAP` is on by default: flat/uphill presses cruise; downhill/extreme grades skip physics-clamp logic.
+- Cruise invert: speed-servo grade clamped to 15%, terrain η excluded from invert, floor `V6_CP_HIKE_FLOOR_MS=1.0` (~3.6 km/h packed hike). Mesh 15–18° + 29 kg no longer inverts to a 0.4 m/s crawl; drain still uses measured grade, and STA pays P−CP when moving above CP inside the cap.
 - Run gait band (only meaningful with metabolic cap on): CP invert ≥ `V6_RUN_GAIT_FLOOR_MS` stays Run; lower may demote to Walk.
 
 ### Retest

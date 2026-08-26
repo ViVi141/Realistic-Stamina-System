@@ -5,7 +5,7 @@
 > **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-14 audit-aligned)  
 > Supersedes v5 and older “willpower plateau / Givoni / legacy module names”. Source wins.  
 > ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [RSS_数学模型审计_2026-08-14.md](../RSS_数学模型审计_2026-08-14.md).  
-> **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Known limit: the mouse wheel (`SetDynamicSpeed`) can bypass the max-speed layer (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
+> **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Cruise invert clamps grade to 15%, ignores terrain η for speed, and floors at `V6_CP_HIKE_FLOOR_MS=1.0` (no 0.4 m/s crawl on 15°/29 kg; drain still uses measured grade). Known limit: the mouse wheel (`SetDynamicSpeed`) can bypass the max-speed layer (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
 
 ---
 

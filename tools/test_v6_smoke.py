@@ -19,6 +19,7 @@ from rss_digital_twin_fix import (
     get_client_overspeed_excess_drain_per_second,
     is_metabolic_overspeed_accounting,
     invert_speed_for_power_watts,
+    invert_cruise_cap_ms,
     metabolism_power_watts,
     simulate_v6_sprint_seconds,
     RSSDigitalTwin,
@@ -148,6 +149,19 @@ def _overspeed_excess_drain_ok() -> bool:
         0.8, 3.5, 0.1, 125.0, 0.0, 1.0, 1, 2000.0, False
     )
     return tax_ok == 0.0
+
+
+def _cruise_hike_floor_ok() -> bool:
+    # 日志工况：29 kg、27% 坡、η=1.35、CP=715 W。真反解 ≈0.4 m/s，巡航帽应托在徒步地板。
+    v = invert_cruise_cap_ms(715.0, 118.868, 27.0, 1.35, 1)
+    if v < 0.99:
+        return False
+    if v > 1.45:
+        return False
+    raw = invert_speed_for_power_watts(715.0, 118.868, 27.0, 1.35, 1)
+    if raw >= v:
+        return False
+    return True
 
 
 def _march_4h_ok() -> bool:
@@ -473,6 +487,7 @@ SCENARIOS = [
     ("drain_applied_limit", lambda: get_drain_velocity_ms(5.5, 4.0) == 5.5),
     ("overspeed_accounting", lambda: _overspeed_accounting_ok()),
     ("overspeed_excess_drain", lambda: _overspeed_excess_drain_ok()),
+    ("cruise_hike_floor", lambda: _cruise_hike_floor_ok()),
     ("metabolism_power_positive", lambda: metabolism_power_watts(1.4, 125.0) > 100.0),
     (
         "downhill_same_speed_savings",

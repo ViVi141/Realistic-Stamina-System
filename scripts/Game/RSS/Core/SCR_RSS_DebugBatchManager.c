@@ -24,8 +24,8 @@ class SCR_RSS_DebugBatchManager
         }
         if (!wantBatch)
             return false;
-        World world;
-        if (!SCR_RSS_RuntimeGuard.TryGetWorld(world))
+        World world = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+        if (!world)
             return false;
         float t = world.GetWorldTime() / 1000.0;
         float interval = SCR_RSS_ConfigBridge.GetDebugUpdateInterval() / 1000.0;
@@ -86,8 +86,8 @@ class SCR_RSS_DebugBatchManager
         s_bDebugBatchActive = false;
         if (!s_aDebugBatchLines || s_aDebugBatchLines.Count() == 0)
             return;
-        World world;
-        if (SCR_RSS_RuntimeGuard.TryGetWorld(world))
+        World world = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+        if (world)
             s_fLastBatchFlushTime = world.GetWorldTime() / 1000.0;
         for (int i = 0; i < s_aDebugBatchLines.Count(); i++)
             Print(s_aDebugBatchLines.Get(i));
@@ -97,8 +97,8 @@ class SCR_RSS_DebugBatchManager
     // 本轮秒内是否刚刷新过批次（用于避免 status 重复）
     static bool WasBatchJustFlushed()
     {
-        World world;
-        if (!SCR_RSS_RuntimeGuard.TryGetWorld(world))
+        World world = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+        if (!world)
             return false;
         float t = world.GetWorldTime() / 1000.0;
         return (t - s_fLastBatchFlushTime) < 0.5;
@@ -125,8 +125,8 @@ class SCR_RSS_DebugBatchManager
     // 内部时间节流实现
     protected static bool ShouldLogInternal(inout float nextTime)
     {
-        World world;
-        if (!SCR_RSS_RuntimeGuard.TryGetWorld(world))
+        World world = SCR_RSS_RuntimeGuard.GetWorldOrNull();
+        if (!world)
             return false;
 
         float currentTime = world.GetWorldTime() / 1000.0;

@@ -1,7 +1,8 @@
 use crate::constants::{
     LOADED_RUN_DRAIN_MAX_MULT, LOADED_RUN_DRAIN_REF_KG, LOADED_RUN_DRAIN_START_KG, MOVEMENT_RUN,
     MOVEMENT_SPRINT, MOVEMENT_WALK, V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT, V5_WALK_SPEED_MS_DEFAULT,
-    V6_AEROBIC_CRUISE_MAX_MS, V6_APPLY_HORIZONTAL_SPEED_CLAMP, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
+    V6_AEROBIC_CRUISE_MAX_MS, V6_APPLY_HORIZONTAL_SPEED_CLAMP, V6_CP_HIKE_FLOOR_MS,
+    V6_CP_INVERT_GRADE_ABS_MAX_PCT, V6_CP_INVERT_TERRAIN_MAX, V6_OVERSPEED_ACCOUNTING_EPS_MPS,
     V6_OVERSPEED_STA_TAX_MULT, V6_RUN_GAIT_DEMOTE_TO_WALK, V6_RUN_GAIT_FLOOR_MS,
     V6_RUN_SOFT_BAND_BELOW_FLOOR_MS,
     V6_STAMINA_DRAIN_CALIBRATION, V6_WALK_START_MIN_MS,
@@ -120,6 +121,44 @@ fn loaded_gait_stamina_drain_multiplier(load_weight_kg: f64, movement_phase: i32
     1.0 + (LOADED_RUN_DRAIN_MAX_MULT - 1.0) * t
 }
 
+pub fn invert_cruise_cap_ms(
+    critical_power_watts: f64,
+    total_weight_kg: f64,
+    grade_percent: f64,
+    terrain_factor: f64,
+    movement_phase: i32,
+) -> f64 {
+    if critical_power_watts <= 1.0 {
+        return 0.0;
+    }
+    let grade_lim = V6_CP_INVERT_GRADE_ABS_MAX_PCT;
+    let mut grade_for_invert = grade_percent;
+    if grade_for_invert > grade_lim {
+        grade_for_invert = grade_lim;
+    }
+    if grade_for_invert < -grade_lim {
+        grade_for_invert = -grade_lim;
+    }
+    let mut terrain_for_invert = terrain_factor;
+    if terrain_for_invert > V6_CP_INVERT_TERRAIN_MAX {
+        terrain_for_invert = V6_CP_INVERT_TERRAIN_MAX;
+    }
+    if terrain_for_invert < 0.5 {
+        terrain_for_invert = 0.5;
+    }
+    let mut cap_ms = invert_speed_for_power_watts(
+        critical_power_watts,
+        total_weight_kg,
+        grade_for_invert,
+        terrain_for_invert,
+        movement_phase,
+    );
+    if cap_ms < V6_CP_HIKE_FLOOR_MS {
+        cap_ms = V6_CP_HIKE_FLOOR_MS;
+    }
+    cap_ms
+}
+
 /// Align with SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs.
 pub fn resolve_run_cruise_cap_ms(
     raw_cap_ms: f64,
@@ -142,7 +181,10 @@ pub fn resolve_run_cruise_cap_ms(
     let demote = V6_RUN_GAIT_DEMOTE_TO_WALK;
     let soft_band = V6_RUN_SOFT_BAND_BELOW_FLOOR_MS;
     let horiz_clamp = V6_APPLY_HORIZONTAL_SPEED_CLAMP;
-    let walk_min = V6_WALK_START_MIN_MS;
+    let mut walk_min = V6_CP_HIKE_FLOOR_MS;
+    if walk_min < V6_WALK_START_MIN_MS {
+        walk_min = V6_WALK_START_MIN_MS;
+    }
     let walk_top = V5_WALK_SPEED_MS_DEFAULT;
 
     if grade_percent >= 0.0 && cap_ms > cruise_max {
@@ -168,7 +210,7 @@ pub fn resolve_run_cruise_cap_ms(
 
     let mut walk_cap = cap_ms;
     if critical_power_watts > 1.0 {
-        walk_cap = invert_speed_for_power_watts(
+        walk_cap = invert_cruise_cap_ms(
             critical_power_watts,
             total_weight_kg,
             grade_percent,
@@ -224,12 +266,11 @@ pub fn get_client_overspeed_excess_drain_per_second(
             return 0.0;
         }
         p_meas - effective_critical_power_watts
-    } else {
+    } else if armed {
         if !is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
             return 0.0;
         }
-        if armed
-            && effective_critical_power_watts > 1.0
+        if effective_critical_power_watts > 1.0
             && p_meas > effective_critical_power_watts + 1.0
         {
             return 0.0;
@@ -242,6 +283,20 @@ pub fn get_client_overspeed_excess_drain_per_second(
             movement_phase,
         );
         p_meas - p_limit
+    } else if is_metabolic_overspeed_accounting(measured_ms, applied_limit_ms) {
+        let p_limit = metabolism_power_watts(
+            applied_limit_ms,
+            total_weight_kg,
+            grade_percent,
+            terrain_factor,
+            movement_phase,
+        );
+        p_meas - p_limit
+    } else {
+        if effective_critical_power_watts <= 1.0 {
+            return 0.0;
+        }
+        p_meas - effective_critical_power_watts
     };
     if unpaid_w <= 1.0 {
         return 0.0;
@@ -357,7 +412,7 @@ pub fn get_metabolic_speed_cap_ms(
         }
     }
 
-    let mut cap_ms = invert_speed_for_power_watts(
+    let mut cap_ms = invert_cruise_cap_ms(
         target_p,
         total_weight_kg,
         grade_percent,

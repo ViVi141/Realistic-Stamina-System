@@ -351,7 +351,7 @@ class SCR_RSS_UpdateCoordinator
                     if (isWalkPhase)
                     {
                         // Walk 自身 CP 反解 + 不得超过同条件解除武装后的 Run 巡航帽
-                        float walkCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                        float walkCapMs = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
                             cpEffW,
                             totalWeightKg,
                             gradePct,
@@ -361,7 +361,7 @@ class SCR_RSS_UpdateCoordinator
                             theoreticalTargetSpeed = walkCapMs;
 
                         float runCruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
-                        float runCpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                        float runCpCapMs = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
                             cpEffW,
                             totalWeightKg,
                             gradePct,
@@ -393,7 +393,7 @@ class SCR_RSS_UpdateCoordinator
                         if (runPhase < 2 || runPhase == 3)
                             runPhase = 2;
                         float cruiseCapMs = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
-                        float cpCapMs = SCR_RSS_MetabolismModel.InvertSpeedForPowerWatts(
+                        float cpCapMs = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
                             cpEffW,
                             totalWeightKg,
                             gradePct,

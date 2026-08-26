@@ -26,7 +26,8 @@
 - **实现手持重物额外消耗**（原 `SCR_RSS_StaminaConsumptionCalculator` TODO）— `SCR_RSS_EncumbranceCache` 称重 IN_HAND gadget（过滤 `GetHeldGadget` 的隐藏腕表回退）或当前武器；`InventoryItemComponent.GetTotalWeight()`；消耗乘数 `1 + 2.0 × (heldKg / 90)`，上限 1.5；陆地快/完整路径与游泳消耗侧均施加；4 kg 步枪 ≈ +9% 消耗（武器质量已在 Pandolf 负重中，此处只加倍率）
 - **手持称重纠偏** — 过滤 `GetHeldGadget()` 隐藏挂件误计；无 IN_HAND gadget 时采当前武器；游泳路径补施加倍率；`CalibrateUncappedEngineTopsOnce` / `EnsureSignalsRegistered` / `CalculatePostureMultiplier` 补空指针防护
 - **专服崩溃防护** — 手持采样要求实体仍在世界中、武器优先 `GetCurrentSlot`；`GetMaxSpeed`/信号读取/负重轮询/RPC/战斗兴奋剂在 `GetGame`/`GetWorld` 为空时直接返回，避免进退服与 AI tick 窗口 Access violation
-- **全仓专服崩溃扫描** — 新增 `SCR_RSS_RuntimeGuard`；跳跃/翻越、室内检测、载具恢复、数据导出、调试批次、屏效/滤镜、体力 tick 的 `CallLater`、GameMode 引导队列、析构限速恢复均在世界/队列为空时跳过
+- **全仓专服崩溃扫描** — 新增 `SCR_RSS_RuntimeGuard`；跳跃/翻越、室内检测、载具恢复、数据导出、调试批次、屏效/滤镜、体力 tick 的 `CallLater`、GameMode 引导队列、析构限速恢复均在世界/队列为空时跳过。`World` 为 sealed 原生类型，不能作 `out` 参数，取世界用 `GetWorldOrNull()`
+- **W′ 耗尽后陡坡爬行** — 巡航限速反解不再按网格局部 15–18° 把人钉到 0.4 m/s。速度伺服坡度钳到 15%、地形 η 不进反解、地板 1.0 m/s（约 3.6 km/h 负重徒步）；消耗仍按实测坡度。帽内高于 CP 时 STA 承担 P−CP，避免「体力 80% 却爬行且不掉条」
 
 ## [6.1.7] - 2026-08-14
 

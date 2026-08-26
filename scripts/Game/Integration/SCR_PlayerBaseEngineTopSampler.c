@@ -28,17 +28,17 @@ class SCR_PlayerBaseEngineTopSampler
     }
 
     //! 不解限读取动画相位顶速（可每 tick 调用）
-    static void SampleLiveEngineTops(CharacterAnimationComponent animComponent, out float walkMs, out float runMs, out float sprintMs)
+    //! CharacterAnimationComponent 无 GetOwner（GameComponent 链，非 ScriptComponent）
+    static void SampleLiveEngineTops(IEntity ownerEnt, CharacterAnimationComponent animComponent, out float walkMs, out float runMs, out float sprintMs)
     {
         walkMs = -1.0;
         runMs = -1.0;
         sprintMs = -1.0;
         if (!animComponent)
             return;
-        IEntity animOwner = animComponent.GetOwner();
-        if (!animOwner)
+        if (!ownerEnt)
             return;
-        if (!animOwner.GetWorld())
+        if (!ownerEnt.GetWorld())
             return;
         walkMs = animComponent.GetMaxSpeed(1.0, 0.0, 1);
         runMs = animComponent.GetMaxSpeed(1.0, 0.0, 2);
@@ -94,7 +94,7 @@ class SCR_PlayerBaseEngineTopSampler
             float liveWalk;
             float liveRun;
             float liveSprint;
-            SampleLiveEngineTops(animComponent, liveWalk, liveRun, liveSprint);
+            SampleLiveEngineTops(ownerEnt, animComponent, liveWalk, liveRun, liveSprint);
             float live = PickLiveEngineTopMs(movementPhase, liveWalk, liveRun, liveSprint);
             float uncapped = GetCachedEngineTopMs(movementPhase);
 

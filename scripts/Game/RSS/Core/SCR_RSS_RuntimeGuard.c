@@ -1,22 +1,19 @@
 //! 专服 / 进退服窗口：GetGame、World、Callqueue 可能已空，解引会 Access violation。
 class SCR_RSS_RuntimeGuard
 {
-    static bool TryGetWorld(out World world)
+    //! World 为 sealed 原生类型，不能作 out 参数（编译器报 Class/World unrelated）。
+    static World GetWorldOrNull()
     {
-        world = null;
         if (!GetGame())
-            return false;
-        world = GetGame().GetWorld();
-        if (!world)
-            return false;
-        return true;
+            return null;
+        return GetGame().GetWorld();
     }
 
     static bool TryGetWorldTimeMs(out float timeMs)
     {
         timeMs = 0.0;
-        World world;
-        if (!TryGetWorld(world))
+        World world = GetWorldOrNull();
+        if (!world)
             return false;
         timeMs = world.GetWorldTime();
         return true;

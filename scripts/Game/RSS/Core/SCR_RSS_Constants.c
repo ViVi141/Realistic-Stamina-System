@@ -561,6 +561,13 @@ class SCR_RSS_Constants
     static const float V6_CP_CRUISE_PHYS_CLAMP_DOWNHILL_COAST_ALLOW_MPS = 0.40;
     //! 代谢/CP 反解用坡度绝对值上限（%）。更陡只记账展示，不继续把巡航顶拧成爬行。
     static const float V6_METABOLIC_GRADE_ABS_MAX_PCT = 45.0;
+    //! 巡航限速反解用坡度绝对值上限（%）。消耗仍用实测坡度。
+    //! 网格局部 15–18°（≈27–32%）不是持续攀岩；按全坡度 LCDA 反解会落到 0.4 m/s。
+    static const float V6_CP_INVERT_GRADE_ABS_MAX_PCT = 15.0;
+    //! 巡航限速反解用地形因子上限。η 只进消耗，不把软地叠进速度伺服。
+    static const float V6_CP_INVERT_TERRAIN_MAX = 1.0;
+    //! W′ 耗尽后巡航限速地板（m/s）。约 3.6 km/h 负重徒步；禁止反解成爬行。
+    static const float V6_CP_HIKE_FLOOR_MS = 1.0;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! true（2026-08-14 启用）：W′ 耗尽后经 SetSpeedLimit 压 CP 巡航指令速度（正常移动正确限速）。
     //!   已知限制：滚轮(SetDynamicSpeed)能绕过最大速度层超速（引擎限制，可接受）；勿开物理钳（振荡）或动态速度覆盖（锁死）。

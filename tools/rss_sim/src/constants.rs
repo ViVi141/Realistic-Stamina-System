@@ -19,6 +19,9 @@ pub const V6_RUN_GAIT_DEMOTE_TO_WALK: bool = true;
 /// Soft-Run band below floor (m/s); deeper gray demotes Walk (match game).
 pub const V6_RUN_SOFT_BAND_BELOW_FLOOR_MS: f64 = 0.25;
 pub const V6_WALK_START_MIN_MS: f64 = 0.35;
+pub const V6_CP_INVERT_GRADE_ABS_MAX_PCT: f64 = 15.0;
+pub const V6_CP_INVERT_TERRAIN_MAX: f64 = 1.0;
+pub const V6_CP_HIKE_FLOOR_MS: f64 = 1.0;
 pub const EPOC_MAX_POWER_EXCESS_RATIO: f64 = 0.5;
 pub const V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT: f64 = 0.20;
 pub const V6_ACSM_REST_W: f64 = 50.0;
