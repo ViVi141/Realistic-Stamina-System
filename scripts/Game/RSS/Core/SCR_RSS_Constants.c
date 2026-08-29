@@ -603,8 +603,8 @@ class SCR_RSS_Constants
     //! false（2026-08-30 实机）：OnPrepareControls 能写出 1.39，键盘 W 随后盖回 Run。
     //! v_limit=2.4 时 v_meas 仍 3.55，并闪过 Walk 对 3.3+ m/s。过场口打不过玩家输入。
     static const bool V6_TRY_MOVEMENT_ANALOG_SCALE = false;
-    //! true：W′ 空时在 OnPrepareControls 的 super 之前缩放 CharacterForward/Right（与手柄摇杆同一动作）。
-    //! 官方测试用 SetActionValue 喂移动。滑步或无效则改 false。
+    //! true：W′ 空时在 OnPrepareControls 的 super 前后缩放 CharacterForward/Right（与手柄摇杆同一动作）。
+    //! 游泳/走路键/蹲趴/Walk 覆盖让路。目标取巡航帽与已应用限速较低者。滑步或无效则改 false。
     static const bool V6_TRY_ACTION_VALUE_SCALE = true;
     //! CharacterController.GetMovementSpeed / 过场 SetMovement：1=Walk，2=Run。勿低于 0.5。
     static const float ENGINE_MOVE_ANALOG_WALK = 1.0;

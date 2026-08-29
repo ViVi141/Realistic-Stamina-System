@@ -111,8 +111,27 @@ class SCR_RSS_SpeedBridge
         return SCR_RSS_Constants.V6_TRY_ACTION_VALUE_SCALE;
     }
 
+    //! W′ 空时缩放目标：巡航帽与已应用限速取较低。帽未写出时先用平路 2.4，避免缓降窗仍满推。
+    //! 掉带（帽 <0）不算有效帽，由 Walk 覆盖接管。
+    static float ResolveActionScaleDesiredAbsMs(float appliedLimitMs, float lastRunCruiseCapMs)
+    {
+        float desired = appliedLimitMs;
+        if (lastRunCruiseCapMs > 0.05)
+        {
+            if (lastRunCruiseCapMs < desired)
+                desired = lastRunCruiseCapMs;
+            return desired;
+        }
+
+        float fallback = SCR_RSS_Constants.V6_AEROBIC_CRUISE_MAX_MS;
+        if (fallback < desired)
+            desired = fallback;
+        return desired;
+    }
+
     //! 把 WASD 向量缩到 desiredAbs/runTop。不抬高手柄半推。
     //! W′ 空路径不因按着 Shift / 仍停在 Sprint 相位而跳过（门禁另清冲刺）。
+    //! 走路键、Walk 相位、蹲/趴让路，避免和 CapsLock / 姿态档叠乘。
     //! @return 写入的轴幅度；未写则 -1
     static float TryScaleMoveActionValues(
         ActionManager am,
@@ -132,6 +151,10 @@ class SCR_RSS_SpeedBridge
         if (desiredAbsMs >= runTopMs - 0.05)
             return -1.0;
         if (ctrl.GetCurrentMovementPhase() == 1)
+            return -1.0;
+        if (ctrl.GetStance() != ECharacterStance.STAND)
+            return -1.0;
+        if (am.GetActionValue("CharacterWalk") > 0.5)
             return -1.0;
 
         float fwd = am.GetActionValue("CharacterForward");

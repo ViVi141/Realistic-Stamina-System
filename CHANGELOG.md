@@ -6,6 +6,7 @@
 
 - **SetActionValue** — `OnPrepareControls` 的 `super` 前后各按 `v_limit/Run顶` 缩 `CharacterForward`/`CharacterRight`（与手柄摇杆同一动作；官方测试用此口喂移动）。不抬半推。HUD `模拟量` 现为轴幅度（2.4/3.5≈0.69）。关：`V6_TRY_ACTION_VALUE_SCALE`。
 - **冲刺耗尽后仍能冲** — W′ 解除武装时冲刺门禁改到 `super` 之前清 `CharacterSprint`；模拟量不再因按着 Shift / 仍停在 Sprint 相位而跳过。Walk 覆盖仍不改。
+- **缩放让路** — 游泳、走路键、蹲/趴、Walk 覆盖不写轴。W′ 空按巡航帽与 `v_limit` 较低者缩（帽未写出时先用 2.4），不再等 SetSpeedLimit 缓降窗里继续满推 Run。灌木/更低的已应用帽仍取 min，不抬过限速。
 
 ### 试跑：W′ 空用 SetMovement 模拟量压 Run
 

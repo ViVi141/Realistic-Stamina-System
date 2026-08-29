@@ -1047,6 +1047,8 @@ modded class SCR_CharacterControllerComponent
             return;
         if (SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
             return;
+        if (SCR_RSS_SwimmingStateManager.IsSwimming(this))
+            return;
         if (m_fAppliedSpeedLimitMs <= 0.05)
             return;
 
@@ -1067,8 +1069,10 @@ modded class SCR_CharacterControllerComponent
         if (runTopMs < walkTopMs + 0.2)
             runTopMs = walkTopMs + 0.2;
 
+        float desiredAbsMs = SCR_RSS_SpeedBridge.ResolveActionScaleDesiredAbsMs(
+            m_fAppliedSpeedLimitMs, m_fRssLastRunCruiseCapMs);
         float written = SCR_RSS_SpeedBridge.TryScaleMoveActionValues(
-            am, this, m_fAppliedSpeedLimitMs, walkTopMs, runTopMs);
+            am, this, desiredAbsMs, walkTopMs, runTopMs);
         if (written >= 0.0)
             m_fRssLastMoveAnalog = written;
     }
