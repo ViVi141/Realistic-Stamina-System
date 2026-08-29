@@ -4,7 +4,8 @@
 //! RSS 必须只写入独立 source 参与 min 合并；禁止再单独 OverrideMaxSpeed，
 //! 否则会盖掉 Foliage/铁丝网等已合并的限速。
 //!
-//! 默认只走 SetSpeedLimit。CP 反解掉出 Run 带时：ResolveRunCruiseCapMs 跳过越步态帽；
+//! 默认只走 SetSpeedLimit。W′ 空且仍在 Run 带时另试 SetMovement 模拟量（过场/手柄同层）。
+//! CP 反解掉出 Run 带时：ResolveRunCruiseCapMs 跳过越步态帽；
 //! 若 V6_CP_OUT_OF_BAND_WALK_OVERRIDE，另用 CapsLock 同款 SetDynamicSpeed(0.5) 切 Walk 档
 //! （动画与位移同档）。硬钳开时 Resolve 改回抬地板。
 
@@ -96,6 +97,128 @@ class SCR_RSS_SpeedBridge
     static bool IsMovementMaxSpeedTrialEnabled()
     {
         return SCR_RSS_Constants.V6_TRY_MOVEMENT_MAX_SPEED;
+    }
+
+    //! 是否试跑 SetMovement 命令模拟量（见 V6_TRY_MOVEMENT_ANALOG_SCALE）。
+    static bool IsMovementAnalogScaleEnabled()
+    {
+        return SCR_RSS_Constants.V6_TRY_MOVEMENT_ANALOG_SCALE;
+    }
+
+    //! 是否试跑缩放 CharacterForward/Right（见 V6_TRY_ACTION_VALUE_SCALE）。
+    static bool IsActionValueScaleEnabled()
+    {
+        return SCR_RSS_Constants.V6_TRY_ACTION_VALUE_SCALE;
+    }
+
+    //! 把 WASD 向量缩到 desiredAbs/runTop。不抬高手柄半推。
+    //! W′ 空路径不因按着 Shift / 仍停在 Sprint 相位而跳过（门禁另清冲刺）。
+    //! @return 写入的轴幅度；未写则 -1
+    static float TryScaleMoveActionValues(
+        ActionManager am,
+        CharacterControllerComponent ctrl,
+        float desiredAbsMs,
+        float walkTopMs,
+        float runTopMs)
+    {
+        if (!IsActionValueScaleEnabled())
+            return -1.0;
+        if (!am)
+            return -1.0;
+        if (!ctrl)
+            return -1.0;
+        if (desiredAbsMs <= walkTopMs + 0.05)
+            return -1.0;
+        if (desiredAbsMs >= runTopMs - 0.05)
+            return -1.0;
+        if (ctrl.GetCurrentMovementPhase() == 1)
+            return -1.0;
+
+        float fwd = am.GetActionValue("CharacterForward");
+        float right = am.GetActionValue("CharacterRight");
+        float magSq = fwd * fwd + right * right;
+        if (magSq < 0.01)
+            return -1.0;
+
+        float mag = Math.Sqrt(magSq);
+        float target = desiredAbsMs / runTopMs;
+        if (target < 0.15)
+            target = 0.15;
+        if (target > 0.98)
+            return -1.0;
+        if (mag <= target + 0.02)
+            return -1.0;
+
+        float scale = target / mag;
+        am.SetActionValue("CharacterForward", fwd * scale);
+        am.SetActionValue("CharacterRight", right * scale);
+        return target;
+    }
+
+    //! 绝对 m/s → Walk(1)–Run(2) 模拟量。过场在 (0.5, 2) 之间是连续档。
+    static float AnalogForAbsoluteMs(float desiredAbsMs, float walkTopMs, float runTopMs)
+    {
+        float walkA = SCR_RSS_Constants.ENGINE_MOVE_ANALOG_WALK;
+        float runA = SCR_RSS_Constants.ENGINE_MOVE_ANALOG_RUN;
+        float floorA = SCR_RSS_Constants.ENGINE_MOVE_ANALOG_FLOOR;
+        if (runTopMs <= walkTopMs + 0.05)
+            return walkA;
+
+        float t = (desiredAbsMs - walkTopMs) / (runTopMs - walkTopMs);
+        if (t < 0.0)
+            t = 0.0;
+        if (t > 1.0)
+            t = 1.0;
+
+        float analog = walkA + t * (runA - walkA);
+        if (analog < floorA)
+            analog = floorA;
+        if (analog > runA)
+            analog = runA;
+        return analog;
+    }
+
+    //! W′ 空、仍在 Run：把命令模拟量压到 desiredAbsMs。不抬高（不把走路变成慢跑）。
+    //! @return 写入的模拟量；未写则 -1
+    static float TryApplyRunCruiseAnalog(
+        CharacterControllerComponent ctrl,
+        float desiredAbsMs,
+        float walkTopMs,
+        float runTopMs)
+    {
+        if (!IsMovementAnalogScaleEnabled())
+            return -1.0;
+        if (!ctrl)
+            return -1.0;
+        if (desiredAbsMs <= walkTopMs + 0.05)
+            return -1.0;
+        if (desiredAbsMs >= runTopMs - 0.05)
+            return -1.0;
+        if (ctrl.IsSprinting())
+            return -1.0;
+        if (ctrl.GetCurrentMovementPhase() != 2)
+            return -1.0;
+
+        float currentAnalog = ctrl.GetMovementSpeed();
+        if (currentAnalog > SCR_RSS_Constants.ENGINE_MOVE_ANALOG_RUN + 0.05)
+            return -1.0;
+        if (currentAnalog < SCR_RSS_Constants.ENGINE_MOVE_ANALOG_WALK - 0.05)
+            return -1.0;
+
+        float targetAnalog = AnalogForAbsoluteMs(desiredAbsMs, walkTopMs, runTopMs);
+        if (currentAnalog <= targetAnalog + 0.02)
+            return -1.0;
+
+        vector dir = ctrl.GetMovementInput();
+        float dirSq = dir[0] * dir[0] + dir[2] * dir[2];
+        if (dirSq < 0.01)
+            return -1.0;
+
+        ctrl.SetMovement(targetAnalog, dir);
+        CharacterInputContext ctx = ctrl.GetInputContext();
+        if (ctx)
+            ctx.SetMovement(targetAnalog, dir);
+        return targetAnalog;
     }
 
     static CharacterMovementComponent ResolveCharacterMovement(IEntity owner)

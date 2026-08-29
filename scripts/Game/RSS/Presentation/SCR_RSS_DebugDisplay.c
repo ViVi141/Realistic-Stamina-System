@@ -993,9 +993,13 @@ class SCR_RSS_DebugDisplay
         string walkOverrideStr = "off";
         if (controller.RSS_IsCpWalkOverrideActive())
             walkOverrideStr = "on";
+        string analogStr = "off";
+        float analog = controller.RSS_GetLastMoveAnalog();
+        if (analog > 0.0)
+            analogStr = (Math.Round(analog * 100.0) / 100.0).ToString();
 
         string line3Tail = string.Format(
-            " | env=%1 步行恢复=%2 EPOC=%3 上限=%4%% P_fat=%5W 超速记账=%6 超速罚=%7%/s 步态覆盖=%8",
+            " | env=%1 步行恢复=%2 EPOC=%3 上限=%4%% P_fat=%5W 超速记账=%6 超速罚=%7%/s 步态覆盖=%8 模拟量=%9",
             Math.Round(tick.environmentMult * 1000.0) / 1000.0,
             walkRecStr,
             epocStr,
@@ -1003,7 +1007,8 @@ class SCR_RSS_DebugDisplay
             Math.Round(fatiguePowerDbg),
             overspeedStr,
             Math.Round(tick.overspeedExtraDrainPerSec * 10000.0) / 100.0,
-            walkOverrideStr);
+            walkOverrideStr,
+            analogStr);
         string line3 = line3Head + line3Tail;
         AppendDrainDebugLine(line3);
     }

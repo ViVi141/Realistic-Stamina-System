@@ -502,6 +502,8 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bRssCpWalkOverrideActive = false;
     protected float m_fRssCpWalkOverrideSavedSpeed = 1.0;
     protected float m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
+    //! 本帧写入的 Run 巡航模拟量；未写为 -1
+    protected float m_fRssLastMoveAnalog = -1.0;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected float m_fLastSpeedSlewTimeSec = -1.0;
     protected float m_fSmoothedGradePercentForSpeed = 0.0;
@@ -1028,6 +1030,84 @@ modded class SCR_CharacterControllerComponent
         return m_bRssCpWalkOverrideActive;
     }
 
+    float RSS_GetLastMoveAnalog()
+    {
+        return m_fRssLastMoveAnalog;
+    }
+
+    //! W′ 空：把 CharacterForward/Right 缩到巡航比例（官方喂移动同款）。
+    //! 成功才写 HUD；未写不覆盖本帧已有值（super 前后各试一次）。
+    void RSS_TryScaleMoveActionValues(ActionManager am)
+    {
+        if (!SCR_RSS_SpeedBridge.IsActionValueScaleEnabled())
+            return;
+        if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+            return;
+        if (m_bRssCpWalkOverrideActive)
+            return;
+        if (SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+            return;
+        if (m_fAppliedSpeedLimitMs <= 0.05)
+            return;
+
+        bool wPrimeEmpty = true;
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+        {
+            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                m_pAnaerobicBurst.GetCpModel()))
+                wPrimeEmpty = false;
+        }
+        if (!wPrimeEmpty)
+            return;
+
+        float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
+        if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
+            walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+        float runTopMs = GetOriginalEngineMaxSpeed_Run();
+        if (runTopMs < walkTopMs + 0.2)
+            runTopMs = walkTopMs + 0.2;
+
+        float written = SCR_RSS_SpeedBridge.TryScaleMoveActionValues(
+            am, this, m_fAppliedSpeedLimitMs, walkTopMs, runTopMs);
+        if (written >= 0.0)
+            m_fRssLastMoveAnalog = written;
+    }
+
+    void RSS_TryApplyRunCruiseMovementAnalog()
+    {
+        if (!SCR_RSS_SpeedBridge.IsMovementAnalogScaleEnabled())
+            return;
+        m_fRssLastMoveAnalog = -1.0;
+        if (!SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+            return;
+        if (m_bRssCpWalkOverrideActive)
+            return;
+        if (SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+            return;
+        if (m_fAppliedSpeedLimitMs <= 0.05)
+            return;
+
+        bool wPrimeEmpty = true;
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+        {
+            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                m_pAnaerobicBurst.GetCpModel()))
+                wPrimeEmpty = false;
+        }
+        if (!wPrimeEmpty)
+            return;
+
+        float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
+        if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
+            walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+        float runTopMs = GetOriginalEngineMaxSpeed_Run();
+        if (runTopMs < walkTopMs + 0.2)
+            runTopMs = walkTopMs + 0.2;
+
+        m_fRssLastMoveAnalog = SCR_RSS_SpeedBridge.TryApplyRunCruiseAnalog(
+            this, m_fAppliedSpeedLimitMs, walkTopMs, runTopMs);
+    }
+
     //! W′ 解除武装且反解低于 Run 地板（含软带 2.12 这类）时套引擎 Walk 档。
     //! 按住移动则保持（不因下坡反解回到 Run 带而自动改跑）；松开移动或 W′ 再武装才还原。
     void RSS_UpdateCpOutOfBandWalkOverride(bool isSwimming, bool isInVehicle, bool holdingMove, bool wPrimeEmpty)
@@ -1342,13 +1422,25 @@ modded class SCR_CharacterControllerComponent
 
     override void OnPrepareControls(IEntity owner, ActionManager am, float dt, bool player)
     {
+        bool isLocalOwner = (owner == SCR_PlayerController.GetLocalControlledEntity());
+        if (isLocalOwner)
+        {
+            m_fRssLastMoveAnalog = -1.0;
+            // W′ 解除武装时必须先清冲刺，再缩前进轴；否则 super 已按满冲刺采样。
+            RSS_ApplySprintGateOnPrepareControls(am);
+            RSS_TryScaleMoveActionValues(am);
+        }
+
         super.OnPrepareControls(owner, am, dt, player);
+
+        if (isLocalOwner)
+        {
+            RSS_ApplySprintGateOnPrepareControls(am);
+            RSS_TryScaleMoveActionValues(am);
+        }
 
         if (Replication.IsServer() && IsPlayerControlled() && !ShouldProcessStaminaUpdate())
             RSS_MaybeServerTickAnaerobic();
-
-        if (owner == SCR_PlayerController.GetLocalControlledEntity())
-            RSS_ApplySprintGateOnPrepareControls(am);
         
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
@@ -1369,6 +1461,8 @@ modded class SCR_CharacterControllerComponent
             if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
                 SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(owner, m_fAppliedSpeedLimitMs);
         }
+
+        RSS_TryApplyRunCruiseMovementAnalog();
         
         bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
         

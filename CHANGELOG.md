@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### 试跑：W′ 空缩放 CharacterForward（输入层）
+
+- **SetActionValue** — `OnPrepareControls` 的 `super` 前后各按 `v_limit/Run顶` 缩 `CharacterForward`/`CharacterRight`（与手柄摇杆同一动作；官方测试用此口喂移动）。不抬半推。HUD `模拟量` 现为轴幅度（2.4/3.5≈0.69）。关：`V6_TRY_ACTION_VALUE_SCALE`。
+- **冲刺耗尽后仍能冲** — W′ 解除武装时冲刺门禁改到 `super` 之前清 `CharacterSprint`；模拟量不再因按着 Shift / 仍停在 Sprint 相位而跳过。Walk 覆盖仍不改。
+
+### 试跑：W′ 空用 SetMovement 模拟量压 Run
+
+- **实机失败，已关** — 写出 `模拟量=1.39` 时 `v_meas` 仍 3.55（`v_limit=2.4`），并闪过 Walk 对 3.3+ m/s。过场 `SetMovement` 打不过按住 W。`V6_TRY_MOVEMENT_ANALOG_SCALE = false`。
+
 ### 两英里硬锚改到官方 ACFT 85 分
 
 - **评分** — 22–26 岁男性官方尺：18:00=60 分、13:30=100 分；85 分线性插值 **15:11.25**。去掉项目自定义「18:00=70 / 15:30=85」

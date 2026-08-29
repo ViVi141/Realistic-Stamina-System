@@ -600,6 +600,16 @@ class SCR_RSS_Constants
     //! true（2026-08-14 启用）：压移动组件真实最大速度，配合 CP 巡航限速（正常移动正确限速）。
     //! 单位若非 m/s 或导致滑步/锁死，改 false。销毁/关限速时恢复原生 GetMovementMaxSpeed。
     static const bool V6_TRY_MOVEMENT_MAX_SPEED = true;
+    //! false（2026-08-30 实机）：OnPrepareControls 能写出 1.39，键盘 W 随后盖回 Run。
+    //! v_limit=2.4 时 v_meas 仍 3.55，并闪过 Walk 对 3.3+ m/s。过场口打不过玩家输入。
+    static const bool V6_TRY_MOVEMENT_ANALOG_SCALE = false;
+    //! true：W′ 空时在 OnPrepareControls 的 super 之前缩放 CharacterForward/Right（与手柄摇杆同一动作）。
+    //! 官方测试用 SetActionValue 喂移动。滑步或无效则改 false。
+    static const bool V6_TRY_ACTION_VALUE_SCALE = true;
+    //! CharacterController.GetMovementSpeed / 过场 SetMovement：1=Walk，2=Run。勿低于 0.5。
+    static const float ENGINE_MOVE_ANALOG_WALK = 1.0;
+    static const float ENGINE_MOVE_ANALOG_RUN = 2.0;
+    static const float ENGINE_MOVE_ANALOG_FLOOR = 0.5;
     //! 引擎 Walk 顶速回退（m/s）；与实机空载 Walk 顶接近
     static const float ENGINE_WALK_TOP_MS = 1.45;
     //! 有氧巡航硬顶（m/s）：W′ 不可用时，平路/上坡 Run 不得超过；超过必须吃 W′。
