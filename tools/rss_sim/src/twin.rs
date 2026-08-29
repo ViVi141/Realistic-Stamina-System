@@ -11,7 +11,7 @@ use crate::cp_wprime::V6CriticalPowerState;
 use crate::drain::{
     get_client_overspeed_excess_drain_per_second, get_drain_velocity_ms, get_epoc_sample_velocity_ms,
     get_metabolic_corrected_speed_multiplier, invert_cruise_cap_ms,
-    is_phys_overspeed_for_anaerobic_tick, resolve_run_cruise_cap_ms,
+    is_phys_overspeed_for_anaerobic_tick, is_run_cruise_cap_out_of_band, resolve_run_cruise_cap_ms,
 };
 use crate::environment::EnvironmentFactor;
 use crate::fatigue::TwinFatigueSystem;
@@ -697,7 +697,7 @@ impl RSSDigitalTwin {
         if measured_ms < 0.05 {
             measured_ms = speed;
         }
-        // Match PlayerBase_UpdateLoop phys overspeed power clamp
+        // Match PlayerBase_UpdateLoop: armed P>CP must reach TickPower
         if !is_sprinting {
             let phys_overspeed = is_phys_overspeed_for_anaerobic_tick(
                 measured_ms,
@@ -707,8 +707,11 @@ impl RSSDigitalTwin {
             let cp_clamp = self.v6_cp_state.get_effective_critical_power_watts();
             if cp_clamp > 1.0 {
                 if !phys_overspeed {
-                    if power_w > cp_clamp {
-                        power_w = cp_clamp;
+                    let w_prime_armed = self.v6_cp_state.refresh_and_get_overspeed_armed();
+                    if !w_prime_armed {
+                        if power_w > cp_clamp {
+                            power_w = cp_clamp;
+                        }
                     }
                 } else if power_w <= cp_clamp {
                     power_w = cp_clamp;
@@ -1336,10 +1339,7 @@ impl RSSDigitalTwin {
             w_prime_empty = false;
         }
 
-        let mut out_of_band = false;
-        if self.last_run_cruise_cap_ms < -0.01 {
-            out_of_band = true;
-        }
+        let out_of_band = is_run_cruise_cap_out_of_band(self.last_run_cruise_cap_ms);
 
         let mut want = false;
         if w_prime_empty {

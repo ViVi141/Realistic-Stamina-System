@@ -1028,7 +1028,7 @@ modded class SCR_CharacterControllerComponent
         return m_bRssCpWalkOverrideActive;
     }
 
-    //! W′ 解除武装且反解掉出 Run 带时套引擎 Walk 档。
+    //! W′ 解除武装且反解低于 Run 地板（含软带 2.12 这类）时套引擎 Walk 档。
     //! 按住移动则保持（不因下坡反解回到 Run 带而自动改跑）；松开移动或 W′ 再武装才还原。
     void RSS_UpdateCpOutOfBandWalkOverride(bool isSwimming, bool isInVehicle, bool holdingMove, bool wPrimeEmpty)
     {
@@ -1049,9 +1049,7 @@ modded class SCR_CharacterControllerComponent
         }
 
         float capMs = m_fRssLastRunCruiseCapMs;
-        bool outOfBand = false;
-        if (capMs < -0.01)
-            outOfBand = true;
+        bool outOfBand = SCR_RSS_DrainCalculator.IsRunCruiseCapOutOfBand(capMs);
 
         bool want = false;
         if (wPrimeEmpty)

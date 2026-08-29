@@ -21,20 +21,24 @@ pub const SUSTAIN_OBS_MIN_PCT_PER_S: f64 = 0.0;
 pub const SUSTAIN_OBS_MAX_PCT_PER_S: f64 = 2.60;
 pub const SUSTAIN_OBS_HARD: bool = true;
 
-pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 2.98;
-pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 3.45;
+pub const MOBILITY_RUN_0KG_MIN_MS: f64 = 3.53;
+pub const MOBILITY_RUN_0KG_MAX_MS: f64 = 3.75;
 pub const MOBILITY_RUN_35KG_MIN_MS: f64 = 2.15;
-pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 3.20;
+pub const MOBILITY_RUN_35KG_MAX_MS: f64 = 3.40;
 pub const MOBILITY_HARD: bool = true;
 
 pub const TWO_MILE_DIST_M: f64 = 2.0 * 1609.344;
-pub const TWO_MILE_SCORE_70_SEC: f64 = 18.0 * 60.0;
-pub const TWO_MILE_SCORE_85_SEC: f64 = 15.0 * 60.0 + 30.0;
-pub const TWO_MILE_SCORE_70: f64 = 0.70;
+pub const TWO_MILE_SCORE_60_SEC: f64 = 18.0 * 60.0;
+pub const TWO_MILE_SCORE_100_SEC: f64 = 13.5 * 60.0;
+pub const TWO_MILE_SCORE_60: f64 = 0.60;
+pub const TWO_MILE_SCORE_100: f64 = 1.00;
 pub const TWO_MILE_SCORE_85: f64 = 0.85;
-pub const TWO_MILE_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
-/// Hard gate = 70% score anchor (18:00); soft target 15:30 / 85%.
-pub const TWO_MILE_HARD_MAX_SEC: f64 = TWO_MILE_SCORE_70_SEC;
+pub const TWO_MILE_SCORE_85_SEC: f64 = TWO_MILE_SCORE_100_SEC
+    + (TWO_MILE_SCORE_100 - TWO_MILE_SCORE_85) / (TWO_MILE_SCORE_100 - TWO_MILE_SCORE_60)
+        * (TWO_MILE_SCORE_60_SEC - TWO_MILE_SCORE_100_SEC);
+pub const TWO_MILE_MAX_SEC: f64 = TWO_MILE_SCORE_85_SEC;
+/// Hard gate = official ACFT 85 (15:11.25) for males 22–26.
+pub const TWO_MILE_HARD_MAX_SEC: f64 = TWO_MILE_SCORE_85_SEC;
 pub const TWO_MILE_TIMEOUT_SEC: f64 = 1800.0;
 pub const TWO_MILE_HARD: bool = true;
 
@@ -388,12 +392,19 @@ pub fn check_march_4h_aerobic_end(
 }
 
 pub fn two_mile_score_01(time_s: f64) -> f64 {
-    let denom = TWO_MILE_SCORE_85_SEC - TWO_MILE_SCORE_70_SEC;
+    let denom = TWO_MILE_SCORE_100_SEC - TWO_MILE_SCORE_60_SEC;
     if denom.abs() < 1e-9 {
-        return TWO_MILE_SCORE_70;
+        return TWO_MILE_SCORE_60;
     }
-    TWO_MILE_SCORE_70
-        + (time_s - TWO_MILE_SCORE_70_SEC) * (TWO_MILE_SCORE_85 - TWO_MILE_SCORE_70) / denom
+    let score = TWO_MILE_SCORE_60
+        + (time_s - TWO_MILE_SCORE_60_SEC) * (TWO_MILE_SCORE_100 - TWO_MILE_SCORE_60) / denom;
+    if score < 0.0 {
+        return 0.0;
+    }
+    if score > 1.0 {
+        return 1.0;
+    }
+    score
 }
 
 pub fn two_mile_ease_from_time(time_s: f64) -> f64 {
@@ -455,14 +466,14 @@ pub fn check_zero_load_run_2mile(params: Option<&HashMap<String, f64>>) -> Const
     };
     let mut hint = String::new();
     if !ok {
-        hint = "raise v5_run_speed_ms (and CP if demoted) so zero-load Run 2mi finishes by 18:00 (hard ≥70%); soft target remains 15:30 / 85%"
+        hint = "raise CP to hold ~3.54 m/s (need ≥1760 W) and set v5_run near that invert; faster gait with low CP dumps W' and misses official 85"
             .to_string();
     }
     let minutes = (time_s / 60.0).floor() as i64;
     let seconds = time_s - 60.0 * (minutes as f64);
     let detail = if finished {
         format!(
-            "time={}:{:05.2} score={:.1}% (hard≤18:00/70%, soft85@15:30, dist={:.1}m)",
+            "time={}:{:05.2} score={:.1}% (hard≤15:11 official ACFT 85, dist={:.1}m)",
             minutes,
             seconds,
             score * 100.0,
@@ -474,7 +485,7 @@ pub fn check_zero_load_run_2mile(params: Option<&HashMap<String, f64>>) -> Const
             dist_m, TWO_MILE_DIST_M, TWO_MILE_TIMEOUT_SEC
         )
     };
-    let check_name = "zero_load_2mile_pt_ge70";
+    let check_name = "zero_load_2mile_pt_ge85";
     if !TWO_MILE_HARD && !ok {
         return make_check(
             check_name,

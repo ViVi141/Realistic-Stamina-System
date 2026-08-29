@@ -231,6 +231,19 @@ pub fn resolve_run_cruise_cap_ms(
     -1.0
 }
 
+pub fn is_run_cruise_cap_out_of_band(cap_ms: f64) -> bool {
+    if cap_ms < -0.01 {
+        return true;
+    }
+    if cap_ms <= 0.05 {
+        return false;
+    }
+    if cap_ms < V6_RUN_GAIT_FLOOR_MS {
+        return true;
+    }
+    false
+}
+
 pub fn get_client_overspeed_excess_drain_per_second(
     measured_ms: f64,
     applied_limit_ms: f64,

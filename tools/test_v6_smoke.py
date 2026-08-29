@@ -18,6 +18,7 @@ from rss_digital_twin_fix import (
     get_metabolic_accounting_power_watts,
     get_client_overspeed_excess_drain_per_second,
     is_metabolic_overspeed_accounting,
+    is_run_cruise_cap_out_of_band,
     invert_speed_for_power_watts,
     invert_cruise_cap_ms,
     resolve_run_cruise_cap_ms,
@@ -69,6 +70,55 @@ def _wprime_discharge_run_ok() -> bool:
         return False
     st2.tick(cp2 - 50.0, False, 1.0, 1.0, 1.2)
     return st2.w_prime_joules > j_mid
+
+
+def _wprime_burns_when_armed_in_gait_cap_ok() -> bool:
+    """W′ 武装且 v_meas≤v_limit 时，上坡 P>CP 仍须烧 W′（不得因未超速钳到 CP）。
+
+    不走 game_player_tick 的坡度压速：实机武装 Run 的 v_limit 是步态盖
+    （约 3.1–3.6），不是 CP 反解。这里注入同条件测速后只跑 step。
+    """
+    from rss_constraints_v6 import _load_elite_preset_params
+    from rss_digital_twin_fix import merge_game_aligned_params
+
+    merged = merge_game_aligned_params(_load_elite_preset_params())
+    twin = RSSDigitalTwin(RSSConstants(**merged))
+    twin.reset()
+    dt = 0.05
+    t = 0.0
+    weight = 90.0 + 29.0
+    grade_pct = 15.0
+    v_meas = 3.05
+    v_limit = 3.30
+    p_met = metabolism_power_watts(v_meas, weight, grade_pct, 1.0, MovementType.RUN)
+    twin.v6_cp_state.set_runtime_context(29.0, grade_pct, 1.0, 0.0)
+    cp = twin.v6_cp_state.get_effective_critical_power_watts()
+    if p_met <= cp + 1.0:
+        return False
+    if not twin.v6_cp_state.refresh_and_get_overspeed_armed():
+        return False
+    twin._applied_speed_limit_ms = v_limit
+    twin._measured_velocity_ms = v_meas
+    j0 = float(twin.v6_cp_state.w_prime_joules)
+    for _ in range(40):
+        twin._applied_speed_limit_ms = v_limit
+        twin._measured_velocity_ms = v_meas
+        twin.step(
+            v_meas,
+            weight,
+            grade_pct,
+            1.0,
+            Stance.STAND,
+            MovementType.RUN,
+            t,
+            enable_randomness=False,
+            time_delta_override=dt,
+        )
+        t += dt
+    j1 = float(twin.v6_cp_state.w_prime_joules)
+    if j1 >= j0 * 0.98:
+        return False
+    return True
 
 
 def _fatigue_cap_clamp_ok() -> bool:
@@ -303,26 +353,29 @@ def _zero_load_2mile_constants_ok() -> bool:
         TWO_MILE_HARD,
         TWO_MILE_HARD_MAX_SEC,
         TWO_MILE_MAX_SEC,
-        TWO_MILE_SCORE_70_SEC,
+        TWO_MILE_SCORE_60_SEC,
         TWO_MILE_SCORE_85_SEC,
+        TWO_MILE_SCORE_100_SEC,
         two_mile_score_01,
     )
 
     if abs(TWO_MILE_DIST_M - 3218.688) > 0.01:
         return False
-    if TWO_MILE_MAX_SEC != TWO_MILE_SCORE_70_SEC:
+    if TWO_MILE_MAX_SEC != TWO_MILE_SCORE_85_SEC:
         return False
-    if abs(TWO_MILE_SCORE_70_SEC - 1080.0) > 1e-6:
+    if abs(TWO_MILE_SCORE_60_SEC - 1080.0) > 1e-6:
         return False
-    if abs(TWO_MILE_SCORE_85_SEC - 930.0) > 1e-6:
+    if abs(TWO_MILE_SCORE_100_SEC - 810.0) > 1e-6:
         return False
-    if abs(TWO_MILE_HARD_MAX_SEC - TWO_MILE_SCORE_70_SEC) > 1e-6:
+    if abs(TWO_MILE_SCORE_85_SEC - 911.25) > 1e-6:
         return False
-    if abs(TWO_MILE_HARD_MAX_SEC - 1080.0) > 1e-6:
+    if abs(TWO_MILE_HARD_MAX_SEC - TWO_MILE_SCORE_85_SEC) > 1e-6:
         return False
-    if abs(two_mile_score_01(1080.0) - 0.70) > 1e-6:
+    if abs(two_mile_score_01(1080.0) - 0.60) > 1e-6:
         return False
-    if abs(two_mile_score_01(930.0) - 0.85) > 1e-6:
+    if abs(two_mile_score_01(911.25) - 0.85) > 1e-6:
+        return False
+    if abs(two_mile_score_01(810.0) - 1.00) > 1e-6:
         return False
     return bool(TWO_MILE_HARD)
 
@@ -375,6 +428,52 @@ def _cp_walk_override_latch_ok() -> bool:
     while i < 30:
         last_v = twin.game_player_tick(
             MovementType.RUN, total_w, 12.0, 1.35, Stance.STAND, t, dt
+        )
+        t = t + dt
+        i = i + 1
+    if not twin._cp_walk_override_active:
+        return False
+    walk_ceil = ENGINE_WALK_TOP_MS + 0.35
+    if last_v > walk_ceil:
+        return False
+    if twin._measured_velocity_ms > walk_ceil:
+        return False
+    return True
+
+
+def _cp_walk_override_soft_band_ok() -> bool:
+    """jog-CP 软带（反解≈2.12，Resolve 不回 -1）W′ 空时仍须切 Walk，否则 Run 滑步。"""
+    if is_run_cruise_cap_out_of_band(-1.0) is False:
+        return False
+    if is_run_cruise_cap_out_of_band(0.0):
+        return False
+    if is_run_cruise_cap_out_of_band(2.12) is False:
+        return False
+    if is_run_cruise_cap_out_of_band(2.26):
+        return False
+
+    from rss_pipeline_v6 import load_preset_params
+    from rss_digital_twin_fix import (
+        ENGINE_WALK_TOP_MS,
+        merge_game_aligned_params,
+        RSS_PLAYER_TICK_SEC,
+    )
+
+    params = dict(load_preset_params("EliteStandard"))
+    params["critical_power_watts"] = 1198.0
+    constants = RSSConstants(**merge_game_aligned_params(params))
+    twin = RSSDigitalTwin(constants)
+    twin.reset()
+    twin.v6_cp_state.w_prime_joules = 0.0
+    twin.v6_cp_state.overspeed_armed = False
+    total_w = 90.0 + 28.868
+    dt = RSS_PLAYER_TICK_SEC
+    t = 0.0
+    last_v = 0.0
+    i = 0
+    while i < 30:
+        last_v = twin.game_player_tick(
+            MovementType.RUN, total_w, 15.0, 1.35, Stance.STAND, t, dt
         )
         t = t + dt
         i = i + 1
@@ -770,6 +869,7 @@ SCENARIOS = [
     ("cp_load_penalty", lambda: compute_cp_watts(400.0, 35.0, 0.0) < 400.0),
     ("wprime_discharge", lambda: _wprime_discharge_ok()),
     ("wprime_discharge_run", lambda: _wprime_discharge_run_ok()),
+    ("wprime_burns_in_gait_cap", lambda: _wprime_burns_when_armed_in_gait_cap_ok()),
     ("elite_sprint_duration", lambda: _elite_sprint_duration_ok()),
     ("baked_preset_drift_guard", lambda: _baked_preset_drift_guard_ok()),
     ("wprime_recovery_dispatch", lambda: _wprime_recovery_dispatch_ok()),
@@ -783,6 +883,7 @@ SCENARIOS = [
     ("tier_scalar_gradients", lambda: _tier_scalar_gradients_ok()),
     ("walk_not_faster_than_demoted_run", lambda: _walk_not_faster_than_demoted_run_ok()),
     ("cp_walk_override_latch", lambda: _cp_walk_override_latch_ok()),
+    ("cp_walk_override_soft_band", lambda: _cp_walk_override_soft_band_ok()),
     ("cp_walk_override_no_false_wprime_burn", lambda: _cp_walk_override_no_false_wprime_burn_ok()),
     ("downhill_phys_clamp_policy", lambda: _downhill_phys_clamp_policy_ok()),
     ("wprime_disarm_apply_path", lambda: _wprime_disarm_apply_path_ok()),

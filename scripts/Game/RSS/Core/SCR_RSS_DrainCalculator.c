@@ -277,6 +277,19 @@ class SCR_RSS_DrainCalculator
         return -1.0;
     }
 
+    //! 步态覆盖触发：Resolve 返回 -1，或软带内帽仍低于 Run 地板。
+    //! 0 = 本 tick 未算（W′ 武装跳过巡航），不算掉带。
+    static bool IsRunCruiseCapOutOfBand(float capMs)
+    {
+        if (capMs < -0.01)
+            return true;
+        if (capMs <= 0.05)
+            return false;
+        if (capMs < SCR_RSS_Constants.V6_RUN_GAIT_FLOOR_MS)
+            return true;
+        return false;
+    }
+
     //! 限速倍率不得低于当前相位顶速的 k 倍（防滑步）。
     //! 条空跛行也托下限：把 1 m/s 写进 Run 相位 = 滑步。切 Walk 后相位顶约 1.45，0.5× 与跛行同量级。
     //! @param isExhausted 保留签名；下限对跛行同样生效。

@@ -2,13 +2,28 @@
 
 ## [Unreleased]
 
+### 两英里硬锚改到官方 ACFT 85 分
+
+- **评分** — 22–26 岁男性官方尺：18:00=60 分、13:30=100 分；85 分线性插值 **15:11.25**。去掉项目自定义「18:00=70 / 15:30=85」
+- **硬门禁** — `zero_load_2mile_pt_ge85`：零负重 Run 2 mi ≤15:11。配速约 3.54 m/s 需 CP≥1760 W，否则 W′ 中途烧空会掉到 20 分钟开外
+- **搜索带** — CP 1720–2050；Elite v5_run 3.533–3.548（钉在 85 分），Standard / Tactical 依次加快；35 kg Run 上限 3.20→3.40（Tactical 负重慢跑会到 ~3.30）
+- **optimize-tiers 重跑** — TPE 300 trials/档 + repair + embed。Elite CP 1866 / W′ 28830 / sprint_cap 3591 / v5_run 3.535（2mi **15:11 / 85.1 分**）；Standard 1868 / 32669 / 3647 / 3.58（14:59 / 86.8）；Tactical 1911 / 32774 / 3928 / 3.65（14:42 / 89.3）。冒烟 36/36
+
+### W′ 武装不再因「未超速」免单
+
+- **帽内 P>CP 进 TickPower** — W′ 武装时 `v_limit` 是步态盖不是 CP 巡航速。14°/29 kg Run 即使 `v_meas≤v_limit`（`超速记账=off`）也按真实 `P_met` 烧 W′；仅解除武装后的巡航仍钳到 CP。C/Python/Rust 同序。下坡滑行 `P≤CP` 仍钉 CP，禁止回充白嫖。
+
+### 步态覆盖认软带（防 jog-CP 滑步）
+
+- **W′ 空且反解 < Run 地板（2.2）即切 Walk** — jog-CP 疲劳后反解常落在 2.12（软带，Resolve 不回 -1），旧触发只认 `-1`，覆盖永不亮，Run 动画对 2.5–3.5 m/s 物理 = 滑步。C/Python/Rust 同序。不改限速/超限记账。
+
 ### CP 慢跑口径重标定
 
 - **硬约束 `run_wprime_armed_29kg_60s`** — 29 kg 平路 Run 60 s 后 W′ 须仍武装（池 >25%）、速度仍在 Run 带（≥2.2 m/s）、未切 Walk 覆盖。情景钉死 Elite 慢跑盖子（enc=0.34、v5_run=3.05），不吃 trial 的低负重/高速。CP 按「能慢跑」而非「能行军」搜索；Python/Rust 孪生同序 `game_player_tick`
 - **搜索空间** — `critical_power_watts` 1480–1850（原 750–1100）；`sprint_power_cap_watts` 上沿 4000，配合冲刺 ≤15 s
 - **35 kg Run 观测下限** — 慢跑口径下平路可接近 CP，硬门下限改为 0%/s，只封上限 2.6%/s
 - **门禁用 Python 慢跑约束** — Rust 同参 W′ 消耗偏少，`rss_sim_backend` 在 Rust 全过后再跑 Python `run_wprime_armed_29kg_60s`，与 C 孪生对齐
-- **optimize-tiers 重跑** — TPE 300 trials/档 + repair + embed。Elite CP 1519 / W′ 23426 / sprint_cap 3712；Standard 1528 / 30336 / 3735；Tactical 1595 / 31223 / 3882。冒烟 34/34
+- **optimize-tiers 重跑** — TPE 300 trials/档 + repair + embed。Elite CP 1519 / W′ 23426 / sprint_cap 3712；Standard 1528 / 30336 / 3735；Tactical 1595 / 31223 / 3882。冒烟 35/35
 
 ### 文档-代码漂移同步（2026-08-26）
 

@@ -31,23 +31,29 @@ SUSTAIN_OBS_MAX_PCT_PER_S = 2.60
 SUSTAIN_OBS_HARD = True
 
 # v6 满体力 Run 理论速度契约（m/s，theoretical_speed_at_weight 不动点）
-# 0 kg 下限 ≈ 2mi@18:00；上限覆盖 Tactical ~15:30 / 85 分
-MOBILITY_RUN_0KG_MIN_MS = 2.98
-MOBILITY_RUN_0KG_MAX_MS = 3.45
+# 0 kg 下限 ≈ 官方 ACFT 85 分配速（15:11 / 3.53 m/s）；上限给 Tactical 约 90 分
+MOBILITY_RUN_0KG_MIN_MS = 3.53
+MOBILITY_RUN_0KG_MAX_MS = 3.75
 MOBILITY_RUN_35KG_MIN_MS = 2.15
-MOBILITY_RUN_35KG_MAX_MS = 3.20
+MOBILITY_RUN_35KG_MAX_MS = 3.40
 MOBILITY_HARD = True
 
 # 零负重 2 英里体测（Run 意图；由 v5_run_speed_ms 拉开三档）
-# - 硬门禁 ≤18:00（≥70 分）
-# - 评分锚点：18:00=70 分、15:30=85 分（软目标 / scalarize）
+# 官方 ACFT 22–26 岁男性（项目固定年龄）：60 分=18:00，100 分=13:30
+# 85 分线性插值 = 15:11.25；硬门禁 ≤ 该成绩（官方 ≥85）
 TWO_MILE_DIST_M = 2.0 * 1609.344
-TWO_MILE_SCORE_70_SEC = 18.0 * 60.0
-TWO_MILE_SCORE_85_SEC = 15.0 * 60.0 + 30.0
-TWO_MILE_SCORE_70 = 0.70
+TWO_MILE_SCORE_60_SEC = 18.0 * 60.0
+TWO_MILE_SCORE_100_SEC = 13.5 * 60.0
+TWO_MILE_SCORE_60 = 0.60
+TWO_MILE_SCORE_100 = 1.00
 TWO_MILE_SCORE_85 = 0.85
-TWO_MILE_MAX_SEC = TWO_MILE_SCORE_70_SEC
-TWO_MILE_HARD_MAX_SEC = TWO_MILE_SCORE_70_SEC
+TWO_MILE_SCORE_85_SEC = TWO_MILE_SCORE_100_SEC + (
+    TWO_MILE_SCORE_100 - TWO_MILE_SCORE_85
+) / (TWO_MILE_SCORE_100 - TWO_MILE_SCORE_60) * (
+    TWO_MILE_SCORE_60_SEC - TWO_MILE_SCORE_100_SEC
+)
+TWO_MILE_MAX_SEC = TWO_MILE_SCORE_85_SEC
+TWO_MILE_HARD_MAX_SEC = TWO_MILE_SCORE_85_SEC
 TWO_MILE_TIMEOUT_SEC = 1800.0
 TWO_MILE_HARD = True
 
@@ -321,13 +327,17 @@ def check_march_4h_aerobic_end(
 
 
 def two_mile_score_01(time_s: float) -> float:
-    """2 英里用时 → 百分制分数（0–1）。18:00→0.70，15:30→0.85，两端线性外推。"""
-    denom = TWO_MILE_SCORE_85_SEC - TWO_MILE_SCORE_70_SEC
+    """2 英里用时 → 官方 ACFT 百分制（0–1）。18:00→0.60，13:30→1.00，两端钳制。"""
+    denom = TWO_MILE_SCORE_100_SEC - TWO_MILE_SCORE_60_SEC
     if abs(denom) < 1e-9:
-        return float(TWO_MILE_SCORE_70)
-    score = TWO_MILE_SCORE_70 + (float(time_s) - TWO_MILE_SCORE_70_SEC) * (
-        TWO_MILE_SCORE_85 - TWO_MILE_SCORE_70
+        return float(TWO_MILE_SCORE_60)
+    score = TWO_MILE_SCORE_60 + (float(time_s) - TWO_MILE_SCORE_60_SEC) * (
+        TWO_MILE_SCORE_100 - TWO_MILE_SCORE_60
     ) / denom
+    if score < 0.0:
+        return 0.0
+    if score > 1.0:
+        return 1.0
     return float(score)
 
 
@@ -389,7 +399,7 @@ def simulate_zero_load_run_time_to_distance(
 def check_zero_load_run_2mile(
     params: Optional[Dict] = None,
 ) -> ConstraintCheck:
-    """零负重 Run 2 英里：硬门禁 ≤18:00（≥70 分）；软锚 15:30/85%。"""
+    """零负重 Run 2 英里：硬门禁 ≤15:11.25（官方 ACFT ≥85 分）。"""
     time_s, dist_m = simulate_zero_load_run_time_to_distance(
         TWO_MILE_DIST_M,
         params=params,
@@ -406,22 +416,22 @@ def check_zero_load_run_2mile(
     hint = ""
     if not ok:
         hint = (
-            "raise v5_run_speed_ms (and CP if demoted) so zero-load Run 2mi "
-            "finishes by 18:00 (hard ≥70%); soft target remains 15:30 / 85%"
+            "raise CP to hold ~3.54 m/s (need ≥1760 W) and set v5_run near "
+            "that invert; faster gait with low CP dumps W' and misses official 85"
         )
     minutes = int(time_s // 60)
     seconds = time_s - 60.0 * minutes
     if finished:
         detail = (
             f"time={minutes}:{seconds:05.2f} score={score * 100.0:.1f}% "
-            f"(hard≤18:00/70%, soft85@15:30, dist={dist_m:.1f}m)"
+            f"(hard≤15:11 official ACFT 85, dist={dist_m:.1f}m)"
         )
     else:
         detail = (
             f"timeout at {dist_m:.1f}m / {TWO_MILE_DIST_M:.1f}m "
             f"after {TWO_MILE_TIMEOUT_SEC:.0f}s"
         )
-    check_name = "zero_load_2mile_pt_ge70"
+    check_name = "zero_load_2mile_pt_ge85"
     if not TWO_MILE_HARD and not ok:
         return ConstraintCheck(
             check_name,

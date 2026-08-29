@@ -52,7 +52,7 @@
 | `v5_sprint_cooldown` | 抽干后冷却 ≥ 120 s | |
 | `v6_cp_sprint_burst_35kg` | W′ 冲刺 ≤ 15 s @ 35 kg | CP–W′ 模型 |
 | `run_wprime_armed_29kg_60s` | 29 kg 平路 Run 60 s 后 W′ 仍武装（pool>25%）、速度仍在 Run 带（≥2.2 m/s）、未切 Walk 覆盖。情景钉死 Elite 慢跑盖子（enc=0.34、v5_run=3.05），不吃 trial 移动性参数 | CP 按慢跑而非行军标定 |
-| `zero_load_2mile_pt_ge70` | 零负重 Run 2 mi ≤ **18:00**（≥70 分）；软目标 **15:30**/85 分 | `game_player_tick` 积分 |
+| `zero_load_2mile_pt_ge85` | 零负重 Run 2 mi ≤ **15:11.25**（官方 ACFT 22–26 岁男性 ≥85 分；60=18:00 / 100=13:30） | `game_player_tick` 积分 |
 | `march_4h_aerobic_end_35kg` | 4 h 行军结束有氧 ≥ 0.20 | **当前 soft**（孪生无 fatigue cap） |
 
 实现：`rss_constraints_v6.evaluate_hard_constraints()`。  

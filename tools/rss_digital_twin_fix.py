@@ -1032,8 +1032,8 @@ class RSSDigitalTwin:
             if measured_ms < 0.05:
                 measured_ms = float(speed)
             # 非冲刺：
-            # - 未超速：功率钳到 CP（巡航不烧 W′）
-            # - 超速且 P>CP：放开，超额烧 W′
+            # - W′ 解除武装且未超速：功率钳到 CP（巡航不烧空池）
+            # - W′ 仍武装：P>CP 必须进 tick（武装时 v_limit 是步态盖，不是 CP 巡航速）
             # - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
             if not is_sprinting:
                 phys_overspeed = is_phys_overspeed_for_anaerobic_tick(
@@ -1044,8 +1044,10 @@ class RSSDigitalTwin:
                 cp_clamp = self.v6_cp_state.get_effective_critical_power_watts()
                 if cp_clamp > 1.0:
                     if not phys_overspeed:
-                        if power_w > cp_clamp:
-                            power_w = cp_clamp
+                        w_prime_armed = self.v6_cp_state.refresh_and_get_overspeed_armed()
+                        if not w_prime_armed:
+                            if power_w > cp_clamp:
+                                power_w = cp_clamp
                     else:
                         if power_w <= cp_clamp:
                             power_w = cp_clamp
@@ -1636,9 +1638,7 @@ class RSSDigitalTwin:
         if self.v6_cp_state.refresh_and_get_overspeed_armed():
             w_prime_empty = False
 
-        out_of_band = False
-        if self._last_run_cruise_cap_ms < -0.01:
-            out_of_band = True
+        out_of_band = is_run_cruise_cap_out_of_band(self._last_run_cruise_cap_ms)
 
         want = False
         if w_prime_empty:
@@ -2589,6 +2589,17 @@ def resolve_run_cruise_cap_ms(
 
     # Out of Run gait band: do not press Walk/crawl onto Run phase (foot-slide).
     return -1.0
+
+
+def is_run_cruise_cap_out_of_band(cap_ms: float) -> bool:
+    """Parity with SCR_RSS_DrainCalculator.IsRunCruiseCapOutOfBand."""
+    if cap_ms < -0.01:
+        return True
+    if cap_ms <= 0.05:
+        return False
+    if cap_ms < float(V6_RUN_GAIT_FLOOR_MS):
+        return True
+    return False
 
 
 LCDA_REST_W_PER_KG = 1.05

@@ -76,13 +76,13 @@ PRESET_FILES = {
 }
 
 V6_DEFAULTS = {
-    "critical_power_watts": 1650.0,
+    "critical_power_watts": 1780.0,
     "w_prime_max_joules": 20000.0,
     "w_prime_recovery_w_per_s": 12.0,
     "sprint_power_cap_watts": 3600.0,
     "w_prime_recovery_mode": 0.0,
     "v5_walk_speed_ms": 1.4,
-    "v5_run_speed_ms": 3.20,
+    "v5_run_speed_ms": 3.57,
     "v5_sprint_speed_ms": 4.5,
 }
 
@@ -95,18 +95,18 @@ SUSTAIN_TARGET_DEPLETE_PCT_PER_S = 1.8
 SUSTAIN_DEPLETE_BAND_PCT_PER_S = 0.50
 
 # mobility 软目标：band 内朝目标速度收敛（拟真档更慢 / 战术档更快）
-MOBILITY_RUN_0KG_TARGET_MS = 3.20
+MOBILITY_RUN_0KG_TARGET_MS = 3.57
 MOBILITY_RUN_35KG_TARGET_MS = 2.70
 MOBILITY_RUN_0KG_TARGET_BY_TIER = {
-    "EliteStandard": 3.05,
-    "StandardMilsim": 3.20,
-    "TacticalAction": 3.40,
+    "EliteStandard": 3.535,
+    "StandardMilsim": 3.580,
+    "TacticalAction": 3.650,
 }
-# 分档搜索带：避免软目标把三档都拉到 15:30 附近
+# 分档搜索带：Elite 钉在官方 85（15:11）；过快且 CP 不够会烧空 W′
 TIER_RUN_SPEED_BOUNDS = {
-    "EliteStandard": (2.98, 3.12),
-    "StandardMilsim": (3.12, 3.28),
-    "TacticalAction": (3.28, 3.45),
+    "EliteStandard": (3.533, 3.548),
+    "StandardMilsim": (3.548, 3.620),
+    "TacticalAction": (3.620, 3.720),
 }
 
 TIER_PHILOSOPHY = {
@@ -129,9 +129,9 @@ DEFAULT_MO_TRIALS = 1000
 DEFAULT_TIER_TRIALS = 300
 DEFAULT_FEASIBILITY_TRIALS = 150
 
-# CP 搜索：慢跑口径（29 kg 平路 Run 60 s 仍武装；Python 孪生为准）
-CP_SEARCH_LO = 1480.0
-CP_SEARCH_HI = 1850.0
+# CP 搜索：官方 85 分配速约 1754 W；低于 ~1760 会在 2mi 中途烧空 W′
+CP_SEARCH_LO = 1720.0
+CP_SEARCH_HI = 2050.0
 SPRINT_CAP_SEARCH_LO = 2200.0
 SPRINT_CAP_SEARCH_HI = 4000.0
 
@@ -145,11 +145,11 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 10.0,
         "energy_to_stamina_coeff": 1.05e-7,
         "base_recovery_rate": 9.0e-5,
-        "critical_power_watts": 1560.0,
+        "critical_power_watts": 1780.0,
         "w_prime_max_joules": 28500.0,
         "sprint_power_cap_watts": 3400.0,
-        # ~17:35 / ~72%（零负重 Run 2mi）
-        "v5_run_speed_ms": 3.05,
+        # ~15:11 / 官方 ACFT 85 分（零负重 Run 2mi）
+        "v5_run_speed_ms": 3.535,
     },
     "StandardMilsim": {
         "combat_ease": 0.69,
@@ -158,11 +158,11 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 13.0,
         "energy_to_stamina_coeff": 9.5e-8,
         "base_recovery_rate": 1.10e-4,
-        "critical_power_watts": 1680.0,
+        "critical_power_watts": 1860.0,
         "w_prime_max_joules": 30000.0,
         "sprint_power_cap_watts": 3600.0,
-        # ~16:45 / ~77%
-        "v5_run_speed_ms": 3.20,
+        # ~14:55 / 官方约 88 分
+        "v5_run_speed_ms": 3.580,
     },
     "TacticalAction": {
         "combat_ease": 0.82,
@@ -171,11 +171,11 @@ TIER_TARGETS = {
         "w_prime_recovery_w_per_s": 15.5,
         "energy_to_stamina_coeff": 7.5e-8,
         "base_recovery_rate": 1.25e-4,
-        "critical_power_watts": 1780.0,
+        "critical_power_watts": 1940.0,
         "w_prime_max_joules": 31500.0,
         "sprint_power_cap_watts": 3800.0,
-        # ~15:47 / ~83%
-        "v5_run_speed_ms": 3.40,
+        # ~14:40 / 官方约 90 分
+        "v5_run_speed_ms": 3.650,
     },
 }
 
@@ -356,7 +356,7 @@ def scalarize_tier_metrics(
     if two_mile_time_s is not None:
         from rss_constraints_v6 import two_mile_ease_from_time
 
-        # 软目标：15:30 / 85 分；硬底线 18:00 / 70 分已由硬约束保证
+        # 软目标：官方 85 分（15:11）；硬门禁已由 zero_load_2mile_pt_ge85 保证
         score += two_mile_ease_from_time(float(two_mile_time_s)) * 14.0
 
     # 参数阶梯锚点：即使 combat_ease 被 CP 双池压扁，档位仍可区分
@@ -850,7 +850,7 @@ class RSSOptimizerV6:
         "w_prime_max_joules": (18000.0, 33000.0, False),
         "w_prime_recovery_w_per_s": (8.0, 16.0, False),
         "sprint_power_cap_watts": (SPRINT_CAP_SEARCH_LO, SPRINT_CAP_SEARCH_HI, False),
-        "v5_run_speed_ms": (2.98, 3.45, False),
+        "v5_run_speed_ms": (3.53, 3.75, False),
     }
 
     def __init__(
@@ -1000,7 +1000,7 @@ class TierOptimizerV6:
         from rss_constraints_v6 import TWO_MILE_HARD_MAX_SEC
 
         for c in report.checks:
-            if c.name == "zero_load_2mile_pt_ge70":
+            if c.name == "zero_load_2mile_pt_ge85":
                 two_mile_time_s = float(TWO_MILE_HARD_MAX_SEC - c.margin)
                 break
 
