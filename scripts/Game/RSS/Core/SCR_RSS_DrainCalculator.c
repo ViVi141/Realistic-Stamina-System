@@ -140,6 +140,14 @@ class SCR_RSS_DrainCalculator
         return cpModel.RefreshAndGetOverspeedArmed();
     }
 
+    //! 有氧巡航闩：W′ 见底后才锁 2.4；解除武装但池未空时返回 false（仍可跑、仍烧 W′）。
+    static bool IsAerobicCruiseLatched(SCR_RSS_CriticalPowerModel cpModel)
+    {
+        if (!cpModel)
+            return false;
+        return cpModel.RefreshAndGetAerobicCruiseLatched();
+    }
+
     //! W′ 耗尽且仍超速：返回应强制应用的绝对速度上限（m/s）；否则 -1
     static float GetWPrimeExhaustedOverspeedCapMs(
         float measuredSpeedMs,
@@ -155,7 +163,7 @@ class SCR_RSS_DrainCalculator
             return -1.0;
         if (!IsMetabolicOverspeedAccounting(measuredSpeedMs, appliedSpeedLimitMs))
             return -1.0;
-        if (IsWPrimePoolAvailableForOverspeed(cpModel))
+        if (!IsAerobicCruiseLatched(cpModel))
             return -1.0;
         if (!cpModel)
             return -1.0;
@@ -332,7 +340,7 @@ class SCR_RSS_DrainCalculator
     }
 
     //! v6：代谢功率超可用功率时压速。
-    //! W′ 解除武装：Run 套 CP∩有氧巡航顶；W′ 武装的纯 Run 不二次压顶（由 W′ 买单，减滑步）。
+    //! W′ 见底闩巡航：Run 套 CP∩有氧巡航顶；武装或剩余 W′ 的纯 Run 不二次压顶（由 W′ 买单）。
     //! Sprint+武装用 availableP。
     //! @param speedForPowerEvalMs 用于判断是否超功率的速度；应优先用意图限速，避免 v_meas 噪声追着压速
     static float GetMetabolicSpeedCapMs(
@@ -371,10 +379,16 @@ class SCR_RSS_DrainCalculator
         bool overspeedArmed = true;
         if (cpModel)
             overspeedArmed = IsWPrimePoolAvailableForOverspeed(cpModel);
+        bool cruiseLatched = false;
+        if (cpModel)
+            cruiseLatched = IsAerobicCruiseLatched(cpModel);
+        // 剩余 W′：不套 2.4 巡航（让玩家跑完池）。见底闩上后才压。
+        if (movementPhase != 1 && !cruiseLatched)
+            return -1.0;
         // W′ 武装纯 Run：勿再压回 2.0~2.4（与 UpdateCoordinator 对齐）
         if (overspeedArmed && movementPhase == 2)
             return -1.0;
-        // 解除武装后一律按 Run/CP 巡航压速，忽略引擎仍停在 Sprint 相位（按住 Shift 门禁时常见）
+        // 巡航闩上后一律按 Run/CP 压速，忽略引擎仍停在 Sprint 相位（按住 Shift 门禁时常见）
         if (!overspeedArmed)
             isSprintPhase = false;
 

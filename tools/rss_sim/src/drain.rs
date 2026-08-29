@@ -376,6 +376,7 @@ pub fn get_metabolic_speed_cap_ms(
     w_prime_pool01: f64,
     available_power_watts: f64,
     speed_for_power_eval_ms: f64,
+    cruise_latched: Option<bool>,
 ) -> f64 {
     use crate::constants::V6_APPLY_CP_METABOLIC_SPEED_CAP;
     if !V6_APPLY_CP_METABOLIC_SPEED_CAP {
@@ -393,6 +394,13 @@ pub fn get_metabolic_speed_cap_ms(
         w_prime_pool01,
         V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
     );
+    let latched = match cruise_latched {
+        Some(v) => v,
+        None => !armed,
+    };
+    if movement_phase != MOVEMENT_WALK && !latched {
+        return -1.0;
+    }
     // W′ 武装纯 Run：勿再压回 2.0~2.4
     if armed && movement_phase == MOVEMENT_RUN {
         return -1.0;
@@ -494,6 +502,7 @@ pub fn get_metabolic_corrected_speed_multiplier(
     w_prime_pool01: f64,
     available_power_watts: f64,
     applied_speed_limit_ms: f64,
+    cruise_latched: Option<bool>,
 ) -> f64 {
     let mut engine_base_ms = engine_base_ms;
     if engine_base_ms <= 0.05 {
@@ -515,6 +524,7 @@ pub fn get_metabolic_corrected_speed_multiplier(
         w_prime_pool01,
         available_power_watts,
         speed_for_eval,
+        cruise_latched,
     );
     if cap_ms < 0.0 {
         return clamp_speed_limit_fraction_to_gait_band(applied_speed_multiplier, is_exhausted);

@@ -302,27 +302,26 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
 
-            // W′ 解除武装：Run/假冲刺套 CP∩有氧巡航顶。
-            // W′ 武装：真 Sprint 不套；纯 Run 也不套 2.4 硬顶（否则 v_limit≈2.0 而 v_meas≈2.5 → 轻滑步，
-            // 且玩家会觉得「W′ 还在却被压速」）。超额由 W′ 买单。
+            // W′ 见底闩巡航：Run/假冲刺套 CP∩有氧巡航顶。
+            // W′ 武装或解除武装但池未空：真 Sprint / 纯 Run 都不套 2.4（剩余 W′ 继续买单）。
             bool isWalkPhase = (currentMovementPhase == 1);
             bool wPrimeOverspeedArmed = false;
+            bool cruiseLatched = false;
             SCR_RSS_AnaerobicBurst anaArm = controller.RSS_GetWPrimeBurst();
             if (anaArm && anaArm.GetCpModel())
             {
                 wPrimeOverspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
                     anaArm.GetCpModel());
+                cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                    anaArm.GetCpModel());
             }
-            bool applyRunCpCruise = true;
-            if (wPrimeOverspeedArmed)
-            {
-                if (isSprinting || currentMovementPhase == 3)
-                    applyRunCpCruise = false;
-                else if (currentMovementPhase == 2)
-                    applyRunCpCruise = false;
-            }
+            bool applyRunCpCruise = false;
+            if (isWalkPhase)
+                applyRunCpCruise = true;
+            else if (cruiseLatched)
+                applyRunCpCruise = true;
             bool sprintOverspeedArmed = wPrimeOverspeedArmed;
-            // Run：W′ 解除武装时仅在步态带内套 CP∩有氧巡航顶。
+            // Run：W′ 见底闩巡航后仅在步态带内套 CP∩有氧巡航顶。
             // 反解掉出 Run 带则不写越步态限速（Resolve 返回 -1），改收 P−CP。
             // Walk：仍套有氧能力顶（Walk 意图负重罚更轻）。
             if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled()

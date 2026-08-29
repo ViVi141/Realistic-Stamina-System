@@ -156,8 +156,9 @@ modded class SCR_CharacterControllerComponent
                 bool wPrimeArmedForTax = false;
                 if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
                 {
-                    wPrimeArmedForTax = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                        m_pAnaerobicBurst.GetCpModel());
+                    if (!SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                        m_pAnaerobicBurst.GetCpModel()))
+                        wPrimeArmedForTax = true;
                 }
                 float limitForTax = m_fAppliedSpeedLimitMs;
                 if (limitForTax <= 0.05)
@@ -504,6 +505,10 @@ modded class SCR_CharacterControllerComponent
     protected float m_fRssCpWalkOverrideReleaseHoldSec = 0.0;
     //! 本帧写入的 Run 巡航模拟量；未写为 -1
     protected float m_fRssLastMoveAnalog = -1.0;
+    //! 满推 Run 实机测速（m/s）。武装时采样，缩放时用 v/模拟量反推。未采为 -1。
+    protected float m_fRssObservedFullRunMs = -1.0;
+    //! 巡航缩轴闭环：v_meas 低于目标时往上加轴幅度，避免卡在 Run 地板 2.2。
+    protected float m_fRssActionScaleServo = 0.0;
     protected float m_fLandPositionDeltaSpeedMs = 0.0;
     protected float m_fLastSpeedSlewTimeSec = -1.0;
     protected float m_fSmoothedGradePercentForSpeed = 0.0;
@@ -1035,9 +1040,60 @@ modded class SCR_CharacterControllerComponent
         return m_fRssLastMoveAnalog;
     }
 
-    //! W′ 空：把 CharacterForward/Right 缩到巡航比例（官方喂移动同款）。
+    //! 满推 Run 实机测速，供巡航比例当分母。
+    //! 武装或剩余 W′ 满推时采样；见底闩巡航后冻结，禁止用 2.2/0.61 反推把分母拧飞。
+    void RSS_UpdateObservedFullRunMs(ActionManager am)
+    {
+        if (!am)
+            return;
+        if (m_bRssCpWalkOverrideActive)
+            return;
+        if (SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
+            return;
+        if (SCR_RSS_SwimmingStateManager.IsSwimming(this))
+            return;
+        if (GetStance() != ECharacterStance.STAND)
+            return;
+        if (IsSprinting())
+            return;
+        if (GetCurrentMovementPhase() != 2)
+            return;
+
+        bool cruiseLatched = false;
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+        {
+            cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                m_pAnaerobicBurst.GetCpModel());
+        }
+        if (cruiseLatched)
+            return;
+
+        float vMs = m_fStatusLogSpeed;
+        if (vMs < SCR_RSS_Constants.V6_RUN_GAIT_FLOOR_MS + 0.3)
+            return;
+        if (vMs > GetOriginalEngineMaxSpeed_Sprint() + 0.2)
+            return;
+
+        float fwd = am.GetActionValue("CharacterForward");
+        float right = am.GetActionValue("CharacterRight");
+        float magSq = fwd * fwd + right * right;
+        if (magSq < 0.90)
+            return;
+
+        float sample = vMs;
+        if (m_fRssObservedFullRunMs < 0.1)
+        {
+            m_fRssObservedFullRunMs = sample;
+            return;
+        }
+
+        m_fRssObservedFullRunMs = 0.80 * m_fRssObservedFullRunMs + 0.20 * sample;
+    }
+
+    //! W′ 见底闩巡航：把 CharacterForward/Right 缩到巡航比例（官方喂移动同款）。
     //! 成功才写 HUD；未写不覆盖本帧已有值（super 前后各试一次）。
-    void RSS_TryScaleMoveActionValues(ActionManager am)
+    //! updateServo：仅 super 之后积一次，避免每帧双积分把轴拧抖。
+    void RSS_TryScaleMoveActionValues(ActionManager am, float dt, bool updateServo)
     {
         if (!SCR_RSS_SpeedBridge.IsActionValueScaleEnabled())
             return;
@@ -1052,27 +1108,62 @@ modded class SCR_CharacterControllerComponent
         if (m_fAppliedSpeedLimitMs <= 0.05)
             return;
 
-        bool wPrimeEmpty = true;
+        bool cruiseLatched = false;
         if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
         {
-            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                m_pAnaerobicBurst.GetCpModel()))
-                wPrimeEmpty = false;
+            cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                m_pAnaerobicBurst.GetCpModel());
         }
-        if (!wPrimeEmpty)
+        if (!cruiseLatched)
+        {
+            m_fRssActionScaleServo = 0.0;
             return;
+        }
 
         float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
         if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
             walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
-        float runTopMs = GetOriginalEngineMaxSpeed_Run();
-        if (runTopMs < walkTopMs + 0.2)
-            runTopMs = walkTopMs + 0.2;
+        float engineRunTopMs = GetOriginalEngineMaxSpeed_Run();
+        float runTopMs = SCR_RSS_SpeedBridge.ResolveActionScaleRunTopMs(
+            engineRunTopMs, m_fRssObservedFullRunMs, walkTopMs);
 
         float desiredAbsMs = SCR_RSS_SpeedBridge.ResolveActionScaleDesiredAbsMs(
             m_fAppliedSpeedLimitMs, m_fRssLastRunCruiseCapMs);
+        float vMs = m_fStatusLogSpeed;
+        if (updateServo && vMs > 0.5 && runTopMs > 0.5)
+        {
+            float err = desiredAbsMs - vMs;
+            float stepDt = dt;
+            if (stepDt < 0.008)
+                stepDt = 0.008;
+            if (stepDt > 0.05)
+                stepDt = 0.05;
+            if (vMs > desiredAbsMs + 0.40)
+            {
+                m_fRssActionScaleServo = m_fRssActionScaleServo * 0.85;
+            }
+            else if (err > 0.12)
+            {
+                float step = 0.6 * err * stepDt;
+                if (step > 0.015)
+                    step = 0.015;
+                m_fRssActionScaleServo = m_fRssActionScaleServo + step;
+            }
+            else if (err < -0.12)
+            {
+                float step = 0.6 * err * stepDt;
+                if (step < -0.015)
+                    step = -0.015;
+                m_fRssActionScaleServo = m_fRssActionScaleServo + step;
+            }
+            if (m_fRssActionScaleServo < 0.0)
+                m_fRssActionScaleServo = 0.0;
+            if (m_fRssActionScaleServo > 0.22)
+                m_fRssActionScaleServo = 0.22;
+        }
+        float desiredForScale = desiredAbsMs + (m_fRssActionScaleServo * runTopMs);
         float written = SCR_RSS_SpeedBridge.TryScaleMoveActionValues(
-            am, this, desiredAbsMs, walkTopMs, runTopMs);
+            am, this, desiredForScale, walkTopMs, runTopMs);
         if (written >= 0.0)
             m_fRssLastMoveAnalog = written;
     }
@@ -1091,14 +1182,13 @@ modded class SCR_CharacterControllerComponent
         if (m_fAppliedSpeedLimitMs <= 0.05)
             return;
 
-        bool wPrimeEmpty = true;
+        bool cruiseLatched = false;
         if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
         {
-            if (SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                m_pAnaerobicBurst.GetCpModel()))
-                wPrimeEmpty = false;
+            cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                m_pAnaerobicBurst.GetCpModel());
         }
-        if (!wPrimeEmpty)
+        if (!cruiseLatched)
             return;
 
         float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
@@ -1430,17 +1520,19 @@ modded class SCR_CharacterControllerComponent
         if (isLocalOwner)
         {
             m_fRssLastMoveAnalog = -1.0;
+            RSS_UpdateObservedFullRunMs(am);
             // W′ 解除武装时必须先清冲刺，再缩前进轴；否则 super 已按满冲刺采样。
             RSS_ApplySprintGateOnPrepareControls(am);
-            RSS_TryScaleMoveActionValues(am);
+            RSS_TryScaleMoveActionValues(am, dt, false);
         }
 
         super.OnPrepareControls(owner, am, dt, player);
 
         if (isLocalOwner)
         {
+            RSS_UpdateObservedFullRunMs(am);
             RSS_ApplySprintGateOnPrepareControls(am);
-            RSS_TryScaleMoveActionValues(am);
+            RSS_TryScaleMoveActionValues(am, dt, true);
         }
 
         if (Replication.IsServer() && IsPlayerControlled() && !ShouldProcessStaminaUpdate())

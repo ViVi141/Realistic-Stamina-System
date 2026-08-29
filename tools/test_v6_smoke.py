@@ -806,6 +806,55 @@ def _wprime_recovery_dispatch_ok() -> bool:
     return True
 
 
+def _residual_wprime_keeps_run_ok() -> bool:
+    """解除武装但 W′ 未空：不得立刻压到 2.4，且须继续烧池。见底后才闩巡航。"""
+    from rss_pipeline_v6 import load_preset_params
+    from rss_digital_twin_fix import merge_game_aligned_params, RSS_PLAYER_TICK_SEC
+
+    params = dict(load_preset_params("EliteStandard"))
+    constants = RSSConstants(**merge_game_aligned_params(params))
+    twin = RSSDigitalTwin(constants)
+    twin.reset()
+    max_j = float(twin.v6_cp_state.w_prime_max_joules)
+    twin.v6_cp_state.w_prime_joules = 0.30 * max_j
+    twin.v6_cp_state.overspeed_armed = False
+    twin.v6_cp_state.aerobic_cruise_latched = False
+    if twin.v6_cp_state.refresh_and_get_aerobic_cruise_latched():
+        return False
+
+    total_w = 90.0 + 28.868
+    dt = RSS_PLAYER_TICK_SEC
+    t = 0.0
+    last_v = 0.0
+    j0 = float(twin.v6_cp_state.w_prime_joules)
+    i = 0
+    while i < 400:
+        last_v = twin.game_player_tick(
+            MovementType.RUN, total_w, 0.0, 1.0, Stance.STAND, t, dt
+        )
+        t = t + dt
+        i = i + 1
+    if last_v < 2.60:
+        return False
+    if float(twin.v6_cp_state.w_prime_joules) >= j0 * 0.97:
+        return False
+
+    twin.v6_cp_state.w_prime_joules = 0.0
+    twin.v6_cp_state.overspeed_armed = False
+    if not twin.v6_cp_state.refresh_and_get_aerobic_cruise_latched():
+        return False
+    i = 0
+    while i < 20:
+        last_v = twin.game_player_tick(
+            MovementType.RUN, total_w, 0.0, 1.0, Stance.STAND, t, dt
+        )
+        t = t + dt
+        i = i + 1
+    if last_v > 2.55:
+        return False
+    return True
+
+
 def _run_wprime_armed_29kg_ok() -> bool:
     """低 CP 应失败；慢跑口径 CP 应在 29 kg 平路 Run 60 s 后仍武装。"""
     from rss_constraints_v6 import check_run_wprime_armed_29kg_60s
@@ -874,6 +923,7 @@ SCENARIOS = [
     ("baked_preset_drift_guard", lambda: _baked_preset_drift_guard_ok()),
     ("wprime_recovery_dispatch", lambda: _wprime_recovery_dispatch_ok()),
     ("run_wprime_armed_29kg_60s", lambda: _run_wprime_armed_29kg_ok()),
+    ("residual_wprime_keeps_run", lambda: _residual_wprime_keeps_run_ok()),
     ("fatigue_cap_clamp", lambda: _fatigue_cap_clamp_ok()),
     ("sustain_run_observed", lambda: _sustain_run_observed_ok()),
     ("mobility_run_speed", lambda: _mobility_ok()),

@@ -707,8 +707,8 @@ impl RSSDigitalTwin {
             let cp_clamp = self.v6_cp_state.get_effective_critical_power_watts();
             if cp_clamp > 1.0 {
                 if !phys_overspeed {
-                    let w_prime_armed = self.v6_cp_state.refresh_and_get_overspeed_armed();
-                    if !w_prime_armed {
+                    let cruise_latched = self.v6_cp_state.refresh_and_get_aerobic_cruise_latched();
+                    if cruise_latched {
                         if power_w > cp_clamp {
                             power_w = cp_clamp;
                         }
@@ -721,7 +721,7 @@ impl RSSDigitalTwin {
         self.v6_cp_state
             .tick(power_w, is_sprinting, current_time, time_delta, speed);
 
-        let w_prime_armed_for_tax = self.v6_cp_state.refresh_and_get_overspeed_armed();
+        let w_prime_armed_for_tax = !self.v6_cp_state.refresh_and_get_aerobic_cruise_latched();
         let mut overspeed_extra_per_sec = 0.0;
         if applied_limit_ms > 0.05 {
             overspeed_extra_per_sec = get_client_overspeed_excess_drain_per_second(
@@ -1062,7 +1062,7 @@ impl RSSDigitalTwin {
                 dt,
                 current_time,
             );
-            if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
+            if self.v6_cp_state.refresh_and_get_aerobic_cruise_latched() {
                 let run_phase = MOVEMENT_RUN;
                 let mut cruise_cap = V6_AEROBIC_CRUISE_MAX_MS;
                 let cp_eff = self.v6_cp_state.get_effective_critical_power_watts();
@@ -1133,8 +1133,8 @@ impl RSSDigitalTwin {
             if run_cruise > 0.05 && theoretical_target > run_cruise {
                 theoretical_target = run_cruise;
             }
-        } else if !self.v6_cp_state.refresh_and_get_overspeed_armed() {
-            // Run: CP ∩ aerobic cruise max
+        } else if self.v6_cp_state.refresh_and_get_aerobic_cruise_latched() {
+            // Run: empty-latch CP ∩ aerobic cruise. Residual W′ keeps full Run.
             let mut run_phase = phase;
             if run_phase < MOVEMENT_RUN {
                 run_phase = MOVEMENT_RUN;
@@ -1268,6 +1268,7 @@ impl RSSDigitalTwin {
             available_p = self.v6_cp_state.get_available_power_watts(true, 0.017, self.current_time);
         }
         let applied_limit_ms = speed_limit_mult * engine_base_ms;
+        let latched = self.v6_cp_state.refresh_and_get_aerobic_cruise_latched();
         get_metabolic_corrected_speed_multiplier(
             speed_limit_mult,
             current_speed_ms,
@@ -1281,6 +1282,7 @@ impl RSSDigitalTwin {
             self.v6_cp_state.pool01(),
             available_p,
             applied_limit_ms,
+            Some(latched),
         )
     }
 

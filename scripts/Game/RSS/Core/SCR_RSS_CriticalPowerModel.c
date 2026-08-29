@@ -10,6 +10,8 @@ class SCR_RSS_CriticalPowerModel
     protected float m_fFatigueCpMultiplier;
     //! Run/Sprint 超速武装（施密特）：耗尽后钉在 CP，直到 W′ 明显回升
     protected bool m_bOverspeedArmed;
+    //! 有氧巡航闩：W′ 真正见底后锁巡航，再武装才解开。解除武装但池未空时仍可跑、仍烧 W′。
+    protected bool m_bAerobicCruiseLatched;
 
     protected float m_fContextLoadKg;
     protected float m_fContextGradePercent;
@@ -32,6 +34,7 @@ class SCR_RSS_CriticalPowerModel
         m_fWPrimeJoules = m_fWPrimeMaxJoules;
         m_fCooldownUntilSec = -1.0;
         m_bOverspeedArmed = true;
+        m_bAerobicCruiseLatched = false;
     }
 
     //! 施密特更新并返回是否允许超过 CP 的步态速度
@@ -60,6 +63,27 @@ class SCR_RSS_CriticalPowerModel
     bool IsOverspeedArmed()
     {
         return m_bOverspeedArmed;
+    }
+
+    //! 空仓锁巡航：池 ≤ 空地板则闩上；施密特再武装则解开。滞回避免 0↔10% 在满 Run 与 2.4 之间抽。
+    bool RefreshAndGetAerobicCruiseLatched()
+    {
+        RefreshAndGetOverspeedArmed();
+        if (m_bOverspeedArmed)
+        {
+            m_bAerobicCruiseLatched = false;
+            return false;
+        }
+
+        float emptyFloorJ = SCR_RSS_Constants.V6_WPRIME_EMPTY_FLOOR_JOULES;
+        if (m_fWPrimeJoules <= emptyFloorJ)
+            m_bAerobicCruiseLatched = true;
+        return m_bAerobicCruiseLatched;
+    }
+
+    bool IsAerobicCruiseLatched()
+    {
+        return m_bAerobicCruiseLatched;
     }
 
     void SetRuntimeContext(float loadKg, float gradePercent, float envCpMult, float fatigueNorm)

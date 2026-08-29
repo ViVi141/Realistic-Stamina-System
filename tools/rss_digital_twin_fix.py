@@ -1044,8 +1044,8 @@ class RSSDigitalTwin:
                 cp_clamp = self.v6_cp_state.get_effective_critical_power_watts()
                 if cp_clamp > 1.0:
                     if not phys_overspeed:
-                        w_prime_armed = self.v6_cp_state.refresh_and_get_overspeed_armed()
-                        if not w_prime_armed:
+                        cruise_latched = self.v6_cp_state.refresh_and_get_aerobic_cruise_latched()
+                        if cruise_latched:
                             if power_w > cp_clamp:
                                 power_w = cp_clamp
                     else:
@@ -1054,7 +1054,9 @@ class RSSDigitalTwin:
             self.v6_cp_state.tick(
                 power_w, is_sprinting, current_time, time_delta, speed)
 
-            w_prime_armed_for_tax = self.v6_cp_state.refresh_and_get_overspeed_armed()
+            w_prime_armed_for_tax = (
+                not self.v6_cp_state.refresh_and_get_aerobic_cruise_latched()
+            )
             overspeed_extra_per_sec = 0.0
             if applied_limit_ms > 0.05:
                 overspeed_extra_per_sec = get_client_overspeed_excess_drain_per_second(
@@ -1370,8 +1372,8 @@ class RSSDigitalTwin:
                 dt,
                 current_time,
             )
-            # 空 W′ / 解除武装：与 Run 同走 CP 巡航，避免假冲刺代谢压得比 Run 更慢再上跳
-            if not self.v6_cp_state.refresh_and_get_overspeed_armed():
+            # W′ 见底闩巡航：与 Run 同走 CP 巡航。剩余 W′ 时保持 Run 回落，继续烧池。
+            if self.v6_cp_state.refresh_and_get_aerobic_cruise_latched():
                 run_phase = MovementType.RUN
                 cruise_cap = float(V6_AEROBIC_CRUISE_MAX_MS)
                 cp_cap_ms = invert_cruise_cap_ms(
@@ -1438,8 +1440,8 @@ class RSSDigitalTwin:
             self._last_run_cruise_cap_ms = run_cruise
             if run_cruise > 0.05 and theoretical_target > run_cruise:
                 theoretical_target = run_cruise
-        elif not self.v6_cp_state.refresh_and_get_overspeed_armed():
-            # Run: CP intersect aerobic cruise max
+        elif self.v6_cp_state.refresh_and_get_aerobic_cruise_latched():
+            # Run: 见底后 CP ∩ 有氧巡航顶。剩余 W′ 不套 2.4。
             run_phase = phase
             if run_phase < MovementType.RUN:
                 run_phase = MovementType.RUN
@@ -1570,6 +1572,7 @@ class RSSDigitalTwin:
 
         applied_limit_ms = speed_limit_mult * engine_base_ms
         armed = self.v6_cp_state.refresh_and_get_overspeed_armed()
+        latched = self.v6_cp_state.refresh_and_get_aerobic_cruise_latched()
         return get_metabolic_corrected_speed_multiplier(
             speed_limit_mult,
             current_speed_ms,
@@ -1584,6 +1587,7 @@ class RSSDigitalTwin:
             available_power_watts=available_p,
             applied_speed_limit_ms=applied_limit_ms,
             overspeed_armed=armed,
+            cruise_latched=latched,
         )
 
     def compute_speed_limit_multiplier(
@@ -2251,6 +2255,7 @@ def get_metabolic_speed_cap_ms(
     available_power_watts: float = -1.0,
     speed_for_power_eval_ms: float = -1.0,
     overspeed_armed=None,
+    cruise_latched=None,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicSpeedCapMs 同形。"""
     if not V6_APPLY_CP_METABOLIC_SPEED_CAP:
@@ -2264,10 +2269,16 @@ def get_metabolic_speed_cap_ms(
     armed = is_wprime_pool_available_for_overspeed(
         w_prime_pool01, overspeed_armed=overspeed_armed
     )
+    latched = cruise_latched
+    if latched is None:
+        latched = not armed
+    # 剩余 W′：不套 2.4。见底闩上后才压。
+    if movement_phase != MovementType.WALK and not latched:
+        return -1.0
     # W′ 武装纯 Run：勿再压回 2.0~2.4（与 UpdateCoordinator 对齐）
     if armed and movement_phase == MovementType.RUN:
         return -1.0
-    # 解除武装后一律按 Run/CP 巡航压速，忽略引擎仍停在 Sprint 相位
+    # 巡航闩上后一律按 Run/CP 压速，忽略引擎仍停在 Sprint 相位
     if not armed:
         is_sprint_phase = False
 
@@ -2350,6 +2361,7 @@ def get_metabolic_corrected_speed_multiplier(
     available_power_watts: float = -1.0,
     applied_speed_limit_ms: float = -1.0,
     overspeed_armed=None,
+    cruise_latched=None,
 ) -> float:
     """与 SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier 同形。"""
     if engine_base_ms <= 0.05:
@@ -2372,6 +2384,7 @@ def get_metabolic_corrected_speed_multiplier(
         available_power_watts=available_power_watts,
         speed_for_power_eval_ms=speed_for_eval,
         overspeed_armed=overspeed_armed,
+        cruise_latched=cruise_latched,
     )
     if cap_ms < 0.0:
         return clamp_speed_limit_fraction_to_gait_band(applied_speed_multiplier)
@@ -3074,6 +3087,7 @@ class V6CriticalPowerState:
         self.last_short_burst_release_sec = -1.0
         self.depletion_cooldown_applied = False
         self.overspeed_armed = True
+        self.aerobic_cruise_latched = False
 
     def set_runtime_context(self, load_kg: float, grade_percent: float,
                             env_cp_mult: float, fatigue_norm: float):
@@ -3089,6 +3103,15 @@ class V6CriticalPowerState:
         self.overspeed_armed = refresh_wprime_overspeed_armed(
             self.pool01, bool(getattr(self, "overspeed_armed", True)))
         return self.overspeed_armed
+
+    def refresh_and_get_aerobic_cruise_latched(self) -> bool:
+        self.refresh_and_get_overspeed_armed()
+        if self.overspeed_armed:
+            self.aerobic_cruise_latched = False
+            return False
+        if self.w_prime_joules <= V6_WPRIME_EMPTY_FLOOR_JOULES:
+            self.aerobic_cruise_latched = True
+        return bool(getattr(self, "aerobic_cruise_latched", False))
 
     # ── 属性 ──
     @property

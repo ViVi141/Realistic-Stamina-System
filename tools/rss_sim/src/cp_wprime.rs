@@ -60,6 +60,7 @@ pub struct V6CriticalPowerState {
     pub fatigue_norm: f64,
     pub fatigue_cp_multiplier: f64,
     pub overspeed_armed: bool,
+    pub aerobic_cruise_latched: bool,
 }
 
 impl V6CriticalPowerState {
@@ -81,6 +82,7 @@ impl V6CriticalPowerState {
             fatigue_norm: 0.0,
             fatigue_cp_multiplier: 1.0,
             overspeed_armed: true,
+            aerobic_cruise_latched: false,
         };
         s.reset_to_full();
         s
@@ -94,6 +96,7 @@ impl V6CriticalPowerState {
         self.last_short_burst_release_sec = -1.0;
         self.depletion_cooldown_applied = false;
         self.overspeed_armed = true;
+        self.aerobic_cruise_latched = false;
     }
 
     pub fn set_runtime_context(
@@ -127,6 +130,18 @@ impl V6CriticalPowerState {
             V5_ANAEROBIC_SPRINT_THRESHOLD_DEFAULT,
         );
         self.overspeed_armed
+    }
+
+    pub fn refresh_and_get_aerobic_cruise_latched(&mut self) -> bool {
+        self.refresh_and_get_overspeed_armed();
+        if self.overspeed_armed {
+            self.aerobic_cruise_latched = false;
+            return false;
+        }
+        if self.w_prime_joules <= V6_WPRIME_EMPTY_FLOOR_JOULES {
+            self.aerobic_cruise_latched = true;
+        }
+        self.aerobic_cruise_latched
     }
 
     pub fn cooldown_remaining_at(&self, world_time_sec: f64) -> f64 {

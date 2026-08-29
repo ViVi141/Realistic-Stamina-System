@@ -782,8 +782,8 @@ modded class SCR_CharacterControllerComponent
                         {
                             if (!physOverspeed)
                             {
-                                bool wPrimeArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel);
-                                if (!wPrimeArmed)
+                                bool cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
+                                if (cruiseLatched)
                                 {
                                     if (powerW > cpClamp)
                                         powerW = cpClamp;
@@ -814,13 +814,13 @@ modded class SCR_CharacterControllerComponent
                         loc.terrainFactor,
                         loc.phaseNow,
                         cpForEpoc);
-                    bool overspeedArmed = false;
+                    bool cruiseLatchedForEpoc = false;
                     if (cpModel)
-                        overspeedArmed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel);
+                        cruiseLatchedForEpoc = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
                     bool billAboveCp = false;
                     if (loc.isSprintActive)
                         billAboveCp = true;
-                    else if (overspeedArmed)
+                    else if (!cruiseLatchedForEpoc)
                         billAboveCp = true;
                     if (!billAboveCp)
                     {
@@ -867,8 +867,12 @@ modded class SCR_CharacterControllerComponent
                 wPrimeAllowsOverspeed = SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
                     pool01AfterTick);
 
-            // TickPower 同帧刚解除武装：立刻开绝对速度缓降，避免本帧硬钳把限速 SNAP 到巡航顶
-            if (m_pSprintBlockSpeedTransition && !wPrimeAllowsOverspeed)
+            bool cruiseLatchedNow = false;
+            if (cpPostTick)
+                cruiseLatchedNow = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpPostTick);
+
+            // W′ 见底闩巡航的同一帧：开绝对速度缓降，避免硬钳把限速 SNAP 到巡航顶
+            if (m_pSprintBlockSpeedTransition && cruiseLatchedNow)
             {
                 float disarmTargetAbs = m_fAppliedSpeedLimitMs;
                 if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())

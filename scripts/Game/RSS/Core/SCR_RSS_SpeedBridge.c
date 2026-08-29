@@ -129,6 +129,25 @@ class SCR_RSS_SpeedBridge
         return desired;
     }
 
+    //! 缩放分母：优先实机满推 Run 测速。引擎顶 ~3.8，负重满 W 常只有 ~3.55，用 3.8 会缩到 2.26 而不是 2.4。
+    static float ResolveActionScaleRunTopMs(float engineRunTopMs, float observedFullRunMs, float walkTopMs)
+    {
+        float runTop = engineRunTopMs;
+        if (runTop < walkTopMs + 0.2)
+            runTop = walkTopMs + 0.2;
+        if (observedFullRunMs <= walkTopMs + 0.4)
+            return runTop;
+
+        float lo = walkTopMs + 0.4;
+        float hi = runTop + 0.15;
+        float obs = observedFullRunMs;
+        if (obs < lo)
+            obs = lo;
+        if (obs > hi)
+            obs = hi;
+        return obs;
+    }
+
     //! 把 WASD 向量缩到 desiredAbs/runTop。不抬高手柄半推。
     //! W′ 空路径不因按着 Shift / 仍停在 Sprint 相位而跳过（门禁另清冲刺）。
     //! 走路键、Walk 相位、蹲/趴让路，避免和 CapsLock / 姿态档叠乘。
