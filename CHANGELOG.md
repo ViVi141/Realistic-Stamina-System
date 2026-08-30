@@ -8,6 +8,7 @@
 - **拆出 `SCR_PlayerBaseCpCruiseController`** — Run 巡航缩轴、Walk 覆盖、限速斜率、坡度 EMA 及对应状态迁出；`PlayerBase` 保留薄委托，行为不变。
 - **拆出 `SCR_PlayerBaseOverspeedClampHelper`** — Phase B 超速/W′ 耗尽巡航物理钳迁出，行为不变。
 - **拆出 `SCR_PlayerBaseWPrimeTickHelper`** — Phase B 服务端 W′ TickPower / EPOC / 复制写回迁出，行为不变。
+- **拆出 `SCR_PlayerBaseStaminaTickFinalize`** — Phase C 体力写入 / cardio / Debug flush 迁出（`RSS_StaminaTickFinalizeContext`）；`PlayerBase` 保留薄壳，行为不变。
 
 ### 剩余 W′ 继续跑，见底才锁巡航
 
