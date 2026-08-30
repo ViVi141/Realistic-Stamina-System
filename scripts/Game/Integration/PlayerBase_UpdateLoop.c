@@ -297,34 +297,60 @@ modded class SCR_CharacterControllerComponent
 
             // 始终保住 RSS 限速源：SetSpeedLimit(1.0) 会拆掉 source，Sprint→Run 会瞬间 uncapped。
             bool keepSpeedSource = true;
+            // Walk 意图：绝对顶用 Walk 引擎顶，勿用 sticky Run 分母（否则 clamp 失效）。
             if (loc.phaseNow == 1 || loc.effectivePhase == 1)
             {
-                float walkTopMs = loc.storedEngineBase;
-                if (walkTopMs > 0.1 && desiredAbsMs > walkTopMs)
+                float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
+                if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
+                    walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+                if (desiredAbsMs > walkTopMs)
                     desiredAbsMs = walkTopMs;
             }
 
+            // SetSpeedLimit 倍率相对「引擎当前相位顶」。意图 Walk 但相位仍停 Run 时，
+            // 若用 Walk 顶算 frac≈0.999 再写入，会按 Run 顶放大 → 3m/s+ 尖峰。
+            float applyEngineBase = GetRssSpeedLimitEngineBaseMs();
+            if (applyEngineBase <= 0.1)
+                applyEngineBase = loc.storedEngineBase;
+            if (applyEngineBase <= 0.1)
+                applyEngineBase = GetOriginalEngineMaxSpeed_Run();
+
             float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
-                desiredAbsMs, loc.storedEngineBase, keepSpeedSource);
-            if (!loc.isExhausted)
+                desiredAbsMs, applyEngineBase, keepSpeedSource);
+            // 分母跨相位切换时禁止在倍率空间斜率（SprintBlock 已在 m/s 平滑）；
+            // 否则 0.63(Run)→0.999(Walk) 会被当成提速，松巡航缩轴后窜速。
+            float lastBaseForSlew = m_fLastRssEngineBaseForLimit;
+            bool baseChanged = false;
+            if (lastBaseForSlew > 0.1 && applyEngineBase > 0.1)
+            {
+                float baseDelta = Math.AbsFloat(applyEngineBase - lastBaseForSlew);
+                if (baseDelta > 0.3)
+                    baseChanged = true;
+            }
+            if (!loc.isExhausted && !baseChanged)
                 desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
             if (desiredFrac >= 0.999)
                 desiredFrac = 0.999;
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, desiredFrac);
-            float slewedAbsMs = desiredFrac * loc.storedEngineBase;
+            float slewedAbsMs = desiredFrac * applyEngineBase;
             float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
                 slewedAbsMs,
-                loc.storedEngineBase,
+                applyEngineBase,
                 loc.isSprintingNow,
                 loc.phaseNow);
             m_fAppliedSpeedLimitMs = safeCap;
             m_fLastRssSpeedMultiplierApplied = desiredFrac;
-            if (loc.storedEngineBase > 0.1)
-                m_fLastRssSpeedMultiplierApplied = safeCap / loc.storedEngineBase;
+            if (applyEngineBase > 0.1)
+                m_fLastRssSpeedMultiplierApplied = safeCap / applyEngineBase;
             if (m_fLastRssSpeedMultiplierApplied > 0.999)
                 m_fLastRssSpeedMultiplierApplied = 0.999;
             if (m_fLastRssSpeedMultiplierApplied < 0.01)
                 m_fLastRssSpeedMultiplierApplied = 0.01;
+            if (applyEngineBase > 0.1)
+            {
+                loc.storedEngineBase = applyEngineBase;
+                m_fLastRssEngineBaseForLimit = applyEngineBase;
+            }
             if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
                 SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
             if (SCR_RSS_SpeedBridge.IsMovementMaxSpeedTrialEnabled())
@@ -526,6 +552,7 @@ modded class SCR_CharacterControllerComponent
             }
 
             float gradeForCap = RSS_SmoothGradePercentForSpeed(loc.gradePercent, loc.currentTime);
+            float appliedBeforeMetab = m_fAppliedSpeedLimitMs;
             float correctedSpeed = SCR_RSS_DrainCalculator.GetMetabolicCorrectedSpeedMultiplier(
                 m_fLastRssSpeedMultiplierApplied,
                 loc.currentSpeed,
@@ -547,32 +574,39 @@ modded class SCR_CharacterControllerComponent
                     float hardFrac = RSS_SlewSpeedLimitFraction(correctedSpeed, loc.currentTime);
                     if (hardFrac > 0.999)
                         hardFrac = 0.999;
-                    SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, hardFrac);
                     float hardAbs = hardFrac * engineBase;
-                    float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
-                        hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
-                    m_fAppliedSpeedLimitMs = safeCap;
-                    m_fLastRssSpeedMultiplierApplied = hardFrac;
-                    loc.finalSpeedMultiplier = hardFrac;
-                    if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
-                        SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
-                    if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
+                    // 同 tick 二次 Apply 只允许压低；步态地板托高已在首轮 UpdateSpeed/落盘完成。
+                    bool allowMetabApply = true;
+                    if (appliedBeforeMetab > 0.05 && hardAbs > appliedBeforeMetab + 0.01)
+                        allowMetabApply = false;
+                    if (allowMetabApply)
                     {
-                        bool metabDisarmed = false;
-                        if (cpModel)
+                        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, hardFrac);
+                        float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
+                            hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
+                        m_fAppliedSpeedLimitMs = safeCap;
+                        m_fLastRssSpeedMultiplierApplied = hardFrac;
+                        loc.finalSpeedMultiplier = hardFrac;
+                        if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
+                            SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
+                        if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
                         {
-                            if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
-                                metabDisarmed = true;
-                        }
-                        if (metabDisarmed || loc.phaseNow == 1)
-                        {
-                            SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
-                                loc.owner,
-                                safeCap,
-                                loc.currentSpeed,
-                                loc.timeDeltaSec,
-                                loc.gradePercent,
-                                loc.phaseNow);
+                            bool metabDisarmed = false;
+                            if (cpModel)
+                            {
+                                if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
+                                    metabDisarmed = true;
+                            }
+                            if (metabDisarmed || loc.phaseNow == 1)
+                            {
+                                SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
+                                    loc.owner,
+                                    safeCap,
+                                    loc.currentSpeed,
+                                    loc.timeDeltaSec,
+                                    loc.gradePercent,
+                                    loc.phaseNow);
+                            }
                         }
                     }
                 }

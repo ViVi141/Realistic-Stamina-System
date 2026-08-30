@@ -188,8 +188,11 @@ class SCR_PlayerBaseCpCruiseController
                 m_fRssActionScaleServo = 0.22;
         }
         float desiredForScale = desiredAbsMs + (m_fRssActionScaleServo * runTopMs);
+        // 只减不加：伺服可在 desiredAbs 附近补轴，但不得抬过本 tick 已落盘的 v_limit。
+        if (desiredForScale > appliedSpeedLimitMs)
+            desiredForScale = appliedSpeedLimitMs;
         float written = SCR_RSS_SpeedBridge.TryScaleMoveActionValues(
-            am, ctrl, desiredForScale, walkTopMs, runTopMs);
+            am, ctrl, desiredForScale, walkTopMs, runTopMs, statusLogSpeed);
         if (written >= 0.0)
             m_fRssLastMoveAnalog = written;
     }

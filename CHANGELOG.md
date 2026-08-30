@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### 修复：Walk 阶段速度尖峰
+
+- **限速分母** — `SetSpeedLimit` 倍率改按引擎当前相位顶（`GetRssSpeedLimitEngineBaseMs`）；Walk 绝对顶用 Walk 引擎顶钳制。跨相位时跳过倍率斜率，避免 `0.63(Run)→0.999(Walk)` 被当成提速。
+- **缩轴** — Walk/走路键仅在测速已落入 Walk 带时让路；若闪 Walk 仍 `v≫Walk顶`，继续按 Walk 顶缩 `CharacterForward`，防止松巡航缩轴后窜到 3m/s+。
+- **只减不加** — 缩轴伺服不得抬过本 tick `v_limit`；代谢二次 Apply 只允许压低；`MovementMaxSpeed` 不再用步态地板抬过 `safeCap`。
+
 ### PlayerBase / UpdateLoop 拆分
 
 - **拆出 `SCR_RSS_StaminaTickTypes`** — `RSS_StatusMetabLogSnapshot` / `RSS_StaminaDebugOutputParams` / `RSS_StaminaTickLocals` 从 `PlayerBase_UpdateLoop.c` 迁至 `RSS/Core/`，行为不变。
@@ -21,7 +27,7 @@
 
 - **SetActionValue** — `OnPrepareControls` 的 `super` 前后各按 `v_limit/Run顶` 缩 `CharacterForward`/`CharacterRight`（与手柄摇杆同一动作；官方测试用此口喂移动）。不抬半推。HUD `模拟量` 现为轴幅度（2.4/3.5≈0.69）。关：`V6_TRY_ACTION_VALUE_SCALE`。
 - **冲刺耗尽后仍能冲** — W′ 解除武装时冲刺门禁改到 `super` 之前清 `CharacterSprint`；模拟量不再因按着 Shift / 仍停在 Sprint 相位而跳过。Walk 覆盖仍不改。
-- **缩放让路** — 游泳、走路键、蹲/趴、Walk 覆盖不写轴。W′ 空按巡航帽与 `v_limit` 较低者缩（帽未写出时先用 2.4），不再等 SetSpeedLimit 缓降窗里继续满推 Run。灌木/更低的已应用帽仍取 min，不抬过限速。
+- **缩放让路** — 游泳、蹲/趴、Walk 覆盖不写轴；走路键/Walk 相位在测速已落入 Walk 带时让路，超速闪 Walk 仍缩轴。W′ 空按巡航帽与 `v_limit` 较低者缩（帽未写出时先用 2.4），不再等 SetSpeedLimit 缓降窗里继续满推 Run。灌木/更低的已应用帽仍取 min，不抬过限速。
 - **缩放分母用满推测速** — 引擎 Run 顶 ~3.8，负重满 W 常 ~3.55；按 3.8 缩会到 2.26 而孪生是 2.40。武装满推采样，缩放时用 `v_meas/模拟量` 反推，比例对准巡航帽。
 
 ### 试跑：W′ 空用 SetMovement 模拟量压 Run

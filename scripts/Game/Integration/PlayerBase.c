@@ -352,26 +352,19 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        // 原生若像「倍率」(≤1.5) 而非 m/s，则按相位顶换算，避免把顶速写成 0.8 这种假绝对值
+        // 原生若像「倍率」(≤1.5) 而非 m/s，则按相位顶换算，避免把顶速写成 0.8 这种假绝对值。
+        // 禁止用步态地板把 MovementMaxSpeed 抬过调用方 safeCap（与 SetSpeedLimit 抢顶）。
         float writeMs = absMs;
         float gaitPhaseTop = m_fLastRssEngineBaseForLimit;
         if (gaitPhaseTop < 0.1)
             gaitPhaseTop = GetRssSpeedLimitEngineBaseMs();
         if (gaitPhaseTop < 0.1)
             gaitPhaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-        float minAbs = gaitPhaseTop * SCR_RSS_Constants.V6_GAIT_SPEED_LIMIT_MIN_FRAC;
-        if (writeMs < minAbs)
-            writeMs = minAbs;
         if (m_bRssNativeMovementMaxSpeedCaptured && m_fRssNativeMovementMaxSpeed > 0.0
             && m_fRssNativeMovementMaxSpeed <= 1.5)
         {
-            float phaseTop = m_fLastRssEngineBaseForLimit;
-            if (phaseTop < 0.1)
-                phaseTop = GetRssSpeedLimitEngineBaseMs();
-            if (phaseTop < 0.1)
-                phaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-            // 用已托步态下限的 writeMs，勿用裸 absMs，否则 0.5× 地板会被 0.52/phaseTop 冲掉
-            float frac = writeMs / phaseTop;
+            float phaseTop = gaitPhaseTop;
+            float frac = absMs / phaseTop;
             if (frac > 1.0)
                 frac = 1.0;
             if (frac < 0.01)
@@ -383,9 +376,6 @@ modded class SCR_CharacterControllerComponent
             if (writeMs > m_fRssNativeMovementMaxSpeed)
                 writeMs = m_fRssNativeMovementMaxSpeed;
         }
-
-        if (writeMs < minAbs)
-            writeMs = minAbs;
 
         SCR_RSS_SpeedBridge.ApplyAbsoluteMovementMaxSpeed(owner, writeMs);
     }

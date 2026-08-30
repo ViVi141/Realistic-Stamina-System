@@ -113,6 +113,7 @@ class SCR_RSS_SpeedBridge
 
     //! W′ 空时缩放目标：巡航帽与已应用限速取较低。帽未写出时先用平路 2.4，避免缓降窗仍满推。
     //! 掉带（帽 <0）不算有效帽，由 Walk 覆盖接管。
+    //! 调用方伺服补轴后仍须再钳到 appliedLimit（只减不加）。
     static float ResolveActionScaleDesiredAbsMs(float appliedLimitMs, float lastRunCruiseCapMs)
     {
         float desired = appliedLimitMs;
@@ -150,14 +151,17 @@ class SCR_RSS_SpeedBridge
 
     //! 把 WASD 向量缩到 desiredAbs/runTop。不抬高手柄半推。
     //! W′ 空路径不因按着 Shift / 仍停在 Sprint 相位而跳过（门禁另清冲刺）。
-    //! 走路键、Walk 相位、蹲/趴让路，避免和 CapsLock / 姿态档叠乘。
+    //! 走路键 / Walk 相位在测速已落入 Walk 带时让路；若仍以 3m/s+ 闪 Walk，
+    //! 继续缩轴（否则松模拟量后满推 W 会窜回 Run 顶）。
+    //! @param measuredSpeedMs 本帧测速；负值表示未知（走旧让路逻辑）
     //! @return 写入的轴幅度；未写则 -1
     static float TryScaleMoveActionValues(
         ActionManager am,
         CharacterControllerComponent ctrl,
         float desiredAbsMs,
         float walkTopMs,
-        float runTopMs)
+        float runTopMs,
+        float measuredSpeedMs = -1.0)
     {
         if (!IsActionValueScaleEnabled())
             return -1.0;
@@ -165,15 +169,38 @@ class SCR_RSS_SpeedBridge
             return -1.0;
         if (!ctrl)
             return -1.0;
-        if (desiredAbsMs <= walkTopMs + 0.05)
-            return -1.0;
-        if (desiredAbsMs >= runTopMs - 0.05)
-            return -1.0;
-        if (ctrl.GetCurrentMovementPhase() == 1)
-            return -1.0;
         if (ctrl.GetStance() != ECharacterStance.STAND)
             return -1.0;
+
+        bool walkLike = false;
+        if (ctrl.GetCurrentMovementPhase() == 1)
+            walkLike = true;
         if (am.GetActionValue("CharacterWalk") > 0.5)
+            walkLike = true;
+
+        float walkOverspeedEps = 0.35;
+        bool walkOverspeed = false;
+        if (walkLike && measuredSpeedMs >= 0.0)
+        {
+            if (measuredSpeedMs > walkTopMs + walkOverspeedEps)
+                walkOverspeed = true;
+        }
+
+        if (walkLike && !walkOverspeed)
+            return -1.0;
+
+        if (walkOverspeed)
+        {
+            if (desiredAbsMs > walkTopMs)
+                desiredAbsMs = walkTopMs;
+        }
+        else
+        {
+            if (desiredAbsMs <= walkTopMs + 0.05)
+                return -1.0;
+        }
+
+        if (desiredAbsMs >= runTopMs - 0.05)
             return -1.0;
 
         float fwd = am.GetActionValue("CharacterForward");
@@ -183,7 +210,10 @@ class SCR_RSS_SpeedBridge
             return -1.0;
 
         float mag = Math.Sqrt(magSq);
-        float target = desiredAbsMs / runTopMs;
+        float denom = runTopMs;
+        if (denom < walkTopMs + 0.2)
+            denom = walkTopMs + 0.2;
+        float target = desiredAbsMs / denom;
         if (target < 0.15)
             target = 0.15;
         if (target > 0.98)

@@ -601,10 +601,11 @@ class SCR_RSS_Constants
     //! 单位若非 m/s 或导致滑步/锁死，改 false。销毁/关限速时恢复原生 GetMovementMaxSpeed。
     static const bool V6_TRY_MOVEMENT_MAX_SPEED = true;
     //! false（2026-08-30 实机）：OnPrepareControls 能写出 1.39，键盘 W 随后盖回 Run。
-    //! v_limit=2.4 时 v_meas 仍 3.55，并闪过 Walk 对 3.3+ m/s。过场口打不过玩家输入。
+    //! 过场口打不过玩家输入；巡航改走 V6_TRY_ACTION_VALUE_SCALE。
     static const bool V6_TRY_MOVEMENT_ANALOG_SCALE = false;
     //! true：W′ 见底闩巡航后在 OnPrepareControls 的 super 前后缩放 CharacterForward/Right。
-    //! 解除武装但池未空时不缩（继续跑、烧剩余 W′）。游泳/走路键/蹲趴/Walk 覆盖让路。
+    //! 解除武装但池未空时不缩（继续跑、烧剩余 W′）。游泳/蹲趴让路。
+    //! Walk/走路键：测速已落入 Walk 带才让路；若闪 Walk 仍 3m/s+ 则继续缩轴防窜速。
     //! 目标取巡航帽与已应用限速较低者。分母用满推 Run 实机测速。滑步或无效则改 false。
     static const bool V6_TRY_ACTION_VALUE_SCALE = true;
     //! CharacterController.GetMovementSpeed / 过场 SetMovement：1=Walk，2=Run。勿低于 0.5。
