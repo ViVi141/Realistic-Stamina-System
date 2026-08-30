@@ -1,10 +1,12 @@
 //! Phase B 服务端 W′ TickPower / EPOC / 复制写回。
 //! 从 PlayerBase_UpdateLoop.c 拆出；与 SCR_RSS_WPrimeServerTick（PrepareControls 补 tick）分工不同。
+//! 禁止在本 static 内调用 Replication.BumpMe（须由实体实例上下文触发）。
 
 class SCR_PlayerBaseWPrimeTickHelper
 {
     //! @param replPool / replCooldownUntil 服务端复制槽（inout）
-    static void TickPhaseBAnaerobic(
+    //! @return true：已写复制槽，调用方须在实例上 Replication.BumpMe()
+    static bool TickPhaseBAnaerobic(
         SCR_CharacterControllerComponent ctrl,
         RSS_StaminaTickLocals loc,
         SCR_RSS_AnaerobicBurst anaerobicBurst,
@@ -18,11 +20,11 @@ class SCR_PlayerBaseWPrimeTickHelper
         inout float replCooldownUntil)
     {
         if (!anaerobicBurst || !loc)
-            return;
+            return false;
 
         bool tickAnaerobic = Replication.IsServer();
         if (!tickAnaerobic)
-            return;
+            return false;
 
         SCR_RSS_CriticalPowerModel cpModel = anaerobicBurst.GetCpModel();
         float pool01BeforeTick = 1.0;
@@ -134,11 +136,8 @@ class SCR_PlayerBaseWPrimeTickHelper
             staminaState.SetWPrimePoolFromCpModel(anaerobicBurst.GetCpModel());
             staminaState.SetAerobic(loc.staminaPercent);
         }
-        if (Replication.IsServer())
-        {
-            SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
-                anaerobicBurst, replPool, replCooldownUntil);
-            Replication.BumpMe();
-        }
+        SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
+            anaerobicBurst, replPool, replCooldownUntil);
+        return true;
     }
 }

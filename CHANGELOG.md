@@ -2,11 +2,18 @@
 
 ## [Unreleased]
 
+### 修复：Walk 最终倍显示与轻微超速
+
+- **显示** — 状态日志 / Debug「倍率」「最终倍」按 `appliedAbs / Run引擎顶` 归一；Walk 满档约 `0.38` 而非相位相对的 `0.999`。`SetSpeedLimit` 仍用相位相对倍率。
+- **缩轴** — W′ 巡航下 Walk 超速阈值 `0.35→0.12` m/s，目标压到 Walk 顶 ×0.88；伺服遇 Walk 超速减半，减少 1.6–2.1 m/s 带内拖尾。
+- **回归修复** — Walk 超速压轴误对 Run 巡航生效时，会把 `desired` 压到 ~1.27 并被 SpeedBridge 跳过 → `模拟量=off`、`v_meas` 卡在 3.5。现仅在 Walk/走路键时压轴。
+
 ### 修复：Walk 阶段速度尖峰
 
 - **限速分母** — `SetSpeedLimit` 倍率改按引擎当前相位顶（`GetRssSpeedLimitEngineBaseMs`）；Walk 绝对顶用 Walk 引擎顶钳制。跨相位时跳过倍率斜率，避免 `0.63(Run)→0.999(Walk)` 被当成提速。
 - **缩轴** — Walk/走路键仅在测速已落入 Walk 带时让路；若闪 Walk 仍 `v≫Walk顶`，继续按 Walk 顶缩 `CharacterForward`，防止松巡航缩轴后窜到 3m/s+。
 - **只减不加** — 缩轴伺服不得抬过本 tick `v_limit`；代谢二次 Apply 只允许压低；`MovementMaxSpeed` 不再用步态地板抬过 `safeCap`。
+- **Rpl BumpMe** — `SCR_PlayerBaseWPrimeTickHelper`（static）内禁止 `Replication.BumpMe`；改由 `PlayerBase_UpdateLoop` 实例上下文调用，消除 `BumpMe from a static context` 刷屏。
 
 ### PlayerBase / UpdateLoop 拆分
 

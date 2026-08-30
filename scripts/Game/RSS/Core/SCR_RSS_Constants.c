@@ -571,6 +571,11 @@ class SCR_RSS_Constants
     //! 步态覆盖期间：测速不超过 Walk 顶 + 此值，则相对徒步地板的「超速」不计 W′/STA 税。
     //! 引擎 Walk 无法慢于 ~1.45 m/s；1.0 地板对 1.45 动画是假超速。真滑步（≥~1.65）仍记账。
     static const float V6_WALK_OVERRIDE_IN_BAND_SLACK_MS = 0.20;
+    //! W′ 巡航缩轴：Walk/走路键下测速超过 Walk 顶 + 此值则继续缩轴（勿与税用 slack 混用）。
+    //! 略紧于动画地板噪声，便于压住 1.6–2.1 的 Walk 带轻微超速。
+    static const float V6_WALK_OVERSPEED_SCALE_EPS_MS = 0.12;
+    //! Walk 超速缩轴目标相对 Walk 顶的比例（只减；CapsLock 无巡航闩时不走此路径）。
+    static const float V6_WALK_OVERSPEED_SCALE_TARGET_FRAC = 0.88;
     //! true：Run 再套 CP∩有氧巡航硬顶 / 代谢纠偏限速。
     //! true（2026-08-14 启用）：W′ 耗尽后仅在**当前步态带内**经 SetSpeedLimit 压 CP 巡航。
     //! 反解掉出 Run 带时不把 Walk 速度写到 Run 相位（滑步）；若 V6_CP_OUT_OF_BAND_WALK_OVERRIDE

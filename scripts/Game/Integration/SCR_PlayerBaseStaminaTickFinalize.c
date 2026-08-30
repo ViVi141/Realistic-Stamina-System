@@ -298,6 +298,9 @@ class SCR_PlayerBaseStaminaTickFinalize
         ctx.lastStaminaPercent = loc.staminaPercent;
         ctx.lastSpeedMultiplier = loc.finalSpeedMultiplier;
 
+        // 日志/HUD：按 Run 顶归一绝对限速；引擎相位相对倍率仍由 lastSpeedMultiplier 保留。
+        float displaySpeedMult = ctx.ctrl.RSS_GetDisplaySpeedMultiplier();
+
         loc.netStaminaTickDbg = loc.staminaPercent - loc.staminaBeforeUpdate;
 
         loc.metabSnap = new RSS_StatusMetabLogSnapshot();
@@ -314,7 +317,7 @@ class SCR_PlayerBaseStaminaTickFinalize
         ctx.ctrl.RSS_UpdateStatusLogSnapshot(
             loc.currentSpeed,
             loc.staminaPercent,
-            loc.finalSpeedMultiplier,
+            displaySpeedMult,
             loc.isSprinting,
             loc.phaseNow,
             loc.effectivePhase,
@@ -327,7 +330,7 @@ class SCR_PlayerBaseStaminaTickFinalize
             loc.owner,
             loc.staminaPercent,
             loc.currentWeight,
-            loc.finalSpeedMultiplier,
+            displaySpeedMult,
             loc.currentSpeed,
             loc.isSprinting,
             loc.currentMovementPhase,
@@ -373,7 +376,7 @@ class SCR_PlayerBaseStaminaTickFinalize
             loc.heatStressMultiplier,
             loc.baseSpeedMultiplier,
             loc.encumbranceSpeedPenalty,
-            loc.finalSpeedMultiplier,
+            displaySpeedMult,
             loc.gradePercent,
             loc.slopeAngleDegrees,
             loc.isSwimming,

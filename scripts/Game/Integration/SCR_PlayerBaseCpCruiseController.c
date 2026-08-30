@@ -191,6 +191,25 @@ class SCR_PlayerBaseCpCruiseController
         // 只减不加：伺服可在 desiredAbs 附近补轴，但不得抬过本 tick 已落盘的 v_limit。
         if (desiredForScale > appliedSpeedLimitMs)
             desiredForScale = appliedSpeedLimitMs;
+
+        // 仅 Walk/走路键下的轻微超速才压到 Walk 顶比例；勿对 Run 巡航误触发（否则
+        // desired≈1.27 会撞上 SpeedBridge「≤Walk顶则跳过」，模拟量整段 off）。
+        bool walkLikeForScale = false;
+        if (ctrl.GetCurrentMovementPhase() == 1)
+            walkLikeForScale = true;
+        if (am && am.GetActionValue("CharacterWalk") > 0.5)
+            walkLikeForScale = true;
+        if (walkLikeForScale
+            && statusLogSpeed > walkTopMs + SCR_RSS_Constants.V6_WALK_OVERSPEED_SCALE_EPS_MS)
+        {
+            float walkScaleCap = walkTopMs * SCR_RSS_Constants.V6_WALK_OVERSPEED_SCALE_TARGET_FRAC;
+            if (walkScaleCap < SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS)
+                walkScaleCap = SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS;
+            if (desiredForScale > walkScaleCap)
+                desiredForScale = walkScaleCap;
+            if (m_fRssActionScaleServo > 0.0)
+                m_fRssActionScaleServo = m_fRssActionScaleServo * 0.5;
+        }
         float written = SCR_RSS_SpeedBridge.TryScaleMoveActionValues(
             am, ctrl, desiredForScale, walkTopMs, runTopMs, statusLogSpeed);
         if (written >= 0.0)

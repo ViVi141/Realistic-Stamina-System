@@ -151,8 +151,8 @@ class SCR_RSS_SpeedBridge
 
     //! 把 WASD 向量缩到 desiredAbs/runTop。不抬高手柄半推。
     //! W′ 空路径不因按着 Shift / 仍停在 Sprint 相位而跳过（门禁另清冲刺）。
-    //! 走路键 / Walk 相位在测速已落入 Walk 带时让路；若仍以 3m/s+ 闪 Walk，
-    //! 继续缩轴（否则松模拟量后满推 W 会窜回 Run 顶）。
+    //! 走路键 / Walk 相位在测速已落入 Walk 带时让路；若仍以 Walk顶+eps 以上超速，
+    //! 继续缩轴（否则松模拟量后满推 W 会窜回 Run 顶 / Walk 带拖尾）。
     //! @param measuredSpeedMs 本帧测速；负值表示未知（走旧让路逻辑）
     //! @return 写入的轴幅度；未写则 -1
     static float TryScaleMoveActionValues(
@@ -178,7 +178,7 @@ class SCR_RSS_SpeedBridge
         if (am.GetActionValue("CharacterWalk") > 0.5)
             walkLike = true;
 
-        float walkOverspeedEps = 0.35;
+        float walkOverspeedEps = SCR_RSS_Constants.V6_WALK_OVERSPEED_SCALE_EPS_MS;
         bool walkOverspeed = false;
         if (walkLike && measuredSpeedMs >= 0.0)
         {
@@ -191,8 +191,11 @@ class SCR_RSS_SpeedBridge
 
         if (walkOverspeed)
         {
-            if (desiredAbsMs > walkTopMs)
-                desiredAbsMs = walkTopMs;
+            float walkScaleCap = walkTopMs * SCR_RSS_Constants.V6_WALK_OVERSPEED_SCALE_TARGET_FRAC;
+            if (walkScaleCap < SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS)
+                walkScaleCap = SCR_RSS_Constants.V6_CP_HIKE_FLOOR_MS;
+            if (desiredAbsMs > walkScaleCap)
+                desiredAbsMs = walkScaleCap;
         }
         else
         {
@@ -214,8 +217,11 @@ class SCR_RSS_SpeedBridge
         if (denom < walkTopMs + 0.2)
             denom = walkTopMs + 0.2;
         float target = desiredAbsMs / denom;
-        if (target < 0.15)
-            target = 0.15;
+        float minTarget = 0.15;
+        if (walkOverspeed)
+            minTarget = 0.10;
+        if (target < minTarget)
+            target = minTarget;
         if (target > 0.98)
             return -1.0;
         if (mag <= target + 0.02)

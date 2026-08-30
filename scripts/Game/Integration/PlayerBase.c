@@ -639,6 +639,23 @@ modded class SCR_CharacterControllerComponent
         return m_fLastRssSpeedMultiplierApplied;
     }
 
+    //! HUD/状态日志用倍率：按 Run 引擎顶归一 appliedAbs，避免 Walk 满档显示成 0.999 误导。
+    //! SetSpeedLimit / 恢复标定仍用 RSS_GetLastAppliedSpeedMultiplier（相位相对）。
+    float RSS_GetDisplaySpeedMultiplier()
+    {
+        float runTop = GetOriginalEngineMaxSpeed_Run();
+        if (runTop > 0.1 && m_fAppliedSpeedLimitMs > 0.05)
+        {
+            float displayMult = m_fAppliedSpeedLimitMs / runTop;
+            if (displayMult < 0.01)
+                displayMult = 0.01;
+            if (displayMult > 1.5)
+                displayMult = 1.5;
+            return displayMult;
+        }
+        return m_fLastRssSpeedMultiplierApplied;
+    }
+
     protected SCR_PlayerBaseCpCruiseController GetCpCruise()
     {
         if (!m_pCpCruise)

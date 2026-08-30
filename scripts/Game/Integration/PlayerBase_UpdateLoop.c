@@ -622,7 +622,7 @@ modded class SCR_CharacterControllerComponent
 
         float replPoolTmp = m_fReplAnaerobicPool;
         float replCooldownTmp = m_fReplAnaerobicCooldownUntil;
-        SCR_PlayerBaseWPrimeTickHelper.TickPhaseBAnaerobic(
+        bool wPrimeReplDirty = SCR_PlayerBaseWPrimeTickHelper.TickPhaseBAnaerobic(
             this,
             loc,
             m_pAnaerobicBurst,
@@ -636,6 +636,8 @@ modded class SCR_CharacterControllerComponent
             replCooldownTmp);
         m_fReplAnaerobicPool = replPoolTmp;
         m_fReplAnaerobicCooldownUntil = replCooldownTmp;
+        if (wPrimeReplDirty)
+            Replication.BumpMe();
 
         SCR_PlayerBaseOverspeedClampHelper.ApplyPostTickOverspeedClamp(
             this,
