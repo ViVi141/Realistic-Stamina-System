@@ -1,0 +1,34 @@
+RSS v6.2.0 Change Notes
+=======================
+From 6.1.7 → 6.2.0 (config 6.2.0). Anaerobic pacing feel + Walk glitches + preset endurance.
+Keep server & clients on the same mod build.
+
+[EN]
+• Sprint / anaerobic: when the anaerobic bar drops low you still cannot sprint, but you
+  can keep a full run while any reserve remains. Only when it is fully empty do you
+  settle into a sustained cruise jog (about half–two-thirds of a full run). Recovering
+  the reserve later unlocks sprint again — no more “bar half-empty then suddenly stuck
+  at a crawl so the bar fills back up while you hold W”.
+• Exhausted cruise actually sticks: holding W after empty no longer fights you back up
+  to full run speed; movement softens toward the cruise pace.
+• Walk no longer inexplicably surges toward run speed after a cruise/walk transition.
+• Zero-load endurance is closer to a real PT 2-mile ~85 score (~15:11). All three
+  presets (Elite / Standard / Tactical) feel a bit stronger / longer on flat runs;
+  loaded jogging is also a touch less punished.
+• Known limitation (unchanged): mouse wheel gait can still push you above the soft
+  speed cap. Existing RealisticStaminaSystem.json is not overwritten.
+
+[中文]
+• 冲刺 / 无氧：无氧条偏低时仍不能冲刺，但只要还有剩余就能继续满速跑；真正见底后才会
+  落到可持续的慢跑巡航（大约满跑的一半到六成）。条回充后再能冲刺——不再出现「条还没
+  空就突然卡成爬行、按住 W 反而把条又养回来」的感觉。
+• 见底后的巡航会真正贴住：空条后按住 W 不会再被顶回满跑，速度会软着陆到巡航配速。
+• 走路时不会在巡航/切 Walk 后莫名窜向跑步速度。
+• 空负重耐力更接近真实 PT 两英里约 85 分（约 15:11）。Elite / Standard / Tactical 三档
+  平路跑会略更耐、略更快；负重慢跑也稍不那么狠。
+• 已知限制（未变）：鼠标滚轮切步态仍可能顶过软限速。已有 RealisticStaminaSystem.json
+  不会被自动改写。
+
+Full log: CHANGELOG.md [6.2.0] / [6.1.7] / [6.1.6]
+
+Author: ViVi141 | License: AGPL-3.0

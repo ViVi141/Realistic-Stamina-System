@@ -1,6 +1,6 @@
 # 更新日志
 
-## [Unreleased]
+## [6.2.0] - 2026-08-30
 
 ### 修复：Walk 最终倍显示与轻微超速
 
@@ -101,6 +101,10 @@
 - **孪生对齐 Walk 覆盖 + 引擎顶** — Python/Rust `game_player_tick` 在 W′ 解除武装且反解掉出 Run 带时切 Walk 并锁存；Walk 引擎顶用 `ENGINE_WALK_TOP_MS`（1.45），不再误用 Run 3.8 把步态下限抬到 ~1.9 m/s（4h 行军假抽干）。
 - **optimize-tiers 重跑** — 孪生对齐后 TPE 300 trials/档 + repair：Elite CP 907.8→804.7、Standard 1031.0→873.6、Tactical 1080.6→873.6；Tactical CP/sprint_cap 提到与 Standard 齐平以满足档位阶梯；已 embed `SCR_RSS_SettingsPresetBake.c`。
 - **步态覆盖不再假超速烧 W′** — 覆盖期间测速仍在引擎 Walk 顶内（约 ≤1.65 m/s）时，相对徒步地板 1.0 的 phys 超速不计：功率钳到 CP（上坡不烧 W′），下坡允许回充；Walk 12× STA 税同样免除。真滑步（≥~1.65）仍记账。C/Python/Rust 三端同步。
+
+### 版本
+
+- 配置版本 / ConfigManager → **6.2.0**
 
 ## [6.1.7] - 2026-08-14
 
