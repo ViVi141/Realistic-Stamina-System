@@ -2,9 +2,9 @@
 // 与 Video / Audio / Interface 同一层级
 // 通过 modded SCR_SettingsSuperMenu 注入
 
-class SCR_RSSAdminMenuUI
+class SCR_RSS_AdminMenuUI
 {
-    protected static ref SCR_RSSAdminMenuUI s_Instance;
+    protected static ref SCR_RSS_AdminMenuUI s_Instance;
 
     protected Widget m_wRoot;
     protected TextWidget m_wCurrentPresetLabel;
@@ -18,13 +18,13 @@ class SCR_RSSAdminMenuUI
     protected CheckBoxWidget m_wChkDisableAIStamina;
 
     //------------------------------------------------------------------------------------------------
-    // 当 TabView 创建 RSS 标签内容时调用（由 SCR_RSSSettingsTab 触发）
+    // 当 TabView 创建 RSS 标签内容时调用（由 SCR_RSS_SettingsTab 触发）
     static void OnTabCreated(SCR_TabViewComponent tabView)
     {
         if (s_Instance)
             return;
 
-        SCR_RSSAdminMenuUI inst = new SCR_RSSAdminMenuUI();
+        SCR_RSS_AdminMenuUI inst = new SCR_RSS_AdminMenuUI();
         if (!inst.BindTabContent(tabView))
             return;
         s_Instance = inst;

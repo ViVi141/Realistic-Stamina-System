@@ -2,7 +2,7 @@
 //   所有人：HUD (Local) / Breath Sounds — 只影响自己，不经过服务器
 //   管理员额外：预设 + HUD Server Default + Debug/MudSlip/AICombat
 
-class SCR_RSSSettingsSubMenu : SCR_SettingsSubMenuBase
+class SCR_RSS_SettingsSubMenu : SCR_SettingsSubMenuBase
 {
     protected SCR_ComboBoxComponent m_wPresetSelector;
     protected SCR_SpinBoxComponent m_wHUDLocal;

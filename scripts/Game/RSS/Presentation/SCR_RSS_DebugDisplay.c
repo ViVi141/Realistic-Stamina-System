@@ -3,7 +3,7 @@
 // 模块化拆分：从 PlayerBase.c 提取的调试显示逻辑
 
 // 调试信息参数结构体
-class DebugInfoParams
+class RSS_DebugInfoParams
 {
     IEntity owner;
     string movementTypeStr;
@@ -58,7 +58,7 @@ class SCR_RSS_DebugDisplay
     protected static float s_fDrainDiagLastWorldTime = -1.0;
 
     // ==================== 公共方法 ====================
-    
+
     // 格式化移动类型字符串
     // @param isSprinting 是否正在Sprint
     // @param currentMovementPhase 当前移动阶段
@@ -67,7 +67,7 @@ class SCR_RSS_DebugDisplay
     {
         return SCR_RSS_SpeedCalculator.FormatMovementPhaseLabel(isSprinting, currentMovementPhase);
     }
-    
+
     // 格式化坡度信息字符串（中英双语）
     // @param slopeAngleDegrees 坡度角度（度）
     // @return 坡度信息字符串
@@ -75,7 +75,7 @@ class SCR_RSS_DebugDisplay
     {
         if (Math.AbsFloat(slopeAngleDegrees) <= 0.1)
             return "";
-        
+
         string slopeDirection = "";
         string slopeDirectionEn = "";
         if (slopeAngleDegrees > 0)
@@ -88,13 +88,13 @@ class SCR_RSS_DebugDisplay
             slopeDirection = "下坡";
             slopeDirectionEn = "Downhill";
         }
-        
-        return string.Format(" | 坡度: %1° (%2) | Grade: %1° (%3)", 
+
+        return string.Format(" | 坡度: %1° (%2) | Grade: %1° (%3)",
             Math.Round(Math.AbsFloat(slopeAngleDegrees) * 10.0) / 10.0,
             slopeDirection,
             slopeDirectionEn);
     }
-    
+
     // 格式化Sprint信息字符串（中英双语）
     // @param isSprinting 是否正在Sprint
     // @param currentMovementPhase 当前移动阶段
@@ -103,10 +103,10 @@ class SCR_RSS_DebugDisplay
     {
         if (!isSprinting && currentMovementPhase != 3)
             return "";
-        
+
         return " | Sprint（Pandolf） | Sprint (Pandolf)";
     }
-    
+
     // 格式化负重信息字符串
     // @param currentWeight 当前重量 (kg)
     // @param combatEncumbrancePercent 战斗负重百分比
@@ -115,24 +115,24 @@ class SCR_RSS_DebugDisplay
     {
         if (currentWeight <= 0.0)
             return "";
-        
+
         string combatStatus = "";
         if (combatEncumbrancePercent > 1.0)
             combatStatus = " [超过战斗负重]";
         else if (combatEncumbrancePercent >= 0.9)
             combatStatus = " [接近战斗负重]";
-        
+
         float maxWeight = 40.5;
         float combatWeight = 30.0;
-        
-        return string.Format(" | 负重: %1kg/%2kg (最大:%3kg, 战斗:%4kg%5)", 
-            currentWeight.ToString(), 
+
+        return string.Format(" | 负重: %1kg/%2kg (最大:%3kg, 战斗:%4kg%5)",
+            currentWeight.ToString(),
             maxWeight.ToString(),
             maxWeight.ToString(),
             combatWeight.ToString(),
             combatStatus);
     }
-    
+
     // 格式化地形信息字符串
     // @param terrainDetector 地形检测模块引用
     // @param owner 角色实体
@@ -142,32 +142,32 @@ class SCR_RSS_DebugDisplay
     {
         if (!terrainDetector)
             return " | 地面密度: 未检测";
-        
+
         if (currentTime - m_fLastTerrainForceUpdateTime >= TERRAIN_DEBUG_UPDATE_INTERVAL)
         {
             terrainDetector.ForceUpdate(owner, currentTime);
             m_fLastTerrainForceUpdateTime = currentTime;
         }
-        
+
         float cachedDensity = terrainDetector.GetCachedTerrainDensity();
         string matLabel = terrainDetector.GetCachedGroundMaterialLabel();
         if (cachedDensity >= 0.0)
         {
             if (matLabel != "")
             {
-                return string.Format(" | 地面: %1 | ρ≈%2", 
+                return string.Format(" | 地面: %1 | ρ≈%2",
                     matLabel,
                     Math.Round(cachedDensity * 100.0) / 100.0);
             }
-            return string.Format(" | 地面密度: %1", 
+            return string.Format(" | 地面密度: %1",
                 Math.Round(cachedDensity * 100.0) / 100.0);
         }
         if (matLabel != "")
             return string.Format(" | 地面: %1", matLabel);
-        
+
         return " | 地面密度: 未检测";
     }
-    
+
     // 构建调试消息
     // @param movementTypeStr 移动类型字符串
     // @param staminaPercent 体力百分比
@@ -195,7 +195,7 @@ class SCR_RSS_DebugDisplay
         string stanceTransitionInfo)
     {
         string debugMessage = string.Format(
-            "[RSS] 类型=%1 体力=%2%% 速度倍=%3 负重惩罚=%4 最终倍=%5 坡度=%6%%%7", 
+            "[RSS] 类型=%1 体力=%2%% 速度倍=%3 负重惩罚=%4 最终倍=%5 坡度=%6%%%7",
             movementTypeStr,
             Math.Round(staminaPercent * 100.0).ToString(),
             baseSpeedMultiplier.ToString(),
@@ -203,17 +203,17 @@ class SCR_RSS_DebugDisplay
             finalSpeedMultiplier.ToString(),
             Math.Round(gradeDisplay * 10.0) / 10.0,
             slopeInfo);
-        
+
         debugMessage += sprintInfo;
         debugMessage += encumbranceInfo;
         debugMessage += terrainInfo;
         debugMessage += stanceTransitionInfo;
-        
+
         return debugMessage;
     }
 
     //! 代谢/疲劳诊断（排查 70% 平台、Sprint 过快）
-    static string FormatMetabolismDiagnosticInfo(DebugInfoParams params)
+    static string FormatMetabolismDiagnosticInfo(RSS_DebugInfoParams params)
     {
         if (params.metabolismPowerW <= 1.0)
             return "";
@@ -254,9 +254,9 @@ class SCR_RSS_DebugDisplay
         }
         return line;
     }
-    
+
     // ==================== 环境因子信息格式化 ====================
-    
+
     // 格式化环境因子信息字符串
     // @param environmentFactor 环境因子模块引用
     // @param heatStressMultiplier 热应激倍数
@@ -271,7 +271,7 @@ class SCR_RSS_DebugDisplay
     {
         if (!environmentFactor)
             return " | 环境因子: 未初始化";
-        
+
         // 获取当前时间
         float currentHour = environmentFactor.GetCurrentHour();
         string timeStr = "";
@@ -288,12 +288,12 @@ class SCR_RSS_DebugDisplay
         {
             timeStr = "未知";
         }
-        
+
         // 获取室内状态
         bool isIndoorDebug = environmentFactor.IsIndoor();
         string indoorStr = "";
         string transitionStr = "";
-        
+
         // 检测室内外状态变化
         static bool s_wasLastIndoor = false;
         if (isIndoorDebug && !s_wasLastIndoor)
@@ -301,12 +301,12 @@ class SCR_RSS_DebugDisplay
         else if (!isIndoorDebug && s_wasLastIndoor)
             transitionStr = " [离开室内]";
         s_wasLastIndoor = isIndoorDebug;
-        
+
         if (isIndoorDebug)
             indoorStr = "室内";
         else
             indoorStr = "室外";
-        
+
         // 获取降雨信息
         bool isRainingDebug = environmentFactor.IsRaining();
         float rainIntensity = environmentFactor.GetRainIntensity();
@@ -320,15 +320,15 @@ class SCR_RSS_DebugDisplay
                 rainLevel = "中雨";
             else
                 rainLevel = "小雨";
-            
+
             // 显示室内/室外状态对降雨的影响
             string rainStatus = "";
             if (isIndoorDebug)
                 rainStatus = " (室内)";
             else
                 rainStatus = " (室外)";
-            
-            rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%%4)", 
+
+            rainStr = string.Format("降雨: %1 (%2kg, 强度%3%%%4)",
                 rainLevel,
                 Math.Round(rainWeight * 10.0) / 10.0,
                 Math.Round(rainIntensity * 100.0),
@@ -337,31 +337,31 @@ class SCR_RSS_DebugDisplay
         else if (rainWeight > 0.0)
         {
             // 停止降雨但仍有湿重（衰减中）
-            rainStr = string.Format("降雨: 已停止 (残留%1kg)", 
+            rainStr = string.Format("降雨: 已停止 (残留%1kg)",
                 Math.Round(rainWeight * 10.0) / 10.0);
         }
         else
         {
             rainStr = "降雨: 无";
         }
-        
+
         // 将转换状态添加到室内状态字符串中
         indoorStr += transitionStr;
-        
+
         // 获取游泳湿重
         string swimWetStr = "";
         if (swimmingWetWeight > 0.0)
         {
-            swimWetStr = string.Format("游泳湿重: %1kg", 
+            swimWetStr = string.Format("游泳湿重: %1kg",
                 Math.Round(swimmingWetWeight * 10.0) / 10.0);
         }
         else
         {
             swimWetStr = "游泳湿重: 0kg";
         }
-        
+
         // 构建环境信息字符串
-        return string.Format(" | 时间: %1 | 热应激: %2x | %3 | %4 | %5", 
+        return string.Format(" | 时间: %1 | 热应激: %2x | %3 | %4 | %5",
             timeStr,
             Math.Round(heatStressMultiplier * 100.0) / 100.0,
             rainStr,
@@ -416,7 +416,7 @@ class SCR_RSS_DebugDisplay
         }
         return line;
     }
-    
+
     // 格式化姿态转换信息字符串（v2.0 乳酸堆积模型）
     // @param stanceTransitionManager 姿态转换管理器
     // @return 姿态转换信息字符串
@@ -424,21 +424,21 @@ class SCR_RSS_DebugDisplay
     {
         if (!stanceTransitionManager)
             return "";
-        
+
         // 获取疲劳堆积值
         float stanceFatigue = stanceTransitionManager.GetStanceFatigue();
-        
+
         // 如果疲劳堆积为0，返回空字符串
         if (stanceFatigue <= 0.0)
             return "";
-        
+
         // 构建疲劳堆积信息
-        return string.Format(" | 姿态疲劳: %1", 
+        return string.Format(" | 姿态疲劳: %1",
             Math.Round(stanceFatigue * 100.0) / 100.0);
     }
-    
+
     // ==================== 统一调试信息输出 ====================
-    
+
     // 输出完整调试信息（每5秒一次）
     // @param owner 角色实体
     // @param movementTypeStr 移动类型字符串
@@ -457,34 +457,34 @@ class SCR_RSS_DebugDisplay
     // @param heatStressMultiplier 热应激倍数
     // @param rainWeight 降雨湿重（kg）
     // @param swimmingWetWeight 游泳湿重（kg）
-    static void OutputDebugInfo(DebugInfoParams params)
+    static void OutputDebugInfo(RSS_DebugInfoParams params)
     {
         // ==================== 配置门禁检查 ====================
         // 获取配置实例
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        
+
         if (!settings || !settings.m_bDebugLogEnabled)
             return;
-        
+
         if (params.owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
-        
+
         // 格式化各个信息字符串
         string slopeInfo = FormatSlopeInfo(params.slopeAngleDegrees);
         string sprintInfo = FormatSprintInfo(params.isSprinting, params.currentMovementPhase);
         string encumbranceInfo = FormatEncumbranceInfo(params.debugCurrentWeight, params.combatEncumbrancePercent);
-        
+
         float currentTimeForDebug = 0.0;
         if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTimeForDebug))
             return;
         string terrainInfo = FormatTerrainInfo(params.terrainDetector, params.owner, currentTimeForDebug);
-        
+
         // 获取环境因子信息
         string envInfo = FormatEnvironmentInfo(params.environmentFactor, params.heatStressMultiplier, params.rainWeight, params.swimmingWetWeight);
-        
+
         // 获取姿态转换信息
         string stanceTransitionInfo = FormatStanceTransitionInfo(params.stanceTransitionManager);
-        
+
         // 构建并加入统一批次（由 SCR_RSS_Constants 管理定时）
         // 统一 [RSS] 前缀，单行整合
         string debugMessage = BuildDebugMessage(
@@ -499,7 +499,7 @@ class SCR_RSS_DebugDisplay
             encumbranceInfo,
             terrainInfo,
             stanceTransitionInfo);
-        
+
         string speedSourceStr = "";
         if (params.speedSource && params.speedSource != "")
         {
@@ -508,7 +508,7 @@ class SCR_RSS_DebugDisplay
         string metabInfo = FormatMetabolismDiagnosticInfo(params);
         SCR_RSS_DebugBatchManager.AddDebugBatchLine(debugMessage + speedSourceStr + metabInfo + envInfo);
     }
-    
+
     // 输出状态信息（每秒一次）
     // @param owner 角色实体
     // @param snapshotSpeed 与体力 tick 同步的水平速度（m/s）
@@ -530,11 +530,11 @@ class SCR_RSS_DebugDisplay
         // ==================== 配置门禁检查 ====================
         // 获取配置实例
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        
+
         // 如果开关没开，直接退出，性能消耗极低
         if (!settings || !settings.m_bDebugLogEnabled)
             return;
-        
+
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
         // 若本秒内已有批次输出，跳过避免重复
@@ -545,14 +545,14 @@ class SCR_RSS_DebugDisplay
             return;
         if (currentTime < m_fNextStatusLogTime)
             return;
-        
+
         string movementTypeStr;
         if (isSwimming)
             movementTypeStr = "Swim";
         else
             movementTypeStr = SCR_RSS_SpeedCalculator.FormatMovementTypeForDisplay(
                 isSprinting, engineMovementPhase, effectiveMovementPhase, snapshotSpeed);
-        
+
         string statusMessage = string.Format(
             "[RSS] 状态: 速度%1m/s 体力%2%% 倍率%3x 类型%4",
             Math.Round(snapshotSpeed * 100.0) / 100.0,
@@ -566,15 +566,15 @@ class SCR_RSS_DebugDisplay
             if (statusMetab != "")
                 statusMessage = statusMessage + statusMetab;
         }
-        
+
         Print(statusMessage);
-        
+
         // 更新下次日志时间（状态信息每秒输出一次）
         m_fNextStatusLogTime = currentTime + 1.0;
     }
-    
+
     // ==================== Hint 显示系统 ====================
-    
+
     // 格式化体力状态等级
     // @param staminaPercent 体力百分比（0.0-1.0）
     // @return 体力状态等级字符串
@@ -591,7 +591,7 @@ class SCR_RSS_DebugDisplay
         else
             return "Exhausted";
     }
-    
+
     // 格式化负重状态
     // @param currentWeight 当前负重（kg）
     // @param combatEncumbrancePercent 战斗负重百分比
@@ -600,7 +600,7 @@ class SCR_RSS_DebugDisplay
     {
         if (currentWeight <= 0.0)
             return "";
-        
+
         if (combatEncumbrancePercent > 1.0)
             return "Overloaded";
         else if (combatEncumbrancePercent >= 0.9)
@@ -610,7 +610,7 @@ class SCR_RSS_DebugDisplay
         else
             return "Light";
     }
-    
+
     // 构建简洁的 Hint 消息
     // @param movementTypeStr 移动类型字符串
     // @param staminaPercent 体力百分比
@@ -627,15 +627,15 @@ class SCR_RSS_DebugDisplay
     {
         string staminaStatus = GetStaminaStatusLevel(staminaPercent);
         string encumbranceStatus = GetEncumbranceStatus(currentWeight, combatEncumbrancePercent);
-        
+
         // Build compact message - single line format
-        string hintMsg = string.Format("[RSS] %1%% %2", 
+        string hintMsg = string.Format("[RSS] %1%% %2",
             Math.Round(staminaPercent * 100.0).ToString(),
             staminaStatus);
-        
+
         return hintMsg;
     }
-    
+
     // 构建详细的 Hint 第二行消息
     // @param movementTypeStr 移动类型字符串
     // @param finalSpeedMultiplier 最终速度倍数
@@ -649,33 +649,33 @@ class SCR_RSS_DebugDisplay
         float combatEncumbrancePercent)
     {
         string encumbranceStatus = GetEncumbranceStatus(currentWeight, combatEncumbrancePercent);
-        
+
         // Build second line message - compact format
         string hintMsg2 = "";
         if (currentWeight > 0.0)
         {
-            hintMsg2 = string.Format("Spd:%1x Load:%2kg", 
+            hintMsg2 = string.Format("Spd:%1x Load:%2kg",
                 Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
                 Math.Round(currentWeight * 10.0) / 10.0);
         }
         else
         {
-            hintMsg2 = string.Format("Spd:%1x %2", 
+            hintMsg2 = string.Format("Spd:%1x %2",
                 Math.Round(finalSpeedMultiplier * 100.0) / 100.0,
                 movementTypeStr);
         }
-        
+
         return hintMsg2;
     }
-    
+
     // 输出屏幕 Hint 信息（更新 HUD 显示）
     // @param params 调试信息参数结构体
-    static void OutputHintInfo(DebugInfoParams params)
+    static void OutputHintInfo(RSS_DebugInfoParams params)
     {
         // ==================== 配置门禁检查 ====================
         // 获取配置实例
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        
+
         // 如果 Hint 显示没开启，直接退出
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
@@ -687,7 +687,7 @@ class SCR_RSS_DebugDisplay
             if (ownerCtrl && !ownerCtrl.IsPlayerControlled())
                 return;
         }
-        
+
         // 只对本地控制的玩家输出（含载具内：角色在本地控制的载具中）
         IEntity controlled = SCR_PlayerController.GetLocalControlledEntity();
         if (params.owner != controlled)
@@ -714,16 +714,16 @@ class SCR_RSS_DebugDisplay
             if (!isOwnerInControlledVehicle)
                 return;
         }
-        
+
         // 计算总湿重（降雨 + 游泳）
         float totalWetWeight = params.rainWeight + params.swimmingWetWeight;
-        
+
         // 获取环境数据（从环境因子模块）
         float temperature = 20.0;
         float windSpeed = 0.0;
         float windDirection = 0.0;
         bool isIndoor = false;
-        
+
         if (params.environmentFactor)
         {
             temperature = params.environmentFactor.GetTemperature();
@@ -731,7 +731,7 @@ class SCR_RSS_DebugDisplay
             windDirection = params.environmentFactor.GetWindDirection();
             isIndoor = params.environmentFactor.IsIndoor();
         }
-        
+
         // 获取地形密度（从地形检测模块）
         float terrainDensity = -1.0;
         string groundMaterialLabel = "";
@@ -740,7 +740,7 @@ class SCR_RSS_DebugDisplay
             terrainDensity = params.terrainDetector.GetCachedTerrainDensity();
             groundMaterialLabel = params.terrainDetector.GetCachedGroundMaterialLabel();
         }
-        
+
         // 更新 HUD 的所有值（会自动在右上角显示）
         SCR_RSS_StaminaHUDComponent.UpdateAllValues(
             params.staminaPercent,
@@ -1017,7 +1017,7 @@ class SCR_RSS_DebugDisplay
     {
         SCR_RSS_DebugBatchManager.AddDebugBatchLine(line);
     }
-    
+
     // 输出简洁的状态 Hint（更新 HUD 显示）
     // @param owner 角色实体
     // @param staminaPercent 体力百分比
@@ -1031,14 +1031,14 @@ class SCR_RSS_DebugDisplay
     {
         // ==================== 配置门禁检查 ====================
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        
+
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
-        
+
         // 只对本地控制的玩家输出
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
-        
+
         // 更新 HUD 的体力值
         SCR_RSS_StaminaHUDComponent.UpdateStaminaValue(staminaPercent);
     }

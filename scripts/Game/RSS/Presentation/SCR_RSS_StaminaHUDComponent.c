@@ -6,7 +6,7 @@ class SCR_RSS_StaminaHUDComponent
 {
     // 单例实例
     protected static ref SCR_RSS_StaminaHUDComponent s_Instance;
-    
+
     // Widget 引用
     protected Widget m_wRoot;
     protected TextWidget m_wTextStamina;      // 体力
@@ -20,7 +20,7 @@ class SCR_RSS_StaminaHUDComponent
     protected TextWidget m_wTextGround;       // 地面类型
     protected TextWidget m_wTextWet;          // 湿重
     protected TextWidget m_wTextTime;         // 耗尽/回满时间预估
-    
+
     // 缓存的数据
     protected static float s_fCachedStaminaPercent = 1.0;
     protected static float s_fCachedSpeedMultiplier = 1.0;
@@ -41,7 +41,7 @@ class SCR_RSS_StaminaHUDComponent
     protected static float s_fCachedAnaerobicPercent = 1.0;    // v5 无氧池 (0-1)
     protected static float s_fCachedSprintCooldownSec = 0.0;   // v5 冲刺冷却剩余秒
     protected static float s_fCachedBurstCooldownFullSec = 180.0; // 满冷却时长（CD 环分母）
-    
+
     // 体力显示平滑：服务器复制频率低于客户端帧率时，避免体力条抽动
     protected static float s_fDisplayStaminaPercent = 1.0;
     protected static const float STAMINA_DISPLAY_SMOOTH_ALPHA = 0.4;  // 指数平滑系数（每 50ms 更新约 3 次可追上 90%）
@@ -49,23 +49,23 @@ class SCR_RSS_StaminaHUDComponent
     // 本地 HUD 覆盖：每个玩家可以独立开关自己的 HUD，不依赖服务器设置
     protected static bool s_bLocalHUDOverride = true;  // true = 开启（默认），false = 玩家手动关闭
     protected static bool s_bLocalHUDSet = false;      // 是否已设置过本地覆盖
-    
+
     // 速度显示平滑：从静止到全速时，HUD 数值渐变而非瞬时跳变
     protected static float s_fDisplaySpeedMultiplier = 1.0;
     protected static float s_fDisplayCurrentSpeed = 0.0;
     protected static const float SPEED_DISPLAY_SMOOTH_ALPHA = 0.35;  // 略慢于体力，使起步时数值有 buildup 感
-    
+
     // 上一次显示的值（用于减少不必要的更新）
     protected string m_sLastDisplayedText = "";
-    
+
     // 世界 session 代际计数器：Workbench 重载脚本+世界后递增。
     // 用于 DestroyHUD 判断 widget 是否还属于当前 world session，
     // 避免对旧 session 已释放的 C++ widget 调用 RemoveFromHierarchy 导致崩溃。
     protected static int s_iWorldGeneration = 0;
     protected int m_iCreatedInGeneration = -1;
-    
+
     // ==================== 公共静态方法 ====================
-    
+
     // 更新 HUD 主数据（最多 15 个参数；ETA / v5 无氧见专用方法）
     static void UpdateAllValues(
         float staminaPercent,
@@ -135,24 +135,24 @@ class SCR_RSS_StaminaHUDComponent
         if (s_Instance)
             s_Instance.UpdateDisplay();
     }
-    
+
     // 简化版：只更新体力值（向后兼容）
     static void UpdateStaminaValue(float staminaPercent)
     {
         s_fCachedStaminaPercent = staminaPercent;
         s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
-        
+
         // 如果实例存在，更新显示
         if (s_Instance)
             s_Instance.UpdateDisplay();
     }
-    
+
     // 获取当前缓存的体力值
     static float GetCachedStaminaPercent()
     {
         return s_fCachedStaminaPercent;
     }
-    
+
     // 初始化 HUD（从 PlayerBase 调用）
     static void Init()
     {
@@ -171,12 +171,12 @@ class SCR_RSS_StaminaHUDComponent
                 Destroy();
             }
         }
-        
+
         // 检查配置是否启用
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (!settings || !settings.m_bHintDisplayEnabled)
             return;
-        
+
         SCR_RSS_StaminaHUDComponent inst = new SCR_RSS_StaminaHUDComponent();
         if (!inst.CreateHUD())
             return;
@@ -214,7 +214,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             Destroy();
     }
-    
+
     // 销毁 HUD
     static void Destroy()
     {
@@ -238,13 +238,13 @@ class SCR_RSS_StaminaHUDComponent
         s_iWorldGeneration++;
         Destroy();
     }
-    
+
     // 获取本地 HUD 覆盖状态
     static bool GetLocalHUDEnabled()
     {
         return s_bLocalHUDOverride;
     }
-    
+
     // 设置本地 HUD 覆盖（每个玩家自己开关）
     static void SetLocalHUDEnabled(bool enabled)
     {
@@ -252,15 +252,15 @@ class SCR_RSS_StaminaHUDComponent
         s_bLocalHUDSet = true;
         SyncHintDisplayWithSettings();
     }
-    
+
     // 检查是否已初始化
     static bool IsInitialized()
     {
         return s_Instance != null;
     }
-    
+
     // ==================== 私有方法 ====================
-    
+
     // 创建 HUD。失败时不得把实例赋给 s_Instance，否则 Init() 会因「已有单例」永远不重试。
     protected bool CreateHUD()
     {
@@ -271,10 +271,10 @@ class SCR_RSS_StaminaHUDComponent
                 Print("[RSS_StaminaHUD] Workspace not found");
             return false;
         }
-        
+
         // 直接在 workspace 上创建布局
         m_wRoot = workspace.CreateWidgets("{CD4F57077E64ECE5}UI/layouts/HUD/StatsPanel/StaminaHUD.layout");
-        
+
         if (!m_wRoot)
         {
             // 如果布局加载失败，打印日志
@@ -282,7 +282,7 @@ class SCR_RSS_StaminaHUDComponent
                 Print("[RSS_StaminaHUD] Layout not found or failed to load");
             return false;
         }
-        
+
         // 查找所有 Text widget
         m_wTextStamina = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Stamina"));
         m_wTextSpeed = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Speed"));
@@ -295,18 +295,18 @@ class SCR_RSS_StaminaHUDComponent
         m_wTextGround = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Ground"));
         m_wTextWet = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Wet"));
         m_wTextTime = TextWidget.Cast(m_wRoot.FindAnyWidget("Text-Time"));
-        
+
         // 向后兼容：如果没有找到新的 widget，使用旧的 "Text"
         if (!m_wTextStamina)
         {
             Widget staminaSlot = m_wRoot.FindAnyWidget("Slot-Stamina");
             if (staminaSlot)
                 m_wTextStamina = TextWidget.Cast(staminaSlot.FindAnyWidget("Text"));
-            
+
             if (!m_wTextStamina)
                 m_wTextStamina = TextWidget.Cast(m_wRoot.FindAnyWidget("Text"));
         }
-        
+
         int widgetCount = 0;
         if (m_wTextStamina)
         {
@@ -352,7 +352,7 @@ class SCR_RSS_StaminaHUDComponent
         {
             widgetCount++;
         }
-        
+
         // 记录创建时的 world generation，用于跨 session 的悬空检测
         m_iCreatedInGeneration = s_iWorldGeneration;
 
@@ -360,8 +360,8 @@ class SCR_RSS_StaminaHUDComponent
             Print("[RSS_StaminaHUD] HUD created with " + widgetCount.ToString() + " text widgets (gen=" + s_iWorldGeneration.ToString() + ")");
         return true;
     }
-    
-    
+
+
     // 销毁 HUD
     protected void DestroyHUD()
     {
@@ -390,7 +390,7 @@ class SCR_RSS_StaminaHUDComponent
         m_wTextTime = null;
         m_sLastDisplayedText = "";
     }
-    
+
     // 更新显示
     protected void UpdateDisplay()
     {
@@ -408,7 +408,7 @@ class SCR_RSS_StaminaHUDComponent
         int tempC = Math.Round(s_fCachedTemperature);  // 虚拟气温（°C）
         int windSpeedInt = Math.Round(s_fCachedWindSpeed);  // 风速（m/s）
         int wetKg = Math.Round(s_fCachedWetWeight * 10.0);  // 保留一位小数
-        
+
         // 构建耗尽/回满时间显示字符串（净消耗显示耗尽时间，净恢复显示回满时间，平衡/已耗尽/已回满显示 0）
         // ETA 基于实际体力计算，不与显示平滑值挂钩。
         // 显示平滑仅影响体力条数字的视觉过渡，不应缩放 ETA（净速率随实际体力变化）。
@@ -465,23 +465,23 @@ class SCR_RSS_StaminaHUDComponent
         string indoorStr = "O";
         if (s_bCachedIsIndoor)
             indoorStr = "I";
-        string fullText = staminaPct.ToString() + speedMs.ToString() + weightKg.ToString() + 
-                          s_sCachedMoveType + slopeAngle.ToString() + tempC.ToString() + 
-                          windSpeedInt.ToString() + indoorStr + 
+        string fullText = staminaPct.ToString() + speedMs.ToString() + weightKg.ToString() +
+                          s_sCachedMoveType + slopeAngle.ToString() + tempC.ToString() +
+                          windSpeedInt.ToString() + indoorStr +
                           s_fCachedTerrainDensity.ToString() + s_sCachedGroundMaterialLabel + wetKg.ToString() + timeStr +
                           s_fCachedAnaerobicPercent.ToString() + s_fCachedSprintCooldownSec.ToString();
-        
+
         // 如果没有变化，不更新
         if (fullText == m_sLastDisplayedText)
             return;
-        
+
         m_sLastDisplayedText = fullText;
-        
+
         // 根据体力值获取颜色
         Color staminaColor = GetStaminaColor(staminaPct);
         Color speedColor = GetSpeedColor(speedPct);
         Color tempColor = GetTempColor(tempC);
-        
+
         // 更新体力：主条 STA；Sprint 或 W′ 未满时并列显示 W′
         if (m_wTextStamina)
         {
@@ -512,7 +512,7 @@ class SCR_RSS_StaminaHUDComponent
             else
                 m_wTextTime.SetColor(Color.FromRGBA(0, 0, 0, 255));
         }
-        
+
         // 更新速度（显示实际速度 m/s，颜色基于速度倍数）
         if (m_wTextSpeed)
         {
@@ -520,7 +520,7 @@ class SCR_RSS_StaminaHUDComponent
             m_wTextSpeed.SetText("SPD " + speedDisplay.ToString() + "m/s");
             m_wTextSpeed.SetColor(speedColor);
         }
-        
+
         // 更新负重（基于负重惩罚阈值变色）
         // 战斗负重 30kg，最大负重 40.5kg
         if (m_wTextWeight)
@@ -529,7 +529,7 @@ class SCR_RSS_StaminaHUDComponent
                 m_wTextWeight.SetText("WT " + weightKg.ToString() + "kg");
             else
                 m_wTextWeight.SetText("WT 0kg");
-            
+
             // 负重颜色：超过最大负重红色，超过战斗负重橙色
             if (weightKg >= 40)
                 m_wTextWeight.SetColor(GUIColors.RED_BRIGHT2);
@@ -538,16 +538,16 @@ class SCR_RSS_StaminaHUDComponent
             else
                 m_wTextWeight.SetColor(GUIColors.DEFAULT);
         }
-        
+
         // 更新移动类型
         if (m_wTextMove)
         {
             string displayMoveType = s_sCachedMoveType;
-            
+
             // 如果在游泳，显示Swim
             if (s_bCachedIsSwimming)
                 displayMoveType = "Swim";
-            
+
             m_wTextMove.SetText(displayMoveType);
             m_wTextMove.SetColor(GUIColors.DEFAULT);
             if (s_fCachedSprintCooldownSec > 0.5)
@@ -574,7 +574,7 @@ class SCR_RSS_StaminaHUDComponent
                 m_wTextMove.SetColor(GUIColors.ORANGE_BRIGHT2);
             }
         }
-        
+
         // 更新坡度/游泳角度（陡坡变色；游泳时显示速度向量俯仰角）
         // 陆地：上坡消耗更多体力，下坡速度更快但有风险
         // 游泳：正=上浮，负=下潜
@@ -595,7 +595,7 @@ class SCR_RSS_StaminaHUDComponent
             {
                 m_wTextSlope.SetText(angleLabel + "0deg");
             }
-            
+
             // 坡度颜色：陡坡（>20度）红色，中等坡度（>10度）橙色
             if (absSlopeAngle >= 20)
                 m_wTextSlope.SetColor(GUIColors.RED_BRIGHT2);
@@ -604,14 +604,14 @@ class SCR_RSS_StaminaHUDComponent
             else
                 m_wTextSlope.SetColor(GUIColors.DEFAULT);
         }
-        
+
         // 更新温度（直接使用虚拟气温）
         if (m_wTextHeat)
         {
             m_wTextHeat.SetText("TEMP " + tempC.ToString() + "C");
             m_wTextHeat.SetColor(tempColor);
         }
-        
+
         // 更新风速风向
         if (m_wTextWind)
         {
@@ -633,7 +633,7 @@ class SCR_RSS_StaminaHUDComponent
                 m_wTextWind.SetColor(GUIColors.DEFAULT);
             }
         }
-        
+
         // 更新室内/室外
         if (m_wTextLocation)
         {
@@ -648,13 +648,13 @@ class SCR_RSS_StaminaHUDComponent
                 m_wTextLocation.SetColor(GUIColors.DEFAULT);
             }
         }
-        
+
         // 更新地面类型
         if (m_wTextGround)
         {
             string groundType;
             Color groundColor;
-            
+
             // 如果在游泳，显示Water
             if (s_bCachedIsSwimming)
             {
@@ -674,11 +674,11 @@ class SCR_RSS_StaminaHUDComponent
                     groundColor = GetGroundColor(s_fCachedTerrainDensity);
                 }
             }
-            
+
             m_wTextGround.SetText(groundType);
             m_wTextGround.SetColor(groundColor);
         }
-        
+
         // 更新湿重
         if (m_wTextWet)
         {
@@ -696,7 +696,7 @@ class SCR_RSS_StaminaHUDComponent
             }
         }
     }
-    
+
     // 获取风向字符串（8方向）
     // 注意：API返回的是"风吹向的方向"，需要反转180度显示"风来自的方向"
     // 例如：API返回315度（NW方向），实际是SE风（从东南吹来）
@@ -704,13 +704,13 @@ class SCR_RSS_StaminaHUDComponent
     {
         // 反转180度：将"风吹向"转换为"风来自"
         degrees = degrees + 180.0;
-        
+
         // 将角度归一化到 0-360
         while (degrees < 0)
             degrees += 360;
         while (degrees >= 360)
             degrees -= 360;
-        
+
         // 8方向划分（每45度一个方向）
         // 0=N, 45=NE, 90=E, 135=SE, 180=S, 225=SW, 270=W, 315=NW
         if (degrees >= 337.5 || degrees < 22.5)
@@ -730,7 +730,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             return "NW";
     }
-    
+
     // 获取地面类型字符串（基于物理密度，与 SCR_RSS_MaterialTerrainTable / 体力链密度映射一致）
     // 典型：snow≤0.36 | 木/矮草 0.36~0.72 | 地板≤1.13 | grass_lush 1.2 | dirt/soil 1.33 |
     //       sand/gravel/pebbles 1.55~1.86 | 铺装 2.2~2.42 | cobble/stone 2.75 | tiles ~2.94
@@ -757,7 +757,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             return "Rock";
     }
-    
+
     // 获取地面颜色（基于物理密度）
     // 绿色=省力，白色=普通，橙色=费力
     protected Color GetGroundColor(float density)
@@ -783,7 +783,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             return GUIColors.RED_BRIGHT2;               // 岩石 - 红色（非常困难）
     }
-    
+
     // 获取体力颜色
     protected Color GetStaminaColor(int pct)
     {
@@ -794,7 +794,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             return GUIColors.DEFAULT;
     }
-    
+
     // 获取速度颜色（越接近最大速度越红，表示体力消耗越快）
     // 载具内或静止时速度为 0，使用中性色（使用平滑后的显示速度判断）
     protected Color GetSpeedColor(int pct)
@@ -808,7 +808,7 @@ class SCR_RSS_StaminaHUDComponent
         else
             return GUIColors.DEFAULT;
     }
-    
+
     // 获取温度颜色（基于摄氏度）
     protected Color GetTempColor(int tempC)
     {
