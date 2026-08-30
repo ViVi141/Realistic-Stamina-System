@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### PlayerBase / UpdateLoop 拆分
+
+- **拆出 `SCR_RSS_StaminaTickTypes`** — `RSS_StatusMetabLogSnapshot` / `RSS_StaminaDebugOutputParams` / `RSS_StaminaTickLocals` 从 `PlayerBase_UpdateLoop.c` 迁至 `RSS/Core/`，行为不变。
+
 ### 剩余 W′ 继续跑，见底才锁巡航
 
 - **施密特只管冲刺** — 约 25% 解除武装仍禁 Sprint，避免 25↔60% 冲刺抽搐。
