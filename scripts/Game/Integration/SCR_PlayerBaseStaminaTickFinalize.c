@@ -47,10 +47,10 @@ class SCR_PlayerBaseStaminaTickFinalize
         loc.drainParams.gradePercent = loc.gradePercent;
         loc.drainParams.terrainFactor = loc.terrainFactor;
         loc.drainParams.velocityForDrain = loc.velocityForDrain;
-        loc.drainParams.ctx.swimmingVelocityDebugPrinted = ctx.swimmingVelocityDebugPrinted;
+        loc.drainParams.swimmingVelocityDebugPrinted = ctx.swimmingVelocityDebugPrinted;
         loc.drainParams.owner = loc.owner;
         loc.drainParams.controller = ctx.ctrl;
-        loc.drainParams.ctx.environmentFactor = ctx.environmentFactor;
+        loc.drainParams.environmentFactor = ctx.environmentFactor;
         loc.drainParams.isSprinting = loc.isSprinting;
         loc.drainParams.currentMovementPhase = loc.effectiveMovementPhase;
         loc.drainParams.speedRatio = loc.speedRatio;
@@ -58,13 +58,13 @@ class SCR_PlayerBaseStaminaTickFinalize
         loc.drainParams.isSprintActive = loc.isSprintActive;
         loc.drainParams.staminaPercent = loc.staminaPercent;
         loc.drainParams.combatStimActive = loc.combatStimActive;
-        loc.drainParams.ctx.encumbranceCache = ctx.encumbranceCache;
-        loc.drainParams.ctx.fatigueSystem = ctx.fatigueSystem;
-        loc.drainParams.ctx.exerciseTracker = ctx.exerciseTracker;
-        loc.drainParams.ctx.epocState = ctx.epocState;
+        loc.drainParams.encumbranceCache = ctx.encumbranceCache;
+        loc.drainParams.fatigueSystem = ctx.fatigueSystem;
+        loc.drainParams.exerciseTracker = ctx.exerciseTracker;
+        loc.drainParams.epocState = ctx.epocState;
         loc.drainParams.currentTimeSec = loc.currentTime;
         loc.drainParams.currentTimeForExerciseMs = loc.currentTimeForExerciseMs;
-        loc.drainParams.ctx.appliedSpeedLimitMs = ctx.appliedSpeedLimitMs;
+        loc.drainParams.appliedSpeedLimitMs = ctx.appliedSpeedLimitMs;
         loc.drainParams.effectiveCriticalPowerWatts = -1.0;
         loc.drainParams.wPrimePool01 = 1.0;
         if (ctx.anaerobicBurst)
@@ -87,7 +87,7 @@ class SCR_PlayerBaseStaminaTickFinalize
         loc.totalDrainRate = loc.drainTick.totalDrainRate;
         loc.baseDrainRateByVelocity = loc.drainTick.baseDrainRateByVelocity;
         loc.baseDrainRateByVelocityForModule = loc.drainTick.baseDrainRateByVelocityForModule;
-        ctx.swimmingVelocityDebugPrinted = loc.drainTick.ctx.swimmingVelocityDebugPrinted;
+        ctx.swimmingVelocityDebugPrinted = loc.drainTick.swimmingVelocityDebugPrinted;
 
         loc.effectiveCriticalPowerWattsDbg = loc.drainParams.effectiveCriticalPowerWatts;
         loc.environmentMultDbg = 1.0;
