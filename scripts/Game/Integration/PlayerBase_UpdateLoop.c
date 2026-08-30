@@ -586,130 +586,22 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (m_pAnaerobicBurst)
-        {
-            bool tickAnaerobic = Replication.IsServer();
-
-            if (tickAnaerobic)
-            {
-                SCR_RSS_CriticalPowerModel cpModel = m_pAnaerobicBurst.GetCpModel();
-                float pool01BeforeTick = 1.0;
-                if (cpModel)
-                    pool01BeforeTick = cpModel.GetPool01();
-
-                float powerW = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
-                    loc.currentSpeed,
-                    m_fAppliedSpeedLimitMs,
-                    loc.totalWeightWithWetAndBody,
-                    loc.gradePercent,
-                    loc.terrainFactor,
-                    loc.effectivePhase,
-                    pool01BeforeTick,
-                    loc.isSprintActive);
-
-                if (cpModel)
-                {
-                    float loadKg = Math.Max(loc.totalWeightWithWetAndBody - SCR_RSS_MetabolismMath.CHARACTER_WEIGHT, 0.0);
-                    float envCpMult = 1.0;
-                    if (m_pEnvironmentFactor && SCR_RSS_ConfigBridge.IsHeatStressEnabled())
-                    {
-                        float heatPen = m_pEnvironmentFactor.GetHeatStressPenalty();
-                        envCpMult = 1.0 - heatPen * 0.35;
-                    }
-                    float fatigueNorm = 0.0;
-                    if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
-                        fatigueNorm = m_pFatigueSystem.GetFatigueIntegralNorm();
-                    cpModel.SetRuntimeContext(loadKg, loc.gradePercent, envCpMult, fatigueNorm);
-                    if (m_pFatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
-                    {
-                        float cpMult = m_pFatigueSystem.GetCpFatigueMultiplier();
-                        cpModel.SetFatigueCpMultiplier(cpMult);
-                    }
-                    else
-                    {
-                        cpModel.SetFatigueCpMultiplier(1.0);
-                    }
-
-                    // 非冲刺：
-                    // - W′ 解除武装且未超速：功率钳到 CP（巡航不烧空池）
-                    // - W′ 仍武装：P>CP 必须进 TickPower（武装时 v_limit 是步态盖，不是 CP 巡航速）
-                    // - 超速且 P≤CP（下坡滑行常见）：钉在 CP，禁止 W′ 回充白嫖
-                    // 步态覆盖带内：引擎 Walk 无法慢于相位顶，相对徒步地板 1.0 的假超速走巡航钳。
-                    if (!loc.isSprintActive)
-                    {
-                        bool physOverspeed = SCR_RSS_DrainCalculator.IsPhysOverspeedForAnaerobicTick(
-                            loc.currentSpeed,
-                            m_fAppliedSpeedLimitMs,
-                            RSS_IsCpWalkOverrideActive());
-                        float cpClamp = cpModel.GetEffectiveCriticalPowerWatts();
-                        if (cpClamp > 1.0)
-                        {
-                            if (!physOverspeed)
-                            {
-                                bool cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
-                                if (cruiseLatched)
-                                {
-                                    if (powerW > cpClamp)
-                                        powerW = cpClamp;
-                                }
-                            }
-                            else
-                            {
-                                if (powerW <= cpClamp)
-                                    powerW = cpClamp;
-                            }
-                        }
-                    }
-                }
-
-                m_pAnaerobicBurst.TickPower(powerW, loc.isSprintActive, loc.currentTime, loc.timeDeltaSec, loc.currentSpeed);
-                if (m_pEpocState)
-                {
-                    // EPOC：限速内意图功率；无 W′ 超速记账时再钳到 CP（与有氧 P_bill 对齐，避免下坡跑飞停步暴罚）
-                    float cpForEpoc = -1.0;
-                    if (cpModel)
-                        cpForEpoc = cpModel.GetEffectiveCriticalPowerWatts();
-                    m_pEpocState.SetEffectiveCpWatts(cpForEpoc);
-                    float powerForEpoc = SCR_RSS_DrainCalculator.GetEpocSamplePowerWatts(
-                        loc.currentSpeed,
-                        m_fAppliedSpeedLimitMs,
-                        loc.totalWeightWithWetAndBody,
-                        loc.gradePercent,
-                        loc.terrainFactor,
-                        loc.phaseNow,
-                        cpForEpoc);
-                    bool cruiseLatchedForEpoc = false;
-                    if (cpModel)
-                        cruiseLatchedForEpoc = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
-                    bool billAboveCp = false;
-                    if (loc.isSprintActive)
-                        billAboveCp = true;
-                    else if (!cruiseLatchedForEpoc)
-                        billAboveCp = true;
-                    if (!billAboveCp)
-                    {
-                        if (cpForEpoc > 1.0)
-                        {
-                            if (powerForEpoc > cpForEpoc)
-                                powerForEpoc = cpForEpoc;
-                        }
-                    }
-                    m_pEpocState.UpdateExercisePowerSample(
-                        powerForEpoc, loc.currentSpeed, loc.timeDeltaSec);
-                }
-                if (m_pStaminaState)
-                {
-                    m_pStaminaState.SetWPrimePoolFromCpModel(m_pAnaerobicBurst.GetCpModel());
-                    m_pStaminaState.SetAerobic(loc.staminaPercent);
-                }
-                if (Replication.IsServer())
-                {
-                    SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
-                        m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
-                    Replication.BumpMe();
-                }
-            }
-        }
+        float replPoolTmp = m_fReplAnaerobicPool;
+        float replCooldownTmp = m_fReplAnaerobicCooldownUntil;
+        SCR_PlayerBaseWPrimeTickHelper.TickPhaseBAnaerobic(
+            this,
+            loc,
+            m_pAnaerobicBurst,
+            m_pStaminaState,
+            m_pEnvironmentFactor,
+            m_pFatigueSystem,
+            m_pEpocState,
+            m_fAppliedSpeedLimitMs,
+            RSS_IsCpWalkOverrideActive(),
+            replPoolTmp,
+            replCooldownTmp);
+        m_fReplAnaerobicPool = replPoolTmp;
+        m_fReplAnaerobicCooldownUntil = replCooldownTmp;
 
         SCR_PlayerBaseOverspeedClampHelper.ApplyPostTickOverspeedClamp(
             this,
