@@ -2,7 +2,7 @@
 
 class SCR_RSS_StaminaNetRate
 {
-    static RecoveryContext BuildRecoveryContext(
+    static RSS_RecoveryContext BuildRSS_RecoveryContext(
         bool inVehicle,
         SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_RSS_ExerciseTracker exerciseTracker,
@@ -13,7 +13,7 @@ class SCR_RSS_StaminaNetRate
         float heatStressMultiplier,
         float currentSpeed)
     {
-        RecoveryContext ctx = new RecoveryContext();
+        RSS_RecoveryContext ctx = new RSS_RecoveryContext();
 
         if (inVehicle)
         {
@@ -95,7 +95,7 @@ class SCR_RSS_StaminaNetRate
         if (isInEpocDelay && !inVehicle)
             return 0.0;
 
-        RecoveryContext ctx = BuildRecoveryContext(
+        RSS_RecoveryContext ctx = BuildRSS_RecoveryContext(
             inVehicle,
             encumbranceCache,
             exerciseTracker,
@@ -148,7 +148,7 @@ class SCR_RSS_StaminaNetRate
         return movementDrainRate + epocDrainRate;
     }
 
-    static StaminaEtaResult ComputeStaminaEta(
+    static RSS_StaminaEtaResult ComputeStaminaEta(
         float staminaPercent,
         float targetStaminaCap,
         bool useSwimmingModel,
@@ -165,7 +165,7 @@ class SCR_RSS_StaminaNetRate
         float capShrinkPerSec,
         float overspeedExtraDrainPerSec = 0.0)
     {
-        StaminaEtaResult result = new StaminaEtaResult();
+        RSS_StaminaEtaResult result = new RSS_StaminaEtaResult();
         result.timeToDepleteSec = -1.0;
         result.timeToFullSec = -1.0;
 
@@ -300,7 +300,7 @@ class SCR_RSS_StaminaNetRate
         if (epocState)
             isInEpocDelay = epocState.IsInEpocDelay();
 
-        RecoveryContext ctx = BuildRecoveryContext(
+        RSS_RecoveryContext ctx = BuildRSS_RecoveryContext(
             false,
             encumbranceCache,
             exerciseTracker,

@@ -7,21 +7,21 @@
 class SCR_RSS_StanceTransitionManager
 {
     // ==================== 状态变量 ====================
-    
+
     // 上一帧姿态（用于检测变化）
     protected ECharacterStance m_eLastStance;
-    
+
     // 是否已初始化（避免第一帧误判）
     protected bool m_bInitialized;
-    
+
     // ==================== 疲劳堆积器（Stance Fatigue Accumulator）====================
     // 核心机制：引入隐藏变量 m_fStanceFatigue，模拟肌肉在连续负重深蹲时的乳酸堆积
     // 增加：每次变换姿态，这个变量增加 1.0
     // 衰减：每秒钟自动减少 0.5
     // 影响：实际体力消耗 = BaseCost × WeightFactor × (1.0 + m_fStanceFatigue)
-    
+
     protected float m_fStanceFatigue; // 疲劳堆积值
-    
+
     // 窗口结算：连续切换间隔 < 1s 同窗口，>= 1s 结束窗口并结算；每秒只计该秒内最靠近秒末的那次
     protected float m_fWindowStartTime = -1.0;      // 当前窗口 T0（秒），-1 表示无窗口
     protected float m_fLastStanceChangeTime = -1.0;  // 上次切换时间（用于判断间隔）
@@ -29,9 +29,9 @@ class SCR_RSS_StanceTransitionManager
     protected float m_fCurrentSecondIndex = -1.0;   // 当前所在秒序号（0= [T0,T0+1) ），float 避免强转
     protected float m_fCurrentSecondBestTime = -1.0; // 当前秒内“最靠近秒末”的那次切换时间
     protected float m_fCurrentSecondBestCost = 0.0;  // 该次切换的消耗
-    
+
     // ==================== 公共方法 ====================
-    
+
     // 初始化状态
     void Initialize()
     {
@@ -45,14 +45,14 @@ class SCR_RSS_StanceTransitionManager
         m_fCurrentSecondBestTime = -1.0;
         m_fCurrentSecondBestCost = 0.0;
     }
-    
+
     // 设置初始姿态（避免第一帧误判）
     void SetInitialStance(ECharacterStance stance)
     {
         m_eLastStance = stance;
         m_bInitialized = true;
     }
-    
+
     // 更新疲劳堆积（每帧调用）
     // @param deltaTime 帧时间（秒）
     void UpdateFatigue(float deltaTime)
@@ -61,7 +61,7 @@ class SCR_RSS_StanceTransitionManager
         float decayAmount = SCR_RSS_Constants.STANCE_FATIGUE_DECAY * deltaTime;
         m_fStanceFatigue = Math.Max(0.0, m_fStanceFatigue - decayAmount);
     }
-    
+
     // 无切换满 1 秒时尝试结束当前窗口并结算（由体力更新循环定期调用）
     // @param currentTimeSec 当前世界时间（秒）
     // @return 若满足「距上次切换 >= STANCE_WINDOW_GAP」则返回本窗口累计消耗，否则 0
@@ -82,7 +82,7 @@ class SCR_RSS_StanceTransitionManager
         m_fCurrentSecondBestCost = 0.0;
         return toReturn;
     }
-    
+
     // 处理姿态转换逻辑
     // @param owner 角色实体
     // @param controller 角色控制器组件
@@ -99,19 +99,19 @@ class SCR_RSS_StanceTransitionManager
     {
         if (!owner || !controller || !m_bInitialized)
             return 0.0;
-        
+
         // 获取当前姿态
         ECharacterStance currentStance = controller.GetStance();
-        
+
         // 判断姿态是否发生变化
         if (currentStance == m_eLastStance)
             return 0.0;
-        
+
         BaseWorld world = owner.GetWorld();
         float currentTimeSec = 0.0;
         if (world)
             currentTimeSec = world.GetWorldTime() / 1000.0;
-        
+
         float gapSec = SCR_RSS_Constants.STANCE_WINDOW_GAP;
         float transitionCost = CalculateStanceTransitionCost(
             m_eLastStance,
@@ -121,7 +121,7 @@ class SCR_RSS_StanceTransitionManager
             cachedCurrentWeight,
             owner
         );
-        
+
         // 与上次切换间隔 >= 1 秒：结束当前窗口并结算，再以本次为 T0 开新窗口
         if (m_fLastStanceChangeTime >= 0.0 && (currentTimeSec - m_fLastStanceChangeTime) >= gapSec)
         {
@@ -138,7 +138,7 @@ class SCR_RSS_StanceTransitionManager
             m_fStanceFatigue = Math.Min(m_fStanceFatigue + SCR_RSS_Constants.STANCE_FATIGUE_ACCUMULATION, SCR_RSS_Constants.STANCE_FATIGUE_MAX);
             return toReturn;
         }
-        
+
         // 尚无窗口：以本次为 T0 开窗，不结算
         if (m_fWindowStartTime < 0.0)
         {
@@ -152,14 +152,14 @@ class SCR_RSS_StanceTransitionManager
             m_fStanceFatigue = Math.Min(m_fStanceFatigue + SCR_RSS_Constants.STANCE_FATIGUE_ACCUMULATION, SCR_RSS_Constants.STANCE_FATIGUE_MAX);
             return 0.0;
         }
-        
+
         // 同一窗口内：按秒聚合，只保留该秒内最靠近秒末的那次
         float elapsed = currentTimeSec - m_fWindowStartTime;
         float secondIndex = Math.Floor(elapsed);
         if (secondIndex < 0.0)
             secondIndex = 0.0;
         float targetTime = m_fWindowStartTime + secondIndex + 1.0;
-        
+
         if (secondIndex > m_fCurrentSecondIndex)
         {
             m_fWindowPendingTotal = m_fWindowPendingTotal + m_fCurrentSecondBestCost;
@@ -177,15 +177,15 @@ class SCR_RSS_StanceTransitionManager
                 m_fCurrentSecondBestCost = transitionCost;
             }
         }
-        
+
         m_fLastStanceChangeTime = currentTimeSec;
         m_eLastStance = currentStance;
         m_fStanceFatigue = Math.Min(m_fStanceFatigue + SCR_RSS_Constants.STANCE_FATIGUE_ACCUMULATION, SCR_RSS_Constants.STANCE_FATIGUE_MAX);
         return 0.0;
     }
-    
+
     // ==================== 核心计算方法 ====================
-    
+
     // 计算姿态转换消耗（v2.0 乳酸堆积模型）
     // @param oldStance 旧姿态
     // @param newStance 新姿态
@@ -204,10 +204,10 @@ class SCR_RSS_StanceTransitionManager
     {
         // 获取基础消耗（基于转换类型）
         float baseCost = GetBaseTransitionCost(oldStance, newStance);
-        
+
         if (baseCost <= 0.0)
             return 0.0;
-        
+
         // 获取当前总重量
         float currentTotalWeight = SCR_RSS_Constants.CHARACTER_WEIGHT;
         if (encumbranceCacheValid)
@@ -223,15 +223,15 @@ class SCR_RSS_StanceTransitionManager
                     currentTotalWeight = SCR_RSS_Constants.CHARACTER_WEIGHT + inventoryComponent.GetTotalWeight();
             }
         }
-        
+
         // 计算负重加成（线性化：WeightFactor = CurrentWeight / 90.0）
         float weightMultiplier = currentTotalWeight / SCR_RSS_Constants.STANCE_WEIGHT_BASE;
-        
+
         // 计算最终消耗：基础 × 负重 × (1 + 疲劳堆积)
         float finalCost = baseCost * weightMultiplier * (1.0 + m_fStanceFatigue);
         // [v2.17.0] 单次姿态切换上限 5%，避免重装+高疲劳堆积时出现离谱消耗
         finalCost = Math.Min(finalCost, 0.05);
-        
+
         // 调试输出（仅在客户端）
         if (SCR_RSS_ConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
         {
@@ -244,10 +244,10 @@ class SCR_RSS_StanceTransitionManager
                 Math.Round(weightMultiplier * 100.0) / 100.0,
                 Math.Round(m_fStanceFatigue * 100.0) / 100.0);
         }
-        
+
         return finalCost;
     }
-    
+
     // 获取姿态转换的基础消耗（v2.0 优化：下调基础消耗）
     // @param oldStance 旧姿态
     // @param newStance 新姿态
@@ -261,15 +261,15 @@ class SCR_RSS_StanceTransitionManager
             return SCR_RSS_Constants.STANCE_COST_PRONE_TO_CROUCH; // 1.0% - 趴到蹲
         else if (oldStance == ECharacterStance.CROUCH && newStance == ECharacterStance.STAND)
             return SCR_RSS_Constants.STANCE_COST_CROUCH_TO_STAND; // 0.5% - 蹲到站
-        
+
         // 向下转换（利用重力，但需要离心收缩刹车）
         else if (oldStance == ECharacterStance.STAND && newStance == ECharacterStance.PRONE)
             return SCR_RSS_Constants.STANCE_COST_STAND_TO_PRONE; // 0.3% - 站到趴
-        
+
         // 其他转换（如 STAND -> CROUCH 或 CROUCH -> PRONE）
         return SCR_RSS_Constants.STANCE_COST_OTHER; // 0.3% - 其他转换
     }
-    
+
     // 获取姿态转换的名称（用于调试输出）
     // @param oldStance 旧姿态
     // @param newStance 新姿态
@@ -280,7 +280,7 @@ class SCR_RSS_StanceTransitionManager
         string newName = GetStanceName(newStance);
         return string.Format("%1 → %2", oldName, newName);
     }
-    
+
     // 获取姿态名称（用于调试输出）
     // @param stance 姿态
     // @return 姿态名称字符串
@@ -295,15 +295,15 @@ class SCR_RSS_StanceTransitionManager
         else
             return "UNKNOWN";
     }
-    
+
     // ==================== 获取器方法 ====================
-    
+
     // 获取上一帧姿态
     ECharacterStance GetLastStance()
     {
         return m_eLastStance;
     }
-    
+
     // 获取当前疲劳堆积值
     float GetStanceFatigue()
     {

@@ -133,37 +133,37 @@ class SCR_RSS_NetworkSyncManager
         }
         return false;
     }
-    
+
     // 处理服务器端验证的速度倍数
     // @param finalSpeedMultiplier 客户端计算的速度倍数
     // @return 目标速度倍数（可能是服务器端验证的值）
     float GetTargetSpeedMultiplier(float finalSpeedMultiplier)
     {
         float targetSpeedMultiplier = finalSpeedMultiplier;
-        
+
         // 服务器权威：已收到验证值时，始终以服务器值为目标（插值平滑过渡）
         if (m_bHasReceivedServerValidation && m_fServerValidatedSpeedMultiplier > 0.0)
         {
             targetSpeedMultiplier = m_fServerValidatedSpeedMultiplier;
         }
-        
+
         m_fTargetSpeedMultiplier = targetSpeedMultiplier;
         return targetSpeedMultiplier;
     }
-    
+
     // 平滑插值速度倍数
     // @param currentTime 当前世界时间
     // @return 平滑后的速度倍数
     float GetSmoothedSpeedMultiplier(float currentTime)
     {
         float targetSpeedMultiplier = m_fTargetSpeedMultiplier;
-        
+
         // 首次调用时初始化时间
         if (m_fLastSmoothUpdateTime <= 0.0)
             m_fLastSmoothUpdateTime = currentTime;
-        
+
         float timeDelta = currentTime - m_fLastSmoothUpdateTime;
-        
+
         // 平滑插值：从当前速度倍数过渡到目标速度倍数
         // 使用线性插值，过渡时间为 SMOOTH_TRANSITION_DURATION（0.15s）
         // 在 50ms 更新间隔下 lerpSpeed = 0.05/0.15 ≈ 0.33，插值实际生效
@@ -171,19 +171,19 @@ class SCR_RSS_NetworkSyncManager
         {
             float lerpSpeed = timeDelta / SMOOTH_TRANSITION_DURATION;
             lerpSpeed = Math.Clamp(lerpSpeed, 0.0, 1.0);
-            
+
             m_fSmoothedSpeedMultiplier = Math.Lerp(m_fSmoothedSpeedMultiplier, targetSpeedMultiplier, lerpSpeed);
         }
         else
         {
             m_fSmoothedSpeedMultiplier = targetSpeedMultiplier;
         }
-        
+
         m_fLastSmoothUpdateTime = currentTime;
-        
+
         return m_fSmoothedSpeedMultiplier;
     }
-    
+
     // 处理服务器端验证（在RPC_UpdateStaminaState中使用）
     // @param speedDifference 速度差异
     // @param currentTime 当前时间
@@ -210,7 +210,7 @@ class SCR_RSS_NetworkSyncManager
             return false;
         }
     }
-    
+
     // 设置服务器端验证的速度倍数
     // @param speedMultiplier 服务器端验证的速度倍数
     void SetServerValidatedSpeedMultiplier(float speedMultiplier)
@@ -218,7 +218,7 @@ class SCR_RSS_NetworkSyncManager
         m_fServerValidatedSpeedMultiplier = speedMultiplier;
         m_bHasReceivedServerValidation = true;
     }
-    
+
     // 获取服务器端验证的速度倍数
     // @return 服务器端验证的速度倍数
     float GetServerValidatedSpeedMultiplier()
@@ -232,7 +232,7 @@ class SCR_RSS_NetworkSyncManager
     {
         return m_bHasReceivedServerValidation;
     }
-    
+
     // 更新报告的状态值
     // @param staminaPercent 体力百分比
     // @param weight 重量
@@ -241,21 +241,21 @@ class SCR_RSS_NetworkSyncManager
         m_fLastReportedStaminaPercent = staminaPercent;
         m_fLastReportedWeight = weight;
     }
-    
+
     // 获取上次报告的体力百分比
     // @return 上次报告的体力百分比
     float GetLastReportedStaminaPercent()
     {
         return m_fLastReportedStaminaPercent;
     }
-    
+
     // 获取上次报告的重量
     // @return 上次报告的重量
     float GetLastReportedWeight()
     {
         return m_fLastReportedWeight;
     }
-    
+
     // 获取验证容差
     // @return 验证容差
     float GetValidationTolerance()

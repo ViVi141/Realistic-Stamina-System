@@ -1,7 +1,7 @@
 // Realistic Stamina System (RSS) - v2.13.0
 // 拟真体力-速度系统（基于医学/生理学模型）
 // 结合体力值和负重，动态调整移动速度
-// 
+//
 // 医学模型参考：
 // 1. Pandolf 负重行走代谢成本模型（Pandolf et al., 1977）
 // 2. LCDA 步行能量消耗方程（Level walking meta-regression）
@@ -17,7 +17,7 @@ class SCR_RSS_MetabolismMath
     // ==================== 常量定义 ====================
     // 注意：所有常量定义已移至 SCR_StaminaConstants.c 模块
     // 使用 SCR_RSS_Constants.XXX 访问常量
-    
+
     // 为了保持向后兼容，保留一些常用的常量别名
     // 这些别名直接引用 SCR_RSS_Constants 中的值
     // 注意：部分常量现在从配置管理器动态获取
@@ -93,13 +93,13 @@ class SCR_RSS_MetabolismMath
     static const float SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF = SCR_RSS_Constants.SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF;
     // Tobler 平地参考值：W(0)=6·e^(-0.175)≈5.039 km/h，用于坡度速度归一化使平地=1.0
     static const float TOBLER_W_AT_FLAT_KMH = 5.039;
-    
+
     // ==================== 数学工具函数 ====================
     // 注意：Pow() 函数已移至 SCR_RSS_StaminaHelpers.c 模块
     // 使用 SCR_RSS_StaminaHelpers.Pow() 调用
-    
+
     // ==================== 核心计算函数 ====================
-    
+
     // 跛行绝对速度（m/s）：Walk 引擎顶 × 负重，地板 EXHAUSTION_LIMP_SPEED。
     // 禁止用 WALK_VELOCITY_THRESHOLD（3.2，相位边界）当步行顶，否则跛行≈2 m/s。
     static float GetDynamicLimpSpeedMs(float encumbrancePenalty)
@@ -121,7 +121,7 @@ class SCR_RSS_MetabolismMath
     {
         return GetDynamicLimpSpeedMs(encumbrancePenalty) / GAME_MAX_SPEED;
     }
-    
+
     // 计算负重百分比（供其他系统使用）
     static float CalculateEncumbrancePercent(IEntity owner)
     {
@@ -133,29 +133,29 @@ class SCR_RSS_MetabolismMath
             // Print("[RealisticSystem] 负重计算: 角色实体不存在");
             return 0.0;
         }
-        
+
         // 获取库存组件
         // 根据 SCR_CharacterInventoryStorageComponent 源代码：
         // GetMaxLoad() 方法在 SCR_CharacterInventoryStorageComponent 中，返回 m_fMaxWeight
         // 需要使用 SCR_CharacterInventoryStorageComponent 而不是 SCR_UniversalInventoryStorageComponent
         SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
-        
+
         if (!characterInventory)
         {
             // 调试：找不到角色库存组件
             // Print("[RealisticSystem] 负重计算: 找不到角色库存组件");
             return 0.0;
         }
-        
+
         // 获取当前总重量和最大重量
         // 根据 SCR_CharacterInventoryStorageComponent 源代码：
         // GetMaxLoad() 返回 m_fMaxWeight（最大可携带重量）
         // GetTotalWeight() 在基类中，返回当前库存中所有物品的总重量
         float currentWeight = characterInventory.GetTotalWeight();
         float maxWeight = characterInventory.GetMaxLoad();
-        
 
-        
+
+
         // 如果maxWeight和currentWeight都为0，说明可能方法不存在或返回默认值
         // 在这种情况下，暂时返回0（无负重），等待找到正确的API
         if (maxWeight <= 0.0 && currentWeight <= 0.0)
@@ -164,7 +164,7 @@ class SCR_RSS_MetabolismMath
             // 暂时返回0，表示没有负重
             return 0.0;
         }
-        
+
         // 如果maxWeight为0但currentWeight不为0，使用我们定义的常量
         if (maxWeight <= 0.0)
         {
@@ -176,24 +176,24 @@ class SCR_RSS_MetabolismMath
             // 这样可以确保所有计算都基于统一的负重标准
             maxWeight = MAX_ENCUMBRANCE_WEIGHT;
         }
-        
+
         if (currentWeight < 0.0)
         {
             // 调试：当前重量为负数
             return 0.0;
         }
-        
+
         // 计算负重百分比（基于最大可携带重量）
         // 使用我们定义的最大负重常量：
         // 负重百分比 = 当前重量 / 最大重量
         float encumbrancePercent = Math.Clamp(currentWeight / MAX_ENCUMBRANCE_WEIGHT, 0.0, 1.0);
-        
+
         return encumbrancePercent;
     }
-    
+
     // 计算战斗负重百分比（基于战斗负重阈值）
     // 战斗负重用于判断角色是否处于战斗负重状态
-    // 
+    //
     // @param owner 角色实体
     // @return 战斗负重百分比 (0.0-1.0+)，1.0表示达到战斗负重阈值，>1.0表示超过战斗负重
     static float CalculateCombatEncumbrancePercent(IEntity owner)
@@ -202,27 +202,27 @@ class SCR_RSS_MetabolismMath
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (!character)
             return 0.0;
-        
+
         // 获取库存组件
         SCR_CharacterInventoryStorageComponent characterInventory = SCR_CharacterInventoryStorageComponent.Cast(character.FindComponent(SCR_CharacterInventoryStorageComponent));
         if (!characterInventory)
             return 0.0;
-        
+
         // 获取当前总重量
         float currentWeight = characterInventory.GetTotalWeight();
         if (currentWeight < 0.0)
             return 0.0;
-        
+
         // 计算战斗负重百分比（基于战斗负重阈值）
         // 战斗负重百分比 = 当前重量 / 战斗负重阈值
         // 如果返回值 > 1.0，表示超过战斗负重阈值
         float combatEncumbrancePercent = currentWeight / COMBAT_LOAD_WEIGHT;
-        
+
         return combatEncumbrancePercent;
     }
-    
+
     // 计算多维度恢复率（基于个性化运动建模和生理学恢复模型）
-    // 
+    //
     // 多维度恢复模型考虑以下因素：
     // 1. 当前体力百分比（非线性恢复）：体力越低恢复越快，体力越高恢复越慢
     // 2. 健康状态/训练水平：训练有素者恢复更快
@@ -244,7 +244,7 @@ class SCR_RSS_MetabolismMath
         staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
         restDurationMinutes = Math.Max(restDurationMinutes, 0.0);
         exerciseDurationMinutes = Math.Max(exerciseDurationMinutes, 0.0);
-        
+
         // ==================== 深度生理压制：最低体力阈值限制 ====================
         // 医学解释：当体力过低时，身体处于极度疲劳状态，需要更长时间的休息才能开始恢复
         // [修复 v2.16.0] 改用动态 getter，确保 JSON 配置值实际生效
@@ -255,25 +255,25 @@ class SCR_RSS_MetabolismMath
         {
             return 0.0; // 体力低于阈值且休息时间不足时，不恢复
         }
-        
+
         // ==================== 1. 基础恢复率（基于当前体力百分比，非线性）====================
         // 体力越低，恢复越快；体力越高，恢复越慢
         // 公式：recovery_rate = BASE_RECOVERY_RATE × (1.0 + RECOVERY_NONLINEAR_COEFF × (1.0 - stamina_percent))
         float recoveryNonlinearCoeff = SCR_RSS_ConfigBridge.GetRecoveryNonlinearCoeff();
         float staminaRecoveryMultiplier = 1.0 + (recoveryNonlinearCoeff * (1.0 - staminaPercent));
         float baseRecoveryRate = SCR_RSS_ConfigBridge.GetBaseRecoveryRate() * staminaRecoveryMultiplier;
-        
+
         // ==================== 2. 健康状态/训练水平影响 ====================
         // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接使用，防止不平等游玩
         // clamp(1.0 + 0.25 × 1.0, 1.0, 1.5) = 1.25
         float fitnessRecoveryMultiplier = SCR_RSS_Constants.FIXED_FITNESS_RECOVERY_MULTIPLIER;
-        
+
         // ==================== 3. 休息时间影响（快速恢复期 vs 中等恢复期 vs 慢速恢复期）====================
         float restTimeMultiplier = 1.0;
         float fastRecoveryMultiplier = SCR_RSS_ConfigBridge.GetFastRecoveryMultiplier();
         float mediumRecoveryMultiplier = SCR_RSS_ConfigBridge.GetMediumRecoveryMultiplier();
         float slowRecoveryMultiplier = SCR_RSS_ConfigBridge.GetSlowRecoveryMultiplier();
-        
+
         // 仅在实际累积休息后应用阶段倍数；rest=0 表示运动中/尚未进入 idle，不得触发「快速恢复」
         if (restDurationMinutes > 0.0)
         {
@@ -296,19 +296,19 @@ class SCR_RSS_MetabolismMath
             }
         }
         // 否则：运动中或 rest 尚未累积，restTimeMultiplier = 1.0
-        
+
         // ==================== 4. 年龄影响 ====================
         // 固定值（22岁标准男性）：预计算结果直接使用，防止不平等游玩
         // clamp(1.0 + 0.2 × (30-22)/30, 0.8, 1.2) = clamp(1.0533, 0.8, 1.2) = 1.053
         float ageRecoveryMultiplier = SCR_RSS_Constants.FIXED_AGE_RECOVERY_MULTIPLIER;
-        
+
         // ==================== 5. 累积疲劳恢复影响 ====================
         // 运动后的疲劳需要时间恢复，影响恢复速度
         // 公式：fatigue_recovery_multiplier = 1.0 - FATIGUE_RECOVERY_PENALTY × min(exercise_duration / FATIGUE_RECOVERY_DURATION, 1.0)
         float fatigueRecoveryPenalty = FATIGUE_RECOVERY_PENALTY * Math.Min(exerciseDurationMinutes / FATIGUE_RECOVERY_DURATION_MINUTES, 1.0);
         float fatigueRecoveryMultiplier = 1.0 - fatigueRecoveryPenalty;
         fatigueRecoveryMultiplier = Math.Clamp(fatigueRecoveryMultiplier, 0.7, 1.0); // 限制在70%-100%之间
-        
+
         // ==================== 6. 姿态恢复加成 ====================
         // 不同休息姿势对肌肉紧张度和血液循环的影响
         float stanceRecoveryMultiplier = 1.0;
@@ -327,7 +327,7 @@ class SCR_RSS_MetabolismMath
                 stanceRecoveryMultiplier = SCR_RSS_ConfigBridge.GetStandingRecoveryMultiplier();
                 break;
         }
-        
+
         // ==================== 深度生理压制：负重对恢复的静态剥夺机制 ====================
         // 医学解释：背负30kg装备站立时，斜方肌、腰椎和下肢肌肉仍在进行高强度静力收缩
         // 这种收缩产生的代谢废物（乳酸）排放速度远慢于空载状态
@@ -345,7 +345,7 @@ class SCR_RSS_MetabolismMath
             float loadRecoveryPenaltyExponent = SCR_RSS_ConfigBridge.GetLoadRecoveryPenaltyExponent();
             loadRecoveryPenalty = Math.Pow(loadRatio, loadRecoveryPenaltyExponent) * loadRecoveryPenaltyCoeff;
         }
-        
+
         // ==================== 深度生理压制：边际效应衰减机制 ====================
         // 医学解释：身体从"半死不活"恢复到"喘匀气"很快（前80%），但要从"喘匀气"恢复到"肌肉巅峰竞技状态"非常慢（最后20%）
         // 数学实现：当体力>80%时，恢复率 = 原始恢复率 * (1.1 - 当前体力百分比)
@@ -354,7 +354,7 @@ class SCR_RSS_MetabolismMath
         float marginalDecayMultiplier = 1.0;
         float marginalDecayThreshold = SCR_RSS_ConfigBridge.GetMarginalDecayThreshold();
         float marginalDecayCoeff = SCR_RSS_ConfigBridge.GetMarginalDecayCoeff();
-        
+
         if (staminaPercent > marginalDecayThreshold)
         {
             // 当体力>80%时，应用边际效应衰减
@@ -363,7 +363,7 @@ class SCR_RSS_MetabolismMath
             marginalDecayMultiplier = marginalDecayCoeff - staminaPercent;
             marginalDecayMultiplier = Math.Clamp(marginalDecayMultiplier, 0.2, 1.0); // 限制在20%-100%之间
         }
-        
+
         // ==================== 综合恢复率计算（深度生理压制版本）====================
         // 核心概念：统一为乘数链，避免“乘法链后减法”导致的逻辑歧义与调试困难。
         // 等价于原“乘积 - 负重惩罚”再钳位非负：loadFactor = max(0, 1 - penalty/product)，total = product * loadFactor。
@@ -382,12 +382,12 @@ class SCR_RSS_MetabolismMath
 
         return totalRecoveryRate;
     }
-    
+
     // 计算速度×负重×坡度三维交互项（基于 Pandolf 模型）
-    // 
+    //
     // 完整 Pandolf 模型中的三维交互项：G·(0.23 + 1.34·V²)
     // 其中负重会影响总质量M，进而影响整个公式
-    // 
+    //
     // 改进模型：三维交互项 = interaction_coeff × (负重/体重) × speed_ratio² × |坡度|
     // 这个项表示：在高速度、高负重、大坡度时，消耗会急剧增加
     //
@@ -401,30 +401,30 @@ class SCR_RSS_MetabolismMath
         speedRatio = Math.Clamp(speedRatio, 0.0, 1.0);
         bodyMassPercent = Math.Max(bodyMassPercent, 0.0);
         slopeAngleDegrees = Math.Clamp(slopeAngleDegrees, -45.0, 45.0);
-        
+
         // 只在上坡时计算交互项（下坡时交互项影响较小）
         if (slopeAngleDegrees <= 0.0 || bodyMassPercent <= 0.0)
             return 0.0;
-        
+
         // 三维交互项：速度² × 负重 × 坡度
         // 例如：速度80%、30kg负重（33%体重）、5°上坡
         // = 0.10 × 0.33 × 0.8² × 5 = 0.10 × 0.33 × 0.64 × 5 = 0.106倍额外消耗
         float interactionTerm = SPEED_ENCUMBRANCE_SLOPE_INTERACTION_COEFF * bodyMassPercent * speedRatio * speedRatio * slopeAngleDegrees;
-        
+
         // 限制交互项在合理范围内（0.0-0.5，最多增加50%消耗）
         return Math.Clamp(interactionTerm, 0.0, 0.5);
     }
-    
+
     // 计算爆发性动作的体力消耗（动态负重倍率）
-    // 
+    //
     // 对于跳跃和翻越等爆发性动作，负重的影响是指数级的
     // 公式：实际消耗 = 基础消耗 * (currentWeight / CHARACTER_WEIGHT) ^ 1.5
-    // 
+    //
     // 效果示例：
     // - 空载（90kg）：基础消耗 × 1.0 = 基础消耗
     // - 30kg负重（总重120kg）：基础消耗 × (120/90)^1.5 = 基础消耗 × 1.33^1.5 ≈ 基础消耗 × 1.54
     // - 40kg负重（总重130kg）：基础消耗 × (130/90)^1.5 = 基础消耗 × 1.44^1.5 ≈ 基础消耗 × 1.73
-    // 
+    //
     // 这体现了重负荷下对抗重力的额外代价
     //
     // @param baseCost 基础消耗（0.0-1.0）
@@ -453,7 +453,7 @@ class SCR_RSS_MetabolismMath
         float joules = p_total * 0.2; // step = UPDATE_INTERVAL = 0.2s
         return Math.Clamp(joules / SCR_RSS_Constants.JUMP_STAMINA_TO_JOULES, 0.0, SCR_RSS_Constants.JUMP_VAULT_MAX_DRAIN_CLAMP);
     }
-    
+
     // ==================== Pandolf / 静态（v6 委托 SCR_RSS_MetabolismModel）====================
 
     static float CalculatePandolfEnergyExpenditure(
@@ -473,7 +473,7 @@ class SCR_RSS_MetabolismMath
     }
 
     // 计算坡度自适应目标速度（坡度-速度负反馈）
-    // 
+    //
     // 问题分析：现实中人爬坡时，会自动缩短步幅、降低速度以维持心肺负荷（体力消耗）。
     // 目前的系统是"强行维持速度但暴扣体力"，这导致了代谢率在斜坡上迅速过载。
     //
@@ -529,30 +529,30 @@ class SCR_RSS_MetabolismMath
 
         return baseTargetSpeed * toblerMultiplier;
     }
-    
+
     // 检查是否精疲力尽
-    // 
+    //
     // @param staminaPercent 当前体力百分比（0.0-1.0）
     // @return true表示精疲力尽，false表示未精疲力尽
     static bool IsExhausted(float staminaPercent)
     {
         return staminaPercent <= EXHAUSTION_THRESHOLD;
     }
-    
+
     // 检查是否可以Sprint
-    // 
+    //
     // @param staminaPercent 当前体力百分比（0.0-1.0）
     // @return true表示可以Sprint，false表示不能Sprint
     static bool CanSprint(float staminaPercent)
     {
         return staminaPercent >= SCR_RSS_ConfigBridge.GetSprintEnableThreshold();
     }
-    
+
     // ==================== 地形系数系统（基于实际测试数据的插值映射）====================
     // 地形系数常量（引用 SCR_RSS_Constants 以消除重复）
     // 之前此处有独立的 TERRAIN_FACTOR_* 局部常量，与 SCR_RSS_Constants.TERRAIN_FACTOR_*
     // 重复定义（值完全一致）。移除去重，统一通过 SCR_RSS_Constants.TERRAIN_FACTOR_* 访问。
-    
+
     // 根据密度值获取地形系数（插值映射，与 MaterialTerrainTable 内嵌密度表一致）
     // 典型 g/cm³：snow 0.35 | grass/heather 0.5 | grass_lush 1.2 | dirt/soil 1.33 | sand 1.63 |
     //            gravel 1.682 | pebbles 1.7~1.79 | asphalt/concrete 2.243~2.3 | cobble/stone 2.75 | tiles_stone 2.94

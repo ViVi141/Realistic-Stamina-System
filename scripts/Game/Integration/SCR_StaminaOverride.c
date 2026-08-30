@@ -4,14 +4,14 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
 {
     // 上次的体力值（用于检测非预期的体力变化）
     protected float m_fLastKnownStamina = 1.0;
-    
+
     // 标记：是否允许原生体力系统工作
     // false = 完全禁用原生系统，只使用自定义系统
     protected bool m_bAllowNativeStaminaSystem = false;
-    
+
     // 目标体力值（由我们的自定义系统控制）
     protected float m_fTargetStamina = 1.0;
-    
+
     // 主动监控标志（控制是否继续监控）
     protected bool m_bIsMonitoring = false;
 
@@ -21,7 +21,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     // double-checks and corrects on every write. 200ms is sufficient to catch
     // engine-origin stamina changes that bypass AddStamina().
     protected const int STAMINA_MONITOR_INTERVAL_MS = 200;
-    
+
     // 标记：是否是我们自己的调用（避免循环）
     protected bool m_bIsOurOwnCall = false;
 
@@ -30,12 +30,12 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     //! 引擎表现读数平滑（防 SetTarget/帧间隙一闪有一无）
     protected float m_fSmoothedEngineDisplay = 1.0;
     protected const float ENGINE_FX_SMOOTH_ALPHA = 0.45;
-    
+
     // 关键发现：
     // 1. OnStaminaDrain 是一个 event，每次体力值改变时都会触发（包括 AddStamina 调用）
     // 2. AddStamina 是 proto external，无法覆盖，但调用它会触发 OnStaminaDrain 事件
     // 3. 因此，我们可以通过覆盖 OnStaminaDrain 来拦截所有体力值变化
-    
+
     // 每帧/每次体力变化时，拦截并重新设置体力值
     // 这确保只有我们的自定义系统可以改变体力值
     // 注意：原生系统调用 AddStamina 时会触发此事件，我们可以在这里拦截
@@ -47,18 +47,18 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             super.OnStaminaDrain(pDrain);
             return;
         }
-        
+
         // 如果是我们自己的调用（通过 SetTargetStamina），允许执行
         if (m_bIsOurOwnCall)
         {
             super.OnStaminaDrain(pDrain);
             return;
         }
-        
+
         // 完全禁用原生系统：不调用 super，立即纠正非预期变化
         CorrectStaminaToTarget();
     }
-    
+
     protected float GetExpectedEngineStamina()
     {
         // 平滑后的引擎读数；Monitor / SetTarget 都对齐此值，避免隔帧跳回有氧满值
@@ -116,7 +116,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         RefreshSmoothedEngineDisplay(false);
         WriteEngineStaminaToExpected();
     }
-    
+
     // 启动主动监控（每帧检查，确保完全覆盖原生系统）
     // 原生系统可能每帧都在恢复体力，所以需要每帧检查
     void StartStaminaMonitor()
@@ -124,27 +124,27 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 如果已经在监控，不重复启动
         if (m_bIsMonitoring)
             return;
-        
+
         // 设置监控标志
         m_bIsMonitoring = true;
-        
+
         // 启动监控循环（检查原生系统干扰并纠正）
         // STAMINA_MONITOR_INTERVAL_MS：200ms 与主力循环同步
         // CRITICAL FIX: GetGame() may be null during late initialization / teardown.
         if (GetGame() && GetGame().GetCallqueue())
             GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
-    
+
     // 停止主动监控
     void StopStaminaMonitor()
     {
         // 设置标志为 false，停止监控循环
         m_bIsMonitoring = false;
-        
+
         // m_bIsMonitoring=false 后 pending MonitorStamina 入口即 return 且不再重调度
         // 不使用 Remove(MonitorStamina)：全局 Remove 会取消所有实体的监控回调
     }
-    
+
     // 监控体力值（定期调用，确保完全覆盖原生系统）
     // 原生系统可能每帧都在恢复体力，所以需要频繁检查
     void MonitorStamina()
@@ -152,7 +152,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         // 如果允许原生系统工作，或监控已停止，不继续监控
         if (m_bAllowNativeStaminaSystem || !m_bIsMonitoring)
             return;
-        
+
         // 获取当前体力值前，先检查组件是否仍然有效
         if (!this || GetOwner() == null)
         {
@@ -160,10 +160,10 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             StopStaminaMonitor();
             return;
         }
-        
+
         // 获取当前体力值
         float currentStamina = GetStamina();
-        
+
         float expectedStamina = GetExpectedEngineStamina();
 
         // 如果发现非预期的体力变化（原生系统试图改变体力），立即恢复到目标值
@@ -172,7 +172,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         {
             // 检测到原生系统干扰，记录调试信息
             float deviation = currentStamina - m_fTargetStamina;
-            
+
             // 如果偏差超过0.5%，输出警告（降低阈值，更敏感，仅在客户端）
             // [已注释] 拦截信息已禁用，减少日志输出
             /*
@@ -183,7 +183,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
                 warningCounter++;
                 if (Math.AbsFloat(deviation) > 0.005 && warningCounter >= 10) // 每10次输出一次
                 {
-                    PrintFormat("[RSS] Override 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%", 
+                    PrintFormat("[RSS] Override 检测到原生系统干扰！当前体力=%1%%，目标=%2%%，偏差=%3%%",
                         Math.Round(currentStamina * 100.0).ToString(),
                         Math.Round(m_fTargetStamina * 100.0).ToString(),
                         Math.Round(deviation * 100.0).ToString());
@@ -191,15 +191,15 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
                 }
             }
             */
-            
+
             // 立即纠正体力值
             CorrectStaminaToTarget();
         }
-        
+
         if (GetGame() && GetGame().GetCallqueue())
             GetGame().GetCallqueue().CallLater(MonitorStamina, STAMINA_MONITOR_INTERVAL_MS, false);
     }
-    
+
     // 设置有氧权威；不拆除 W′/冲刺门禁 transient，避免中间一帧弹回满体力
     void SetTargetStamina(float targetStamina)
     {
@@ -209,7 +209,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         RefreshSmoothedEngineDisplay(false);
         WriteEngineStaminaToExpected();
     }
-    
+
     // 获取目标体力值
     float GetTargetStamina()
     {
@@ -242,14 +242,14 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
         RefreshSmoothedEngineDisplay(true);
         WriteEngineStaminaToExpected();
     }
-    
+
     // 允许/禁用原生体力系统
     // false = 完全禁用原生系统（推荐）
     // true = 允许原生系统工作（不推荐）
     void SetAllowNativeStaminaSystem(bool allow)
     {
         m_bAllowNativeStaminaSystem = allow;
-        
+
         // 根据设置启动或停止监控
         if (allow)
         {
@@ -271,7 +271,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
             }
         }
     }
-    
+
     //! 析构函数：实体删除时取消 MonitorStamina 的 CallLater，防止 use-after-free
     void ~SCR_CharacterStaminaComponent()
     {
@@ -281,7 +281,7 @@ modded class SCR_CharacterStaminaComponent : CharacterStaminaComponent
     // 组件初始化时启动监控
     // 注意：使用 OnInit 而不是 OnPostInit（如果基类支持）
     // 如果基类不支持 OnInit，监控将在 SetAllowNativeStaminaSystem(false) 时启动
-    
+
     // 获取是否允许原生体力系统
     bool GetAllowNativeStaminaSystem()
     {

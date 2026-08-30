@@ -1,7 +1,7 @@
 //! 环境相关常量（从 SCR_RSS_Constants.c 拆分以利维护；文件大小非崩溃原因）
 class SCR_RSS_EnvConstants
 {
-    
+
     // 时间窗口为 HARD（太阳辐射物理规律）；强度倍数为 SOFT（通过配置管理器读取）
     static const float ENV_HEAT_STRESS_START_HOUR      = 10.0; // [HARD] 热应激开始（日照曲线）
     static const float ENV_HEAT_STRESS_PEAK_HOUR       = 14.0; // [HARD] 峰值（地表温度滞后约2h）
@@ -9,24 +9,24 @@ class SCR_RSS_EnvConstants
     static const float ENV_HEAT_STRESS_MAX_MULTIPLIER  = 1.5;  // [SOFT fallback] 最大倍数，可通过 env_heat_stress_max_multiplier 覆盖
     static const float ENV_HEAT_STRESS_BASE_MULTIPLIER = 1.0;  // [HARD] 基准倍数（无热影响）
     static const float ENV_HEAT_STRESS_INDOOR_REDUCTION = 0.5; // [SOFT fallback] 室内减免比例
-    
+
     // 降雨湿重参数
     static const float ENV_RAIN_WEIGHT_MIN = 2.0; // kg，小雨时的湿重
     static const float ENV_RAIN_WEIGHT_MAX = 8.0; // kg，暴雨时的湿重
     static const float ENV_RAIN_WEIGHT_DURATION = 60.0; // [弃用] 线性衰减时长，已改为指数干燥
     static const float ENV_RAIN_WEIGHT_DECAY_RATE = 0.0167; // 指数干燥时间常数倒数（1/s；τ≈60s，蒸发率∝剩余水分）
-    
+
     // 湿重饱和上限（防止游泳湿重+降雨湿重叠加导致数值爆炸）
     static const float ENV_MAX_TOTAL_WET_WEIGHT = 10.0; // kg，总湿重上限（游泳+降雨）
-    
+
     // 环境因子检测频率（性能优化）
     static const float ENV_CHECK_INTERVAL = 10.0; // 秒，环境因子检测间隔（perf: 5→10，天气变化缓慢无需高频）
-    
+
     // 室内检测参数
     static const float ENV_INDOOR_CHECK_HEIGHT = 10.0; // 米，向上检测高度（判断是否有屋顶）
     static const float ENV_SLOPE_SUPPRESS_ROOF_CHECK_HEIGHT = 35.0; // 米
-    
-    
+
+
     // 降雨强度相关常量
     static const float ENV_RAIN_INTENSITY_ACCUMULATION_BASE_RATE = 0.5; // kg/秒，基础湿重增加速率
     static const float ENV_RAIN_INTENSITY_ACCUMULATION_EXPONENT = 1.5; // 降雨强度指数（非线性增长）
@@ -34,13 +34,13 @@ class SCR_RSS_EnvConstants
     static const float ENV_RAIN_VISUAL_EFFECT_THRESHOLD = 0.15;
     static const float ENV_RAIN_INTENSITY_HEAVY_THRESHOLD = 0.8; // 暴雨阈值（呼吸阻力触发）
     static const float ENV_RAIN_INTENSITY_BREATHING_PENALTY = 0.05; // 暴雨时的无氧代谢增加比例
-    
+
     // 风阻相关常量
     static const float ENV_WIND_RESISTANCE_COEFF = 0.05; // 风阻系数（体力消耗权重）
     static const float ENV_WIND_SPEED_THRESHOLD = 1.0; // m/s，风速阈值（低于此值忽略）
     static const float ENV_WIND_TAILWIND_BONUS = 0.02; // 顺风时的消耗减少比例
     static const float ENV_WIND_TAILWIND_SPEED_BONUS = 0.01; // 顺风时的速度加成比例
-    
+
     // 路面泥泞度相关常量
     static const float ENV_MUD_PENALTY_MAX = 0.4; // 最大泥泞惩罚（40%地形阻力增加）
     static const float ENV_MUD_SLIPPERY_THRESHOLD = 0.3; // 积水阈值（高于此值触发滑倒风险）
@@ -108,7 +108,7 @@ class SCR_RSS_EnvConstants
     static const float ENV_MUD_SLIP_CAM_SHAKE_FREQ_STRESS = 6.0; // 应力越高频率越快（原12.0→6.0：典型应力0.2-0.5时频率7-9Hz<12Hz）
     static const float ENV_MUD_SLIP_CAM_SHAKE_SMOOTH_RATE = 16.0; // 应力平滑（越大越快跟上目标）
     static const float ENV_MUD_SLIP_CAM_SHAKE_FOV_JITTER_DEG = 0.35; // 极力克制：FOV 高频抖易诱发晕动症，优先靠 Roll
-    
+
     // 气温相关常量
     static const float ENV_TEMPERATURE_HEAT_THRESHOLD       = 30.0; // [HARD] °C，医学热应激阈值（严重档参考；性能衰减热中性上界见 ENV_THERMONEUTRAL_HIGH）
     static const float ENV_TEMPERATURE_HEAT_PENALTY_COEFF   = 0.02; // [SOFT fallback] 每高1°C恢复率降低2%
@@ -121,7 +121,7 @@ class SCR_RSS_EnvConstants
     static const float ENV_THERMONEUTRAL_HIGH = 27.0; // [HARD] °C，运动热中性上界（高于此心血管漂移/散热成本二次上升）
     static const float ENV_COLD_STRESS_K = 0.15;     // 冷应力二次系数（W 量级，风寒后 ΔT²）
     static const float ENV_HEAT_STRESS_K = 2.0;      // 热应力二次系数（W 量级，ΔT²）
-    
+
     // 地表湿度相关常量
     static const float ENV_SURFACE_WETNESS_SOAK_RATE = 1.0; // kg/秒，趴下时的湿重增加速率
     static const float ENV_SURFACE_WETNESS_THRESHOLD = 0.1; // 积水阈值（高于此值触发湿重增加）

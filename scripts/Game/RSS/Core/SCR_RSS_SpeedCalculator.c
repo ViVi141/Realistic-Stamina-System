@@ -3,7 +3,7 @@
 // 模块化拆分：从 PlayerBase.c 提取的速度计算逻辑
 
 // 坡度计算结果结构体
-class GradeCalculationResult
+class RSS_GradeCalculationResult
 {
     float gradePercent;
     float slopeAngleDegrees;
@@ -12,7 +12,7 @@ class GradeCalculationResult
 class SCR_RSS_SpeedCalculator
 {
     // ==================== 公共方法 ====================
-    
+
     //! 引擎 phase=Idle 但仍有水平惯性速度时，沿用上一非 Idle 相位（限速/代谢/调试）
     static int ResolveCoastingMovementPhase(int enginePhase, float currentSpeedMs, int lastNonIdlePhase)
     {
@@ -247,7 +247,7 @@ class SCR_RSS_SpeedCalculator
         sprintMs = ApplySprintGaitMinSeparation(sprintMs, runMs);
         return sprintMs;
     }
-    
+
     // 计算坡度自适应目标速度
     // @param baseTargetSpeed 基础目标速度 (m/s)
     // @param slopeAngleDegrees 坡度角度（度）
@@ -336,16 +336,16 @@ class SCR_RSS_SpeedCalculator
                 isSprinting = false;
             }
         }
-        
+
         // 只处理 Run/Sprint/Walk（v5 接管 walk 限速）
         if (currentMovementPhase != 2 && currentMovementPhase != 3 && currentMovementPhase != 1 && !isSprinting)
         {
             return -1.0;
         }
-        
+
         // runBaseSpeedMultiplier 已由调用方按坡度完成缩放，此处无需再次应用坡度
         float scaledRunSpeed = runBaseSpeedMultiplier;
-        
+
         float finalAbsoluteSpeed = 0.0;
 
         // 负重速度惩罚（含速度相关项与Sprint额外惩罚）；速比用相位意图，禁用 v_meas 反馈
@@ -355,7 +355,7 @@ class SCR_RSS_SpeedCalculator
             encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
-        
+
         finalAbsoluteSpeed = GetMarchAbsoluteSpeedMs(
             currentMovementPhase, isSprinting, scaledRunSpeed, encumbrancePenalty, 1.0);
         if (currentSpeed < 0.5)
@@ -369,7 +369,7 @@ class SCR_RSS_SpeedCalculator
         }
         return finalAbsoluteSpeed;
     }
-    
+
     // 计算最终速度倍数（根据移动类型）- 保持向后兼容
     // @param runBaseSpeedMultiplier Run的基础速度倍数
     // @param encumbranceSpeedPenalty 负重速度惩罚（基础惩罚项）
@@ -403,11 +403,11 @@ class SCR_RSS_SpeedCalculator
                 isSprinting = false;
             }
         }
-        
+
         // runBaseSpeedMultiplier 已由调用方（UpdateSpeed / CalculateFinalSpeedMultiplierFromInputs）
         // 按坡度完成缩放，此处无需再次应用坡度，直接使用
         float scaledRunSpeed = runBaseSpeedMultiplier;
-        
+
         float finalSpeedMultiplier = 0.0;
 
         // 负重速度惩罚（含速度相关项与Sprint额外惩罚）；速比用相位意图，禁用 v_meas 反馈
@@ -417,14 +417,14 @@ class SCR_RSS_SpeedCalculator
             encumbrancePenalty = ScaleSprintEncumbrancePenalty(encumbrancePenalty);
         float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         encumbrancePenalty = Math.Clamp(encumbrancePenalty, 0.0, maxPenalty);
-        
+
         encumbrancePenalty = ApplyTacticalSprintBurstEncumbranceRelief(
             encumbrancePenalty,
             isSprinting,
             currentMovementPhase,
             currentWorldTime,
             sprintStartTime);
-        
+
         if (isSprinting || currentMovementPhase == 3) // Sprint
         {
             // Sprint速度 = Run基础倍率 × (1 + 30%)
@@ -449,7 +449,7 @@ class SCR_RSS_SpeedCalculator
         {
             finalSpeedMultiplier = 0.999;
         }
-        
+
         // 静止起步检测：如果当前速度很低但处于移动阶段，给予起步补偿
         bool isMovingPhase = (currentMovementPhase == 1 || currentMovementPhase == 2 || currentMovementPhase == 3);
         if (isMovingPhase && currentSpeed < 0.5)
@@ -457,10 +457,10 @@ class SCR_RSS_SpeedCalculator
             // 给予起步补偿，防止瞬时限速导致的起步无力
             finalSpeedMultiplier = Math.Max(finalSpeedMultiplier, 0.5);
         }
-        
+
         return finalSpeedMultiplier;
     }
-    
+
     // 速度阈值（m/s）：低于此值视为静止，有效坡度按 0 处理（无运动方向）
     protected static const float VELOCITY_SIGN_THRESHOLD = 0.1;
     // [仅用于 GetSlopeSignFromVelocity 等] 等高线判定阈值；有效坡度已改为“幅值×cos(速度与上坡夹角)”，等高线自然为 0
@@ -549,7 +549,7 @@ class SCR_RSS_SpeedCalculator
         float effectiveSlopeDegrees = magnitude * cosAngle;
         return Math.Clamp(effectiveSlopeDegrees, -45.0, 45.0);
     }
-    
+
     // 获取坡度角度（完全用法线坡度 + 速度矢量判断上下坡）
     // 此方法直接返回坡度角度，单位为度。
     // @param controller 角色控制器组件
@@ -566,7 +566,7 @@ class SCR_RSS_SpeedCalculator
         }
         return GetRawSlopeAngle(controller, velocity);
     }
-    
+
     // 计算坡度百分比（考虑攀爬和跳跃状态）
     // 返回值中的 gradePercent 为坡度的百分比（rise/run × 100）。
     // 注意：原始角度由 GetSlopeAngle 返回（度），需要通过 tan() 转换。
@@ -577,7 +577,7 @@ class SCR_RSS_SpeedCalculator
     // @param environmentFactor 环境因子组件（可选，用于室内检测）
     // @param velocity 速度矢量（可选，用于判断上下坡，游泳时传 computedVelocity）
     // @return 坡度计算结果（包含坡度百分比和角度）
-    static GradeCalculationResult CalculateGradePercent(
+    static RSS_GradeCalculationResult CalculateGradePercent(
         SCR_CharacterControllerComponent controller,
         float currentSpeed,
         SCR_RSS_JumpVaultDetector jumpVaultDetector,
@@ -585,10 +585,10 @@ class SCR_RSS_SpeedCalculator
         SCR_RSS_EnvironmentFactor environmentFactor = null,
         vector velocity = vector.Zero)
     {
-        GradeCalculationResult result = new GradeCalculationResult();
+        RSS_GradeCalculationResult result = new RSS_GradeCalculationResult();
         result.gradePercent = 0.0;
         result.slopeAngleDegrees = slopeAngleDegrees;
-        
+
         // 完整室内或建筑物内有顶体积：返回零坡度（与 GetSlopeAngle 一致）
         if (environmentFactor && controller)
         {
@@ -599,13 +599,13 @@ class SCR_RSS_SpeedCalculator
                 return result;
             }
         }
-        
+
         // 检查是否在攀爬或跳跃状态
         bool isClimbingForSlope = controller.IsClimbing();
         bool isJumpingForSlope = false;
         if (jumpVaultDetector)
             isJumpingForSlope = jumpVaultDetector.GetJumpInputTriggered();
-        
+
         // 只在非攀爬、非跳跃状态下获取坡度
         if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
         {
@@ -618,7 +618,7 @@ class SCR_RSS_SpeedCalculator
             slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
             result.gradePercent = slopeRatio * 100.0;
         }
-        
+
         return result;
     }
 }

@@ -74,7 +74,9 @@ RSS/MudSlip/     → 泥泞滑倒
 
 ## 8. PR 检查
 
+- [ ] `check_enforce_syntax.py` 通过（`githooks/pre-commit` 已挂载）
 - [ ] `check_script_size.py` 通过
-- [ ] `check_enforce_syntax.py` 通过
 - [ ] 写明官方锚点或例外理由
 - [ ] 未在 Integration 内联 Pandolf / 环境惩罚
+
+DTO 一律 `RSS_<Name>`（如 `RSS_StaminaDrainTickParams`）；禁止裸名 `StaminaDrainTickParams` / `DebugInfoParams`。

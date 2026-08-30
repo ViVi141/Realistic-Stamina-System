@@ -31,7 +31,7 @@ class SCR_RSS_StaminaConsumptionCalculator
         float itemBonus = 1.0 + SCR_RSS_Constants.V6_HELD_ITEM_DRAIN_COEFF * heldFraction;
         return Math.Clamp(itemBonus, 1.0, SCR_RSS_Constants.V6_HELD_ITEM_DRAIN_MULT_MAX);
     }
-    
+
     // 计算体力消耗率
     // @param currentSpeed 当前速度 (m/s)
     // @param currentWeight 当前重量 (kg)
@@ -151,7 +151,7 @@ class SCR_RSS_StaminaConsumptionCalculator
 
         // 应用泥泞地形系数（修正地形因子）
         terrainFactor = terrainFactor + mudTerrainFactor;
-        
+
         // 应用降雨湿重（修正当前重量）
         currentWeight = currentWeight + totalWetWeight;
 
@@ -199,13 +199,13 @@ class SCR_RSS_StaminaConsumptionCalculator
                 Math.Round(gradePercent * 100.0) / 100.0);
             SCR_RSS_DebugBatchManager.AddDebugBatchLine(line1);
         }
-        
+
         // 应用姿态修正（只在消耗时应用）
         if (baseDrainRateByVelocity > 0.0)
         {
             baseDrainRateByVelocity = baseDrainRateByVelocity * postureMultiplier;
         }
-        
+
         // 应用多维度修正因子（健康状态、累积疲劳、代谢适应）
         float baseDrainRate = 0.0;
         if (baseDrainRateByVelocity < 0.0)
@@ -218,7 +218,7 @@ class SCR_RSS_StaminaConsumptionCalculator
             // 消耗时，应用效率因子和疲劳因子
             baseDrainRate = baseDrainRateByVelocity * totalEfficiencyFactor * fatigueFactor;
         }
-        
+
         // 综合体力消耗率
         float totalDrainRate = 0.0;
         if (baseDrainRate < 0.0)
@@ -239,7 +239,7 @@ class SCR_RSS_StaminaConsumptionCalculator
         }
 
 
-        
+
         // 输出基础消耗率（用于恢复计算，使用原始值，不包含姿态修正）
         baseDrainRateByVelocity = originalBaseDrainRate;
         if (SCR_RSS_DebugBatchManager.IsDebugBatchActive())
@@ -255,10 +255,10 @@ class SCR_RSS_StaminaConsumptionCalculator
             totalDrainRate = totalDrainRate * environmentFactor.GetQuickEnvironmentMultiplier();
 
         totalDrainRate = ApplyRainBreathingDrainMultiplier(totalDrainRate, environmentFactor);
-        
+
         return totalDrainRate;
     }
-    
+
     // 计算姿态修正倍数
     // @param currentSpeed 当前速度 (m/s)
     // @param controller 角色控制器组件（用于获取姿态）
@@ -285,7 +285,7 @@ class SCR_RSS_StaminaConsumptionCalculator
         }
         return postureMultiplier;
     }
-    
+
     // 计算代谢适应效率因子
     // @param speedRatio 速度比率 (0.0-1.0)
     // @return 代谢适应效率因子
@@ -298,7 +298,7 @@ class SCR_RSS_StaminaConsumptionCalculator
         }
         else if (speedRatio < SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD)
         {
-            float t = (speedRatio - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD) / 
+            float t = (speedRatio - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD) /
                       (SCR_RSS_MetabolismMath.ANAEROBIC_THRESHOLD - SCR_RSS_MetabolismMath.AEROBIC_THRESHOLD);
             float aerobicEff = SCR_RSS_ConfigBridge.GetAerobicEfficiencyFactor();
             float anaerobicEff = SCR_RSS_ConfigBridge.GetWPrimeEfficiencyFactor();
@@ -310,7 +310,7 @@ class SCR_RSS_StaminaConsumptionCalculator
         }
         return metabolicEfficiencyFactor;
     }
-    
+
     // 计算健康状态效率因子
     // 固定值（22岁训练有素男性，FITNESS_LEVEL=1.0）：预计算结果直接返回，防止不平等游玩
     // = clamp(1.0 - 0.35 × 1.0, 0.7, 1.0) = clamp(0.65, 0.7, 1.0) = 0.70

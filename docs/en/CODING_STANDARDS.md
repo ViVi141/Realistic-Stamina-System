@@ -74,7 +74,9 @@ RSS/MudSlip/       → mud slip
 
 ## 8. PR checklist
 
+- [ ] `check_enforce_syntax.py` passes (`githooks/pre-commit` runs it)
 - [ ] `check_script_size.py` passes
-- [ ] `check_enforce_syntax.py` passes
 - [ ] Official API anchor or exception rationale stated
 - [ ] No inline Pandolf / environment penalties in Integration
+
+DTOs must use `RSS_<Name>` (e.g. `RSS_StaminaDrainTickParams`); bare names like `StaminaDrainTickParams` / `DebugInfoParams` are forbidden.

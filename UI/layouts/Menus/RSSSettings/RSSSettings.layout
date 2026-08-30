@@ -1,7 +1,7 @@
 HorizontalLayoutWidgetClass {
  Name "RSSSettings"
  components {
-  SCR_RSSSettingsSubMenu "{5932EB24D1397F00}" {}
+  SCR_RSS_SettingsSubMenu "{5932EB24D1397F00}" {}
  }
  {
   ScrollLayoutWidgetClass "{000000009881A4C7}" {

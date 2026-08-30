@@ -5,7 +5,7 @@
 class SCR_RSS_RecoveryCalculator
 {
     // ==================== EPOC延迟管理 ====================
-    
+
     // 更新EPOC延迟状态
     // @param epocState EPOC状态对象（用于修改状态）
     // @param currentSpeed 当前速度 (m/s)
@@ -18,13 +18,13 @@ class SCR_RSS_RecoveryCalculator
     {
         if (!epocState)
             return false;
-        
+
         float lastSpeedForEpoc = epocState.GetLastSpeedForEpoc();
         float idleThreshold = SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS;
         bool wasMoving = (lastSpeedForEpoc >= idleThreshold);
         bool isNowStopped = (currentSpeed < idleThreshold);
         bool isInEpocDelay = epocState.IsInEpocDelay();
-        
+
         // 如果从运动状态变为静止状态，启动EPOC延迟
         if (wasMoving && isNowStopped && !isInEpocDelay)
         {
@@ -32,7 +32,7 @@ class SCR_RSS_RecoveryCalculator
             epocState.SetIsInEpocDelay(true);
             epocState.SetSpeedBeforeStop(lastSpeedForEpoc);
         }
-        
+
         // 检查EPOC延迟是否已结束
         if (isInEpocDelay)
         {
@@ -45,20 +45,20 @@ class SCR_RSS_RecoveryCalculator
                 epocState.ResetPeakPowerForNewRest();
             }
         }
-        
+
         // 重新移动才取消 EPOC（与 RSS_IDLE_SPEED_THRESHOLD_MPS 对齐，避免微动闪烁）
         if (currentSpeed >= SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
         {
             epocState.SetIsInEpocDelay(false);
             epocState.SetEpocDelayStartTime(-1.0);
         }
-        
+
         // 更新上一帧的速度
         epocState.SetLastSpeedForEpoc(currentSpeed);
-        
+
         return epocState.IsInEpocDelay();
     }
-    
+
     // 计算EPOC延迟期间的消耗（v6：与近期峰值限速内功率成正比；CP 巡航弱罚）
     static float CalculateEpocDrainRate(float speedBeforeStop, float peakPowerWatts = -1.0, float effectiveCpWatts = -1.0)
     {
@@ -93,9 +93,9 @@ class SCR_RSS_RecoveryCalculator
         }
         return epocDrainRate;
     }
-    
+
     // ==================== 恢复率计算 ====================
-    
+
     // 计算多维度恢复率
     // @param staminaPercent 当前体力百分比
     // @param restDurationMinutes 休息持续时间（分钟）
@@ -122,15 +122,15 @@ class SCR_RSS_RecoveryCalculator
         SCR_CharacterControllerComponent rssCtrlForCaffeine = null)
     {
         float recoveryRate = SCR_RSS_MetabolismMath.CalculateMultiDimensionalRecoveryRate(
-            staminaPercent, 
-            restDurationMinutes, 
+            staminaPercent,
+            restDurationMinutes,
             exerciseDurationMinutes,
             currentWeightForRecovery,
             stance
         );
-        
+
         // ==================== v2.14.0 环境因子修正 ====================
-        
+
         bool skipWeatherRecoveryPenalties = false;
         if (rssCtrlForCaffeine && rssCtrlForCaffeine.RSS_IsCaffeineSodiumBenzoateActive())
             skipWeatherRecoveryPenalties = true;
@@ -139,26 +139,26 @@ class SCR_RSS_RecoveryCalculator
         float heatStressPenalty = 0.0;
         float coldStressPenalty = 0.0;
         float surfaceWetnessPenalty = 0.0;
-        
+
         if (!skipWeatherRecoveryPenalties && environmentFactor)
         {
             heatStressPenalty = environmentFactor.GetHeatStressPenalty();
             coldStressPenalty = environmentFactor.GetColdStressPenalty();
             surfaceWetnessPenalty = environmentFactor.GetSurfaceWetnessPenalty();
         }
-        
+
         // 应用热应激惩罚（降低恢复率）
         recoveryRate = recoveryRate * (1.0 - heatStressPenalty);
-        
+
         // 应用冷应激惩罚（降低恢复率）
         recoveryRate = recoveryRate * (1.0 - coldStressPenalty);
-        
+
         // 应用地表湿度惩罚（趴下时的恢复惩罚）
         if (stance == 2) // 趴姿
         {
             recoveryRate = recoveryRate * (1.0 - surfaceWetnessPenalty);
         }
-        
+
         // ==================== 运动状态恢复率调整 ====================
         // v6：陆地移动时不计入有氧恢复（net = -movementDrain）；仅静止/EPOC 后恢复。
         // 与 ResolveMovementDrainForNet 阈值对齐；绝境呼吸(<2%) 仍于下方兜底。
@@ -167,12 +167,12 @@ class SCR_RSS_RecoveryCalculator
             speedBasedRecoveryMultiplier = 0.0;
 
         recoveryRate = recoveryRate * speedBasedRecoveryMultiplier;
-        
+
         // 关键兜底（仅在明确禁止恢复的场景启用，例如水中）：
         // 禁止任何正向恢复，避免"静止踩水回血"等不合理情况。
         if (disablePositiveRecovery)
             return -Math.Max(baseDrainRateByVelocity, 0.0);
-        
+
         // ==================== [修复 v3.6.1 增强版] 保护机制（按优先级顺序执行）====================
         // 保护机制说明：以下两个保护逻辑按顺序执行，确保合理的恢复行为
         //
@@ -245,10 +245,10 @@ class SCR_RSS_RecoveryCalculator
         {
             recoveryRate = maxRecoveryPerTick;
         }
-        
+
         return recoveryRate;
     }
-    
+
     // 计算恢复用的重量（考虑姿态优化）
     // @param currentWeight 当前重量 (kg)
     // @param controller 角色控制器组件（用于获取姿态）
@@ -256,7 +256,7 @@ class SCR_RSS_RecoveryCalculator
     static float CalculateRecoveryWeight(float currentWeight, SCR_CharacterControllerComponent controller)
     {
         float currentWeightForRecovery = currentWeight;
-        
+
         // 趴下休息时的负重优化
         ECharacterStance currentStance = controller.GetStance();
         if (currentStance == ECharacterStance.PRONE)
@@ -264,7 +264,7 @@ class SCR_RSS_RecoveryCalculator
             // 如果角色趴下，将负重视为基准重量，去除额外负重的影响
             currentWeightForRecovery = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
         }
-        
+
         return currentWeightForRecovery;
     }
 }

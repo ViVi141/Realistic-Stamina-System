@@ -47,7 +47,7 @@ class SCR_RSS_UpdateLoopDebugOutput
             if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 targetStamina = fatigueSystem.GetMaxStaminaCap();
 
-            StaminaEtaResult eta = SCR_RSS_StaminaNetRate.ComputeStaminaEta(
+            RSS_StaminaEtaResult eta = SCR_RSS_StaminaNetRate.ComputeStaminaEta(
                 tick.staminaPercent,
                 targetStamina,
                 tick.useSwimmingModel,
@@ -84,7 +84,7 @@ class SCR_RSS_UpdateLoopDebugOutput
                 environmentFactor);
         }
 
-        DebugInfoParams debugParams = new DebugInfoParams();
+        RSS_DebugInfoParams debugParams = new RSS_DebugInfoParams();
         debugParams.owner = ownerEnt;
         debugParams.movementTypeStr = SCR_RSS_SpeedCalculator.FormatMovementTypeForDisplay(
             tick.isSprinting,

@@ -3,7 +3,7 @@
 // 模块化拆分：从 PlayerBase.c 提取的游泳相关逻辑
 
 // 湿重更新结果结构体
-class WetWeightUpdateResult
+class RSS_WetWeightUpdateResult
 {
     float wetWeightStartTime;
     float currentWetWeight;
@@ -13,7 +13,7 @@ class WetWeightUpdateResult
 class SCR_RSS_SwimmingStateManager
 {
     // ==================== 游泳状态检测 ====================
-    
+
     // 检测角色是否在游泳（通过动画组件）
     // @param controller 角色控制器组件
     // @return true表示正在游泳，false表示在陆地
@@ -21,20 +21,20 @@ class SCR_RSS_SwimmingStateManager
     {
         if (!controller)
             return false;
-        
+
         CharacterAnimationComponent animComponent = controller.GetAnimationComponent();
         if (!animComponent)
             return false;
-        
+
         CharacterCommandHandlerComponent handler = animComponent.GetCommandHandler();
         if (!handler)
             return false;
-        
+
         return (handler.GetCommandSwim() != null);
     }
-    
+
     // ==================== 湿重跟踪 ====================
-    
+
     // 更新湿重（基于游泳状态）
     // @param wasSwimming 上一帧是否在游泳
     // @param isSwimming 当前是否在游泳
@@ -44,9 +44,9 @@ class SCR_RSS_SwimmingStateManager
     // @param swimStartTimeSec 本实体游泳开始时间（-1 表示未在游泳）
     // @param owner 角色实体（用于调试输出）
     // @return 更新后的湿重结果（包含湿重开始时间和当前湿重）
-    static WetWeightUpdateResult UpdateWetWeight(
-        bool wasSwimming, 
-        bool isSwimming, 
+    static RSS_WetWeightUpdateResult UpdateWetWeight(
+        bool wasSwimming,
+        bool isSwimming,
         float currentTime,
         float wetWeightStartTime,
         float currentWetWeight,
@@ -61,22 +61,22 @@ class SCR_RSS_SwimmingStateManager
                 oldState = "游泳";
             else
                 oldState = "陆地";
-            
+
             string newState = "";
             if (isSwimming)
                 newState = "游泳";
             else
                 newState = "陆地";
-            
+
             string stateChange = string.Format("[游泳检测] 状态变化: %1 -> %2", oldState, newState);
             Print(stateChange);
         }
-        
-        WetWeightUpdateResult result = new WetWeightUpdateResult();
+
+        RSS_WetWeightUpdateResult result = new RSS_WetWeightUpdateResult();
         result.wetWeightStartTime = wetWeightStartTime;
         result.currentWetWeight = currentWetWeight;
         result.swimStartTimeSec = swimStartTimeSec;
-        
+
         if (isSwimming)
         {
             // 正在游泳：湿重非线性增长
@@ -84,16 +84,16 @@ class SCR_RSS_SwimmingStateManager
             {
                 result.swimStartTimeSec = currentTime;
             }
-            
+
             float swimDuration = currentTime - result.swimStartTimeSec;
-            
+
             // 非线性增长：使用平方根函数，让湿重增长逐渐变慢
             // 最大湿重：WET_WEIGHT_MAX（10kg，与降雨湿重共用组合池）
             // 增长公式：wetWeight = WET_WEIGHT_MAX * sqrt(duration / 60.0)
             // 60秒时达到最大值 WET_WEIGHT_MAX kg
             float swimProgress = Math.Clamp(swimDuration / 60.0, 0.0, 1.0);
             float swimWetWeight = SCR_RSS_SwimConstants.WET_WEIGHT_MAX * Math.Sqrt(swimProgress);
-            
+
             result.wetWeightStartTime = -1.0;
             result.currentWetWeight = swimWetWeight;
         }
@@ -118,12 +118,12 @@ class SCR_RSS_SwimmingStateManager
                 result.currentWetWeight = SCR_RSS_SwimConstants.WET_WEIGHT_MAX * wetWeightRatio;
             }
         }
-        
+
         return result;
     }
-    
+
     // ==================== 总湿重计算 ====================
-    
+
     // 计算总湿重（游泳湿重 + 降雨湿重）
     // @param swimmingWetWeight 游泳湿重（kg）
     // @param rainWeight 降雨湿重（kg）

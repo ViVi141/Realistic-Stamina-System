@@ -61,16 +61,16 @@ class SCR_RSS_Settings
     // ==================== 调试配置 ====================
     [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Workbench auto-on. | 调试：控制台输出详细日志，工作台模式自动开启")]
     bool m_bDebugLogEnabled;
-    
+
     [Attribute("1000", UIWidgets.EditBox, "Debug batch interval (ms). Unified output per second. | 调试批次间隔（毫秒），统一波次每秒")]
     int m_iDebugUpdateInterval;
-    
+
     [Attribute("false", UIWidgets.CheckBox, "Verbose: Log all calculation details. | 详细模式：输出完整计算过程")]
     bool m_bVerboseLogging;
-    
+
     [Attribute("false", UIWidgets.CheckBox, "Log to file (RSS_Log.txt). | 将日志写入文件")]
     bool m_bLogToFile;
-    
+
     // ==================== HUD 显示配置 ====================
     [Attribute("false", UIWidgets.CheckBox, "HUD: Show stamina/speed/weight in top-right. Default OFF.")]
     bool m_bHintDisplayEnabled;
@@ -83,50 +83,50 @@ class SCR_RSS_Settings
 
     [Attribute("false", UIWidgets.CheckBox, "[Experimental] AI stamina combat: state machine, speed cap, intent filter, combat decay, group sync. Default OFF. | 【实验性】AI 体力战斗效果：状态机、限速、意图过滤、战斗衰减、群组协同等；默认关闭")]
     bool m_bEnableAIStaminaCombatEffects;
-    
+
     [Attribute("false", UIWidgets.CheckBox, "AI: disable ALL RSS calculations for AI. Engine handles stamina completely. Also disables AI combat effects. | 完全禁用 AI 的 RSS 计算，体力交还引擎处理。同时关闭 AI 战斗效果")]
     bool m_bDisableAIAllCalc;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "AI: disable stamina calc only. Keep speed multiplier from RSS, skip drain/recovery. Default ON. | 仅禁用 AI 体力计算，仍保留 RSS 速度倍率。默认开启（不算 AI 体力）")]
     bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
     int m_iDataExportIntervalMs;
-    
+
     [Attribute("5000", UIWidgets.EditBox, "[Deprecated] HUD is real-time now. Kept for compatibility.")]
     int m_iHintUpdateInterval;
-    
+
     [Attribute("2.0", UIWidgets.EditBox, "[Deprecated] HUD is always visible. Kept for compatibility.")]
     float m_fHintDuration;
-    
+
     // ==================== Custom 预设：体力/移动 ====================
     // 以下配置仅在选择 Custom 预设时生效
-    
+
     [Attribute("1.0", UIWidgets.EditBox, "[Custom] Stamina drain multiplier. Range 0.1-5.0. Higher = harder. | 体力消耗倍率，值越大越难")]
     float m_fStaminaDrainMultiplier;
-    
+
     [Attribute("1.0", UIWidgets.EditBox, "[Custom] Stamina recovery multiplier. Range 0.1-5.0. Higher = easier. | 体力恢复倍率，值越大越易")]
     float m_fStaminaRecoveryMultiplier;
-    
+
     [Attribute("1.0", UIWidgets.EditBox, "[Custom] Encumbrance speed penalty. Range 0.1-5.0. | 负重速度惩罚倍率")]
     float m_fEncumbranceSpeedPenaltyMultiplier;
-    
+
     [Attribute("1.3", UIWidgets.EditBox, "[Custom] Sprint speed multiplier. Range 1.0-2.0. | Sprint 速度倍率")]
     float m_fSprintSpeedMultiplier;
-    
+
     [Attribute("3.5", UIWidgets.EditBox, "[Custom] Sprint stamina drain multiplier. Range 1.0-10.0. | Sprint 消耗倍率")]
     float m_fSprintStaminaDrainMultiplier;
-    
+
     // ==================== Custom 预设：环境因子 ====================
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Heat stress (10:00-18:00). | 热应激系统")]
     bool m_bEnableHeatStress;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Rain weight (wet clothes). | 降雨湿重")]
     bool m_bEnableRainWeight;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Wind resistance. | 风阻系统")]
     bool m_bEnableWindResistance;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Mud penalty (wet terrain). | 泥泞惩罚")]
     bool m_bEnableMudPenalty;
 
@@ -176,27 +176,27 @@ class SCR_RSS_Settings
     // ==================== Custom 预设：高级系统 ====================
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Fatigue accumulation. | 疲劳积累")]
     bool m_bEnableFatigueSystem;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Metabolic adaptation. | 代谢适应")]
     bool m_bEnableMetabolicAdaptation;
-    
+
     [Attribute("true", UIWidgets.CheckBox, "[Custom] Indoor detection. | 室内检测")]
     bool m_bEnableIndoorDetection;
-    
+
     // ==================== 性能配置 ====================
     [Attribute("5000", UIWidgets.EditBox, "Terrain update interval (ms). Lower = more accurate, higher CPU. | 地形检测间隔")]
     int m_iTerrainUpdateInterval;
-    
+
     [Attribute("5000", UIWidgets.EditBox, "Environment update interval (ms). | 环境因子检测间隔")]
     int m_iEnvironmentUpdateInterval;
 
     // ==================== 获取激活的预设参数 ====================
-    
+
     SCR_RSS_Params GetActiveParams()
     {
         if (!m_sSelectedPreset)
             m_sSelectedPreset = "StandardMilsim";
-        
+
         if (m_sSelectedPreset == "EliteStandard")
         {
             if (!m_EliteStandard)

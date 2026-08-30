@@ -37,7 +37,7 @@ class SCR_RSS_ConfigManager
     protected static const float ENCUMBRANCE_EXP_MAX = 3.0;          // 负重速度惩罚指数上限
     protected static const float ENCUMBRANCE_MAX_MIN = 0.4;          // 负重速度惩罚上限下限（至少0.4）
     protected static const float ENCUMBRANCE_MAX_MAX = 0.95;         // 负重速度惩罚上限上限（不超过0.95）
-    
+
     // 获取配置实例（单例模式）
     static SCR_RSS_Settings GetSettings()
     {
@@ -45,7 +45,7 @@ class SCR_RSS_ConfigManager
             Load();
         return m_Settings;
     }
-    
+
     // 加载配置文件
     static void Load()
     {
@@ -107,7 +107,7 @@ class SCR_RSS_ConfigManager
             }
             return;
         }
-        
+
         // 防止频繁重载
         float currentTime = 0.0;
         if (GetGame() && GetGame().GetWorld())
@@ -115,16 +115,16 @@ class SCR_RSS_ConfigManager
 
         if (m_bIsLoaded && currentTime > 0.0 && (currentTime - m_fLastLoadTime) < RELOAD_COOLDOWN)
             return;
-        
+
         m_Settings = new SCR_RSS_Settings();
-        
+
         // 尝试从磁盘读取
         // 使用官方的JsonLoadContext
         JsonLoadContext loadContext = new JsonLoadContext();
         if (loadContext.LoadFromFile(CONFIG_PATH))
         {
             loadContext.ReadValue("", m_Settings);
-            
+
             // 检查是否已应用服务器配置
             if (!m_bIsServerConfigApplied)
             {
@@ -134,7 +134,7 @@ class SCR_RSS_ConfigManager
                 // 2) Custom 预设：仅做字段补全，不覆盖用户已在 JSON 中设置的值。
                 // 3) 非 Custom 预设：使用代码内最新 Optuna 默认值覆盖内存并写回 JSON，确保预设与模组版本一致。
                 // --- 核心修复逻辑开始 ---
-                
+
                 // 检查玩家当前选中的预设（大小写不敏感，避免 JSON 手写 "custom" 被误判）
                 string selected = m_Settings.m_sSelectedPreset;
                 bool isCustom = false;
@@ -150,7 +150,7 @@ class SCR_RSS_ConfigManager
                     // 如果玩家用的是系统预设，强制用代码里的最新Optuna值覆盖内存
                     // 这样即使 JSON 里是旧值，也会被更新
                     m_Settings.InitPresets(true);
-                    
+
                     // 既然内存更新了，我们需要立即保存到 JSON，确保文件同步
                     if (CanWriteConfig())
                         Save();
@@ -162,7 +162,7 @@ class SCR_RSS_ConfigManager
                     if (!m_Settings.ApplyFlatArraysToParams())
                         Print("[RSS_ConfigManager] Custom: no flat params arrays yet; using bake/field defaults.");
                 }
-                
+
                 // --- 核心修复逻辑结束 ---
             }
             else
@@ -170,18 +170,18 @@ class SCR_RSS_ConfigManager
                 m_Settings.InitPresets(false);
                 m_Settings.ApplyFlatArraysToParams();
             }
-            
+
             // 版本号与模组不一致时静默写回当前版本
             string configVersion = m_Settings.m_sConfigVersion;
             if (!configVersion || configVersion == "")
                 configVersion = "0.0.0";
-            
+
             if (configVersion != CURRENT_VERSION)
             {
                 m_Settings.m_sConfigVersion = CURRENT_VERSION;
                 Save();
             }
-            
+
             // 验证配置：只修正无效字段，不重置整个配置（避免丢失用户自定义）
             if (!ValidateSettings(m_Settings))
             {
@@ -194,7 +194,7 @@ class SCR_RSS_ConfigManager
             // 文件不存在，初始化预设并保存默认值
             Print("[RSS_ConfigManager] Config file not found, creating new config with defaults");
             m_Settings.InitPresets();
-            
+
             // 设置所有必要的默认值
             m_Settings.m_sConfigVersion = CURRENT_VERSION;
             m_Settings.m_sSelectedPreset = "StandardMilsim";
@@ -212,63 +212,63 @@ class SCR_RSS_ConfigManager
             m_Settings.m_bEnableMudSlipMechanism = false;
             m_Settings.m_bEnableAIStaminaCombatEffects = false;
             m_Settings.m_bDisableAIStaminaCalc = true;
-            
+
             if (CanWriteConfig())
             {
                 Save();
                 Print("[RSS_ConfigManager] Default settings created at " + CONFIG_PATH);
             }
         }
-        
+
         m_bIsLoaded = true;
         m_fLastLoadTime = currentTime;
-        
+
         // 确保所有字段有合理的默认值（兼容旧版本配置文件或空值）
         EnsureDefaultValues();
-        
+
         // 更新配置缓存
         UpdateConfigCache();
-        
+
         // 打印启动提示（让服主确认模组已正常加载）
         string debugStatus;
         if (m_Settings.m_bDebugLogEnabled)
             debugStatus = "ON";
         else
             debugStatus = "OFF";
-        
+
         string hintStatus;
         if (m_Settings.m_bHintDisplayEnabled)
             hintStatus = "ON";
         else
             hintStatus = "OFF";
-        
+
         string presetName = m_Settings.m_sSelectedPreset;
         if (!presetName)
             presetName = "EliteStandard";
-        
+
         Print("[RSS] Realistic Stamina System v" + CURRENT_VERSION + " initialized (Debug: " + debugStatus + ", Hint: " + hintStatus + ", Preset: " + presetName + ")");
-        
+
         if (m_Settings && m_Settings.m_bDebugLogEnabled)
         {
             SCR_RSS_Params activeParams = m_Settings.GetActiveParams();
             if (activeParams)
             {
-                Print("[RSS_ConfigManager] Active preset params: energy_coeff=" + activeParams.energy_to_stamina_coeff.ToString() + 
+                Print("[RSS_ConfigManager] Active preset params: energy_coeff=" + activeParams.energy_to_stamina_coeff.ToString() +
                       ", base_recovery=" + activeParams.base_recovery_rate.ToString() +
                       ", sprint_drain=" + activeParams.sprint_stamina_drain_multiplier.ToString());
             }
         }
     }
-    
+
     // 确保所有字段有合理的默认值
     // 用于兼容旧版本配置文件或处理空值
     protected static void EnsureDefaultValues()
     {
         if (!m_Settings)
             return;
-        
+
         bool needsSave = false;
-        
+
         // 版本号与预设
         if (!m_Settings.m_sConfigVersion || m_Settings.m_sConfigVersion == "")
         {
@@ -280,7 +280,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_sSelectedPreset = "StandardMilsim";
             needsSave = true;
         }
-        
+
         // HUD 显示设置
         // 间隔类字段：≤0 视为无效，使用默认值
         if (m_Settings.m_iHintUpdateInterval <= 0)
@@ -313,7 +313,7 @@ class SCR_RSS_ConfigManager
             m_Settings.m_iDataExportIntervalMs = 1000;
             needsSave = true;
         }
-        
+
         // 倍率类字段：≤0 视为无效
         if (m_Settings.m_fStaminaDrainMultiplier <= 0.0)
         {
@@ -335,10 +335,10 @@ class SCR_RSS_ConfigManager
             m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
             needsSave = true;
         }
-        
+
         // 注意：m_bHintDisplayEnabled / m_bDebugLogEnabled 不覆盖，保留用户设置
         // 用户通过 JSON 修改的 UI 设置（hint、debug）必须被保留
-        
+
         // 如果有任何默认值被设置，保存配置（客户端仅更新缓存，不写盘）
         if (needsSave)
         {
@@ -357,7 +357,7 @@ class SCR_RSS_ConfigManager
 
         return Replication.IsServer();
     }
-    
+
     // 保存配置文件（原子写入：先写临时文件再 rename）
     static void Save()
     {
@@ -376,16 +376,16 @@ class SCR_RSS_ConfigManager
         // CRITICAL FIX: Atomic write — write to temp file first, then rename.
         // This prevents JSON corruption from crashes during SaveToFile.
         string temp_path = CONFIG_PATH + ".tmp";
-        
+
         // 创建配置备份（基于当前已验证的旧文件）
         CreateConfigBackup();
-        
+
         // 写入临时文件
         JsonSaveContext saveContext = new JsonSaveContext();
         m_Settings.PackParamsToFlatArrays();
         saveContext.WriteValue("", m_Settings);
         saveContext.SaveToFile(temp_path);
-        
+
         // 验证临时文件存在后再替换主文件
         // NOTE: EnforceScript does not have FileIO.RenameFile(), so we use
         // CopyFile + DeleteFile as the atomicity approximation.
@@ -410,10 +410,10 @@ class SCR_RSS_ConfigManager
         {
             Print("[RSS_ConfigManager] ERROR: Temp file not written, config NOT saved!");
         }
-        
+
         // 更新配置缓存
         UpdateConfigCache();
-        
+
         // 检测配置变更并通知
         if (Replication.IsServer())
         {
@@ -421,7 +421,7 @@ class SCR_RSS_ConfigManager
             ReplicateConfigToClients();
         }
     }
-    
+
     // 创建配置备份
     protected static void CreateConfigBackup()
     {
@@ -433,7 +433,7 @@ class SCR_RSS_ConfigManager
         // This matches RestoreFromBackup() behavior.
         FileIO.CopyFile(CONFIG_PATH, CONFIG_BACKUP_PATH);
     }
-    
+
     // 从备份恢复配置
     static bool RestoreFromBackup()
     {
@@ -449,11 +449,11 @@ class SCR_RSS_ConfigManager
                 return true;
             }
         }
-        
+
         Print("[RSS_ConfigManager] No backup files found for restoration");
         return false;
     }
-    
+
     // 更新配置缓存
     protected static void UpdateConfigCache()
     {
@@ -461,14 +461,14 @@ class SCR_RSS_ConfigManager
         {
             return;
         }
-        
+
         // 创建配置副本作为缓存
         m_CachedSettings = new SCR_RSS_Settings();
-        
+
         // 复制基本配置
         m_CachedSettings.m_sConfigVersion = m_Settings.m_sConfigVersion;
         m_CachedSettings.m_sSelectedPreset = m_Settings.m_sSelectedPreset;
-        
+
         // 复制预设参数
         if (m_Settings.m_EliteStandard)
         {
@@ -498,7 +498,7 @@ class SCR_RSS_ConfigManager
             SCR_RSS_Settings.WriteParamsToArray(m_Settings.m_Custom, tmpCustom);
             SCR_RSS_Settings.ApplyParamsFromArray(m_CachedSettings.m_Custom, tmpCustom);
         }
-        
+
         // 复制其他配置
         m_CachedSettings.m_bDebugLogEnabled = m_Settings.m_bDebugLogEnabled;
         m_CachedSettings.m_iDebugUpdateInterval = m_Settings.m_iDebugUpdateInterval;
@@ -525,11 +525,11 @@ class SCR_RSS_ConfigManager
         m_CachedSettings.m_iTerrainUpdateInterval = m_Settings.m_iTerrainUpdateInterval;
         m_CachedSettings.m_iEnvironmentUpdateInterval = m_Settings.m_iEnvironmentUpdateInterval;
         m_CachedSettings.m_iDataExportIntervalMs = m_Settings.m_iDataExportIntervalMs;
-        
+
         if (Replication.IsServer())
             Print("[RSS_ConfigManager] Config cache updated");
     }
-    
+
     // 重新加载配置文件（热重载）
     static void Reload()
     {
@@ -539,14 +539,14 @@ class SCR_RSS_ConfigManager
         ReplicateConfigToClients();
         Print("[RSS_ConfigManager] Settings reloaded successfully");
     }
-    
+
     // 重置为默认值
     static void ResetToDefaults()
     {
         Print("[RSS_ConfigManager] Resetting to defaults");
         m_Settings = new SCR_RSS_Settings();
         m_Settings.InitPresets();
-        
+
         // 设置所有必要的默认值
         m_Settings.m_sConfigVersion = CURRENT_VERSION;
         m_Settings.m_sSelectedPreset = "StandardMilsim";
@@ -572,19 +572,19 @@ class SCR_RSS_ConfigManager
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;
         m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
-        
+
         Save();
     }
-    
+
     // 修正无效配置值（仅 clamp 到合法范围，不重置其他字段）
     // 用于替代 ResetToDefaults，避免因单个字段越界而丢失全部用户配置
     protected static void FixInvalidSettings()
     {
         if (!m_Settings)
             return;
-        
+
         bool needsSave = false;
-        
+
         // 倍率类：越界则 clamp 到合理范围
         if (m_Settings.m_fStaminaDrainMultiplier > 0 && m_Settings.m_fStaminaDrainMultiplier > STAMINA_MULT_MAX)
         {
@@ -654,11 +654,11 @@ class SCR_RSS_ConfigManager
                 needsSave = true;
             }
         }
-        
+
         if (needsSave)
             Save();
     }
-    
+
     // 验证配置值的有效性
     // 注意：值为 0 或空不算无效，会由 EnsureDefaultValues() 处理
     // 这里只检查明显超出合理范围的值
@@ -666,9 +666,9 @@ class SCR_RSS_ConfigManager
     {
         if (!settings)
             return false;
-        
+
         bool isValid = true;
-        
+
         // 倍率范围（>0 时才校验）
         if (settings.m_fStaminaDrainMultiplier > 0 && settings.m_fStaminaDrainMultiplier > STAMINA_MULT_MAX)
             isValid = false;
@@ -685,22 +685,22 @@ class SCR_RSS_ConfigManager
             isValid = false;
         if (settings.m_iEnvironmentUpdateInterval > 0 && settings.m_iEnvironmentUpdateInterval > MAX_UPDATE_INTERVAL_MS)
             isValid = false;
-        
+
         return isValid;
     }
-    
+
     // 获取配置文件路径
     static string GetConfigPath()
     {
         return CONFIG_PATH;
     }
-    
+
     // 检查配置是否已加载
     static bool IsLoaded()
     {
         return m_bIsLoaded;
     }
-    
+
     // 设置服务器配置已应用标志
     static void SetServerConfigApplied(bool applied)
     {
@@ -719,7 +719,7 @@ class SCR_RSS_ConfigManager
         m_bLoggedClientDefaultsOnce = false;  // 重连后允许再次打印
         m_bServerDataExportEnabled = false;  // 未收到新配置前不发送体力 RPC
     }
-    
+
     // 检查服务器配置是否已应用
     static bool IsServerConfigApplied()
     {
@@ -750,9 +750,9 @@ class SCR_RSS_ConfigManager
     {
         if (!m_Settings || !m_CachedSettings)
             return false;
-        
+
         bool hasChanged = false;
-        
+
         // 检测预设变更
         string currentPreset = m_Settings.m_sSelectedPreset;
         if (currentPreset != m_sLastSelectedPreset)
@@ -761,7 +761,7 @@ class SCR_RSS_ConfigManager
             m_sLastSelectedPreset = currentPreset;
             Print("[RSS_ConfigManager] Config changed: Preset changed to " + currentPreset);
         }
-        
+
         // 检测关键配置变更
         if (m_Settings.m_bDebugLogEnabled != m_CachedSettings.m_bDebugLogEnabled) {
             hasChanged = true;
@@ -771,7 +771,7 @@ class SCR_RSS_ConfigManager
             }
             Print("[RSS_ConfigManager] Config changed: Debug log " + debugStatus);
         }
-        
+
         if (m_Settings.m_bHintDisplayEnabled != m_CachedSettings.m_bHintDisplayEnabled) {
             hasChanged = true;
             string hintStatus = "disabled";
@@ -780,12 +780,12 @@ class SCR_RSS_ConfigManager
             }
             Print("[RSS_ConfigManager] Config changed: Hint display " + hintStatus);
         }
-        
+
         if (m_Settings.m_fStaminaDrainMultiplier != m_CachedSettings.m_fStaminaDrainMultiplier) {
             hasChanged = true;
             Print("[RSS_ConfigManager] Config changed: Stamina drain multiplier changed to " + m_Settings.m_fStaminaDrainMultiplier.ToString());
         }
-        
+
         if (m_Settings.m_fStaminaRecoveryMultiplier != m_CachedSettings.m_fStaminaRecoveryMultiplier) {
             hasChanged = true;
             Print("[RSS_ConfigManager] Config changed: Stamina recovery multiplier changed to " + m_Settings.m_fStaminaRecoveryMultiplier.ToString());
@@ -808,7 +808,7 @@ class SCR_RSS_ConfigManager
             }
             Print("[RSS_ConfigManager] Config changed: AI stamina combat effects " + aiCombatFx);
         }
-        
+
         // 检测预设参数变更
         if (currentPreset == "EliteStandard" && m_Settings.m_EliteStandard && m_CachedSettings.m_EliteStandard) {
             if (m_Settings.m_EliteStandard.energy_to_stamina_coeff != m_CachedSettings.m_EliteStandard.energy_to_stamina_coeff) {
@@ -816,34 +816,34 @@ class SCR_RSS_ConfigManager
                 Print("[RSS_ConfigManager] Config changed: EliteStandard energy coefficient updated");
             }
         }
-        
+
         if (currentPreset == "StandardMilsim" && m_Settings.m_StandardMilsim && m_CachedSettings.m_StandardMilsim) {
             if (m_Settings.m_StandardMilsim.energy_to_stamina_coeff != m_CachedSettings.m_StandardMilsim.energy_to_stamina_coeff) {
                 hasChanged = true;
                 Print("[RSS_ConfigManager] Config changed: StandardMilsim energy coefficient updated");
             }
         }
-        
+
         if (currentPreset == "TacticalAction" && m_Settings.m_TacticalAction && m_CachedSettings.m_TacticalAction) {
             if (m_Settings.m_TacticalAction.energy_to_stamina_coeff != m_CachedSettings.m_TacticalAction.energy_to_stamina_coeff) {
                 hasChanged = true;
                 Print("[RSS_ConfigManager] Config changed: TacticalAction energy coefficient updated");
             }
         }
-        
+
         if (currentPreset == "Custom" && m_Settings.m_Custom && m_CachedSettings.m_Custom) {
             if (m_Settings.m_Custom.energy_to_stamina_coeff != m_CachedSettings.m_Custom.energy_to_stamina_coeff) {
                 hasChanged = true;
                 Print("[RSS_ConfigManager] Config changed: Custom energy coefficient updated");
             }
         }
-        
+
         return hasChanged;
     }
-    
+
     // SaveWithChangeDetection / listener-based notifications removed.
     // Config changes are distributed via GameMode replication (RplProp) only.
-    
+
     // 验证配置文件完整性
     static bool ValidateConfigFile()
     {
@@ -853,7 +853,7 @@ class SCR_RSS_ConfigManager
             Print("[RSS_ConfigManager] Config file not found: " + CONFIG_PATH);
             return false;
         }
-        
+
         // 尝试加载配置文件
         JsonLoadContext loadContext = new JsonLoadContext();
         if (!loadContext.LoadFromFile(CONFIG_PATH))
@@ -861,7 +861,7 @@ class SCR_RSS_ConfigManager
             Print("[RSS_ConfigManager] Config file is corrupted: " + CONFIG_PATH);
             return false;
         }
-        
+
         // 尝试读取配置
         SCR_RSS_Settings testSettings = new SCR_RSS_Settings();
         if (!loadContext.ReadValue("", testSettings))
@@ -869,21 +869,21 @@ class SCR_RSS_ConfigManager
             Print("[RSS_ConfigManager] Failed to parse config file: " + CONFIG_PATH);
             return false;
         }
-        
+
         return true;
     }
-    
+
     // 修复损坏的配置文件
     static bool FixCorruptedConfig()
     {
         // 验证配置文件
         if (ValidateConfigFile())
             return true;
-        
+
         // 尝试从备份恢复
         if (RestoreFromBackup())
             return true;
-        
+
         // 创建新的默认配置
         m_Settings = new SCR_RSS_Settings();
         m_Settings.InitPresets();
@@ -900,31 +900,31 @@ class SCR_RSS_ConfigManager
         m_Settings.m_fStaminaRecoveryMultiplier = 1.0;
         m_Settings.m_fSprintSpeedMultiplier = 1.3;
         m_Settings.m_fSprintStaminaDrainMultiplier = 3.5;
-        
+
         Save();
         Print("[RSS_ConfigManager] Created new default config due to corruption");
         return true;
     }
-    
+
     // 获取配置状态信息
     static string GetConfigStatus()
     {
         string status = "[RSS Config Status]\n";
-        
+
         // 基本状态
         status += "Loaded: " + m_bIsLoaded.ToString() + "\n";
         status += "Server Config Applied: " + m_bIsServerConfigApplied.ToString() + "\n";
-        
+
         // 配置文件状态
         status += "Config File Exists: " + FileIO.FileExists(CONFIG_PATH).ToString() + "\n";
         status += "Backup File Exists: " + FileIO.FileExists(CONFIG_BACKUP_PATH).ToString() + "\n";
-        
+
         // 配置内容
         if (m_Settings)
         {
             status += "Config Version: " + m_Settings.m_sConfigVersion + "\n";
             status += "Selected Preset: " + m_Settings.m_sSelectedPreset + "\n";
-            
+
             // 活动参数
             SCR_RSS_Params activeParams = m_Settings.GetActiveParams();
             if (activeParams)
@@ -932,29 +932,29 @@ class SCR_RSS_ConfigManager
                 status += "Active Params: energy_coeff=" + activeParams.energy_to_stamina_coeff.ToString() + ", base_recovery=" + activeParams.base_recovery_rate.ToString() + "\n";
             }
         }
-        
+
         return status;
     }
-    
+
     // 显示配置状态
     static void ShowConfigStatus()
     {
         string status = GetConfigStatus();
         Print(status);
-        
+
         // 如果启用了HUD显示，也可以在游戏内显示
         if (m_Settings && m_Settings.m_bHintDisplayEnabled)
         {
             // 这里可以添加游戏内HUD显示逻辑
         }
     }
-    
+
     // 强制同步配置到所有客户端
     static void ForceSyncToClients()
     {
         if (!Replication.IsServer() || !m_Settings)
             return;
-        
+
         ReplicateConfigToClients();
         Print("[RSS_ConfigManager] Forced config sync to all clients");
     }

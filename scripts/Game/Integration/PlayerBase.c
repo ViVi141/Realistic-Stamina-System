@@ -3,7 +3,7 @@ modded class SCR_CharacterControllerComponent
     // --- ICE: stamina tick phase C (kept out of UpdateLoop for size) ---
     bool RSS_StaminaTickPhaseC(RSS_StaminaTickLocals loc)
     {
-        loc.drainParams = new StaminaDrainTickParams();
+        loc.drainParams = new RSS_StaminaDrainTickParams();
         loc.drainParams.useSwimmingModel = loc.useSwimmingModel;
         loc.drainParams.currentSpeed = loc.currentSpeed;
         loc.drainParams.gearWeightKg = loc.currentWeight;
@@ -140,7 +140,7 @@ modded class SCR_CharacterControllerComponent
             this,
             m_pEnvironmentFactor,
             false) / 5.0;
-        
+
         loc.overspeedExtraPerSec = 0.0;
         if (!loc.useSwimmingModel)
         {
@@ -195,7 +195,7 @@ modded class SCR_CharacterControllerComponent
                 this,
                 m_pEnvironmentFactor,
                 loc.timeDeltaSec);
-            
+
             if (loc.overspeedExtraPerSec > 0.000001)
                 newTargetStamina = newTargetStamina - loc.overspeedExtraPerSec * loc.timeDeltaSec;
             newTargetStamina = Math.Clamp(newTargetStamina, 0.0, 1.0);
@@ -207,7 +207,7 @@ modded class SCR_CharacterControllerComponent
 
             bool sprintIntentAfterUpdate = loc.isSprintActive || GetIsSprintingToggle();
             RSS_PokeEngineStaminaForSprintBlock(sprintIntentAfterUpdate);
-            
+
             // transient 活跃时 GetStamina()!=有氧目标是预期（冲刺门 / W′ 表现）
             if (!m_bSprintGateEnginePokeActive)
             {
@@ -228,7 +228,7 @@ modded class SCR_CharacterControllerComponent
                     RSS_PokeEngineStaminaForSprintBlock(sprintIntentAfterUpdate);
                 }
             }
-            
+
             loc.staminaPercent = newTargetStamina;
         }
 
@@ -260,7 +260,7 @@ modded class SCR_CharacterControllerComponent
                 false,
                 GetRssWPrimePool01());
         }
-        
+
         m_fLastStaminaPercent = loc.staminaPercent;
         m_fLastSpeedMultiplier = loc.finalSpeedMultiplier;
 
@@ -391,7 +391,7 @@ modded class SCR_CharacterControllerComponent
             m_sLastSpeedSource,
             GetRssWPrimePool01(),
             GetRssSprintCooldownRemainingSec());
-        
+
         SCR_RSS_DebugBatchManager.FlushDebugBatch();
         return true;
     }
@@ -423,13 +423,13 @@ modded class SCR_CharacterControllerComponent
     protected float m_fLastCapRatchetPerTick = 0.0;
     //! 松键惯性：上一非 Idle 引擎相位（1=Walk, 2=Run, 3=Sprint）
     protected int m_iLastNonIdleMovementPhase = 2;
-    
+
     protected float m_fLastStaminaPercent = 1.0;
     protected float m_fLastSpeedMultiplier = 1.0;
     protected float m_fLastStaminaUpdateTime = -1.0;
     protected SCR_CharacterStaminaComponent m_pStaminaComponent;
     protected bool m_bLastExhaustedState = false;
-    
+
     protected ref SCR_RSS_NetworkSyncManager m_pNetworkSyncManager;
     protected string m_sLastSpeedSource = "";
     protected float m_fLastReconnectTime = -1.0;
@@ -443,29 +443,29 @@ modded class SCR_CharacterControllerComponent
     protected ref SCR_RSS_CollapseTransition m_pCollapseTransition;
     protected ref SCR_RSS_SlopeSpeedTransition m_pSlopeSpeedTransition;
     protected ref SCR_RSS_SprintBlockSpeedTransition m_pSprintBlockSpeedTransition;
-    
+
     protected ref SCR_RSS_ExerciseTracker m_pExerciseTracker;
-    
+
     protected ref SCR_RSS_JumpVaultDetector m_pJumpVaultDetector;
-    
+
     protected ref SCR_RSS_EncumbranceCache m_pEncumbranceCache;
     protected SCR_CharacterInventoryStorageComponent m_pCachedInventoryComponent;
-    
+
     protected ref SCR_RSS_FatigueSystem m_pFatigueSystem;
-    
+
     protected ref SCR_RSS_TerrainDetector m_pTerrainDetector;
-    
+
     protected ref SCR_RSS_EnvironmentFactor m_pEnvironmentFactor;
-    
+
     protected ref SCR_RSS_UISignalBridge m_pUISignalBridge;
     protected ref SCR_RSS_BreathSoundDriver m_pBreathSoundDriver;
     protected ref SCR_RSS_HeartbeatSoundDriver m_pHeartbeatSoundDriver;
     protected ref SCR_RSS_CardioDrive m_pCardioDrive;
-    
+
     protected ref SCR_RSS_EpocState m_pEpocState;
-    
+
     protected ref SCR_RSS_StanceTransitionManager m_pStanceTransitionManager;
-    
+
     protected bool m_bWasSwimming = false;
     protected float m_fWetWeightStartTime = -1.0;
     protected float m_fSwimStartTimeSec = -1.0;
@@ -482,14 +482,14 @@ modded class SCR_CharacterControllerComponent
     protected float m_fAnimSpeedCompensation = 1.0;
     protected float m_fLastAnimCompensationUpdateTime = -1.0;
     protected static const float ANIM_COMPENSATION_UPDATE_INTERVAL = 2.0;
-    
+
 
     protected int m_iCombatStimPhase = ERSS_CombatStimPhase.NONE;
     protected float m_fCombatStimPhaseEndsAt = -1.0;
     protected int m_iCombatStimDelayInjectionCount = 0;
     //! 注射 Buff 前记录的 GetBleedingScale()，用于阶段结束时还原；-1 表示未处于 Buff
     protected float m_fRSS_CombatStimBleedingBaseline = -1.0;
-    
+
     protected ref SCR_RSS_MudSlipRunner m_pMudSlipRunner;
     protected float m_fRssMudSlipCameraShake01 = 0.0;
     protected float m_fLastRssSpeedMultiplierApplied = 1.0;
@@ -516,7 +516,7 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bGradeSmoothInitialized = false;
     protected bool m_bRssStaminaLoopActive = false;
     protected bool m_bIsDeleted = false;
-    
+
     protected ref SCR_RSS_AIManager m_pAIManager;
 
     protected ref SCR_RSS_AnaerobicBurst m_pAnaerobicBurst;
@@ -643,7 +643,7 @@ modded class SCR_CharacterControllerComponent
             m_pAIManager = null;
         }
     }
-    
+
     protected int m_iAiLoopRetryCount = 0;
     protected const int AI_LOOP_MAX_RETRIES = 5;
 
@@ -902,14 +902,14 @@ modded class SCR_CharacterControllerComponent
             RSS_NotifyEntityDeleting();
             return;
         }
-        
+
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (!character)
             return;
-        
+
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
-        
+
         if (!GetGame())
         {
             m_bIsDeleted = true;
@@ -918,22 +918,22 @@ modded class SCR_CharacterControllerComponent
         }
         if (!SCR_RSS_RuntimeGuard.GetWorldOrNull())
             return;
-        
+
         vector velocity = GetVelocity();
         vector velocityXZ = vector.Zero;
         velocityXZ[0] = velocity[0];
         velocityXZ[2] = velocity[2];
         float speedHorizontal = velocityXZ.Length();
-        
+
         if (m_bHasPreviousSpeed)
         {
             DisplayStatusInfo();
         }
-        
+
         m_fLastSecondSpeed = m_fCurrentSecondSpeed;
         m_fCurrentSecondSpeed = speedHorizontal;
         m_bHasPreviousSpeed = true;
-        
+
         if (IsRssDebugEnabled() && GetGame() && GetGame().GetCallqueue())
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.CollectSpeedSampleBridge, SPEED_SAMPLE_INTERVAL_MS, false, this);
     }
@@ -943,9 +943,9 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner)
             return;
-        
+
         bool isSwimming = IsSwimmingByCommand();
-        
+
         SCR_PlayerBaseDebugHelper.OutputStatusInfo(
             owner,
             m_fStatusLogSpeed,
@@ -1467,11 +1467,11 @@ modded class SCR_CharacterControllerComponent
                 inputManager.AddActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.AddActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
-                
+
                 if (IsRssDebugEnabled())
                     Print("[RSS] 跳跃动作监听器已添加 / Jump Action Listener Added");
             }
-            
+
             if (GetGame() && GetGame().GetCallqueue())
                 GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.InitStaminaHudBridge, 1000, false, this);
         }
@@ -1484,7 +1484,7 @@ modded class SCR_CharacterControllerComponent
                 inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
             }
-            
+
             SCR_RSS_StaminaHUDComponent.Destroy();
         }
     }
@@ -1503,9 +1503,9 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner || owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
-        
+
         bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
-        
+
         if (!isInVehicle && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
@@ -1537,7 +1537,7 @@ modded class SCR_CharacterControllerComponent
 
         if (Replication.IsServer() && IsPlayerControlled() && !ShouldProcessStaminaUpdate())
             RSS_MaybeServerTickAnaerobic();
-        
+
         if (owner != SCR_PlayerController.GetLocalControlledEntity())
             return;
 
@@ -1559,9 +1559,9 @@ modded class SCR_CharacterControllerComponent
         }
 
         RSS_TryApplyRunCruiseMovementAnalog();
-        
+
         bool isInVehicle = SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess);
-        
+
         if (!isInVehicle && am.GetActionTriggered("Jump") && m_pJumpVaultDetector)
         {
             m_pJumpVaultDetector.SetJumpInputTriggered(true);
@@ -1643,13 +1643,13 @@ modded class SCR_CharacterControllerComponent
             m_pHeartbeatSoundDriver.Cleanup();
         if (m_pCardioDrive)
             m_pCardioDrive.Reset();
-        
+
         m_pCachedOwnerCharacter = null;
         m_pStaminaComponent = null;
         m_pCompartmentAccess = null;
         m_pAnimComponent = null;
         m_pCachedInventoryComponent = null;
-        
+
         m_pJumpVaultDetector = null;
         m_pStanceTransitionManager = null;
         m_pExerciseTracker = null;
@@ -1673,10 +1673,10 @@ modded class SCR_CharacterControllerComponent
     override void OnInit(IEntity owner)
     {
         super.OnInit(owner);
-        
+
         if (!owner)
             return;
-        
+
         if (m_pStaminaComponent || m_pCollapseTransition || m_pEnvironmentFactor)
         {
             m_bIsDeleted = false;
@@ -1698,7 +1698,7 @@ modded class SCR_CharacterControllerComponent
                 PrintFormat("[RSS] 初始 energie->stamina coeff = %1", coeff);
             }
         }
-        
+
         m_pStaminaComponent = SCR_CharacterStaminaComponent.Cast(GetStaminaComponent());
 
         if (m_pStaminaComponent)
@@ -1707,18 +1707,18 @@ modded class SCR_CharacterControllerComponent
 
             m_pStaminaComponent.SetTargetStamina(SCR_RSS_MetabolismMath.INITIAL_STAMINA_AFTER_ACFT);
         }
-        
+
         m_pJumpVaultDetector = new SCR_RSS_JumpVaultDetector();
         if (m_pJumpVaultDetector)
             m_pJumpVaultDetector.Initialize();
-        
+
         m_pStanceTransitionManager = new SCR_RSS_StanceTransitionManager();
         if (m_pStanceTransitionManager)
         {
             m_pStanceTransitionManager.Initialize();
             m_pStanceTransitionManager.SetInitialStance(GetStance());
         }
-        
+
         m_pExerciseTracker = new SCR_RSS_ExerciseTracker();
         if (m_pExerciseTracker)
         {
@@ -1726,8 +1726,8 @@ modded class SCR_CharacterControllerComponent
             if (GetGame() && GetGame().GetWorld())
                 initTime = GetGame().GetWorld().GetWorldTime();
             m_pExerciseTracker.Initialize(initTime);
-        } 
-        
+        }
+
         m_pCollapseTransition = new SCR_RSS_CollapseTransition();
         if (m_pCollapseTransition)
             m_pCollapseTransition.Initialize();
@@ -1739,11 +1739,11 @@ modded class SCR_CharacterControllerComponent
         m_pSprintBlockSpeedTransition = new SCR_RSS_SprintBlockSpeedTransition();
         if (m_pSprintBlockSpeedTransition)
             m_pSprintBlockSpeedTransition.Initialize();
-        
+
         m_pTerrainDetector = new SCR_RSS_TerrainDetector();
         if (m_pTerrainDetector)
             m_pTerrainDetector.Initialize(!IsPlayerControlled());
-        
+
         m_pMudSlipRunner = new SCR_RSS_MudSlipRunner();
 
         m_pEnvironmentFactor = new SCR_RSS_EnvironmentFactor();
@@ -1759,7 +1759,7 @@ modded class SCR_CharacterControllerComponent
                 m_pEnvironmentFactor.SetUseEngineTemperature(false);
             }
         }
-        
+
         if (!m_pAIManager)
             m_pAIManager = new SCR_RSS_AIManager();
 
@@ -1778,7 +1778,7 @@ modded class SCR_CharacterControllerComponent
                 currentTime = GetGame().GetWorld().GetWorldTime() / 1000.0;
             m_pFatigueSystem.Initialize(currentTime);
         }
-        
+
         m_pEncumbranceCache = new SCR_RSS_EncumbranceCache();
         ChimeraCharacter character = ChimeraCharacter.Cast(owner);
         if (character)
@@ -1791,7 +1791,7 @@ modded class SCR_CharacterControllerComponent
             m_pCompartmentAccess = character.GetCompartmentAccessComponent();
             m_pAnimComponent = character.GetAnimationComponent();
         }
-        
+
         m_pUISignalBridge = new SCR_RSS_UISignalBridge();
         if (m_pUISignalBridge)
             m_pUISignalBridge.Init(owner);
@@ -1805,13 +1805,13 @@ modded class SCR_CharacterControllerComponent
         else
             m_pHeartbeatSoundDriver = null;
         m_pCardioDrive = new SCR_RSS_CardioDrive();
-        
+
         m_pEpocState = new SCR_RSS_EpocState();
-        
+
         m_pNetworkSyncManager = new SCR_RSS_NetworkSyncManager();
         if (m_pNetworkSyncManager)
             m_pNetworkSyncManager.Initialize();
-        
+
         if (GetGame() && GetGame().GetCallqueue())
         {
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedStart, 500, false, this);
@@ -1820,7 +1820,7 @@ modded class SCR_CharacterControllerComponent
             if (Replication.IsServer() && !IsPlayerControlled())
                 GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.DelayedEnsureAiServer, 3000, false, this);
         }
-        
+
         if (!Replication.IsServer())
         {
             m_bRssWaitingGameModeConfig = true;
@@ -1859,7 +1859,7 @@ modded class SCR_CharacterControllerComponent
                 Print("[RSS] 等待 GameMode 同步配置超时。请确认服务器端 RSS 已加载且复制正常。");
             }
         }
-        
+
         if (m_bRssWaitingGameModeConfig && GetGame() && GetGame().GetCallqueue())
             GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.WaitForGameModeConfigBridge, 1000, false, this);
     }

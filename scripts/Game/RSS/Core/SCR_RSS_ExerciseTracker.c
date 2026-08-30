@@ -11,9 +11,9 @@ class SCR_RSS_ExerciseTracker
     protected bool m_bWasMoving = false; // 上次更新时是否在移动
     protected float m_fLastMovementTime = 0.0; // 上次移动时间（用于判断 idle 状态）
     protected const float IDLE_THRESHOLD_TIME = 1.0; // 静止判定阈值（秒，超过此时间视为 idle）
-    
+
     // ==================== 公共方法 ====================
-    
+
     // 初始化运动持续时间跟踪变量
     // @param currentTime 当前世界时间（毫秒）
     void Initialize(float currentTime)
@@ -24,7 +24,7 @@ class SCR_RSS_ExerciseTracker
         m_bWasMoving = false;
         m_fLastMovementTime = currentTime / 1000.0; // 转换为秒
     }
-    
+
     // 更新运动/休息持续时间跟踪
     // @param currentTime 当前世界时间（毫秒）
     // @param isCurrentlyMoving 当前是否在移动（速度 > 0.05 m/s）
@@ -32,7 +32,7 @@ class SCR_RSS_ExerciseTracker
     void Update(float currentTime, bool isCurrentlyMoving, bool isInVehicle = false)
     {
         float currentTimeSeconds = currentTime / 1000.0; // 转换为秒
-        
+
         // v3.20.4：统一用 Clamp 处理帧间时间差，防止服务器卡顿/帧率波动导致的大 delta
         // 上限 0.5s（约 2fps 时的帧间距），超出部分视为异常帧，截断而非丢弃，保证累积连续性
         float rawDelta = currentTimeSeconds - m_fLastUpdateTime;
@@ -111,7 +111,7 @@ class SCR_RSS_ExerciseTracker
         }
         m_fLastUpdateTime = currentTimeSeconds;
     }
-    
+
     // 计算累积疲劳因子（基于运动持续时间）
     // 公式：fatigue_factor = 1.0 + FATIGUE_ACCUMULATION_COEFF × max(0, exercise_duration - FATIGUE_START_TIME)
     // @return 疲劳因子（1.0-2.0之间）
@@ -120,7 +120,7 @@ class SCR_RSS_ExerciseTracker
         // 计算有效运动持续时间（减去启动时间）
         float fatigueCoeff = SCR_RSS_ConfigBridge.GetFatigueAccumulationCoeff();
         float fatigueMaxFactor = SCR_RSS_ConfigBridge.GetFatigueMaxFactor();
-        
+
         // 疲劳启动时间：如果疲劳系数 > 0，使用5.0分钟；否则使用配置值
         float fatigueStartTime = 5.0;
         if (fatigueCoeff <= 0.0)
@@ -131,33 +131,33 @@ class SCR_RSS_ExerciseTracker
         {
             fatigueStartTime = SCR_RSS_Constants.FATIGUE_START_TIME_MINUTES;
         }
-        
+
         float effectiveExerciseDuration = Math.Max(m_fExerciseDurationMinutes - fatigueStartTime, 0.0);
         float fatigueFactor = 1.0 + (fatigueCoeff * effectiveExerciseDuration);
         fatigueFactor = Math.Clamp(fatigueFactor, 1.0, fatigueMaxFactor); // 限制在1.0-2.0之间
         return fatigueFactor;
     }
-    
+
     // 获取当前运动持续时间（分钟）
     // @return 运动持续时间（分钟）
     float GetExerciseDurationMinutes()
     {
         return m_fExerciseDurationMinutes;
     }
-    
+
     // 获取当前休息持续时间（分钟）
     // @return 休息持续时间（分钟）
     float GetRestDurationMinutes()
     {
         return m_fRestDurationMinutes;
     }
-    
+
     // 重置运动持续时间（用于调试或特殊场景）
     void ResetExerciseDuration()
     {
         m_fExerciseDurationMinutes = 0.0;
     }
-    
+
     // 重置休息持续时间（用于调试或特殊场景）
     void ResetRestDuration()
     {

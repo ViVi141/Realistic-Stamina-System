@@ -9,18 +9,18 @@ class SCR_RSS_JumpVaultDetector
     protected bool m_bJumpInputTriggered = false; // 跳跃输入是否被触发（由动作监听器设置）
     protected float m_fLastJumpTime = -999.0; // 上次跳跃时间（秒，GetWorldTime），用于时间冷却
     protected ECharacterStance m_eLastStance; // 上一帧姿态（用于判断是否从趴/蹲姿跳跃）
-    
+
     // 连续跳跃惩罚（无氧欠债）机制
     protected int m_iRecentJumpCount = 0; // 连续跳跃计数
     protected float m_fJumpTimer = 0.0; // 上次跳跃时间（秒）
-    
+
     // 翻越相关
     protected bool m_bIsVaulting = false; // 是否正在翻越/攀爬
     protected float m_fLastVaultTime = -999.0; // 上次翻越起始时间（秒），用于时间冷却
     protected float m_fLastContinuousClimbTime = -999.0; // 上次持续攀爬消耗时间（秒），用于 1 秒间隔
-    
+
     // ==================== 公共方法 ====================
-    
+
     // 初始化状态
     void Initialize()
     {
@@ -33,19 +33,19 @@ class SCR_RSS_JumpVaultDetector
         m_fLastVaultTime = -999.0;
         m_fLastContinuousClimbTime = -999.0;
     }
-    
+
     // 设置跳跃输入标志（由动作监听器调用）
     void SetJumpInputTriggered(bool value)
     {
         m_bJumpInputTriggered = value;
     }
-    
+
     // 获取跳跃输入标志
     bool GetJumpInputTriggered()
     {
         return m_bJumpInputTriggered;
     }
-    
+
     // 检查并处理跳跃逻辑
     // @param owner 角色实体
     // @param controller 角色控制器组件（用于调用IsClimbing等方法）
@@ -55,22 +55,22 @@ class SCR_RSS_JumpVaultDetector
     // @param signalsManager UI信号管理器（可选，用于更新Exhaustion信号）
     // @param exhaustionSignal Exhaustion信号ID（可选）
     // @return 体力消耗值（如果为0，表示没有发生跳跃消耗）
-    float ProcessJump(IEntity owner, SCR_CharacterControllerComponent controller, float staminaPercent, 
+    float ProcessJump(IEntity owner, SCR_CharacterControllerComponent controller, float staminaPercent,
                      bool encumbranceCacheValid, float cachedCurrentWeight,
                      SignalsManagerComponent signalsManager = null, int exhaustionSignal = -1)
     {
         if (!owner || !controller)
             return 0.0;
-        
+
         // 获取当前姿态
         ECharacterStance currentStance = controller.GetStance();
-        
+
         // 检测翻越/攀爬：使用 IsClimbing() 方法（更可靠）
         bool isClimbing = controller.IsClimbing();
-        
+
         // 检测普通跳跃：使用动作检测（动作监听器或 OnPrepareControls）
         bool hasJumpInput = m_bJumpInputTriggered;
-        
+
         // 如果检测到跳跃输入标志（且不在攀爬状态），则判定为跳跃
         if (!isClimbing && hasJumpInput)
         {
@@ -79,20 +79,20 @@ class SCR_RSS_JumpVaultDetector
             {
                 // 保存原始姿态名称（在更新之前）
                 string originalStanceName = GetStanceName(m_eLastStance);
-                
+
                 // 从趴/蹲姿跳跃，不算跳跃消耗，由姿态转换系统处理
                 m_bJumpInputTriggered = false;
                 m_eLastStance = currentStance;
-                
+
                 // 调试输出（仅在客户端）
                 if (SCR_RSS_ConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
                     PrintFormat("[RSS] 从%1姿态跳跃，不计入跳跃消耗，由姿态转换系统处理 / Jump from %1 stance, handled by stance transition system", originalStanceName);
                 }
-                
+
                 return 0.0;
             }
-            
+
             // 跳跃冷却检查：使用 GetWorldTime 时间戳，不依赖更新频率
             float currentTime = 0.0;
             if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
@@ -106,7 +106,7 @@ class SCR_RSS_JumpVaultDetector
                 m_eLastStance = currentStance;
                 return 0.0;
             }
-            
+
             // 低体力禁用跳跃：体力 < 10% 时禁用跳跃
             if (staminaPercent < SCR_RSS_MetabolismMath.JUMP_MIN_STAMINA_THRESHOLD)
             {
@@ -115,7 +115,7 @@ class SCR_RSS_JumpVaultDetector
                 return 0.0;
             }
             {
-                
+
                 // 连续跳跃惩罚（无氧欠债）：检测是否在2秒内连续跳跃
                 if (currentTime - m_fJumpTimer < SCR_RSS_MetabolismMath.JUMP_CONSECUTIVE_WINDOW)
                 {
@@ -125,9 +125,9 @@ class SCR_RSS_JumpVaultDetector
                 {
                     m_iRecentJumpCount = 1;
                 }
-                
+
                 m_fJumpTimer = currentTime;
-                
+
                 // 获取当前总重量（包括身体重量和负重）
                 float currentTotalWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
                 if (encumbranceCacheValid)
@@ -143,7 +143,7 @@ class SCR_RSS_JumpVaultDetector
                             currentTotalWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT + inventoryComponent.GetTotalWeight();
                     }
                 }
-                
+
                 float finalJumpCost = 0.0;
                 // 物理模型计算跳跃消耗
                 float eta = SCR_RSS_ConfigBridge.GetJumpEfficiency();     // [SOFT] 从 Settings 读取，生理学约束 0.20-0.25
@@ -151,14 +151,14 @@ class SCR_RSS_JumpVaultDetector
                 float vguess = SCR_RSS_ConfigBridge.GetJumpHorizSpeedGuess(); // [SOFT] 水平速度估算
                 finalJumpCost = SCR_RSS_MetabolismMath.ComputeJumpCostPhys(
                     currentTotalWeight, hguess, vguess, eta);
-                
+
                 // 应用连续跳跃惩罚：每次连续跳跃额外增加50%消耗
                 float consecutiveMultiplier = 1.0 + (m_iRecentJumpCount - 1) * SCR_RSS_MetabolismMath.JUMP_CONSECUTIVE_PENALTY;
                 finalJumpCost *= consecutiveMultiplier;
-                
+
                 // 设置冷却时间戳（使用 GetWorldTime，不依赖更新频率）
                 m_fLastJumpTime = currentTime;
-                
+
                 // UI交互：更新Exhaustion信号
                 if (signalsManager && exhaustionSignal != -1)
                 {
@@ -169,36 +169,36 @@ class SCR_RSS_JumpVaultDetector
                         weightRatio = Math.Clamp(weightRatio, 0.0, 1.0);
                         exhaustionIncrement = 0.1 + (weightRatio * 0.1); // 0.1 - 0.2
                     }
-                    
+
                     float currentExhaustion = signalsManager.GetSignalValue(exhaustionSignal);
                     float newExhaustion = Math.Clamp(currentExhaustion + exhaustionIncrement, 0.0, 1.0);
                     signalsManager.SetSignalValue(exhaustionSignal, newExhaustion);
                 }
-                
+
                 // 调试输出（仅在客户端）
                 if (SCR_RSS_ConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)", 
+                    PrintFormat("[RSS] 检测到跳跃动作！消耗体力: %1%% (连续: %2次, 倍数: %3, 冷却: 2秒)",
                         Math.Round(finalJumpCost * 100.0).ToString(),
                         m_iRecentJumpCount.ToString(),
                         Math.Round(consecutiveMultiplier * 100.0) / 100.0);
                 }
-                
+
                 m_bJumpInputTriggered = false;
                 m_eLastStance = currentStance;
                 return finalJumpCost;
             }
-            
+
             m_bJumpInputTriggered = false;
             m_eLastStance = currentStance;
         }
-        
+
         // 更新上一帧姿态
         m_eLastStance = currentStance;
-        
+
         return 0.0;
     }
-    
+
     // 检查并处理翻越逻辑
     // @param owner 角色实体
     // @param controller 角色控制器组件
@@ -216,7 +216,7 @@ class SCR_RSS_JumpVaultDetector
             return 0.0;
         bool isClimbing = controller.IsClimbing();
         float totalCost = 0.0;
-        
+
         if (isClimbing)
         {
             // 翻越冷却检查：仅在新开始翻越时生效，使用 GetWorldTime 时间戳
@@ -227,7 +227,7 @@ class SCR_RSS_JumpVaultDetector
                     Print("[RSS] 攀爬冷却中，拦截动作输入！/ Vault Cooldown Active, Blocking Input!");
                 return 0.0;
             }
-            
+
             if (!m_bIsVaulting)
             {
                 // 翻越起始消耗（使用动态负重倍率）
@@ -245,7 +245,7 @@ class SCR_RSS_JumpVaultDetector
                             currentTotalWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT + inventoryComponent.GetTotalWeight();
                     }
                 }
-                
+
                 float vaultCost = 0.0;
                 // 物理模型计算翻越初始消耗
                 // [HARD] eta_iso 从 Settings 读取（生理学约束 0.10-0.15），使用 GetClimbIsoEfficiency() 而非硬编码
@@ -254,16 +254,16 @@ class SCR_RSS_JumpVaultDetector
                 float limbForce = currentTotalWeight * SCR_RSS_Constants.VAULT_LIMB_FORCE_RATIO; // [HARD] 四肢力 = 总重 × 0.5
                 vaultCost = SCR_RSS_MetabolismMath.ComputeClimbCostPhys(
                     currentTotalWeight, vert, limbForce, eta_iso);
-                
+
                 totalCost = vaultCost;
                 m_bIsVaulting = true;
                 m_fLastVaultTime = currentTime;
                 m_fLastContinuousClimbTime = currentTime;
-                
+
                 // 调试输出（仅在客户端）
                 if (SCR_RSS_ConfigBridge.IsDebugEnabled() && owner == SCR_PlayerController.GetLocalControlledEntity())
                 {
-                    PrintFormat("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)", 
+                    PrintFormat("[RSS] 检测到翻越动作！消耗体力: %1%% (冷却: 5秒)",
                         Math.Round(vaultCost * 100.0).ToString());
                 }
             }
@@ -286,7 +286,7 @@ class SCR_RSS_JumpVaultDetector
                                 currentTotalWeight = SCR_RSS_MetabolismMath.CHARACTER_WEIGHT + inventoryComponent.GetTotalWeight();
                         }
                     }
-                    
+
                     float continuousClimbCost = 0.0;
                     // 物理模型计算持续攀爬消耗（参数与翻越初始消耗完全一致，从 Settings 读取）
                     float eta_iso = SCR_RSS_ConfigBridge.GetClimbIsoEfficiency();
@@ -307,21 +307,21 @@ class SCR_RSS_JumpVaultDetector
                 m_bIsVaulting = false;
             }
         }
-        
+
         return totalCost;
     }
-    
+
     // 更新冷却时间（已改为时间戳判定，此方法保留为空以兼容调用方）
     void UpdateCooldowns()
     {
     }
-    
+
     // 获取是否正在翻越
     bool IsVaulting()
     {
         return m_bIsVaulting;
     }
-    
+
     // 检查是否在跳跃冷却中（使用 GetWorldTime 时间戳判定）
     bool IsJumpOnCooldown()
     {
@@ -330,7 +330,7 @@ class SCR_RSS_JumpVaultDetector
             return false;
         return (currentTime - m_fLastJumpTime) < SCR_RSS_Constants.JUMP_COOLDOWN_SEC;
     }
-    
+
     // 获取姿态名称（用于调试输出）
     // @param stance 姿态
     // @return 姿态名称字符串

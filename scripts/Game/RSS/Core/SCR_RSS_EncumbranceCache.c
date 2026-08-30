@@ -44,7 +44,7 @@ class SCR_RSS_EncumbranceCache
     protected const float ENCUMBRANCE_CHECK_INTERVAL = 0.5; // 轮询间隔（秒），perf: 0.2→0.5，事件驱动已覆盖变更
 
     // ==================== 公共方法 ====================
-    
+
     // 初始化缓存
     // @param inventoryComponent 库存组件引用（可为null）
     void Initialize(SCR_CharacterInventoryStorageComponent inventoryComponent = null)
@@ -64,7 +64,7 @@ class SCR_RSS_EncumbranceCache
         if (m_pCachedInventoryComponent)
             UpdateCache();
     }
-    
+
     // 设置库存组件引用
     // @param inventoryComponent 库存组件引用
     void SetInventoryComponent(SCR_CharacterInventoryStorageComponent inventoryComponent)
@@ -79,7 +79,7 @@ class SCR_RSS_EncumbranceCache
         else
             m_bEncumbranceCacheValid = false;
     }
-    
+
     // 更新缓存（事件驱动）
     // 仅在库存变化时调用，避免每0.2秒重复计算
     // 注意：需要在库存组件的事件中调用此方法（如 OnItemAdded/OnItemRemoved）
@@ -90,9 +90,9 @@ class SCR_RSS_EncumbranceCache
             m_bEncumbranceCacheValid = false;
             return;
         }
-        
+
         float currentWeight = 0.0;
-        
+
         // 获取角色实体
         IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
         if (!ownerEntity)
@@ -105,7 +105,7 @@ class SCR_RSS_EncumbranceCache
             m_bEncumbranceCacheValid = false;
             return;
         }
-        
+
         // 使用 SCR_InventoryStorageManagerComponent.GetTotalWeightOfAllStorages() 方法（唯一方式）
         if (!m_pCachedInventoryManager)
             m_pCachedInventoryManager = SCR_InventoryStorageManagerComponent.Cast(ownerEntity.FindComponent(SCR_InventoryStorageManagerComponent));
@@ -122,13 +122,13 @@ class SCR_RSS_EncumbranceCache
                 Print("[RSS] UpdateCache - 无法获取 SCR_InventoryStorageManagerComponent");
             return;
         }
-        
+
         if (currentWeight < 0.0)
         {
             m_bEncumbranceCacheValid = false;
             return;
         }
-        
+
         // 更新缓存值
         m_fCachedCurrentWeight = currentWeight;
         m_fCachedHeldItemWeight = SampleHeldItemWeight(ownerEntity);
@@ -138,15 +138,15 @@ class SCR_RSS_EncumbranceCache
         float effectiveWeight = Math.Max(currentWeight - SCR_RSS_Constants.BASE_WEIGHT, 0.0);
         m_fCachedBodyMassPercent = effectiveWeight / SCR_RSS_Constants.CHARACTER_WEIGHT;
         m_fCachedEncumbranceSpeedPenalty = ComputeSpeedPenaltyFromEffectiveWeight(effectiveWeight);
-        
+
         // 计算体力消耗倍数
         float encumbranceStaminaDrainCoeff = SCR_RSS_ConfigBridge.GetEncumbranceStaminaDrainCoeff();
         m_fCachedEncumbranceStaminaDrainMultiplier = 1.0 + (encumbranceStaminaDrainCoeff * m_fCachedBodyMassPercent);
         m_fCachedEncumbranceStaminaDrainMultiplier = Math.Clamp(m_fCachedEncumbranceStaminaDrainMultiplier, 1.0, 3.0);
-        
+
         m_bEncumbranceCacheValid = true;
     }
-    
+
     // 检查并更新缓存（仅在变化时更新）
     // 在 UpdateSpeedBasedOnStamina 中调用，检查负重是否变化
     // 性能优化：按 ENCUMBRANCE_CHECK_INTERVAL 节流，减少 GetTotalWeightOfAllStorages 调用频率
@@ -165,9 +165,9 @@ class SCR_RSS_EncumbranceCache
         if (m_bEncumbranceCacheValid && (currentTime - m_fLastCheckTime < ENCUMBRANCE_CHECK_INTERVAL))
             return;
         m_fLastCheckTime = currentTime;
-        
+
         float currentWeight = 0.0;
-        
+
         // 获取角色实体
         IEntity ownerEntity = m_pCachedInventoryComponent.GetOwner();
         if (ownerEntity)
@@ -187,13 +187,13 @@ class SCR_RSS_EncumbranceCache
             {
                 // 回退方案：手动计算所有必要存储的重量
                 array<BaseInventoryStorageComponent> storages = {};
-                
+
                 // 按照官方 GetTotalWeightOfAllStorages() 方法的逻辑，手动添加必要的存储
                 BaseInventoryStorageComponent weaponStorage = m_pCachedInventoryComponent.GetWeaponStorage();
                 if (weaponStorage)
                     storages.Insert(weaponStorage); // 主副武器插槽（仅非空时添加）
                 storages.Insert(m_pCachedInventoryComponent);                    // 衣服、背包、背心里的东西
-                
+
                 // 遍历所有存储，累加重量
                 foreach (BaseInventoryStorageComponent storage : storages)
                 {
@@ -210,7 +210,7 @@ class SCR_RSS_EncumbranceCache
             m_bEncumbranceCacheValid = false;
             return;
         }
-        
+
         // 手持物品独立于存储重量采样（拿起/放下会触发库存事件，此处兜底轮询）
         m_fCachedHeldItemWeight = SampleHeldItemWeight(ownerEntity);
 
@@ -323,9 +323,9 @@ class SCR_RSS_EncumbranceCache
 
         return SampleEntityItemWeight(ResolveCurrentWeaponEntity(ownerEntity));
     }
-    
+
     // ==================== 获取缓存值的方法 ====================
-    
+
     // 获取缓存的当前重量
     // @return 当前重量（kg），如果缓存无效则返回0.0
     float GetCurrentWeight()
@@ -334,7 +334,7 @@ class SCR_RSS_EncumbranceCache
             return m_fCachedCurrentWeight;
         return 0.0;
     }
-    
+
     // 获取缓存的手持物品重量
     // @return 手持物品重量（kg），无手持或缓存无效时返回 0.0
     float GetHeldItemWeight()
@@ -358,7 +358,7 @@ class SCR_RSS_EncumbranceCache
             return m_fCachedEncumbranceSpeedPenalty;
         return 0.0;
     }
-    
+
     // 获取缓存的有效负重占体重百分比
     // @return 有效负重占体重百分比（0.0-1.0+），如果缓存无效则返回0.0
     float GetBodyMassPercent()
@@ -367,7 +367,7 @@ class SCR_RSS_EncumbranceCache
             return m_fCachedBodyMassPercent;
         return 0.0;
     }
-    
+
     // 获取缓存的体力消耗倍数
     // @return 体力消耗倍数（1.0-3.0），如果缓存无效则返回1.0
     float GetStaminaDrainMultiplier()
@@ -376,14 +376,14 @@ class SCR_RSS_EncumbranceCache
             return m_fCachedEncumbranceStaminaDrainMultiplier;
         return 1.0;
     }
-    
+
     // 检查缓存是否有效
     // @return true表示缓存有效，false表示缓存无效
     bool IsCacheValid()
     {
         return m_bEncumbranceCacheValid;
     }
-    
+
     // 获取库存组件引用
     // @return 库存组件引用（可为null）
     SCR_CharacterInventoryStorageComponent GetInventoryComponent()

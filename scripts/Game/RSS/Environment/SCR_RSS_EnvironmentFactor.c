@@ -51,11 +51,11 @@ class SCR_RSS_EnvironmentFactor
 
     protected float m_fTempUpdateInterval = 5.0; // 温度步进间隔（秒），默认5s（实时每5秒更新）
     protected float m_fLastTemperatureUpdateTime = 0.0; // 上次温度更新时间（秒）
-    
+
     protected float m_fCachedCloudFactor = 0.0;
     protected float m_fLastCloudFactorUpdateTime = -999.0;
     protected const float CLOUD_FACTOR_CACHE_DURATION = 30.0; // 30秒缓存，云量变化以分钟计
-    
+
     // 位置变化触发温度重算（v3.20.0 性能优化）
     // 玩家移动超过阈值时提前触发，静止时回退到时间间隔，减少不必要的重算
     protected vector m_vLastTempCalcPosition = vector.Zero; // 上次温度计算时的位置
@@ -72,7 +72,7 @@ class SCR_RSS_EnvironmentFactor
     protected float m_fAerosolOpticalDepth = 0.14; // 简化的大气光学厚度用于透过率估计
     protected float m_fSurfaceEmissivity = 0.98; // 地表发射率
     protected float m_fCachedSurfaceTemperature = 20.0; // 缓存的近地面温度（°C）
-    
+
     // 上次应用的配置版本（用于检测管理员实时修改，触发 ApplySettings）
     protected static string s_lastAppliedConfigVersion = "";
 
@@ -93,8 +93,8 @@ class SCR_RSS_EnvironmentFactor
     protected float m_fSolarConstant = 1361.0; // 太阳常数（W/m^2）
     protected const float STEFAN_BOLTZMANN = 5.670374419e-8; // 斯特藩-玻尔兹曼常数
     protected const float M_E = 2.718281828459045; // 自然常数 e（用于替代 Math.Exp）
-    
-    
+
+
     // 初始化环境因子模块
     void Initialize(World world = null, IEntity owner = null)
     {
@@ -106,7 +106,7 @@ class SCR_RSS_EnvironmentFactor
         m_fLastRainIntensity = 0.0;
         m_pCachedWeatherManager = null;
         m_pCachedOwner = owner;
-        
+
         // ==================== 高级环境因子初始化（v2.15.0）====================
         m_fCachedRainIntensity = 0.0;
         m_fCachedWindSpeed = 0.0;
@@ -140,7 +140,7 @@ class SCR_RSS_EnvironmentFactor
             }
         }
         m_fSurfaceWetnessPenalty = 0.0;
-        
+
         if (world)
         {
             ChimeraWorld chimeraWorld = ChimeraWorld.CastFrom(world);
@@ -265,7 +265,7 @@ class SCR_RSS_EnvironmentFactor
     }
 
 
-    
+
     // 更新环境因子（协调方法）
     bool UpdateEnvironmentFactors(float currentTime, IEntity owner = null, vector playerVelocity = vector.Zero, float terrainFactor = 1.0, float swimmingWetWeight = 0.0)
     {
@@ -292,7 +292,7 @@ class SCR_RSS_EnvironmentFactor
             SCR_RSS_WeatherChangeDetector.LogZeroCoordinateThrottle(tmpCoordLog, dbgLat, dbgLon);
             m_fNextLocationEstimateLogTime = tmpCoordLog;
         }
-        
+
         // 更新缓存的角色实体引用（用于室内检测）
         if (owner)
             m_pCachedOwner = owner;
@@ -300,7 +300,7 @@ class SCR_RSS_EnvironmentFactor
         // 按间隔更新室内状态缓存 — 委托给 m_pIndoorDetector
         if (m_pIndoorDetector)
             m_pIndoorDetector.UpdateIndoorCache(m_pCachedOwner, currentTime);
-        
+
         bool forceUpdate = false;
         if (m_pCachedWeatherManager)
         {
@@ -342,7 +342,7 @@ class SCR_RSS_EnvironmentFactor
 
         // 标记为已检查时间
         m_fLastEnvironmentCheckTime = currentTime;
-        
+
         int stance = 0; // 默认：站立
         if (owner)
         {
@@ -367,20 +367,20 @@ class SCR_RSS_EnvironmentFactor
                 }
             }
         }
-        
+
         // 保存地形系数（用于泥泞计算）
         m_fCachedTerrainFactor = terrainFactor;
-        
+
         // ==================== 更新高级环境因子（v2.14.0）====================
         UpdateAdvancedEnvironmentFactors(currentTime, owner, playerVelocity, stance);
-        
+
         // 更新热应激倍数（考虑室内豁免）
         float oldHeatStress = m_fCachedHeatStressMultiplier;
         m_fCachedHeatStressMultiplier = CalculateHeatStressMultiplier(m_pCachedOwner);
-        
+
         // 注意：降雨湿重已在 UpdateAdvancedEnvironmentFactors 中的 CalculateRainWetWeight 方法中计算
         // 不需要在这里再次调用 CalculateRainWeight
-        
+
         // 更新总湿重（游泳湿重 + 降雨湿重，限制在最大值）
         // 使用 SCR_RSS_SwimmingStateManager 的方法计算总湿重
         m_fCurrentTotalWetWeight = SCR_RSS_SwimmingStateManager.CalculateTotalWetWeight(swimmingWetWeight, m_fCachedRainWeight);
@@ -452,76 +452,76 @@ class SCR_RSS_EnvironmentFactor
             m_fCachedRainWeight,
             m_fCurrentTotalWetWeight,
             m_fCachedWindSpeed);
-        
+
         return true;
     }
-    
+
     float GetHeatStressMultiplier()
     {
         return m_fCachedHeatStressMultiplier;
     }
-    
+
     float GetRainWeight()
     {
         return m_fCachedRainWeight;
     }
-    
-    
+
+
     float GetRainIntensity()
     {
         return m_fCachedRainIntensity;
     }
-    
+
     float GetWindSpeed()
     {
         return m_fCachedWindSpeed;
     }
-    
+
     float GetWindDirection()
     {
         return m_fCachedWindDirection;
     }
-    
+
     float GetWindDrag()
     {
         return m_fCachedWindDrag;
     }
-    
+
     float GetMudFactor()
     {
         return m_fCachedMudFactor;
     }
-    
+
     float GetTemperature()
     {
         return m_fCachedTemperature;
     }
-    
+
     float GetSurfaceWetness()
     {
         return m_fCachedSurfaceWetness;
     }
-    
+
     float GetTotalWetWeight()
     {
         return m_fCurrentTotalWetWeight;
     }
-    
+
     float GetRainBreathingPenalty()
     {
         return m_fRainBreathingPenalty;
     }
-    
+
     float GetMudTerrainFactor()
     {
         return m_fMudTerrainFactor;
     }
-    
+
     float GetMudSprintPenalty()
     {
         return m_fMudSprintPenalty;
     }
-    
+
     float GetSlipRisk()
     {
         return m_fSlipRisk;
@@ -532,22 +532,22 @@ class SCR_RSS_EnvironmentFactor
     {
         return m_fCachedTerrainFactor;
     }
-    
+
     float GetHeatStressPenalty()
     {
         return m_fHeatStressPenalty;
     }
-    
+
     float GetColdStressPenalty()
     {
         return m_fColdStressPenalty;
     }
-    
+
     float GetColdStaticPenalty()
     {
         return m_fColdStaticPenalty;
     }
-    
+
     float GetSurfaceWetnessPenalty()
     {
         return m_fSurfaceWetnessPenalty;
@@ -573,7 +573,7 @@ class SCR_RSS_EnvironmentFactor
         return mult;
     }
 
-    
+
     // ── 信号读取辅助：委托 SCR_RSS_EnvSignalReader（静态信号缓存 + C++ 桥接回退）──
     protected float ReadSignalRainIntensity()
     {
@@ -682,7 +682,7 @@ class SCR_RSS_EnvironmentFactor
 
         return SCR_RSS_PenaltyMath.CalculateHeatStressMultiplier(GetTemperature(), indoor);
     }
-    
+
     protected bool EvaluateRoofedBuildingInterior(IEntity owner, float roofCheckHeightM, bool requireHorizontalEnclosure)
     {
         if (m_pIndoorDetector)
@@ -700,37 +700,37 @@ class SCR_RSS_EnvironmentFactor
 
     // 优先尝试使用 GetRainIntensity() API，如果没有则回退到字符串匹配
     // 停止降雨后，湿重使用指数衰减（蒸发率 ∝ 剩余水分）
-    
+
     void ForceUpdate(float currentTime, IEntity owner = null, float swimmingWetWeight = 0.0)
     {
         m_fLastEnvironmentCheckTime = 0.0; // 重置时间，强制更新
         UpdateEnvironmentFactors(currentTime, owner, vector.Zero, 1.0, swimmingWetWeight);
     }
-    
+
     void SetOwner(IEntity owner)
     {
         m_pCachedOwner = owner;
     }
-    
+
     TimeAndWeatherManagerEntity GetWeatherManager()
     {
         return m_pCachedWeatherManager;
     }
-    
+
     void SetWeatherManager(TimeAndWeatherManagerEntity weatherManager)
     {
         m_pCachedWeatherManager = weatherManager;
     }
-    
-    
+
+
     float GetCurrentHour()
     {
         if (!m_pCachedWeatherManager)
             return -1.0;
-        
+
         return m_pCachedWeatherManager.GetTimeOfTheDay();
     }
-    
+
     bool IsIndoor()
     {
         if (!SCR_RSS_ConfigBridge.IsIndoorDetectionEnabled())
@@ -798,38 +798,38 @@ class SCR_RSS_EnvironmentFactor
     {
         ApplySettings();
     }
-    
+
     // 引擎在 rain<0.15 时通常不显示雨滴，0.1 多为阴天/潮湿无可见雨
     bool IsRaining()
     {
         return m_fCachedRainIntensity >= SCR_RSS_EnvConstants.ENV_RAIN_VISUAL_EFFECT_THRESHOLD;
     }
-    
-    
+
+
     void UpdateAdvancedEnvironmentFactors(float currentTime, IEntity owner, vector playerVelocity = vector.Zero, int stance = 0)
     {
         if (!m_pCachedWeatherManager)
             return;
-        
+
         float deltaTime = currentTime - m_fLastUpdateTime;
-        
+
         // 1. 获取降雨强度（优先使用API，失败则回退到字符串匹配）
         m_fCachedRainIntensity = CalculateRainIntensityFromAPI();
-        
+
         // 2. 获取风速和风向
         m_fCachedWindSpeed = CalculateWindSpeedFromAPI();
         m_fCachedWindDirection = CalculateWindDirectionFromAPI();
-        
+
         // 3. 计算风阻系数（基于玩家移动方向）
         m_fCachedWindDrag = CalculateWindDrag(playerVelocity);
         if (!SCR_RSS_ConfigBridge.IsWindResistanceEnabled())
             m_fCachedWindDrag = 0.0;
-        
+
         // 4. 获取泥泞度系数
         m_fCachedMudFactor = CalculateMudFactorFromAPI();
         if (!SCR_RSS_ConfigBridge.IsMudPenaltyEnabled())
             m_fCachedMudFactor = 0.0;
-        
+
         // 5. 气温：通用经验模型（纬度+季节+海拔+昼夜+天气）
         if (m_pCachedWeatherManager)
         {
@@ -873,10 +873,10 @@ class SCR_RSS_EnvironmentFactor
             m_bTempPositionInitialized = tempPosInit;
             m_fCachedTemperature = m_fCachedSurfaceTemperature;
         }
-        
+
         // 6. 获取地表湿度
         m_fCachedSurfaceWetness = CalculateSurfaceWetnessFromAPI();
-        
+
         // 7-14. 湿重与各惩罚项
         CalculateRainWetWeight(currentTime);
         CalculateRainBreathingPenalty();
@@ -886,7 +886,7 @@ class SCR_RSS_EnvironmentFactor
         CalculateHeatStressPenalty();
         CalculateColdStressPenalty();
         CalculateSurfaceWetnessPenalty(owner, stance);
-        
+
         // ==================== 调试信息：高级环境因子（v2.14.0）====================
         static float nextAdvancedEnvLogTime = 0.0;
         if (SCR_RSS_DebugBatchManager.ShouldVerboseLog(nextAdvancedEnvLogTime))
@@ -910,11 +910,11 @@ class SCR_RSS_EnvironmentFactor
             snap.m_fSurfaceWetnessPenalty = m_fSurfaceWetnessPenalty;
             SCR_RSS_EnvironmentDebug.LogAdvancedFactors(snap, m_bUseEngineWeather, m_pCachedWeatherManager);
         }
-        
+
         // 更新时间戳（在所有计算完成后）
         m_fLastUpdateTime = currentTime;
     }
-    
+
     protected float CalculateRainIntensityFromAPI()
     {
         float rainIntensity = ReadSignalRainIntensity();
@@ -922,33 +922,33 @@ class SCR_RSS_EnvironmentFactor
             return rainIntensity;
         return SCR_RSS_WeatherApi.CalculateRainIntensityFromStateName(m_pCachedWeatherManager);
     }
-    
+
     protected float CalculateWindSpeedFromAPI()
     {
         return ReadSignalWindSpeed();
     }
-    
+
     protected float CalculateWindDirectionFromAPI()
     {
         return SCR_RSS_WeatherApi.CalculateWindDirectionFromAPI(m_pCachedWeatherManager);
     }
-    
+
     protected float CalculateWindDrag(vector playerVelocity)
     {
         return SCR_RSS_WeatherApi.CalculateWindDrag(m_fCachedWindSpeed, m_fCachedWindDirection, playerVelocity);
     }
-    
+
     protected float CalculateMudFactorFromAPI()
     {
         return SCR_RSS_WeatherApi.CalculateMudFactorFromAPI(m_pCachedWeatherManager);
     }
-    
+
 
     protected float CalculateSurfaceWetnessFromAPI()
     {
         return ReadSignalWetness();
     }
-    
+
     // 降雨中：按强度非线性累积；停雨后：指数衰减（τ≈60s，湿重<0.1kg 归零）
     protected void CalculateRainWetWeight(float currentTime)
     {
@@ -973,7 +973,7 @@ class SCR_RSS_EnvironmentFactor
         m_fRainPeakWeight = rainPeakWeight;
         m_fLastRainIntensity = lastRainIntensity;
     }
-    
+
     protected void CalculateRainBreathingPenalty()
     {
         if (!SCR_RSS_ConfigBridge.IsRainWeightEnabled())
@@ -983,22 +983,22 @@ class SCR_RSS_EnvironmentFactor
         }
         m_fRainBreathingPenalty = SCR_RSS_PenaltyMath.CalculateRainBreathingPenalty(m_fCachedRainIntensity);
     }
-    
+
     protected void CalculateMudTerrainFactor()
     {
         m_fMudTerrainFactor = SCR_RSS_PenaltyMath.CalculateMudTerrainFactor(m_fCachedTerrainFactor, m_fCachedMudFactor);
     }
-    
+
     protected void CalculateMudSprintPenalty()
     {
         m_fMudSprintPenalty = SCR_RSS_PenaltyMath.CalculateMudSprintPenalty(m_fCachedMudFactor);
     }
-    
+
     protected void CalculateSlipRisk()
     {
         m_fSlipRisk = SCR_RSS_PenaltyMath.CalculateSlipRisk(m_fCachedMudFactor);
     }
-    
+
     protected void CalculateHeatStressPenalty()
     {
         if (!SCR_RSS_ConfigBridge.IsHeatStressEnabled())
@@ -1014,12 +1014,12 @@ class SCR_RSS_EnvironmentFactor
     {
         return SCR_RSS_PenaltyMath.AdjustEnergyForTemperature(basePower, m_fCachedTemperature, m_fCachedWindSpeed);
     }
-    
+
     protected void CalculateColdStressPenalty()
     {
         SCR_RSS_PenaltyMath.CalculateColdStressPenalty(m_fCachedTemperature, m_fColdStressPenalty, m_fColdStaticPenalty);
     }
-    
+
     protected void CalculateSurfaceWetnessPenalty(IEntity owner, int stance = 0)
     {
         if (!owner)

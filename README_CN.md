@@ -210,7 +210,7 @@ Realistic-Stamina-System/
 │   │   └── Presentation/                 # HUD / 镜头 / 屏效 / 设置 UI（~12）
 │   │       ├── SCR_RSS_StaminaHUDComponent.c / UISignalBridge.c / DebugDisplay.c
 │   │       ├── CharacterCamera1stPerson.c / PresentationBridge.c
-│   │       ├── SCR_RSSAdminMenuUI.c / SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
+│   │       ├── SCR_RSS_AdminMenuUI.c / SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
 │   │       └── CombatStim / Stamina 屏效脚本
 │   ├── Components/Gadgets/               # CSB / 吗啡等
 │   ├── UserActions/
@@ -387,7 +387,7 @@ Realistic-Stamina-System/
 
 #### 🏗️ 重构
 
-- **提取 `BuildRecoveryContext`** - 新增 `RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_RSS_UpdateCoordinator.c`）。
+- **提取 `BuildRSS_RecoveryContext`** - 新增 `RSS_RecoveryContext` 结构体与同名私有方法，合并 `UpdateStaminaValue` 与 `GetNetStaminaRatePerSecond` 中约 60 行重复的恢复率参数组装逻辑（`SCR_RSS_UpdateCoordinator.c`）。
 
 ---
 

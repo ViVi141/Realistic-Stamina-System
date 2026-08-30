@@ -9,13 +9,13 @@ class SCR_RSS_CollapseTransition
     protected bool m_bInCollapseTransition = false; // 是否处于"撞墙"过渡状态
     protected float m_fCollapseTransitionStartTime = 0.0; // "撞墙"过渡开始时间（秒）
     protected float m_fLastStaminaPercent = 1.0; // 上次体力百分比（用于检测临界点）
-    
+
     // ==================== 常量 ====================
     protected const float COLLAPSE_TRANSITION_DURATION = 5.0; // "撞墙"过渡持续时间（秒）
     protected const float COLLAPSE_THRESHOLD = SCR_RSS_Constants.SMOOTH_TRANSITION_END; // v6 跛行阈值（5%）
-    
+
     // ==================== 公共方法 ====================
-    
+
     // 初始化"撞墙"阻尼过渡变量
     void Initialize()
     {
@@ -23,7 +23,7 @@ class SCR_RSS_CollapseTransition
         m_fCollapseTransitionStartTime = 0.0;
         m_fLastStaminaPercent = 1.0;
     }
-    
+
     // 更新"撞墙"临界点检测和过渡状态
     // @param currentTime 当前世界时间（秒）
     // @param currentStaminaPercent 当前体力百分比（0.0-1.0）
@@ -36,7 +36,7 @@ class SCR_RSS_CollapseTransition
             m_bInCollapseTransition = true;
             m_fCollapseTransitionStartTime = currentTime;
         }
-        
+
         // 检查5秒阻尼过渡是否已过期
         if (m_bInCollapseTransition)
         {
@@ -47,17 +47,17 @@ class SCR_RSS_CollapseTransition
                 m_bInCollapseTransition = false;
             }
         }
-        
+
         // 如果体力恢复到跛行阈值以上，取消阻尼过渡
         if (currentStaminaPercent >= COLLAPSE_THRESHOLD)
         {
             m_bInCollapseTransition = false;
         }
-        
+
         // 更新上次体力百分比
         m_fLastStaminaPercent = currentStaminaPercent;
     }
-    
+
     // 计算阻尼过渡期间的速度倍数
     // @param currentTime 当前世界时间（秒）
     // @param baseSpeedMultiplier 基础速度倍数（正常计算的速度）
@@ -67,38 +67,38 @@ class SCR_RSS_CollapseTransition
         // 如果不在阻尼过渡期间，直接返回基础速度倍数
         if (!m_bInCollapseTransition)
             return baseSpeedMultiplier;
-        
+
         // 计算阻尼过渡进度（0.0-1.0）
         float elapsedTime = currentTime - m_fCollapseTransitionStartTime;
         float transitionProgress = elapsedTime / COLLAPSE_TRANSITION_DURATION;
         transitionProgress = Math.Clamp(transitionProgress, 0.0, 1.0);
-        
+
         // 使用平滑的S型曲线（ease-in-out）来插值速度
         // smoothstep函数：t²(3-2t)
         float smoothProgress = transitionProgress * transitionProgress * (3.0 - 2.0 * transitionProgress);
-        
+
         // 计算目标速度（阻尼过渡开始时的速度）和结束速度（跛行下限）
         // 开始速度：跛行阈值处的 Run 基准倍率
         float startSpeedMultiplier = SCR_RSS_MetabolismMath.TARGET_RUN_SPEED_MULTIPLIER;
-        
+
         // 结束速度：跛行下限（大约 80% 过渡位置）
         // 使用 MIN_LIMP_SPEED_MULTIPLIER 作为下限，计算一个中间值
         float minSpeedMultiplier = SCR_RSS_MetabolismMath.MIN_LIMP_SPEED_MULTIPLIER;
         float endSpeedMultiplier = minSpeedMultiplier + (startSpeedMultiplier - minSpeedMultiplier) * 0.8;
-        
+
         // 在5秒内平滑插值速度（从3.8 m/s逐渐降到约2.2 m/s）
         float transitionSpeedMultiplier = startSpeedMultiplier + (endSpeedMultiplier - startSpeedMultiplier) * smoothProgress;
-        
+
         return transitionSpeedMultiplier;
     }
-    
+
     // 检查是否处于阻尼过渡状态
     // @return 是否正在过渡中
     bool IsInTransition()
     {
         return m_bInCollapseTransition;
     }
-    
+
     // 获取过渡进度（0.0-1.0）
     // @param currentTime 当前世界时间（秒）
     // @return 过渡进度，0.0=刚开始，1.0=已完成
@@ -106,25 +106,25 @@ class SCR_RSS_CollapseTransition
     {
         if (!m_bInCollapseTransition)
             return 0.0;
-        
+
         float elapsedTime = currentTime - m_fCollapseTransitionStartTime;
         float progress = elapsedTime / COLLAPSE_TRANSITION_DURATION;
         return Math.Clamp(progress, 0.0, 1.0);
     }
-    
+
     // 强制结束过渡（用于外部控制）
     void EndTransition()
     {
         m_bInCollapseTransition = false;
     }
-    
+
     // 获取临界点阈值
     // @return 临界点体力百分比（v6 跛行阈值，默认 5%）
     static float GetCollapseThreshold()
     {
         return SCR_RSS_Constants.SMOOTH_TRANSITION_END;
     }
-    
+
     // 获取过渡持续时间
     // @return 过渡持续时间（秒）
     static float GetTransitionDuration()

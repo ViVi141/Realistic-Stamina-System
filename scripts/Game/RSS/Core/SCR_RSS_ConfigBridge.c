@@ -8,7 +8,7 @@
 class SCR_RSS_ConfigBridge
 {
     // ==================== 配置系统桥接方法 ====================
-    
+
     // 获取能量到体力转换系数（从配置管理器）
     // [修复 v2.16.0] 降低最小值至 1e-8：优化器产出约 8.9e-7，此前 1e-6 的截断导致游戏实际消耗比
     // 优化器模拟值高 +12%（1e-6 / 8.9e-7 ≈ 1.12）。温度单位 bug 修复后此保护不再必要。
@@ -27,7 +27,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.ENERGY_TO_STAMINA_COEFF; // Hardcore fallback
     }
-    
+
     // 获取基础恢复率（从配置管理器）
     static float GetBaseRecoveryRate()
     {
@@ -40,7 +40,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.BASE_RECOVERY_RATE; // Hardcore fallback
     }
-    
+
     // 获取站姿恢复倍数（从配置管理器）
     static float GetStandingRecoveryMultiplier()
     {
@@ -53,7 +53,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.STANDING_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
-    
+
     // 获取蹲姿恢复倍数（从配置管理器）
     static float GetCrouchingRecoveryMultiplier()
     {
@@ -79,7 +79,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.PRONE_RECOVERY_MULTIPLIER; // Hardcore fallback
     }
-    
+
     // 获取负重恢复惩罚系数（从配置管理器）
     static float GetLoadRecoveryPenaltyCoeff()
     {
@@ -92,7 +92,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.LOAD_RECOVERY_PENALTY_COEFF; // Hardcore fallback
     }
-    
+
     // 获取负重恢复惩罚指数（从配置管理器）
     static float GetLoadRecoveryPenaltyExponent()
     {
@@ -105,7 +105,7 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.LOAD_RECOVERY_PENALTY_EXPONENT; // 平方关系
     }
-    
+
     // 获取负重速度惩罚系数（从配置管理器）
     static float GetEncumbranceSpeedPenaltyCoeff()
     {
@@ -118,7 +118,7 @@ class SCR_RSS_ConfigBridge
         }
         return 0.28; // Hardcore fallback (2026-05，原0.126)
     }
-    
+
     // 获取负重体力消耗系数（从配置管理器）
     static float GetEncumbranceStaminaDrainCoeff()
     {
@@ -183,7 +183,7 @@ class SCR_RSS_ConfigBridge
         }
         return 0.75; // 默认值
     }
-    
+
     // 获取疲劳累积系数（从配置管理器）
     static float GetFatigueAccumulationCoeff()
     {
@@ -196,7 +196,7 @@ class SCR_RSS_ConfigBridge
         }
         return 0.025; // Hardcore fallback (2026-05，原0.015)
     }
-    
+
     // 获取最大疲劳因子（从配置管理器）
     static float GetFatigueMaxFactor()
     {
@@ -209,7 +209,7 @@ class SCR_RSS_ConfigBridge
         }
         return 2.5; // Hardcore fallback (2026-05，原2.0)
     }
-    
+
     // 获取蹲姿消耗倍数（从配置管理器）
     static float GetPostureCrouchMultiplier()
     {
@@ -343,9 +343,9 @@ class SCR_RSS_ConfigBridge
         }
         return SCR_RSS_Constants.SPRINT_SPEED_BOOST;
     }
-    
+
     // ==================== 速度模型阈值配置方法（Hardcore 新增暴露）====================
-    
+
     // 获取意志力平台期阈值（从配置管理器）
     // 体力高于此值时保持恒定目标速度。Hardcore 默认 0.35（原 0.25）
     static float GetWillpowerThreshold()
@@ -359,13 +359,13 @@ class SCR_RSS_ConfigBridge
         }
         return 0.35; // Hardcore fallback（原0.25）
     }
-    
+
     // 获取平滑过渡起点（别名：等同于 GetWillpowerThreshold）
     static float GetSmoothTransitionStart()
     {
         return GetWillpowerThreshold();
     }
-    
+
     // 获取冲刺最小体力阈值（从配置管理器）
     // 体力低于此值时禁止冲刺。Hardcore 默认 0.25（原 0.18）
     static float GetSprintEnableThreshold()
@@ -520,30 +520,30 @@ class SCR_RSS_ConfigBridge
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
             return settings.m_bDebugLogEnabled;
-        
+
         return false;
     }
-    
+
     // 获取详细日志状态
     static bool IsVerboseLoggingEnabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
             return settings.m_bVerboseLogging;
-        
+
         return false;
     }
-    
+
     // 获取调试信息刷新频率（默认 1 秒，统一波次输出）
     static int GetDebugUpdateInterval()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         if (settings)
             return settings.m_iDebugUpdateInterval;
-        
+
         return 1000; // 默认 1 秒
     }
-    
+
     // 检查是否启用热应激系统
     static bool IsHeatStressEnabled()
     {
@@ -552,7 +552,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableHeatStress;
         return true;
     }
-    
+
     // 检查是否启用降雨湿重系统
     static bool IsRainWeightEnabled()
     {
@@ -561,7 +561,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableRainWeight;
         return true;
     }
-    
+
     // 检查是否启用风阻系统
     static bool IsWindResistanceEnabled()
     {
@@ -570,7 +570,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableWindResistance;
         return true;
     }
-    
+
     // 检查是否启用泥泞惩罚系统
     static bool IsMudPenaltyEnabled()
     {
@@ -615,7 +615,7 @@ class SCR_RSS_ConfigBridge
             return false;
         return settings.m_bDisableAIStaminaCalc;
     }
-    
+
     // 检查是否启用疲劳积累系统
     static bool IsFatigueSystemEnabled()
     {
@@ -624,7 +624,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableFatigueSystem;
         return true;
     }
-    
+
     // 检查是否启用代谢适应系统
     static bool IsMetabolicAdaptationEnabled()
     {
@@ -633,7 +633,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableMetabolicAdaptation;
         return true;
     }
-    
+
     // 检查是否启用室内检测系统
     static bool IsIndoorDetectionEnabled()
     {
@@ -642,7 +642,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_bEnableIndoorDetection;
         return true;
     }
-    
+
     // 获取地形检测更新间隔
     static int GetTerrainUpdateInterval()
     {
@@ -651,7 +651,7 @@ class SCR_RSS_ConfigBridge
             return settings.m_iTerrainUpdateInterval;
         return 5000;
     }
-    
+
     // 获取环境因子更新间隔
     static int GetEnvironmentUpdateInterval()
     {

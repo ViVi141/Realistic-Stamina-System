@@ -112,7 +112,7 @@ class SCR_PlayerBaseVehicleHelper
             if (encumbranceCache && encumbranceCache.IsCacheValid())
                 vehicleDebugWeight = encumbranceCache.GetCurrentWeight();
 
-            DebugInfoParams vehicleParams = SCR_PlayerBaseNetworkHelper.BuildVehicleDebugInfoParams(
+            RSS_DebugInfoParams vehicleParams = SCR_PlayerBaseNetworkHelper.BuildVehicleRSS_DebugInfoParams(
                 owner,
                 vehicleStaminaPercent,
                 vehicleDebugWeight,

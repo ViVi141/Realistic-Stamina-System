@@ -7,11 +7,11 @@ modded class SCR_InventoryStorageManagerComponent : ScriptedInventoryStorageMana
     {
         // 调用父类方法
         super.OnItemRemoved(storageOwner, item);
-        
+
         IEntity owner = GetOwner();
         if (!owner)
             return;
-        
+
         // 获取角色控制器组件
         SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
         if (characterController)
@@ -20,17 +20,17 @@ modded class SCR_InventoryStorageManagerComponent : ScriptedInventoryStorageMana
             characterController.OnItemRemovedFromInventory();
         }
     }
-    
+
     // 当物品添加到库存中时调用
     override protected void OnItemAdded(BaseInventoryStorageComponent storageOwner, IEntity item)
     {
         // 调用父类方法
         super.OnItemAdded(storageOwner, item);
-        
+
         IEntity owner = GetOwner();
         if (!owner)
             return;
-        
+
         // 获取角色控制器组件
         SCR_CharacterControllerComponent characterController = SCR_CharacterControllerComponent.Cast(owner.FindComponent(SCR_CharacterControllerComponent));
         if (characterController)

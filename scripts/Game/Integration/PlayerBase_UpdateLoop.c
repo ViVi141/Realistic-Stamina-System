@@ -102,7 +102,7 @@ class RSS_StaminaTickLocals
     float speedRatio;
     vector velocityForDrain;
     float slopeAngleDegrees;
-    ref GradeCalculationResult gradeResult;
+    ref RSS_GradeCalculationResult gradeResult;
     float gradePercent;
     bool isSprinting;
     int currentMovementPhase;
@@ -111,8 +111,8 @@ class RSS_StaminaTickLocals
     float baseDrainRateByVelocity;
     float baseDrainRateByVelocityForModule;
     bool combatStimActive;
-    ref StaminaDrainTickParams drainParams;
-    ref StaminaDrainTickResult drainTick;
+    ref RSS_StaminaDrainTickParams drainParams;
+    ref RSS_StaminaDrainTickResult drainTick;
     float effectiveCriticalPowerWattsDbg;
     float environmentMultDbg;
     float powerWattsDbg;
@@ -185,7 +185,7 @@ modded class SCR_CharacterControllerComponent
             RSS_ScheduleNextStaminaTick();
             return false;
         }
-        
+
         loc.isPlayer = IsPlayerControlled();
 
         if (loc.isPlayer)
@@ -215,7 +215,7 @@ modded class SCR_CharacterControllerComponent
 
         loc.staminaPercent = GetRssAerobicPercent();
         loc.staminaPercent = Math.Clamp(loc.staminaPercent, 0.0, 1.0);
-        
+
         loc.encumbranceSpeedPenalty = 0.0;
         if (m_pEncumbranceCache)
         {
@@ -271,12 +271,12 @@ modded class SCR_CharacterControllerComponent
                 m_bLastExhaustedState = false;
             }
         }
-        
+
         loc.isSwimmingForSpeed = SCR_RSS_SwimmingStateManager.IsSwimming(this);
         if (loc.isSwimmingForSpeed)
         {
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
-            SpeedCalculationResult speedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+            RSS_SpeedCalculationResult speedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
                 loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
             loc.velocity = speedResult.computedVelocity;
             loc.currentSpeed = Math.Min(speedResult.computedVelocity.Length(), 7.0);
@@ -290,14 +290,14 @@ modded class SCR_CharacterControllerComponent
             loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
 
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
-            SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+            RSS_SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
                 loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
             m_vLastPositionSample = posSpeedResult.lastPositionSample;
             m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
             m_vComputedVelocity = posSpeedResult.computedVelocity;
             m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
         }
-        
+
         loc.isSprintingNow = IsSprinting();
         loc.phaseNow = GetCurrentMovementPhase();
         if (loc.phaseNow >= 1 && loc.phaseNow <= 3)
@@ -311,7 +311,7 @@ modded class SCR_CharacterControllerComponent
 
         loc.sprintIntent = loc.isSprintActive || GetIsSprintingToggle();
         RSS_PokeEngineStaminaForSprintBlock(loc.sprintIntent);
-        
+
         loc.currentTimeForExerciseMs = loc.world.GetWorldTime();
         loc.currentTime = loc.currentTimeForExerciseMs / 1000.0;
 
@@ -369,10 +369,10 @@ modded class SCR_CharacterControllerComponent
                 overspeedArmedForTransition);
             m_fLastRssEngineBaseForLimit = engineBaseForLimit;
         }
-        
+
         loc.baseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(
             loc.staminaPercent, loc.effectivePhase, loc.encumbranceSpeedPenalty);
-        
+
         loc.currentWeight = 0.0;
         if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
             loc.currentWeight = m_pEncumbranceCache.GetCurrentWeight();
@@ -567,10 +567,10 @@ modded class SCR_CharacterControllerComponent
 
         if (loc.isSwimming != m_bWasSwimming)
             m_bSwimmingVelocityDebugPrinted = false;
-        
+
         if (loc.isPlayer)
         {
-            WetWeightUpdateResult wetWeightResult = SCR_RSS_SwimmingStateManager.UpdateWetWeight(
+            RSS_WetWeightUpdateResult wetWeightResult = SCR_RSS_SwimmingStateManager.UpdateWetWeight(
                 m_bWasSwimming,
                 loc.isSwimming,
                 loc.currentTime,
@@ -583,11 +583,11 @@ modded class SCR_CharacterControllerComponent
             m_fSwimStartTimeSec = wetWeightResult.swimStartTimeSec;
             m_bWasSwimming = loc.isSwimming;
         }
-        
+
         loc.heatStressMultiplier = 1.0;
         if (m_pEnvironmentFactor)
             loc.heatStressMultiplier = m_pEnvironmentFactor.GetHeatStressMultiplier();
-        
+
         loc.rainWeight = 0.0;
         if (m_pEnvironmentFactor)
             loc.rainWeight = m_pEnvironmentFactor.GetRainWeight();
@@ -597,7 +597,7 @@ modded class SCR_CharacterControllerComponent
             loc.heatStressMultiplier = 1.0;
             loc.rainWeight = 0.0;
         }
-        
+
         loc.totalWetWeight = SCR_RSS_SwimmingStateManager.CalculateTotalWetWeight(m_fCurrentWetWeight, loc.rainWeight);
         loc.currentWeightWithWet = loc.currentWeight + loc.totalWetWeight;
 
@@ -621,7 +621,7 @@ modded class SCR_CharacterControllerComponent
                 m_pUISignalBridge,
                 IsRssDebugEnabled());
         }
-        
+
         loc.speedRatio = Math.Clamp(loc.currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
 
         loc.velocityForDrain = loc.velocity;
@@ -1170,7 +1170,7 @@ modded class SCR_CharacterControllerComponent
                 GetSpeedUpdateIntervalMs(),
                 hasStamina);
         }
-        
+
         if (IsRssDebugEnabled())
         {
             ScriptCallQueue sampleQueue = SCR_RSS_RuntimeGuard.GetCallqueueOrNull();

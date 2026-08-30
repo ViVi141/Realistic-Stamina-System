@@ -214,7 +214,7 @@ class SCR_PlayerBaseNetworkHelper
         return true;
     }
 
-    static DebugInfoParams BuildVehicleDebugInfoParams(
+    static RSS_DebugInfoParams BuildVehicleRSS_DebugInfoParams(
         IEntity owner,
         float vehicleStaminaPercent,
         float vehicleDebugWeight,
@@ -225,7 +225,7 @@ class SCR_PlayerBaseNetworkHelper
         SCR_RSS_EnvironmentFactor environmentFactor,
         SCR_RSS_StanceTransitionManager stanceTransitionManager)
     {
-        DebugInfoParams vehicleParams = new DebugInfoParams();
+        RSS_DebugInfoParams vehicleParams = new RSS_DebugInfoParams();
         vehicleParams.owner = owner;
         vehicleParams.movementTypeStr = "Vehicle";
         vehicleParams.staminaPercent = vehicleStaminaPercent;

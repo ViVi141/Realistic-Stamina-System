@@ -6,7 +6,7 @@ class SCR_RSS_UpdateCoordinator
     // ── 结果对象（每次调用新分配，消除静态共享竞态）──
     // 高密度 AI 并行调用时静态共享对象会导致数据覆盖。
     // 修复：移除 s_pResultSpeedCalc / s_pResultBaseDrainRate，
-    // BuildRecoveryContext 每次 new RecoveryContext()，调用方读取后即可释放。
+    // BuildRSS_RecoveryContext 每次 new RSS_RecoveryContext()，调用方读取后即可释放。
 
     // ==================== 公共静态方法：计算陆地基础消耗率（用于消除重复代码）====================
     // 修复：提取此方法以避免在 SCR_RSS_StaminaConsumptionCalculator.c 中重复实现
@@ -91,7 +91,7 @@ class SCR_RSS_UpdateCoordinator
     }
 
     // ==================== 速度计算和更新 ====================
-    
+
     // 更新速度（基于体力和负重）
     // @param controller 角色控制器组件
     // @param staminaPercent 当前体力百分比
@@ -168,7 +168,7 @@ class SCR_RSS_UpdateCoordinator
         if (!controller)
             return 1.0;
         controller.RSS_SetRunCruiseCapMs(0.0);
-        
+
         IEntity ownerForStairs = controller.GetOwner();
         bool shouldSuppressSlope = false;
         if (environmentFactor && ownerForStairs)
@@ -179,7 +179,7 @@ class SCR_RSS_UpdateCoordinator
         bool isIndoorStairs = (shouldSuppressSlope && Math.AbsFloat(rawSlopeAngle) > 0.0);
         if (isIndoorStairs)
             encumbranceSpeedPenalty = encumbranceSpeedPenalty * SCR_RSS_Constants.GetIndoorStairsEncumbranceSpeedFactor();
-        
+
         // 检查是否可以 Sprint（v5：有氧门槛 + 无氧池/冷却）
         bool canSprint = controller.GetRssSprintAllowed();
         bool isExhausted = SCR_RSS_MetabolismMath.IsExhausted(staminaPercent);
@@ -189,7 +189,7 @@ class SCR_RSS_UpdateCoordinator
         int currentMovementPhase = controller.GetCurrentMovementPhase();
         if (effectiveMovementPhase >= 0 && effectiveMovementPhase <= 3)
             currentMovementPhase = effectiveMovementPhase;
-        
+
         // 如果精疲力尽，禁用Sprint
         if (isExhausted || !canSprint)
         {
@@ -199,19 +199,19 @@ class SCR_RSS_UpdateCoordinator
                 isSprinting = false;
             }
         }
-        
+
         // 计算速度倍数
         if (!GetGame() || !GetGame().GetWorld())
             return 1.0;
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
-        
+
         // 室内（含楼梯间宽松判定）时硬归零，避免任何坡度速度惩罚
         float slopeAngleDegrees = 0.0;
         if (!shouldSuppressSlope)
             slopeAngleDegrees = SCR_RSS_SpeedCalculator.GetSlopeAngle(controller, environmentFactor, velocity);
         float runBaseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
-        
+
         // 通知过渡器当前帧的室内/室外状态，检测切换时机以便及时重置残留减速状态
         if (slopeSpeedTransition)
             slopeSpeedTransition.NotifySuppressSlope(shouldSuppressSlope);
@@ -233,10 +233,10 @@ class SCR_RSS_UpdateCoordinator
                 speedScaleFactor = slopeSpeedTransition.UpdateAndGet(currentWorldTime, speedScaleFactor);
         }
         runBaseSpeedMultiplier = runBaseSpeedMultiplier * speedScaleFactor;
-        
+
         // 战术冲刺爆发期需要冲刺开始时间（由 controller 记录）
         float sprintStartTime = controller.GetSprintStartTime();
-        
+
         // 计算最终绝对速度（Run/Sprint/Walk）；负重已在 GetMarchAbsoluteSpeedMs 内施加
         float finalAbsoluteSpeedWithEnc = SCR_RSS_SpeedCalculator.CalculateFinalAbsoluteSpeed(
             runBaseSpeedMultiplier,
@@ -249,9 +249,9 @@ class SCR_RSS_UpdateCoordinator
             currentSpeed,
             currentWorldTime,
             sprintStartTime);
-        
+
         float finalSpeedMultiplier;
-        
+
         if (finalAbsoluteSpeedWithEnc > 0.0)
         {
             // 负重惩罚：按相位意图速比（勿用 currentSpeed，否则 Sprint 限速自激）
@@ -281,7 +281,7 @@ class SCR_RSS_UpdateCoordinator
                     float gradePct = 0.0;
                     if (!shouldSuppressSlope)
                     {
-                        GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                        RSS_GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
                             controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                         gradePct = SCR_RSS_SpeedBridge.ClampGradePercentForMetabolicSpeed(
                             gradeRes.gradePercent);
@@ -336,7 +336,7 @@ class SCR_RSS_UpdateCoordinator
                     float gradePct = 0.0;
                     if (!shouldSuppressSlope)
                     {
-                        GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                        RSS_GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
                             controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                         gradePct = controller.RSS_SmoothGradePercentForSpeed(
                             gradeRes.gradePercent, currentWorldTime);
@@ -447,7 +447,7 @@ class SCR_RSS_UpdateCoordinator
                 theoreticalTargetSpeed = SCR_RSS_SpeedCalculator.ApplySprintGaitMinSeparation(
                     theoreticalTargetSpeed, runFloorMs);
             }
-            
+
             // 动态获取引擎当前相位的原始顶速（倍率 = 绝对目标 / 该顶速）
             float currentEngineOriginalSpeed;
             if (isSprinting || currentMovementPhase == 3)
@@ -462,7 +462,7 @@ class SCR_RSS_UpdateCoordinator
             {
                 currentEngineOriginalSpeed = controller.GetOriginalEngineMaxSpeed_Run();
             }
-            
+
             // 计算需要的补偿倍数：
             // 最终速度 = 引擎原始速度 × 倍数
             // 我们希望最终速度 = theoreticalTargetSpeed（理论计算速度）
@@ -483,7 +483,7 @@ class SCR_RSS_UpdateCoordinator
                     theoreticalBaseSpeed = SCR_RSS_MetabolismMath.TARGET_RUN_SPEED;
                 finalSpeedMultiplier = theoreticalTargetSpeed / theoreticalBaseSpeed;
             }
-            
+
             // 允许倍数大于1.0来补偿引擎的速度降低
             // 设置一个合理的上限，防止数值爆炸
             finalSpeedMultiplier = Math.Clamp(finalSpeedMultiplier, 0.01, 3.0);
@@ -523,12 +523,12 @@ class SCR_RSS_UpdateCoordinator
                     sprintStartTime);
             }
         }
-        
+
         return finalSpeedMultiplier;
     }
-    
+
     // ==================== 速度计算（位置差分测速）====================
-    
+
     // 计算当前速度（使用位置差分测速，适用于游泳）
     // @param owner 角色实体
     // @param lastPositionSample 上一帧位置（输入）
@@ -536,7 +536,7 @@ class SCR_RSS_UpdateCoordinator
     // @param computedVelocity 计算得到的速度（输入，通常为vector.Zero）
     // @param dtSeconds 时间步长（秒）
     // @return 速度计算结果（包含速度、位置、标志和速度向量）
-    static SpeedCalculationResult CalculateCurrentSpeed(
+    static RSS_SpeedCalculationResult CalculateCurrentSpeed(
         IEntity owner,
         vector lastPositionSample,
         bool hasLastPositionSample,
@@ -545,12 +545,12 @@ class SCR_RSS_UpdateCoordinator
     {
         vector currentPos = owner.GetOrigin();
         vector velocity = vector.Zero;
-        
+
         if (hasLastPositionSample)
         {
             vector deltaPos = currentPos - lastPositionSample;
             float deltaLen = deltaPos.Length();
-            
+
             // 防止传送/同步跳变导致天文速度
             // 在0.2s采样周期内，如果位移超过1.6米（对应时速约28.8km/h，超过人体Sprint极限），判定为异常跳变
             if (deltaLen < 1.6 && dtSeconds > 0.001)
@@ -566,26 +566,26 @@ class SCR_RSS_UpdateCoordinator
                 velocity = computedVelocity;
             }
         }
-        
+
         // 计算水平速度
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0; // 忽略垂直速度
         float currentSpeed = horizontalVelocity.Length();
-        
+
         // 确保currentSpeed不超过物理上限
         currentSpeed = Math.Min(currentSpeed, 7.0);
-        
-        SpeedCalculationResult s_pResultSpeedCalc = new SpeedCalculationResult();
+
+        RSS_SpeedCalculationResult s_pResultSpeedCalc = new RSS_SpeedCalculationResult();
         s_pResultSpeedCalc.currentSpeed = currentSpeed;
         s_pResultSpeedCalc.lastPositionSample = currentPos;
         s_pResultSpeedCalc.hasLastPositionSample = true;
         s_pResultSpeedCalc.computedVelocity = velocity;
-        
+
         return s_pResultSpeedCalc;
     }
-    
+
     // ==================== 基础消耗率计算 ====================
-    
+
     // 计算基础消耗率（游泳或陆地）
     // @param isSwimming 是否在游泳
     // @param currentSpeed 当前速度（m/s）
@@ -598,7 +598,7 @@ class SCR_RSS_UpdateCoordinator
     // @param owner 角色实体（用于调试）
     // @param environmentFactor 环境因子模块引用（v2.14.0修复：添加此参数以支持环境因子）
     // @return 基础消耗率结果（包含消耗率和调试标志）
-    static BaseDrainRateResult CalculateBaseDrainRate(
+    static RSS_BaseDrainRateResult CalculateBaseDrainRate(
         bool isSwimming,
         float currentSpeed,
         float encumbranceSpeedPenalty,
@@ -616,7 +616,7 @@ class SCR_RSS_UpdateCoordinator
         float wPrimePool01 = 1.0)
     {
         float baseDrainRate = 0.0;
-        
+
         if (isSwimming)
         {
             // ==================== 游泳体力消耗模型（物理阻力模型）====================
@@ -630,7 +630,7 @@ class SCR_RSS_UpdateCoordinator
                     swimmingVelocityDebugPrinted = true;
                 }
             }
-            
+
             float swimmingDrainRate = SCR_RSS_SwimmingStaminaModel.CalculateSwimmingStaminaDrain3D(computedVelocity, currentWeightWithWet);
             baseDrainRate = swimmingDrainRate * 0.2; // 转换为每0.2秒的消耗率
         }
@@ -685,8 +685,8 @@ class SCR_RSS_UpdateCoordinator
             // 负重影响现在通过后续的 encumbranceStaminaDrainMultiplier 应用，
             // 因此不再需要对固定 Sprint 基线做特殊处理。
         }
-        
-        BaseDrainRateResult s_pResultBaseDrainRate = new BaseDrainRateResult();
+
+        RSS_BaseDrainRateResult s_pResultBaseDrainRate = new RSS_BaseDrainRateResult();
         s_pResultBaseDrainRate.baseDrainRate = baseDrainRate;
         s_pResultBaseDrainRate.swimmingVelocityDebugPrinted = swimmingVelocityDebugPrinted;
         return s_pResultBaseDrainRate;
@@ -758,9 +758,9 @@ class SCR_RSS_UpdateCoordinator
     }
 
     //! 汇总单 tick 总消耗率（含疲劳/热应激/战斗兴奋剂/步行恢复区）
-    static StaminaDrainTickResult CalculateTotalDrainRate(StaminaDrainTickParams tick)
+    static RSS_StaminaDrainTickResult CalculateTotalDrainRate(RSS_StaminaDrainTickParams tick)
     {
-        StaminaDrainTickResult result = new StaminaDrainTickResult();
+        RSS_StaminaDrainTickResult result = new RSS_StaminaDrainTickResult();
         result.totalDrainRate = 0.0;
         result.baseDrainRateByVelocity = 0.0;
         result.baseDrainRateByVelocityForModule = 0.0;
@@ -790,7 +790,7 @@ class SCR_RSS_UpdateCoordinator
         }
         float totalEfficiencyFactor = fitnessEfficiencyFactor * metabolicEfficiencyFactor;
 
-        BaseDrainRateResult drainRateResult = CalculateBaseDrainRate(
+        RSS_BaseDrainRateResult drainRateResult = CalculateBaseDrainRate(
             tick.useSwimmingModel,
             tick.currentSpeed,
             tick.encumbranceSpeedPenalty,
@@ -897,9 +897,9 @@ class SCR_RSS_UpdateCoordinator
 
         return result;
     }
-    
+
     // ==================== 体力更新协调 ====================
-    
+
     // 协调体力消耗和恢复计算，更新目标体力值
     // @param staminaComponent 体力组件
     // @param staminaPercent 当前体力百分比
@@ -936,9 +936,9 @@ class SCR_RSS_UpdateCoordinator
     {
         if (!staminaComponent)
             return staminaPercent;
-        
+
         float newTargetStamina = staminaPercent;
-        
+
         float recoveryRate = SCR_RSS_StaminaNetRate.ComputeRecoveryRatePerTick(
             staminaPercent,
             currentSpeed,
@@ -974,30 +974,30 @@ class SCR_RSS_UpdateCoordinator
                 }
             }
         }
-        
+
         // 代谢净值算法：netChange = (recoveryRate - totalDrainRate) * (timeDelta/0.2)
         // 恢复/消耗率按每0.2秒设计；实际更新间隔可能为50ms，需按时间比例缩放
         float tickScale = Math.Clamp(timeDeltaSeconds / 0.2, 0.01, 2.0);
         float netChange = (recoveryRate - finalDrainRate) * tickScale;
-        
+
         // 更新目标体力值
         newTargetStamina = staminaPercent + netChange;
-        
+
         // ==================== 应用疲劳惩罚：限制最大体力上限（模块化）====================
         float maxStaminaCap = 1.0;
         if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
             maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
-        
+
         // 限制体力值在有效范围内（0.0 - maxStaminaCap）
         newTargetStamina = Math.Clamp(newTargetStamina, 0.0, maxStaminaCap);
-        
+
         // 如果当前体力超过疲劳惩罚后的上限，需要降低
         if (staminaPercent > maxStaminaCap)
         {
             // 立即降低到上限（模拟疲劳导致的体力上限降低）
             newTargetStamina = maxStaminaCap;
         }
-        
+
         return newTargetStamina;
     }
 }

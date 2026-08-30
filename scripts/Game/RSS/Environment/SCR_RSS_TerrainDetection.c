@@ -28,9 +28,9 @@ class SCR_RSS_TerrainDetector
     protected const float LOD_NEAR_DIST = 500.0; // 近距阈值（m）：<500m 使用正常间隔
     protected const float LOD_MID_DIST = 1000.0; // 中距阈值（m）：500-1000m 使用 2 倍间隔
     // 超过 LOD_MID_DIST 的 AI 使用 5 倍间隔（远距档）
-    
+
     // ==================== 公共方法 ====================
-    
+
     // 初始化状态
     // @param isAi 是否为AI实体（用于距离LOD分档）
     void Initialize(bool isAi = false)
@@ -44,7 +44,7 @@ class SCR_RSS_TerrainDetector
         m_fLastDistanceLodCheckTime = 0.0;
         m_fCachedDistToNearestPlayer = 0.0;
     }
-    
+
     // 运行时更新实体类型标志（玩家接管AI角色时调用，防止接管后继续以AI LOD频率检测）
     // @param isAi true=AI实体（启用距离LOD），false=玩家控制（全频率）
     void SetIsAiEntity(bool isAi)
@@ -68,7 +68,7 @@ class SCR_RSS_TerrainDetector
         if (isMoving)
             m_fLastMovementTime = currentTime;
     }
-    
+
     // 检查并更新地形系数（如果需要）
     // @param owner 角色实体
     // @param currentTime 当前世界时间
@@ -174,7 +174,7 @@ class SCR_RSS_TerrainDetector
 
         return Math.Sqrt(minDistSq);
     }
-    
+
     // 获取地形密度（使用射线追踪）
     // @param owner 角色实体
     // @return 地面密度值（-1 表示获取失败）
@@ -185,7 +185,7 @@ class SCR_RSS_TerrainDetector
             m_sCachedGroundMaterialLabel = "";
             return -1.0;
         }
-        
+
         if (!m_pTraceParamGround)
             m_pTraceParamGround = new TraceParam();
 
@@ -198,10 +198,10 @@ class SCR_RSS_TerrainDetector
         // 建议：EPhysicsLayerPresets.Character 或 EPhysicsLayerPresets.Static 可能更稳定
         // 如果 Projectile 层在某些情况下无法命中地面，可以尝试其他层
         m_pTraceParamGround.LayerMask = EPhysicsLayerPresets.Projectile; // 当前使用 Projectile（与官方示例一致）
-        
+
         // 执行追踪
         owner.GetWorld().TraceMove(m_pTraceParamGround, FilterTerrainCallback);
-        
+
         // 获取表面材质
         GameMaterial material = m_pTraceParamGround.SurfaceProps;
         if (!material)
@@ -222,7 +222,7 @@ class SCR_RSS_TerrainDetector
         density = SCR_RSS_MaterialTerrainTable.ResolveDensity(material, density);
         return density;
     }
-    
+
     // 地形检测过滤回调（排除角色实体）
     // @param e 实体
     // @return true表示接受，false表示排除
@@ -232,7 +232,7 @@ class SCR_RSS_TerrainDetector
             return false;
         return true;
     }
-    
+
     // 获取缓存的地形密度（用于调试显示）
     // @return 地形密度值（-1表示未检测）
     float GetCachedTerrainDensity()
@@ -245,14 +245,14 @@ class SCR_RSS_TerrainDetector
     {
         return m_sCachedGroundMaterialLabel;
     }
-    
+
     // 获取缓存的地形系数
     // @return 地形系数（1.0-3.0）
     float GetCachedTerrainFactor()
     {
         return m_fCachedTerrainFactor;
     }
-    
+
     // 手动更新地形检测（用于调试）
     // @param owner 角色实体
     // @param currentTime 当前世界时间
@@ -260,10 +260,10 @@ class SCR_RSS_TerrainDetector
     {
         float density = GetTerrainDensity(owner);
         m_fCachedTerrainDensity = density;
-        
+
         if (density >= 0.0)
             m_fCachedTerrainFactor = SCR_RSS_MetabolismMath.GetTerrainFactorFromDensity(density);
-        
+
         m_fLastTerrainCheckTime = currentTime;
     }
 }

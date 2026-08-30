@@ -1,6 +1,6 @@
 //! UpdateCoordinator DTOs（从 SCR_RSS_UpdateCoordinator.c 拆分以控制体积）
 
-class SpeedCalculationResult
+class RSS_SpeedCalculationResult
 {
     float currentSpeed;
     vector lastPositionSample;
@@ -8,13 +8,13 @@ class SpeedCalculationResult
     vector computedVelocity;
 }
 
-class BaseDrainRateResult
+class RSS_BaseDrainRateResult
 {
     float baseDrainRate;
     bool swimmingVelocityDebugPrinted;
 }
 
-class RecoveryContext
+class RSS_RecoveryContext
 {
     float currentWeightForRecovery;
     float staticDrainForRecovery;
@@ -26,7 +26,7 @@ class RecoveryContext
     float exerciseDurationMinutes;
 }
 
-class StaminaDrainTickResult
+class RSS_StaminaDrainTickResult
 {
     float totalDrainRate;
     float baseDrainRateByVelocity;
@@ -35,7 +35,7 @@ class StaminaDrainTickResult
 }
 
 //! CalculateTotalDrainRate 入参包（EnforceScript 方法参数上限 16）
-class StaminaDrainTickParams
+class RSS_StaminaDrainTickParams
 {
     bool useSwimmingModel;
     float currentSpeed;
@@ -68,7 +68,7 @@ class StaminaDrainTickParams
     float wPrimePool01;
 }
 
-class StaminaEtaResult
+class RSS_StaminaEtaResult
 {
     float timeToDepleteSec;
     float timeToFullSec;
