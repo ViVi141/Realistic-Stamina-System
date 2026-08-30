@@ -5,6 +5,7 @@
 ### PlayerBase / UpdateLoop 拆分
 
 - **拆出 `SCR_RSS_StaminaTickTypes`** — `RSS_StatusMetabLogSnapshot` / `RSS_StaminaDebugOutputParams` / `RSS_StaminaTickLocals` 从 `PlayerBase_UpdateLoop.c` 迁至 `RSS/Core/`，行为不变。
+- **拆出 `SCR_PlayerBaseCpCruiseController`** — Run 巡航缩轴、Walk 覆盖、限速斜率、坡度 EMA 及对应状态迁出；`PlayerBase` 保留薄委托，行为不变。
 
 ### 剩余 W′ 继续跑，见底才锁巡航
 
