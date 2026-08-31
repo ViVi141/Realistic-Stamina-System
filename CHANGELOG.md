@@ -1,5 +1,13 @@
 # 更新日志
 
+## [6.2.3] - 2026-09-01
+
+### 修复：联机 HUD W′ 恒为 100%
+
+- **根因** — 专服玩家体力主循环只在客户端跑，但 `TickPhaseBAnaerobic` 被 `Replication.IsServer()` 挡住，客户端从不消耗 W′；专服 `WPrimeServerTick` 粗估又把 RplProp 灌回 100% 盖掉本机池。
+- **修复** — Phase B 在跑主循环的一侧 tick W′（联机=客户端）；仅服务端写 RplProp；本地控制角色忽略 `OnRssAnaerobicReplicated`；停用粗估补 tick。
+- 配置版本 / ConfigManager → **6.2.3**
+
 ## [6.2.2] - 2026-09-01
 
 ### 修复：加载服务器后体力 Tick 崩溃（启发式空引用）

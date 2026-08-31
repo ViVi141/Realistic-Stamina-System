@@ -160,6 +160,11 @@ modded class SCR_CharacterControllerComponent
 
     void OnRssAnaerobicReplicated()
     {
+        // 本地控制角色由本机 Phase B tick 权威；勿用专服粗估 Rpl（常为 100%）盖回 HUD。
+        IEntity owner = GetOwner();
+        if (owner && owner == SCR_PlayerController.GetLocalControlledEntity())
+            return;
+
         SCR_RSS_NetworkSyncManager.ApplyAnaerobicReplication(m_pAnaerobicBurst, m_fReplAnaerobicPool, m_fReplAnaerobicCooldownUntil);
         if (m_pStaminaState)
         {

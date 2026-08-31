@@ -1,6 +1,7 @@
-//! Phase B 服务端 W′ TickPower / EPOC / 复制写回。
-//! 从 PlayerBase_UpdateLoop.c 拆出；与 SCR_RSS_WPrimeServerTick（PrepareControls 补 tick）分工不同。
+//! Phase B W′ TickPower / EPOC / 复制写回。
+//! 从 PlayerBase_UpdateLoop.c 拆出；与 SCR_RSS_WPrimeServerTick（已停用粗估补 tick）分工不同。
 //! 禁止在本 static 内调用 Replication.BumpMe（须由实体实例上下文触发）。
+//! 专服玩家主循环只在客户端跑：必须在本机 tick W′；仅服务端写 RplProp + BumpMe。
 
 class SCR_PlayerBaseWPrimeTickHelper
 {
@@ -22,10 +23,8 @@ class SCR_PlayerBaseWPrimeTickHelper
         if (!anaerobicBurst || !loc)
             return false;
 
-        bool tickAnaerobic = Replication.IsServer();
-        if (!tickAnaerobic)
-            return false;
-
+        // 谁跑 UpdateLoop 谁 tick W′（专服=客户端，本地/听主机=服务端）。
+        // 旧逻辑 if (!IsServer()) return 导致联机客户端 W′ 永为 100%。
         SCR_RSS_CriticalPowerModel cpModel = anaerobicBurst.GetCpModel();
         float pool01BeforeTick = 1.0;
         if (cpModel)
@@ -136,6 +135,11 @@ class SCR_PlayerBaseWPrimeTickHelper
             staminaState.SetWPrimePoolFromCpModel(anaerobicBurst.GetCpModel());
             staminaState.SetAerobic(loc.staminaPercent);
         }
+
+        // RplProp 仅服务端可权威写出；客户端本地池已更新供 HUD/门禁。
+        if (!Replication.IsServer())
+            return false;
+
         SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
             anaerobicBurst, replPool, replCooldownUntil);
         return true;

@@ -1,0 +1,22 @@
+RSS v6.2.3 Change Notes
+=======================
+From 6.2.2 → 6.2.3 (config 6.2.3). Multiplayer HUD W′ stuck at 100%.
+Keep server & clients on the same mod build.
+
+[EN]
+• Fix multiplayer HUD W′ always showing 100% (local SP was fine).
+• Dedicated players only run the stamina loop on the client, but Phase B
+  W′ tick was gated behind IsServer() — client never drained W′.
+• Crude server WPrimeServerTick also refilled RplProp to 100% and overwrote
+  the local pool; local controlled characters now ignore that Rpl callback.
+• Phase B ticks W′ wherever the main loop runs; only the server writes RplProp.
+
+[中文]
+• 修复联机 HUD W′ 恒为 100%（本地单机正常）。
+• 专服玩家主循环只在客户端跑，但 Phase B W′ 被 IsServer() 挡住，本机从不消耗。
+• 专服粗估补 tick 又把 RplProp 灌回 100% 盖掉本机池；本地控制角色忽略该 Rpl。
+• Phase B 在跑主循环的一侧 tick W′；仅服务端写 RplProp。
+
+Full log: CHANGELOG.md [6.2.3] / [6.2.2] / [6.2.1]
+
+Author: ViVi141 | License: AGPL-3.0
