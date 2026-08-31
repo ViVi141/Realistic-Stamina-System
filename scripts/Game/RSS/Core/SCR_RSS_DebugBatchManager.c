@@ -19,7 +19,7 @@ class SCR_RSS_DebugBatchManager
         if (!wantBatch)
         {
             SCR_RSS_Settings hintSettings = SCR_RSS_ConfigManager.GetSettings();
-            if (hintSettings && hintSettings.m_bHintDisplayEnabled)
+            if (hintSettings && SCR_RSS_StaminaHUDComponent.IsHudWanted())
                 wantBatch = true;
         }
         if (!wantBatch)

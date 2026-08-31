@@ -46,7 +46,7 @@ class SCR_RSS_StaminaHUDComponent
     protected static float s_fDisplayStaminaPercent = 1.0;
     protected static const float STAMINA_DISPLAY_SMOOTH_ALPHA = 0.4;  // 指数平滑系数（每 50ms 更新约 3 次可追上 90%）
 
-    // 本地 HUD 覆盖：每个玩家可以独立开关自己的 HUD，不依赖服务器设置
+    // 本地 HUD 覆盖：每个玩家可以独立开关自己的 HUD（在服务器允许时）
     protected static bool s_bLocalHUDOverride = true;  // true = 开启（默认），false = 玩家手动关闭
     protected static bool s_bLocalHUDSet = false;      // 是否已设置过本地覆盖
 
@@ -65,6 +65,20 @@ class SCR_RSS_StaminaHUDComponent
     protected int m_iCreatedInGeneration = -1;
 
     // ==================== 公共静态方法 ====================
+
+    //! 是否应显示 HUD：服务器 Hint 开 ∧（未设本地覆盖则跟服，已设则跟本地）。
+    //! 服务器关时绝不出 HUD，避免残缺默认「STA 100%」叠在正常 HUD 上。
+    static bool IsHudWanted()
+    {
+        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
+        if (!settings)
+            return false;
+        if (!settings.m_bHintDisplayEnabled)
+            return false;
+        if (s_bLocalHUDSet)
+            return s_bLocalHUDOverride;
+        return true;
+    }
 
     // 更新 HUD 主数据（最多 15 个参数；ETA / v5 无氧见专用方法）
     static void UpdateAllValues(
@@ -156,60 +170,41 @@ class SCR_RSS_StaminaHUDComponent
     // 初始化 HUD（从 PlayerBase 调用）
     static void Init()
     {
-        if (s_Instance)
+        if (!GetGame() || !GetGame().GetWorkspace())
         {
-            if (!GetGame() || !GetGame().GetWorkspace())
-            {
-                Destroy();
-            }
-            else if (s_Instance.m_wRoot)
-            {
-                return;
-            }
-            else
-            {
-                Destroy();
-            }
+            Destroy();
+            return;
         }
 
-        // 检查配置是否启用
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings || !settings.m_bHintDisplayEnabled)
+        if (!IsHudWanted())
+        {
+            Destroy();
             return;
+        }
+
+        // 已有有效实例则复用，避免 CreateWidgets 叠第二层
+        if (s_Instance)
+        {
+            if (s_Instance.m_wRoot && s_Instance.m_iCreatedInGeneration == s_iWorldGeneration)
+                return;
+            Destroy();
+        }
 
         SCR_RSS_StaminaHUDComponent inst = new SCR_RSS_StaminaHUDComponent();
         if (!inst.CreateHUD())
             return;
         s_Instance = inst;
+        s_Instance.UpdateDisplay();
     }
 
-    // 与 SCR_RSS_Settings.m_bHintDisplayEnabled 对齐：开则 Init、关则 Destroy（含热重载后关闭 HUD）。
-    // 须先于 Init 内「已有实例则 return」使用，否则无法关闭已创建的 HUD。
-    // 不依据 Replication.IsServer() 过滤：工作台试玩/监听主机常为「带画面的服务端」，原逻辑会整段 return 导致不显示。
-    // 无 Workspace（专服无头等）时无法创建 widget，与 CreateHUD 行为一致，此处可提前 return。
+    // 与 IsHudWanted 对齐：开则单例 Init、关则 Destroy（含热重载后关闭 HUD）。
+    // 不依据 Replication.IsServer() 过滤：工作台试玩/监听主机常为「带画面的服务端」。
     static void SyncHintDisplayWithSettings()
     {
         if (!GetGame() || !GetGame().GetWorkspace())
             return;
 
-        // 本地覆盖优先：如果玩家已手动切换过，使用本地设置
-        if (s_bLocalHUDSet)
-        {
-            if (s_bLocalHUDOverride)
-                Init();
-            else
-                Destroy();
-            return;
-        }
-
-        // 否则跟随服务器设置
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (!settings)
-        {
-            return;
-        }
-
-        if (settings.m_bHintDisplayEnabled)
+        if (IsHudWanted())
             Init();
         else
             Destroy();

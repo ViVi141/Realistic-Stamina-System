@@ -1,0 +1,20 @@
+RSS v6.2.4 Change Notes
+=======================
+From 6.2.3 → 6.2.4 (config 6.2.4). HUD gate: no ghost bar / no double HUD.
+Keep server & clients on the same mod build.
+
+[EN]
+• Fix broken default HUD (STA 100% / zeros) when server Hint is OFF.
+• Fix double HUD when server Hint ON and client local HUD ON.
+• Unified IsHudWanted(): server Hint must be on, then local preference;
+  Destroy when unwanted; reuse a single instance when wanted.
+
+[中文]
+• 修复服务器 Hint 关闭时仍出现残缺默认 HUD（STA 100% / 其余为 0）。
+• 修复服务器与客户端 HUD 都开启时双层叠加。
+• 统一 IsHudWanted()：须服务器 Hint 开，再看本地开关；不显示则 Destroy；
+  显示则复用单例。
+
+Full log: CHANGELOG.md [6.2.4] / [6.2.3] / [6.2.2]
+
+Author: ViVi141 | License: AGPL-3.0

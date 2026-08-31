@@ -673,12 +673,12 @@ class SCR_RSS_DebugDisplay
     static void OutputHintInfo(RSS_DebugInfoParams params)
     {
         // ==================== 配置门禁检查 ====================
-        // 获取配置实例
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-
-        // 如果 Hint 显示没开启，直接退出
-        if (!settings || !settings.m_bHintDisplayEnabled)
+        // 服务器 Hint 关或本地关闭：不更新（且 Sync 应已 Destroy，避免默认 STA 100% 残影）
+        if (!SCR_RSS_StaminaHUDComponent.IsHudWanted())
             return;
+
+        if (!SCR_RSS_StaminaHUDComponent.IsInitialized())
+            SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
 
         // AI 无 HUD：仅玩家角色更新屏幕提示
         if (params.owner)
@@ -1030,9 +1030,7 @@ class SCR_RSS_DebugDisplay
         string movementTypeStr)
     {
         // ==================== 配置门禁检查 ====================
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-
-        if (!settings || !settings.m_bHintDisplayEnabled)
+        if (!SCR_RSS_StaminaHUDComponent.IsHudWanted())
             return;
 
         // 只对本地控制的玩家输出

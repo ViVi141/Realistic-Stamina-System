@@ -92,8 +92,7 @@ class SCR_PlayerBaseVehicleHelper
             }
         }
 
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
-        if (settings && settings.m_bHintDisplayEnabled)
+        if (SCR_RSS_StaminaHUDComponent.IsHudWanted())
         {
             float vehicleTimeToFullSec = -1.0;
             float targetStamina = 1.0;

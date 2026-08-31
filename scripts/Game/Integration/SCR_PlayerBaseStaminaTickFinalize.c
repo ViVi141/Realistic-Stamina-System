@@ -117,7 +117,7 @@ class SCR_PlayerBaseStaminaTickFinalize
             else
             {
                 SCR_RSS_Settings batchSettings = SCR_RSS_ConfigManager.GetSettings();
-                if (batchSettings && batchSettings.m_bHintDisplayEnabled)
+                if (batchSettings && SCR_RSS_StaminaHUDComponent.IsHudWanted())
                     loc.needLocalDebugBatch = true;
             }
         }
