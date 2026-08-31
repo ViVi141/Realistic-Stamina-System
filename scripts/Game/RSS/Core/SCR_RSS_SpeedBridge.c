@@ -451,25 +451,13 @@ class SCR_RSS_SpeedBridge
             return;
         if (maxHorizMs < 0.1)
             return;
-
-        Physics physics = owner.GetPhysics();
-        if (!physics)
+        // 启发式：实体未挂当前世界则不碰 Physics；句柄非空仍可能 AV，故仅做交叉校验后跳过写速
+        if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return;
-
-        vector velocity = physics.GetVelocity();
-        float horizSq = velocity[0] * velocity[0] + velocity[2] * velocity[2];
-        float slackMs = 0.04;
-        float slackSq = (maxHorizMs + slackMs) * (maxHorizMs + slackMs);
-        if (horizSq <= slackSq)
+        if (!SCR_RSS_RuntimeGuard.IsPhysicsHandlePresent(owner))
             return;
-        if (horizSq <= 0.0001)
-            return;
-
-        float speed = Math.Sqrt(horizSq);
-        float scale = maxHorizMs / speed;
-        velocity[0] = velocity[0] * scale;
-        velocity[2] = velocity[2] * scale;
-        physics.SetVelocity(velocity);
+        // 与 SampleEntityVelocity 同策：禁止 Physics.GetVelocity/SetVelocity（进服非空句柄 AV）
+        return;
     }
 
     //! 软钳；超额大时硬钳（控制器每帧回灌时软钳不够）
@@ -494,33 +482,12 @@ class SCR_RSS_SpeedBridge
         if (dtSec > 0.5)
             dtSec = 0.5;
 
-        Physics physics = owner.GetPhysics();
-        if (!physics)
+        // 与硬钳同策：禁止 Physics.GetVelocity/SetVelocity
+        if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return;
-
-        vector velocity = physics.GetVelocity();
-        float horizSq = velocity[0] * velocity[0] + velocity[2] * velocity[2];
-        if (horizSq <= 0.0001)
+        if (!SCR_RSS_RuntimeGuard.IsPhysicsHandlePresent(owner))
             return;
-
-        float speed = Math.Sqrt(horizSq);
-        float slackMs = 0.06;
-        if (speed <= maxHorizMs + slackMs)
-            return;
-
-        if (speed > maxHorizMs + 0.35)
-        {
-            ClampOwnerHorizontalSpeed(owner, maxHorizMs, forceIgnoreGlobalFlag);
-            return;
-        }
-
-        float newSpeed = speed - HORIZ_SOFT_DECEL_MS2 * dtSec;
-        if (newSpeed < maxHorizMs)
-            newSpeed = maxHorizMs;
-        float scale = newSpeed / speed;
-        velocity[0] = velocity[0] * scale;
-        velocity[2] = velocity[2] * scale;
-        physics.SetVelocity(velocity);
+        return;
     }
 
     //! CP 巡航 / W′ 解除武装后超速纠偏。

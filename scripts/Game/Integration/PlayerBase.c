@@ -300,8 +300,10 @@ modded class SCR_CharacterControllerComponent
 
     float GetRssCurrentSpeed()
     {
-        return SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(
-            SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(GetOwner()));
+        IEntity owner = GetOwner();
+        if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
+            return 0.0;
+        return SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(m_vComputedVelocity);
     }
 
     int GetRssMovementPhase()
@@ -539,8 +541,11 @@ modded class SCR_CharacterControllerComponent
         }
         if (!SCR_RSS_RuntimeGuard.GetWorldOrNull())
             return;
+        if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
+            return;
 
-        vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner);
+        // 启发式：勿用 GetVelocity；Debug 采样改用 tick 位置差分缓存
+        vector velocity = m_vComputedVelocity;
         vector velocityXZ = vector.Zero;
         velocityXZ[0] = velocity[0];
         velocityXZ[2] = velocity[2];
@@ -1363,7 +1368,7 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (owner && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
         {
-            vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner);
+            vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner, m_vComputedVelocity);
             float speedMs = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
             float loadKg = 0.0;
             if (m_pEncumbranceCache)
@@ -1590,7 +1595,7 @@ modded class SCR_CharacterControllerComponent
 
         IEntity ownerEnt = GetOwner();
         bool shouldSuppressSlopeServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt));
-        vector safeVelocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(ownerEnt);
+        vector safeVelocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(ownerEnt, m_vComputedVelocity);
 
         float slopeAngleDegrees = 0.0;
         if (!shouldSuppressSlopeServer)

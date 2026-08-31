@@ -1,12 +1,20 @@
 # 更新日志
 
+## [6.2.2] - 2026-09-01
+
+### 修复：加载服务器后体力 Tick 崩溃（启发式空引用）
+
+- **根因** — `GetVelocity`（CharacterController 或 Physics）在进服窗口脚本侧非空句柄仍 Access Violation；6.2.1 改用 `Physics.GetVelocity` 后崩溃点移至 `SampleEntityVelocity`。
+- **启发式空引用** — `SCR_RSS_RuntimeGuard.IsEntityWorldUsable`（Game/World 交叉）+ `IsPhysicsHandlePresent`（二次 GetPhysics）；**禁止**再解引 `GetVelocity`/`SetVelocity`。
+- **测速** — 陆地权威改为位置差分；`SampleEntityVelocity(owner, fallback)` 只做校验并返回 fallback。
+- **水平钳** — `ClampOwnerHorizontalSpeed` / SoftClamp 在证实安全前跳过 native 写速（限速源仍生效）。
+- 配置版本 / ConfigManager → **6.2.2**
+
 ## [6.2.1] - 2026-09-01
 
-### 修复：加载服务器后体力 Tick 崩溃
+### 修复尝试：PhaseA GetVelocity 崩溃
 
-- **根因** — `RSS_StaminaTickPhaseA` 陆地分支调用 `CharacterController.GetVelocity()`；进服/AI 生成窗口 Owner 已有但 Physics/Anim 未就绪时 Access Violation。
-- **就绪门** — `IsCharacterMotionReady`（World + Physics + Anim）未就绪则跳过本 tick 并续约 `CallLater`。
-- **安全测速** — 陆地改用 `Physics.GetVelocity()`；接近 0 时回退位置差分；RPC/Debug/坡度等热路径同步替换。
+- 就绪门 + 陆地改 `Physics.GetVelocity`；进服仍于 `SampleEntityVelocity` AV → 由 **6.2.2** 启发式方案取代。
 - 配置版本 / ConfigManager → **6.2.1**
 
 ## [6.2.0] - 2026-08-30

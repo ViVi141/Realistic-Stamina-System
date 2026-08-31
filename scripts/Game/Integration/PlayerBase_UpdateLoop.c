@@ -38,7 +38,7 @@ modded class SCR_CharacterControllerComponent
             return false;
         }
 
-        // 进服/AI 生成：Owner 与 World 已有，但 Physics/Anim 尚未就绪时跳过本 tick，避免 GetVelocity AV。
+        // 进服/AI 生成：启发式 Game/World/Anim 未就绪则跳过；测速只用位置差分。
         if (!SCR_PlayerBaseRssApiHelper.IsCharacterMotionReady(loc.owner, this))
         {
             RSS_ScheduleNextStaminaTick();
@@ -165,13 +165,9 @@ modded class SCR_CharacterControllerComponent
             m_vComputedVelocity = posSpeedResult.computedVelocity;
             m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
 
-            // Physics.GetVelocity：专服加载窗口比 CharacterController.GetVelocity 更安全。
-            loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(loc.owner);
-            if (SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity) < 0.01)
-            {
-                if (posSpeedResult.currentSpeed >= 0.01)
-                    loc.velocity = posSpeedResult.computedVelocity;
-            }
+            // 启发式：永不调用 GetVelocity；陆地权威测速 = 位置差分。
+            loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(
+                loc.owner, posSpeedResult.computedVelocity);
             loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
         }
 

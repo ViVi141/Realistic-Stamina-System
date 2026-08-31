@@ -544,7 +544,7 @@ class SCR_RSS_SpeedCalculator
         vector pos = owner.GetOrigin();
         vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, owner.GetWorld(), false, null);
         if (velocity.Length() < VELOCITY_SIGN_THRESHOLD)
-            velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner);
+            velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner, vector.Zero);
         float cosAngle = GetSlopeProjectionCos(normal, velocity);
         float effectiveSlopeDegrees = magnitude * cosAngle;
         return Math.Clamp(effectiveSlopeDegrees, -45.0, 45.0);

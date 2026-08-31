@@ -1,0 +1,22 @@
+RSS v6.2.2 Change Notes
+=======================
+From 6.2.1 → 6.2.2 (config 6.2.2). Server-load crash: heuristic null checks.
+Keep server & clients on the same mod build.
+
+[EN]
+• 6.2.1 still crashed in SampleEntityVelocity (Physics.GetVelocity with non-null handle).
+• Heuristic null checks: Game/World cross-check + double GetPhysics.
+• Never call CharacterController or Physics GetVelocity/SetVelocity on load.
+• Land speed = position delta only; SampleEntityVelocity returns the fallback.
+• Horizontal physics clamp skipped until native velocity is safe (speed limit still applies).
+
+[中文]
+• 6.2.1 仍在 SampleEntityVelocity 崩溃（Physics 句柄非空仍 AV）。
+• 启发式空引用：Game/World 交叉 + 二次 GetPhysics。
+• 禁止 CharacterController/Physics 的 GetVelocity/SetVelocity。
+• 陆地测速仅位置差分；SampleEntityVelocity 只校验并返回 fallback。
+• 水平物理钳在 native 测速安全前跳过（限速源仍生效）。
+
+Full log: CHANGELOG.md [6.2.2] / [6.2.1] / [6.2.0]
+
+Author: ViVi141 | License: AGPL-3.0

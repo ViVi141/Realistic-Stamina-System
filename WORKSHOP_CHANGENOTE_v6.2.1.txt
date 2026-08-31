@@ -4,16 +4,18 @@ From 6.2.0 → 6.2.1 (config 6.2.1). Dedicated/listen server load crash fix.
 Keep server & clients on the same mod build.
 
 [EN]
-• Fix crash after loading a server in RSS_StaminaTickPhaseA (GetVelocity).
-• Skip stamina tick until character World/Physics/Anim are ready; retry via CallLater.
-• Land speed sampling uses Physics.GetVelocity with position-delta fallback.
-• Same safe velocity path on RPC / debug / slope helpers.
+• Fix crash after loading a server in RSS_StaminaTickPhaseA / SampleEntityVelocity.
+• Heuristic null checks: Game/World cross-check + double GetPhysics; never call
+  CharacterController or Physics GetVelocity (non-null handles still AV on load).
+• Land speed = position delta only; SampleEntityVelocity returns the fallback.
+• Horizontal physics clamp skipped until native velocity is safe (speed limit still applies).
 
 [中文]
-• 修复加载服务器后 RSS_StaminaTickPhaseA（GetVelocity）崩溃。
-• 角色 World/Physics/Anim 未就绪时跳过本 tick，并续约 CallLater。
-• 陆地测速改用 Physics.GetVelocity，接近 0 时回退位置差分。
-• RPC / Debug / 坡度等热路径同步改为安全测速。
+• 修复加载服务器后 RSS_StaminaTickPhaseA / SampleEntityVelocity 崩溃。
+• 启发式空引用：Game/World 交叉 + 二次 GetPhysics；禁止 CharacterController/Physics
+  的 GetVelocity（进服时非空句柄仍会 AV）。
+• 陆地测速仅位置差分；SampleEntityVelocity 只校验并返回 fallback。
+• 水平物理钳在 native 测速安全前跳过（限速源仍生效）。
 
 Full log: CHANGELOG.md [6.2.1] / [6.2.0] / [6.1.7]
 
