@@ -1,5 +1,14 @@
 # 更新日志
 
+## [6.2.1] - 2026-09-01
+
+### 修复：加载服务器后体力 Tick 崩溃
+
+- **根因** — `RSS_StaminaTickPhaseA` 陆地分支调用 `CharacterController.GetVelocity()`；进服/AI 生成窗口 Owner 已有但 Physics/Anim 未就绪时 Access Violation。
+- **就绪门** — `IsCharacterMotionReady`（World + Physics + Anim）未就绪则跳过本 tick 并续约 `CallLater`。
+- **安全测速** — 陆地改用 `Physics.GetVelocity()`；接近 0 时回退位置差分；RPC/Debug/坡度等热路径同步替换。
+- 配置版本 / ConfigManager → **6.2.1**
+
 ## [6.2.0] - 2026-08-30
 
 ### 修复：Walk 最终倍显示与轻微超速

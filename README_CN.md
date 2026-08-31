@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.2.0
+# Realistic Stamina System (RSS) v6.2.1
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.2.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.0**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.1**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -224,6 +224,14 @@ Realistic-Stamina-System/
     └── README.md
 ```
 
+
+## v6.2.1 版本更新 / v6.2.1 Updates
+
+**2026-09-01**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.1]**）
+
+- **专服/听主机加载崩溃** — `RSS_StaminaTickPhaseA` 不再在 Physics/Anim 未就绪时调用 `GetVelocity`
+- **安全测速** — `Physics.GetVelocity` + 位置差分回退；RPC/Debug/坡度同步加固
+- 配置版本 **6.2.1**
 
 ## v6.2.0 版本更新 / v6.2.0 Updates
 
@@ -1087,7 +1095,8 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.2.0** (当前版本) - Walk 限速/显示、W′ 巡航缩轴、PlayerBase 拆分（见上文 v6.2.0 与 CHANGELOG）
+- **v6.2.1** (当前版本) - 加载服务器后 GetVelocity 崩溃修复（见上文 v6.2.1 与 CHANGELOG）
+- **v6.2.0** - Walk 限速/显示、W′ 巡航缩轴、PlayerBase 拆分（见上文 v6.2.0 与 CHANGELOG）
 - **v6.1.7** - 三档预设重调优 / W′ 耗尽限速（见上文 v6.1.7 与 CHANGELOG）
 - **v6.1.4** - 外部 API W′ 焦耳字段 + 文档双语/开发者指南（见上文 v6.1.4 与 CHANGELOG）
 - **v6.1.3** - 移除 CPR 等体力组件重开兼容层（见上文 v6.1.3 与 CHANGELOG）

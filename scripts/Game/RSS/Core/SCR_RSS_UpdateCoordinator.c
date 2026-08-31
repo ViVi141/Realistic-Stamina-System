@@ -543,6 +543,24 @@ class SCR_RSS_UpdateCoordinator
         vector computedVelocity,
         float dtSeconds)
     {
+        RSS_SpeedCalculationResult emptyResult = new RSS_SpeedCalculationResult();
+        if (!owner)
+        {
+            emptyResult.currentSpeed = 0.0;
+            emptyResult.lastPositionSample = lastPositionSample;
+            emptyResult.hasLastPositionSample = hasLastPositionSample;
+            emptyResult.computedVelocity = computedVelocity;
+            return emptyResult;
+        }
+        if (!owner.GetWorld())
+        {
+            emptyResult.currentSpeed = 0.0;
+            emptyResult.lastPositionSample = lastPositionSample;
+            emptyResult.hasLastPositionSample = hasLastPositionSample;
+            emptyResult.computedVelocity = computedVelocity;
+            return emptyResult;
+        }
+
         vector currentPos = owner.GetOrigin();
         vector velocity = vector.Zero;
 

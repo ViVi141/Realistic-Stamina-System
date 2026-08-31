@@ -300,7 +300,8 @@ modded class SCR_CharacterControllerComponent
 
     float GetRssCurrentSpeed()
     {
-        return SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(GetVelocity());
+        return SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(
+            SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(GetOwner()));
     }
 
     int GetRssMovementPhase()
@@ -539,7 +540,7 @@ modded class SCR_CharacterControllerComponent
         if (!SCR_RSS_RuntimeGuard.GetWorldOrNull())
             return;
 
-        vector velocity = GetVelocity();
+        vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner);
         vector velocityXZ = vector.Zero;
         velocityXZ[0] = velocity[0];
         velocityXZ[2] = velocity[2];
@@ -1362,7 +1363,7 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (owner && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
         {
-            vector velocity = GetVelocity();
+            vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner);
             float speedMs = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
             float loadKg = 0.0;
             if (m_pEncumbranceCache)
@@ -1589,12 +1590,13 @@ modded class SCR_CharacterControllerComponent
 
         IEntity ownerEnt = GetOwner();
         bool shouldSuppressSlopeServer = (m_pEnvironmentFactor && ownerEnt && m_pEnvironmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerEnt));
+        vector safeVelocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(ownerEnt);
 
         float slopeAngleDegrees = 0.0;
         if (!shouldSuppressSlopeServer)
-            slopeAngleDegrees = SCR_RSS_SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, GetVelocity());
+            slopeAngleDegrees = SCR_RSS_SpeedCalculator.GetSlopeAngle(this, m_pEnvironmentFactor, safeVelocity);
 
-        float rawSlopeServer = SCR_RSS_SpeedCalculator.GetRawSlopeAngle(this, GetVelocity());
+        float rawSlopeServer = SCR_RSS_SpeedCalculator.GetRawSlopeAngle(this, safeVelocity);
         if (shouldSuppressSlopeServer && Math.AbsFloat(rawSlopeServer) > 0.0)
             encPenalty = encPenalty * SCR_RSS_Constants.GetIndoorStairsEncumbranceSpeedFactor();
 
@@ -1603,7 +1605,7 @@ modded class SCR_CharacterControllerComponent
             IsSprinting(), GetCurrentMovementPhase(),
             SCR_RSS_MetabolismMath.IsExhausted(clampedStamina),
             SCR_RSS_MetabolismMath.CanSprint(clampedStamina),
-            SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(GetVelocity()),
+            SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(safeVelocity),
             slopeAngleDegrees, GetSprintStartTime());
 
         if (m_pNetworkSyncManager)

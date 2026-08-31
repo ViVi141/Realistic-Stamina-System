@@ -19,6 +19,40 @@ class SCR_PlayerBaseRssApiHelper
         return Math.Min(horizontalVelocity.Length(), 7.0);
     }
 
+    //! 进服/生成窗口：实体已有 Owner 但尚未挂世界或物理未激活时，
+    //! CharacterController.GetVelocity / IsSprinting 等 native 易 Access Violation。
+    //! @param owner 角色实体
+    //! @param controller 角色控制器
+    //! @return true 表示可安全读运动相关 native
+    static bool IsCharacterMotionReady(IEntity owner, SCR_CharacterControllerComponent controller)
+    {
+        if (!owner || !controller)
+            return false;
+        if (!owner.GetWorld())
+            return false;
+        if (!owner.GetPhysics())
+            return false;
+        if (!controller.GetAnimationComponent())
+            return false;
+        return true;
+    }
+
+    //! 安全测速：优先 Physics.GetVelocity（已做 null 检查）；不可用则 Zero。
+    //! 避免 CharacterController.GetVelocity 在生成窗口崩溃。
+    //! @param owner 角色实体
+    //! @return 世界空间速度（m/s），不可用时为 Zero
+    static vector SampleEntityVelocity(IEntity owner)
+    {
+        if (!owner)
+            return vector.Zero;
+        if (!owner.GetWorld())
+            return vector.Zero;
+        Physics physics = owner.GetPhysics();
+        if (!physics)
+            return vector.Zero;
+        return physics.GetVelocity();
+    }
+
     static float GetCurrentWeight(
         SCR_RSS_EncumbranceCache encumbranceCache,
         SCR_CharacterInventoryStorageComponent cachedInventoryComponent)

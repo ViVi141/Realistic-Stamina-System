@@ -1,16 +1,16 @@
-# Realistic Stamina System (RSS) v6.2.0
+# Realistic Stamina System (RSS) v6.2.1
 
 [中文 README](README_CN.md) | [English README](README_EN.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.0-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.2.1-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型。
 
 **English**: A realistic stamina and speed system mod for Arma Reforger that dynamically adjusts movement speed based on stamina and encumbrance, using precise medical/physiological models.
 
-- **GUID**: `68649101601CC93D` · **Config**: **6.2.0** · **Game**: Reforger **1.7+**
+- **GUID**: `68649101601CC93D` · **Config**: **6.2.1** · **Game**: Reforger **1.7+**
 - 完整中文说明（含历史版本记录与系统特性细则）：[README_CN.md](README_CN.md)
 - English overview：[README_EN.md](README_EN.md)
 - 开发者指南：[docs/RSS_开发者指南.md](docs/RSS_开发者指南.md) · [English](docs/en/DEVELOPER_GUIDE.md) · [docs/en index](docs/en/README.md)
@@ -137,7 +137,7 @@ v_meas → P(v) [MetabolismModel]
 - AI：状态机 + SpeedCap（与玩家同源相位曲线）+ 意图过滤 / 战伤链接 / 群组休整；可关全量或仅关体力计算
 - 服务端权威配置 + RplProp；客户端体力上报与校验限流
 - 管理员 Settings 页：三档预设 / Custom、HUD/Debug/泥泞/AI 开关
-- 配置版本 `6.2.0`（不跨大版本自动迁移）
+- 配置版本 `6.2.1`（不跨大版本自动迁移）
 
 ### 工具链
 
@@ -306,7 +306,7 @@ RealisticStaminaSystem/
 - 环境（热/雨/风/泥/室内）、游泳、跳跃翻越、泥泞滑倒（可关）  
 - HUD / 管理员 Settings / CSB / 外部 API（字段已对齐 v6）
 
-完整逐条记录：[CHANGELOG.md](CHANGELOG.md) **[6.2.0]**、**[6.1.7]**、**[6.1.6]**、**[6.1.5]**、**[6.1.4]**、**[6.1.3]**、**[6.1.2]**、**[6.1.1]**、**[6.1.0]**、**[6.0.0]**、**[5.0.0]**、**[3.23.1]**。机制清单见上文「数学模型 / 机制与特性」。
+完整逐条记录：[CHANGELOG.md](CHANGELOG.md) **[6.2.1]**、**[6.2.0]**、**[6.1.7]**、**[6.1.6]**、**[6.1.5]**、**[6.1.4]**、**[6.1.3]**、**[6.1.2]**、**[6.1.1]**、**[6.1.0]**、**[6.0.0]**、**[5.0.0]**、**[3.23.1]**。机制清单见上文「数学模型 / 机制与特性」。
 
 ### 更早版本摘要
 

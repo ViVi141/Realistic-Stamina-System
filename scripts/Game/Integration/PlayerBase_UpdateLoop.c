@@ -38,6 +38,13 @@ modded class SCR_CharacterControllerComponent
             return false;
         }
 
+        // 进服/AI 生成：Owner 与 World 已有，但 Physics/Anim 尚未就绪时跳过本 tick，避免 GetVelocity AV。
+        if (!SCR_PlayerBaseRssApiHelper.IsCharacterMotionReady(loc.owner, this))
+        {
+            RSS_ScheduleNextStaminaTick();
+            return false;
+        }
+
         if (SCR_PlayerBaseVehicleHelper.HandleVehicleStaminaUpdate(
                 this, loc.owner, m_pCompartmentAccess, m_pStaminaComponent,
                 m_pExerciseTracker, m_pFatigueSystem, m_pEpocState,
@@ -150,9 +157,6 @@ modded class SCR_CharacterControllerComponent
         }
         else
         {
-            loc.velocity = GetVelocity();
-            loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
-
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
             RSS_SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
                 loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
@@ -160,6 +164,15 @@ modded class SCR_CharacterControllerComponent
             m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
             m_vComputedVelocity = posSpeedResult.computedVelocity;
             m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
+
+            // Physics.GetVelocity：专服加载窗口比 CharacterController.GetVelocity 更安全。
+            loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(loc.owner);
+            if (SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity) < 0.01)
+            {
+                if (posSpeedResult.currentSpeed >= 0.01)
+                    loc.velocity = posSpeedResult.computedVelocity;
+            }
+            loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
         }
 
         loc.isSprintingNow = IsSprinting();

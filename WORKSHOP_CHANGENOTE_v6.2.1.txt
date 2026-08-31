@@ -1,0 +1,20 @@
+RSS v6.2.1 Change Notes
+=======================
+From 6.2.0 → 6.2.1 (config 6.2.1). Dedicated/listen server load crash fix.
+Keep server & clients on the same mod build.
+
+[EN]
+• Fix crash after loading a server in RSS_StaminaTickPhaseA (GetVelocity).
+• Skip stamina tick until character World/Physics/Anim are ready; retry via CallLater.
+• Land speed sampling uses Physics.GetVelocity with position-delta fallback.
+• Same safe velocity path on RPC / debug / slope helpers.
+
+[中文]
+• 修复加载服务器后 RSS_StaminaTickPhaseA（GetVelocity）崩溃。
+• 角色 World/Physics/Anim 未就绪时跳过本 tick，并续约 CallLater。
+• 陆地测速改用 Physics.GetVelocity，接近 0 时回退位置差分。
+• RPC / Debug / 坡度等热路径同步改为安全测速。
+
+Full log: CHANGELOG.md [6.2.1] / [6.2.0] / [6.1.7]
+
+Author: ViVi141 | License: AGPL-3.0
