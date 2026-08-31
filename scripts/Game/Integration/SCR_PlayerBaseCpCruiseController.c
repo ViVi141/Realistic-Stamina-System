@@ -284,6 +284,13 @@ class SCR_PlayerBaseCpCruiseController
         if (!ctrl)
             return;
 
+        // 蹲/趴：让引擎姿态顶速生效。W′ 空 Walk 覆盖若继续 Hold，会与站立同档，蹲走≈站走。
+        if (ctrl.GetStance() != ECharacterStance.STAND)
+        {
+            ReleaseCpWalkOverride(ctrl);
+            return;
+        }
+
         float capMs = m_fRssLastRunCruiseCapMs;
         bool outOfBand = SCR_RSS_DrainCalculator.IsRunCruiseCapOutOfBand(capMs);
 

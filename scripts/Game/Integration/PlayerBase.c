@@ -893,8 +893,10 @@ modded class SCR_CharacterControllerComponent
         RSS_UpdatePresentationSoundDrivers();
 
         // 每帧重申机械限速（负重/坡度）。默认不物理钳、不代谢伺服速度。
+        // 蹲/趴勿重申站立巡航分母，否则会把引擎姿态顶拧成与站走同绝对速。
         if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled()
             && m_fAppliedSpeedLimitMs > 0.05
+            && GetStance() == ECharacterStance.STAND
             && !SCR_PlayerBaseMovementHelper.IsInVehicle(m_pCompartmentAccess))
         {
             float limitFrac = m_fLastRssSpeedMultiplierApplied;
@@ -1409,13 +1411,16 @@ modded class SCR_CharacterControllerComponent
         float aerobic01 = GetRssAerobicPercent();
         if (m_pStaminaComponent)
             aerobic01 = m_pStaminaComponent.GetTargetStamina();
+        float wPrime01 = GetRssWPrimePool01();
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            wPrime01 = m_pAnaerobicBurst.GetCpModel().GetPool01();
         SCR_RSS_SprintGate.PokeEngineStaminaForSprintBlock(
             GetRssSprintAllowed(),
             sprintIntent,
             m_pStaminaComponent,
             pokeActive,
             aerobic01,
-            GetRssWPrimePool01());
+            wPrime01);
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 
@@ -1425,6 +1430,9 @@ modded class SCR_CharacterControllerComponent
         float aerobic01 = GetRssAerobicPercent();
         if (m_pStaminaComponent)
             aerobic01 = m_pStaminaComponent.GetTargetStamina();
+        float wPrime01 = GetRssWPrimePool01();
+        if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            wPrime01 = m_pAnaerobicBurst.GetCpModel().GetPool01();
         SCR_RSS_SprintGate.ApplyOnPrepareControls(
             am,
             GetRssSprintAllowed(),
@@ -1434,7 +1442,7 @@ modded class SCR_CharacterControllerComponent
             m_pStaminaComponent,
             pokeActive,
             aerobic01,
-            GetRssWPrimePool01());
+            wPrime01);
         m_bSprintGateEnginePokeActive = pokeActive;
     }
 

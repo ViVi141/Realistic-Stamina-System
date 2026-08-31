@@ -739,8 +739,9 @@ class SCR_RSS_Constants
 
     //! W′→引擎 GetStamina() 表现映射：驱动原生枪口晃动；有氧权威仍在 m_fTargetStamina
     static const bool V6_WPRIME_ENGINE_FX_ENABLED = true;
-    //! W′ 池低于此开始压引擎条。1.0=全池线性映射（中高池也会晃）；过小则几乎无 FX
-    static const float V6_WPRIME_ENGINE_FX_START = 1.0;
+    //! W′ 池低于此才开始压引擎条。≥此值视为恢复良好，引擎条对齐有氧权威。
+    //! 勿用 1.0：全池映射会在 W′ 已较高时仍把过时低值写入 GetStamina()。
+    static const float V6_WPRIME_ENGINE_FX_START = 0.85;
     //! W′ 空时引擎条地板（须能让 Exhaustion=1-条 超过原生模糊阈 0.45）
     static const float V6_WPRIME_ENGINE_FX_FLOOR = 0.12;
     //! Exhaustion 与表现条：1=直接用 1-presentation（对齐原生）；<1 为死区起点（旧缓和用）

@@ -1,0 +1,18 @@
+RSS v6.2.5 Change Notes
+=======================
+From 6.2.4 → 6.2.5 (config 6.2.5). W′ empty: crouch walk slower than stand.
+Keep server & clients on the same mod build.
+
+[EN]
+• When W′ is empty, crouching no longer matches standing walk speed.
+• Standing cruise SetSpeedLimit / Walk override / action scale only apply while STAND.
+• Crouch/prone clear the cruise speed source and use engine stance tops.
+
+[中文]
+• W′ 耗尽时，蹲走不再与站立走路同速。
+• 站立巡航限速 / Walk 覆盖 / 缩轴仅在站立姿态生效。
+• 蹲/趴清除巡航限速源，交回引擎姿态顶速。
+
+Full log: CHANGELOG.md [6.2.5] / [6.2.4] / [6.2.3]
+
+Author: ViVi141 | License: AGPL-3.0

@@ -169,6 +169,7 @@ class SCR_RSS_SpeedBridge
             return -1.0;
         if (!ctrl)
             return -1.0;
+        // 蹲/趴让路：由引擎姿态顶速区分站/蹲；W′ 空站立巡航缩轴不得压到蹲走同速。
         if (ctrl.GetStance() != ECharacterStance.STAND)
             return -1.0;
 
@@ -267,6 +268,8 @@ class SCR_RSS_SpeedBridge
         if (!IsMovementAnalogScaleEnabled())
             return -1.0;
         if (!ctrl)
+            return -1.0;
+        if (ctrl.GetStance() != ECharacterStance.STAND)
             return -1.0;
         if (desiredAbsMs <= walkTopMs + 0.05)
             return -1.0;

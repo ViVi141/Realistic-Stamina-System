@@ -289,10 +289,19 @@ class SCR_RSS_MetabolismMath
             }
             else if (restDurationMinutes >= SLOW_RECOVERY_START_MINUTES)
             {
-                // 慢速恢复期（≥10分钟）：线性过渡
-                const float transitionDuration = 10.0; // 过渡时间（分钟）
-                float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
-                restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
+                // 慢速期只收尾「已接近满血」；中低体力仍用中等基线。
+                // 否则等 W′ 回满时休息钟常已 ≥10min，有氧从 ~38% 爬满会到约 50 分钟。
+                float slowStaGate = SCR_RSS_ConfigBridge.GetMarginalDecayThreshold();
+                if (staminaPercent >= slowStaGate)
+                {
+                    const float transitionDuration = 10.0; // 过渡时间（分钟）
+                    float transitionProgress = Math.Min((restDurationMinutes - SLOW_RECOVERY_START_MINUTES) / transitionDuration, 1.0);
+                    restTimeMultiplier = 1.0 - (transitionProgress * (1.0 - slowRecoveryMultiplier));
+                }
+                else
+                {
+                    restTimeMultiplier = mediumRecoveryMultiplier;
+                }
             }
         }
         // 否则：运动中或 rest 尚未累积，restTimeMultiplier = 1.0

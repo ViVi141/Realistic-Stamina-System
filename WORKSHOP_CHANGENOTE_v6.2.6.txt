@@ -1,0 +1,20 @@
+RSS v6.2.6 Change Notes
+=======================
+From 6.2.5 → 6.2.6 (config 6.2.6). Engine stamina + aerobic recovery after W′ refill.
+Keep server & clients on the same mod build.
+
+[EN]
+• When W′ is mostly recovered (≥85%), stop pressing engine GetStamina() with stale W′ FX.
+• Snap engine bar to aerobic authority when FX/sprint poke clears (no long smooth lag).
+• Slow rest-phase recovery (×~0.35 after 10+ min rest) only applies near full STA (~80%+);
+  mid STA (e.g. 38%→100%) keeps medium baseline instead of ~50 min crawl.
+
+[中文]
+• W′ 恢复良好（≥85%）后不再用过时 W′ 映射压低引擎 GetStamina()。
+• 解除表现伪装时立即 Snap 到有氧权威，避免平滑拖着旧地板。
+• 休息≥10 分钟的慢速期仅在接近满血（约 80%+）生效；中低体力保持中等恢复，
+  不再出现 W′ 回满后从约 38% 爬到 100% 要约 50 分钟。
+
+Full log: CHANGELOG.md [6.2.6] / [6.2.5] / [6.2.4]
+
+Author: ViVi141 | License: AGPL-3.0

@@ -9,12 +9,13 @@ class SCR_RSS_SprintGate
     {
         if (!pokeActive || !staminaComponent)
             return;
-        staminaComponent.RestoreEngineStaminaFromTarget();
+        // 立刻贴齐有氧权威；勿平滑拖着旧 W′ 地板（否则 W′ 已回满引擎条仍过时）
+        staminaComponent.SnapEngineStaminaToTarget();
         pokeActive = false;
     }
 
     //! W′/W′max → 引擎 GetStamina() 伪装读数（1=满条不压）
-    //! 全池映射：池降多少条就压多少（再夹到 FLOOR），原生晃动读的是这条
+    //! 池低于 FX_START 才线性压条；≥ START 视为恢复良好，不压引擎。
     static float MapWPrimePoolToEngineDisplay(float wPrime01)
     {
         if (!SCR_RSS_Constants.V6_WPRIME_ENGINE_FX_ENABLED)
@@ -85,11 +86,9 @@ class SCR_RSS_SprintGate
 
         if (!needTransient)
         {
-            // 即使 poke 已清，仍每帧 Ease 回有氧，避免平滑停在半路
-            if (pokeActive)
-                ClearEnginePoke(staminaComponent, pokeActive);
-            else
-                staminaComponent.RestoreEngineStaminaFromTarget();
+            // W′ 已不压条 / 无冲刺门：立刻对齐有氧，避免平滑残留过时低值
+            pokeActive = false;
+            staminaComponent.SnapEngineStaminaToTarget();
             return;
         }
 

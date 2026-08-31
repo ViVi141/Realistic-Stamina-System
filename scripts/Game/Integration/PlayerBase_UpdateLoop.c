@@ -295,97 +295,108 @@ modded class SCR_CharacterControllerComponent
         }
         else if (IsPlayerControlled())
         {
-            // CP 巡航：SetSpeedLimit 只改指令速，物理仍可跑飞 → 超速时钳水平速度
-            bool cruiseDisarmed = false;
-            if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+            // 蹲/趴：清掉站立 W′ 巡航限速，交给引擎姿态顶速（否则蹲走≈站走）。
+            if (GetStance() != ECharacterStance.STAND)
             {
-                if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
-                    m_pAnaerobicBurst.GetCpModel()))
-                    cruiseDisarmed = true;
+                SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, 1.0);
+                RSS_RestoreNativeMovementMaxSpeed(loc.owner);
+                m_fAppliedSpeedLimitMs = -1.0;
+                m_fLastRssSpeedMultiplierApplied = 1.0;
             }
-
-            // 始终保住 RSS 限速源：SetSpeedLimit(1.0) 会拆掉 source，Sprint→Run 会瞬间 uncapped。
-            bool keepSpeedSource = true;
-            // Walk 意图：绝对顶用 Walk 引擎顶，勿用 sticky Run 分母（否则 clamp 失效）。
-            if (loc.phaseNow == 1 || loc.effectivePhase == 1)
+            else
             {
-                float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
-                if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
-                    walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
-                if (desiredAbsMs > walkTopMs)
-                    desiredAbsMs = walkTopMs;
-            }
-
-            // SetSpeedLimit 倍率相对「引擎当前相位顶」。意图 Walk 但相位仍停 Run 时，
-            // 若用 Walk 顶算 frac≈0.999 再写入，会按 Run 顶放大 → 3m/s+ 尖峰。
-            float applyEngineBase = GetRssSpeedLimitEngineBaseMs();
-            if (applyEngineBase <= 0.1)
-                applyEngineBase = loc.storedEngineBase;
-            if (applyEngineBase <= 0.1)
-                applyEngineBase = GetOriginalEngineMaxSpeed_Run();
-
-            float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
-                desiredAbsMs, applyEngineBase, keepSpeedSource);
-            // 分母跨相位切换时禁止在倍率空间斜率（SprintBlock 已在 m/s 平滑）；
-            // 否则 0.63(Run)→0.999(Walk) 会被当成提速，松巡航缩轴后窜速。
-            float lastBaseForSlew = m_fLastRssEngineBaseForLimit;
-            bool baseChanged = false;
-            if (lastBaseForSlew > 0.1 && applyEngineBase > 0.1)
-            {
-                float baseDelta = Math.AbsFloat(applyEngineBase - lastBaseForSlew);
-                if (baseDelta > 0.3)
-                    baseChanged = true;
-            }
-            if (!loc.isExhausted && !baseChanged)
-                desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
-            if (desiredFrac >= 0.999)
-                desiredFrac = 0.999;
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, desiredFrac);
-            float slewedAbsMs = desiredFrac * applyEngineBase;
-            float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
-                slewedAbsMs,
-                applyEngineBase,
-                loc.isSprintingNow,
-                loc.phaseNow);
-            m_fAppliedSpeedLimitMs = safeCap;
-            m_fLastRssSpeedMultiplierApplied = desiredFrac;
-            if (applyEngineBase > 0.1)
-                m_fLastRssSpeedMultiplierApplied = safeCap / applyEngineBase;
-            if (m_fLastRssSpeedMultiplierApplied > 0.999)
-                m_fLastRssSpeedMultiplierApplied = 0.999;
-            if (m_fLastRssSpeedMultiplierApplied < 0.01)
-                m_fLastRssSpeedMultiplierApplied = 0.01;
-            if (applyEngineBase > 0.1)
-            {
-                loc.storedEngineBase = applyEngineBase;
-                m_fLastRssEngineBaseForLimit = applyEngineBase;
-            }
-            if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
-                SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
-            if (SCR_RSS_SpeedBridge.IsMovementMaxSpeedTrialEnabled())
-                RSS_ApplyTrialMovementMaxSpeed(loc.owner, safeCap);
-
-            // 仅当 V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=true 时生效；默认不压速只扣条
-            if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
-            {
-                bool enforceCruisePhys = cruiseDisarmed;
-                if (loc.phaseNow == 1 || loc.effectivePhase == 1)
-                    enforceCruisePhys = true;
-                if (enforceCruisePhys)
+                // CP 巡航：SetSpeedLimit 只改指令速，物理仍可跑飞 → 超速时钳水平速度
+                bool cruiseDisarmed = false;
+                if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
                 {
-                    float clampDt = GetSpeedUpdateIntervalMs() / 1000.0;
-                    if (clampDt < 0.01)
-                        clampDt = 0.05;
-                    int clampPhase = loc.phaseNow;
-                    if (loc.effectivePhase == 1)
-                        clampPhase = 1;
-                    SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
-                        loc.owner,
-                        safeCap,
-                        loc.currentSpeed,
-                        clampDt,
-                        RSS_GetSmoothedGradePercentForSpeed(),
-                        clampPhase);
+                    if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(
+                        m_pAnaerobicBurst.GetCpModel()))
+                        cruiseDisarmed = true;
+                }
+
+                // 始终保住 RSS 限速源：SetSpeedLimit(1.0) 会拆掉 source，Sprint→Run 会瞬间 uncapped。
+                bool keepSpeedSource = true;
+                // Walk 意图：绝对顶用 Walk 引擎顶，勿用 sticky Run 分母（否则 clamp 失效）。
+                if (loc.phaseNow == 1 || loc.effectivePhase == 1)
+                {
+                    float walkTopMs = GetOriginalEngineMaxSpeed_Walk();
+                    if (walkTopMs < SCR_RSS_Constants.ENGINE_WALK_TOP_MS)
+                        walkTopMs = SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
+                    if (desiredAbsMs > walkTopMs)
+                        desiredAbsMs = walkTopMs;
+                }
+
+                // SetSpeedLimit 倍率相对「引擎当前相位顶」。意图 Walk 但相位仍停 Run 时，
+                // 若用 Walk 顶算 frac≈0.999 再写入，会按 Run 顶放大 → 3m/s+ 尖峰。
+                float applyEngineBase = GetRssSpeedLimitEngineBaseMs();
+                if (applyEngineBase <= 0.1)
+                    applyEngineBase = loc.storedEngineBase;
+                if (applyEngineBase <= 0.1)
+                    applyEngineBase = GetOriginalEngineMaxSpeed_Run();
+
+                float desiredFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
+                    desiredAbsMs, applyEngineBase, keepSpeedSource);
+                // 分母跨相位切换时禁止在倍率空间斜率（SprintBlock 已在 m/s 平滑）；
+                // 否则 0.63(Run)→0.999(Walk) 会被当成提速，松巡航缩轴后窜速。
+                float lastBaseForSlew = m_fLastRssEngineBaseForLimit;
+                bool baseChanged = false;
+                if (lastBaseForSlew > 0.1 && applyEngineBase > 0.1)
+                {
+                    float baseDelta = Math.AbsFloat(applyEngineBase - lastBaseForSlew);
+                    if (baseDelta > 0.3)
+                        baseChanged = true;
+                }
+                if (!loc.isExhausted && !baseChanged)
+                    desiredFrac = RSS_SlewSpeedLimitFraction(desiredFrac, loc.currentTime);
+                if (desiredFrac >= 0.999)
+                    desiredFrac = 0.999;
+                SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, desiredFrac);
+                float slewedAbsMs = desiredFrac * applyEngineBase;
+                float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
+                    slewedAbsMs,
+                    applyEngineBase,
+                    loc.isSprintingNow,
+                    loc.phaseNow);
+                m_fAppliedSpeedLimitMs = safeCap;
+                m_fLastRssSpeedMultiplierApplied = desiredFrac;
+                if (applyEngineBase > 0.1)
+                    m_fLastRssSpeedMultiplierApplied = safeCap / applyEngineBase;
+                if (m_fLastRssSpeedMultiplierApplied > 0.999)
+                    m_fLastRssSpeedMultiplierApplied = 0.999;
+                if (m_fLastRssSpeedMultiplierApplied < 0.01)
+                    m_fLastRssSpeedMultiplierApplied = 0.01;
+                if (applyEngineBase > 0.1)
+                {
+                    loc.storedEngineBase = applyEngineBase;
+                    m_fLastRssEngineBaseForLimit = applyEngineBase;
+                }
+                if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
+                    SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
+                if (SCR_RSS_SpeedBridge.IsMovementMaxSpeedTrialEnabled())
+                    RSS_ApplyTrialMovementMaxSpeed(loc.owner, safeCap);
+
+                // 仅当 V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP=true 时生效；默认不压速只扣条
+                if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
+                {
+                    bool enforceCruisePhys = cruiseDisarmed;
+                    if (loc.phaseNow == 1 || loc.effectivePhase == 1)
+                        enforceCruisePhys = true;
+                    if (enforceCruisePhys)
+                    {
+                        float clampDt = GetSpeedUpdateIntervalMs() / 1000.0;
+                        if (clampDt < 0.01)
+                            clampDt = 0.05;
+                        int clampPhase = loc.phaseNow;
+                        if (loc.effectivePhase == 1)
+                            clampPhase = 1;
+                        SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
+                            loc.owner,
+                            safeCap,
+                            loc.currentSpeed,
+                            clampDt,
+                            RSS_GetSmoothedGradePercentForSpeed(),
+                            clampPhase);
+                    }
                 }
             }
         }

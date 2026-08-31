@@ -1,17 +1,17 @@
-# Realistic Stamina System (RSS) v6.2.4
+# Realistic Stamina System (RSS) v6.2.6
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.4-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.2.6-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
 
 
 - **GUID**: `68649101601CC93D`
-- **Config version**: **6.2.4**
+- **Config version**: **6.2.6**
 - **Recommended game**: Arma Reforger **1.7+**
 
 > The **Chinese README** (`README_CN.md`) is the full narrative (features, formulas, version history). This English file keeps release notes and an expanded feature/tech summary aligned to the current tree.
@@ -62,9 +62,19 @@ EliteStandard · **StandardMilsim** (default) · TacticalAction · Custom — ba
 
 Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
 
+## v6.2.6 Updates
+
+**2026-09-01** — See `CHANGELOG.md` **[6.2.6]**
+Stop stale W′ FX on engine GetStamina() after W′ recovers (≥85%, snap); slow long-rest recovery only near full STA so 38%→100% is not ~50 min; config **6.2.6**.
+
+## v6.2.5 Updates
+
+**2026-09-01** — See `CHANGELOG.md` **[6.2.5]**
+Fix crouch walk matching stand walk when W′ is empty; cruise speed press only while STAND; config **6.2.5**.
+
 ## v6.2.4 Updates
 
-**2026-09-01** — See `CHANGELOG.md` **[6.2.4]**  
+**2026-09-01** — See `CHANGELOG.md` **[6.2.4]**
 Fix ghost default HUD when server Hint is OFF and double HUD when both server/client HUD are ON; unified `IsHudWanted()`; config **6.2.4**.
 
 ## v6.2.3 Updates
