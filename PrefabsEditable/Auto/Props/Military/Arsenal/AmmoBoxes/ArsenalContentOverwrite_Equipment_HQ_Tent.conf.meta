@@ -1,0 +1,17 @@
+MetaFileClass {
+ Name "{E8CAE761BACE5DFA}PrefabsEditable/Auto/Props/Military/Arsenal/AmmoBoxes/ArsenalContentOverwrite_Equipment_HQ_Tent.conf"
+ Configurations {
+  CONFResourceClass PC {
+  }
+  CONFResourceClass XBOX_ONE : PC {
+  }
+  CONFResourceClass XBOX_SERIES : PC {
+  }
+  CONFResourceClass PS4 : PC {
+  }
+  CONFResourceClass PS5 : PC {
+  }
+  CONFResourceClass HEADLESS : PC {
+  }
+ }
+}

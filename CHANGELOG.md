@@ -1,5 +1,138 @@
 # 更新日志
 
+## [6.2.23] - 2026-09-01
+
+### 修复：按官方医疗消耗品同一套动画调用链重做水壶
+
+对照吗啡 / 绷带 / 止血带：
+1. 角色 `CharacterAnimationComponent.BindCommand`（医疗是 `CMD_HealSelf`，水壶是官方图里的 `CMD_Item_Action`）
+2. `GetAnimationParameters` → `TryUseItemOverrideParams`（与 `SCR_ConsumableMorphine` 相同）
+3. 预制体：`player_main_1h.asi` + `AnimationAttachment(*_player.asi, BindingName Gadget)` + `ItemActionAnimAttributes`
+4. **删除** `GadgetAnimationComponent`（医疗用品都没有；它是叠播/无动画乱源之一）
+
+- 配置版本 / ConfigManager → **6.2.23**
+
+## [6.2.22] - 2026-09-01
+
+### 修复：6.2.20–6.2.21 喝水完全无动画
+
+- **根因** — `TryUseItemOverrideParams` 的 command ID 必须能在**角色** `player_main` 上 `BindCommand`；`CMD_RSS_Drink` 只在水壶图里，角色侧绑定失败。物品侧 BindCommand 的 ID 也不能正确驱动角色物品使用状态机。另：顶层误用 `player_main_1h.asi` 会与水壶 `player.asi` 叠播。
+- **修复** — 删除 `CMD_RSS_Drink` 的 agr/agf 覆盖，恢复官方 `CMD_Item_Action`；脚本在角色上 `BindCommand("CMD_Item_Action")`；预制体顶层 `AnimationInstance` 改回原版 `Canteen_*_player.asi`；`GadgetAnimationComponent` 用 `item.asi` + `AutoVariablesBind 1`；`MaxAnimLength 30`。
+- 配置版本 / ConfigManager → **6.2.22**
+
+## [6.2.21] - 2026-09-01
+
+### 修复：6.2.20 喝水完全无动画
+
+- **根因** — `CMD_RSS_Drink` 只在水壶 `Canteen_*.agr` 里，不在 `player_main`；6.2.20 在玩家 `CharacterAnimationComponent` 上 `BindCommand` 必然失败（cmdId = -1），`TryUseItemOverrideParams` 无法触发 Drinking 状态。
+- **修复** — 按 `ItemUseParameters` 注释，在物品 **`GadgetAnimationComponent`** 上 `BindCommand("CMD_RSS_Drink")`，再 `SetCharGraphBindingName("Gadget")` 只打附着层，避免 player_main 双播。
+- 配置版本 / ConfigManager → **6.2.21**
+
+## [6.2.20] - 2026-09-01
+
+### 修复：CMD_Item_Action 双图响应（资源级）
+
+- **根因** — 凡走 `CMD_Item_Action` 的路径（BindCommand / TryUseItem / ItemActionAnimAttributes）都会同时打到 **player_main** 与 **Canteen 附着图**，必然双播；脚本层无法拆开。
+- **修复** — 覆盖官方 `Canteen_US/Soviet.agr|.agf`：命令改为仅水壶图存在的 **`CMD_RSS_Drink`**；脚本 `BindCommand("CMD_RSS_Drink")` + `TryUseItemOverrideParams`；移除 `ItemActionAnimAttributes`。
+- 配置版本 / ConfigManager → **6.2.20**
+
+## [6.2.19] - 2026-09-01
+
+### 修复：双动画几乎无停顿（非 MaxAnimLength）
+
+- **根因** — 吗啡用 `CMD_HealSelf`：player_main 与附着层是互补分层。水壶 `CMD_Item_Action` 在 **player_main 与 Canteen 附着图都存在**；脚本 `BindCommand` + `OverrideParams` 会两边同时响应 → 先附着全身正确喝，再主图握枪错喝，几乎无间隔。
+- **修复** — 去掉全部 BindCommand/OverrideParams；仅 `TryUseItem` + `ItemActionAnimAttributes`（`ActionAnimDuration 30`）由引擎经 `TagLItemAction` 协调；`GadgetAnimationComponent` 用 `item.asi`（仅瓶体）；`AutoVariablesBind 0`；布料 `Animate 0`。
+- 配置版本 / ConfigManager → **6.2.19**
+
+## [6.2.18] - 2026-09-01
+
+### 修复：先正确全身喝、再握枪错喝
+
+- **根因** — `SetMaxAnimLength(5)` 与喝水时长相同；引擎到期会再发一次 `CMD_Item_Action`（`CommandIntArg = -1`，本用于打断循环动画）。水壶 `Drinking` 非循环，`IsCommand` 会再次切入 Drinking，此时角色已在收枪回握 → 第二段「握枪喝」。
+- **修复** — `MaxAnimLength` 改为 **30s**（远大于 clip），让动画自然 `RemainingTimeLess → Idle`，不再二次触发命令。
+- 配置版本 / ConfigManager → **6.2.18**
+
+## [6.2.17] - 2026-09-01
+
+### 修复：仅水壶动画 / 仍双播
+
+- **全身丢失** — 6.2.16 误用 `item.asi`（仅模型 `i_*`）；改回附着 `Canteen_*_player.asi`（全身 `p_*`）。
+- **双播** — 去掉 `ItemActionAnimAttributes`（与 `TryUseItem`/`OverrideParams` 各触发一次 `CMD_Item_Action`）；父预制体改继承 `Item_Base`（移除 `Canteen_base` 的 `GadgetAnimationComponent`）；仅 `TryUseItemOverrideParams` 单路径；`ActivateAction` 拒绝 `IsUsingItem`。
+- 配置版本 / ConfigManager → **6.2.17**
+
+## [6.2.16] - 2026-09-01
+
+### 修复：喝水双动画（附着层 clip 类型错误）
+
+- **根因** — Bohemia 为水壶做了两套 clip：`p_*`（`Canteen_*_player.asi`，全身收枪喝水）与 `i_*`（`Canteen_*_item.asi`，仅水壶模型）。手持消耗品应像吗啡：`player_main` 走 `CMD_Item_Action` 管全身，Gadget 附着层只播 `item.asi`。我们附着层误用 `player.asi`，与 `player_main` 叠了两遍全身喝水。
+- **修复** — `AnimationAttachment` 改为 `Canteen_US_item.asi` / `Canteen_Soviet_item.asi`；`BaseLoadoutClothComponent Animate 0`（避免背心挂件再响应命令）。
+- 配置版本 / ConfigManager → **6.2.16**
+
+## [6.2.15] - 2026-09-01
+
+### 修复：确认原版非双段喝水；改引擎单路径
+
+- **查证** — `Canteen_US.agf` 仅 `Idle → Drinking → Idle` 一段 clip（`p_erc_drink_UScanteen.anm` 等）；`p_*`（玩家）与 `i_*`（物品模型）为不同绑定，非故意连播；原版无 consumable，游戏中从未触发喝水。
+- **双播原因** — 吗啡用 `CMD_HealSelf`（仅 player_main）；水壶 `CMD_Item_Action` 在 player_main 与 Canteen 附着图均 `IsCommand` 监听；脚本 `BindCommand` + `OverrideParams` 会各触发一次。
+- **修复** — 去掉 `UpdateAnimationCommands` / `GetAnimationParameters`，仅 `TryUseItem(item, true, true)` + 预制体 `ItemActionAnimAttributes`。
+- 配置版本 / ConfigManager → **6.2.15**
+
+## [6.2.14] - 2026-09-01
+
+### 修复：喝水仍播两次动画
+
+- **根因** — `Canteen_base` 继承的 `GadgetAnimationComponent`（`AutoVariablesBind 1`）在物品实体上再响应一次 `CMD_Item_Action`；顶层 `ItemAnimationAttributes` 误用 `Canteen_*_player.asi`（吗啡/绷带用 `player_main_1h.asi`），与玩家 `player_main` 物品动作叠层。
+- **修复** — 对齐医疗消耗品：`player_main_1h.asi` + `ItemActionAnimAttributes`（`player_main.agr` / `CMD_Item_Action`）；显式覆盖 `GadgetAnimationComponent` 为 `AutoVariablesBind 0`；保留脚本 `TryUseItemOverrideParams` 单路径。
+- 配置版本 / ConfigManager → **6.2.14**
+
+## [6.2.13] - 2026-09-01
+
+### 修复：6.2.12 后无法喝水 / 拿水壶
+
+- **根因** — `TryUseItem(item, true, true)` 对手持消耗品 gadget 不触发 `ActivateAction` 动画链；`m_eAnimVariable NONE` 又导致无法从背包上手。
+- **修复** — 恢复 `GetAnimationParameters` + `UpdateAnimationCommands` + `TryUseItemOverrideParams`（与吗啡/工兵铲同模式）；`m_eAnimVariable` 改回 `ADRIANOV`；移除预制体 `GadgetAnimationComponent`（避免与玩家侧 `CMD_Item_Action` 双播），不再使用 `ItemActionAnimAttributes`。
+- 配置版本 / ConfigManager → **6.2.13**
+
+## [6.2.12] - 2026-09-01
+
+### 修复：按一次 R 播放两段喝水动画
+
+- **根因** — `SCR_RSS_CanteenDrinkEffect` 在玩家 AnimGraph 上 `BindCommand("CMD_Item_Action")` 并 `TryUseItemOverrideParams`，与 `GadgetAnimationComponent` / `ItemAnimationAttributes` 上同名命令叠加：先播正确收枪双手喝，再播抓枪握把喝。
+- **修复** — 改回引擎路径：`ItemActionAnimAttributes` + `TryUseItem(item, true, true)`；移除手动 BindCommand/OverrideParams；`m_eAnimVariable` 改为 `NONE`（不再借用 ADRIANOV 吗啡手型）。
+- 配置版本 / ConfigManager → **6.2.12**
+
+## [6.2.11] - 2026-09-01
+
+### 修复：R 提示仍无 / 第二次喝水动画异常
+
+- **无提示** — `DefaultPlayerController` 覆盖 GUID 错误（应为 `{6E2BB64764E3BE9B}`）；改用 `SCR_RSS_CharacterHasCanteenInHandCondition` 检测手持水壶，不依赖 conf 里 modded enum。
+- **第二次动画** — 原版 `ApplyItemEffect` 无论是否删除物品都会 `ModeClear(IN_HAND)`；`SCR_RSS_CanteenConsumableComponent` 仅在 `deleteItem` 时清手。
+- 配置版本 / ConfigManager → **6.2.11**
+
+## [6.2.10] - 2026-09-01
+
+### 修复：R 键喝水动画重复 / 无左下角提示
+
+- **双动画** — 预制体 `ItemActionAnimAttributes` 与 `SCR_RSS_CanteenDrinkEffect` 均触发 `CMD_Item_Action`；移除前者，并在 `CanApplyEffect` 中拒绝已在 `IsUsingItem` 的角色。
+- **无提示** — 新增 `SCR_EConsumableType.DRINK`；覆盖 `DefaultPlayerController` 注册 `GadgetActivate` → `#AR-RSS-DrinkCanteen`（中/英本地化）。
+- 配置版本 / ConfigManager → **6.2.10**
+
+## [6.2.9] - 2026-09-01
+
+### 修复：水壶无法从背包取出 / 无上手动画
+
+- **根因** — 原版水壶是背心挂载布料（体积 1000、`SLOT_LOADOUT_STORAGE`），未登记 `EquipGadgetAction` / `SLOT_GADGETS_STORAGE`，背包里既装不下也不走手持装备链。
+- **修复** — 体积改为 150；槽位改为 `SLOT_GADGETS_STORAGE`；增加 `EquipGadgetAction`；`m_eAnimVariable ADRIANOV` 启用上手动画；保留布料挂载与喝水消耗品。
+- 配置版本 / ConfigManager → **6.2.9**
+
+## [6.2.8] - 2026-09-01
+
+### 功能：军火箱可取水壶
+
+- **根因** — 原版 EntityCatalog / HQ 装备 overwrite 未登记水壶，仅改预制体无法在军火箱出现。
+- **修复** — 合并完整 US/USSR `InventoryItems` 目录并登记 `Canteen_US_01` / `Canteen_Soviet_01`（`EQUIPMENT`）；HQ `ArsenalContentOverwrite_Equipment_HQ_Tent` 同步加入；顺带保留 CSB 针剂条目（独立 ArsenalItem GUID，避免与吗啡撞车）。
+- 配置版本 / ConfigManager → **6.2.8**
+
 ## [6.2.7] - 2026-09-01
 
 ### 修复：HUD 残缺条 / 双层叠加（资源 GUID 撞车）

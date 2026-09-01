@@ -1,0 +1,29 @@
+SCR_PlayerController : "{6E2BB64764E3BE9B}Prefabs/Characters/Core/DefaultPlayerController.et" {
+ ID "1A9BA6BEFA06E3B1"
+ components {
+  SCR_HUDManagerComponent "{2FDC275D9EBCDB8B}" {
+   InfoDisplays {
+    SCR_AvailableActionsDisplay "{5566D19527ECD63C}" {
+     m_aActions {
+      SCR_AvailableActionContext "{B7C1D2E3F4051660}" {
+       m_aConditions {
+        SCR_RSS_CharacterHasCanteenInHandCondition "{B7C1D2E3F4051661}" {
+        }
+        SCR_CharacterIsUsingItem "{B7C1D2E3F4051662}" {
+         m_bNegateCondition 1
+        }
+        SCR_IsCharacterConsciousCondition "{B7C1D2E3F4051663}" {
+        }
+        SCR_IsCharacterInControlCondition "{B7C1D2E3F4051664}" {
+        }
+       }
+       m_sTag "RSS_CANTEEN_DRINK"
+       m_sAction "GadgetActivate"
+       m_sName "#AR-RSS-DrinkCanteen"
+      }
+     }
+    }
+   }
+  }
+ }
+}

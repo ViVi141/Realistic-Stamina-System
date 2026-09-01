@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.2.7
+# Realistic Stamina System (RSS) v6.2.8
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.7-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.2.8-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.7**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.8**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -224,6 +224,13 @@ Realistic-Stamina-System/
     └── README.md
 ```
 
+
+## v6.2.8 版本更新 / v6.2.8 Updates
+
+**2026-09-01**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.8]**）
+
+- 军火箱可取美/苏水壶（EntityCatalog + HQ Equipment overwrite）
+- 配置版本 **6.2.8**
 
 ## v6.2.7 版本更新 / v6.2.7 Updates
 
@@ -1138,7 +1145,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.2.7** (当前版本) - HUD 占用原版 StatsPanelGrid GUID 导致残影/双层（见上文 v6.2.7 与 CHANGELOG）
+- **v6.2.8** (当前版本) - 军火箱登记水壶；此前 v6.2.7 HUD GUID 撞车修复见 CHANGELOG
 - **v6.2.6** - W′ 回满后引擎条过时与有氧回血过慢修复（见上文 v6.2.6 与 CHANGELOG）
 - **v6.2.5** - W′ 空蹲走与站走同速修复（见上文 v6.2.5 与 CHANGELOG）
 - **v6.2.4** - HUD 残缺条 / 双层叠加修复（见上文 v6.2.4 与 CHANGELOG）

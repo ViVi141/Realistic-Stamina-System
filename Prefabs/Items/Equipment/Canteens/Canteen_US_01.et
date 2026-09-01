@@ -1,0 +1,99 @@
+GenericEntity : "{C95E11C60810F432}Prefabs/Items/Core/Item_Base.et" {
+ ID "508AB2013EEE1E00"
+ components {
+  InventoryItemComponent "{5222EB4D0C73006B}" {
+   Attributes SCR_ItemAttributeCollection "{5222EB4D0A2B466B}" {
+    ItemDisplayName UIInfo "{5222EB4D07D865FA}" {
+     Name "#AR-Item_CanteenUS_Name"
+     Description "#AR-Item_CanteenUS_Description"
+    }
+    ItemPhysAttributes ItemPhysicalAttributes PhysicalAttributes {
+     Weight 0.4
+     SizeSetupStrategy Manual
+     ItemDimensions 10 10 10
+     ItemVolume 150
+    }
+    ItemAnimationAttributes ItemAnimationAttributes "{685AB1F8F9A7EBC5}" {
+     AnimationInstance "{4FCBEA45CAEBC9C0}anims/workspaces/player/player_main_1h.asi"
+     AnimationIKPose "{3E5C93E85F05C6B5}Assets/Weapons/Grenades/RGD5/anims/anm/p_rgd5_ik.anm"
+     AnimationAttachments {
+      AnimationAttachmentInfo "{685AB1F8F9A7EBC8}" {
+       AnimGraph "{A3C6C4D92BA4D309}Assets/Items/Equipment/workspaces/Canteen_US.agr"
+       AnimInstance "{4A7690194B14941A}Assets/Items/Equipment/workspaces/Canteen_US_player.asi"
+       BindingName "Gadget"
+      }
+     }
+    }
+    CustomAttributes {
+     ItemActionAnimAttributes "{B7C1D2E3F40516A0}" {
+      AnimationGraphTemplate "{DFFC0A34A77ADCB4}anims/workspaces/player/player_main.agr"
+      ActionAnimationCommandName "CMD_Item_Action"
+      ActionAnimDuration 30
+      AllowMovementDuringAction 1
+     }
+     PreviewRenderAttributes "{52D4E9E38931C544}" {
+      CameraPreset Back
+      CameraOrbitAngles 25 -25 180
+      CameraDistanceToItem 1.5
+      FOV 10
+     }
+    }
+    CommonItemType "NONE"
+    m_Size SLOT_1x1
+    m_SlotType SLOT_GADGETS_STORAGE
+   }
+  }
+  MeshObject "{685AB1F8F9A7EBD0}" {
+   Object "{96CDF4C0166F696E}Assets/Items/Equipment/Canteens/Canteen_US/Canteen_US_01.xob"
+  }
+  RigidBody "{685AB1F8F9A7EBDE}" {
+   Mass 3
+   LinearDamping 0.5
+   AngularDamping 0.5
+   AngularSleepingThreashold 1
+  }
+  SCR_SoundDataComponent "{5B18D20ED0099A17}" {
+   m_aAudioSourceConfiguration {
+    SCR_AudioSourceConfiguration "{5B18D209080A5D15}" {
+     m_sSoundProject "{D7CE99AA2FB40C31}Sounds/Items/_SharedData/PickUp/Items_PickUp_Canteen.acp"
+    }
+    SCR_AudioSourceConfiguration "{5B18D2091B885AE6}" {
+     m_sSoundProject "{D7CE99AA2FB40C31}Sounds/Items/_SharedData/PickUp/Items_PickUp_Canteen.acp"
+    }
+    SCR_AudioSourceConfiguration "{5B18D20930D9E274}" {
+     m_sSoundProject "{C9A9B77442AA824A}Sounds/Items/_SharedData/Drop/Items_Drop_Canteen.acp"
+    }
+   }
+  }
+  BaseLoadoutClothComponent "{685AB1F8F9A7EBD9}" {
+   Animate 0
+   WornModel "{96CDF4C0166F696E}Assets/Items/Equipment/Canteens/Canteen_US/Canteen_US_01.xob"
+   ItemModel "{96CDF4C0166F696E}Assets/Items/Equipment/Canteens/Canteen_US/Canteen_US_01.xob"
+  }
+  ActionsManagerComponent "{508AB5952B584B2E}" {
+   ActionContexts {
+    UserActionContext "{508AC2ABEC97066C}" {
+     ContextName "default"
+     Position PointInfo "{508AC2ABEAC4A0F5}" {
+      Offset 0 0.1 0
+     }
+     Radius 0.2
+    }
+   }
+   additionalActions {
+    SCR_EquipItemAction "{B7C1D2E3F4051650}" : "{068D8D646964D12A}Prefabs/Characters/Core/Actions/EquipGadgetAction.conf" {
+    }
+   }
+  }
+  SCR_RSS_CanteenConsumableComponent "{B7C1D2E3F4051627}" {
+   m_eAnimVariable ADRIANOV
+   m_eUseMask 7
+   m_bCanBeHeld 1
+   m_ConsumableEffect SCR_RSS_CanteenDrinkEffect "{B7C1D2E3F4051628}" {
+    m_bDeleteOnUse 0
+    m_fApplyToSelfDuration 5
+    m_fApplyToOtherDuration 5
+   }
+  }
+ }
+}
