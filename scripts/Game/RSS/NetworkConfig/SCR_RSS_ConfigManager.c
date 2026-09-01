@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "6.2.6";
+    protected static const string CURRENT_VERSION = "6.2.7";
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -779,6 +779,7 @@ class SCR_RSS_ConfigManager
                 hintStatus = "enabled";
             }
             Print("[RSS_ConfigManager] Config changed: Hint display " + hintStatus);
+            SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
         }
 
         if (m_Settings.m_fStaminaDrainMultiplier != m_CachedSettings.m_fStaminaDrainMultiplier) {

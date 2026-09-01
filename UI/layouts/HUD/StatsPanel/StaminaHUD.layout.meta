@@ -1,5 +1,5 @@
 MetaFileClass {
- Name "{CD4F57077E64ECE5}UI/layouts/HUD/StatsPanel/StatsPanelGrid.layout"
+ Name "{B4E8F1A29C7D6530}UI/layouts/HUD/StatsPanel/StaminaHUD.layout"
  Configurations {
   LayoutResourceClass PC {
   }

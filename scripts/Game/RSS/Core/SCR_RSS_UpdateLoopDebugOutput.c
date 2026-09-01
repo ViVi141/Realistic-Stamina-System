@@ -23,11 +23,8 @@ class SCR_RSS_UpdateLoopDebugOutput
         if (!tick || !ctrl)
             return;
 
-        SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
         bool needDebugOutput = SCR_RSS_DebugBatchManager.IsDebugBatchActive();
-        bool needHintOutput = false;
-        if (settings && settings.m_bHintDisplayEnabled)
-            needHintOutput = true;
+        bool needHintOutput = SCR_RSS_StaminaHUDComponent.IsHudWanted();
         if (!needDebugOutput && !needHintOutput)
             return;
 

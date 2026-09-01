@@ -97,6 +97,12 @@ class SCR_RSS_StaminaHUDComponent
         float wetWeight,
         bool isSwimming)
     {
+        if (!IsHudWanted())
+        {
+            Destroy();
+            return;
+        }
+
         s_fCachedStaminaPercent = staminaPercent;
         s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
         s_fCachedSpeedMultiplier = speedMultiplier;
@@ -125,6 +131,12 @@ class SCR_RSS_StaminaHUDComponent
     //! 耗尽 / 回满 ETA（单独调用）
     static void UpdateTimeEtaHud(float timeToDepleteSec, float timeToFullSec)
     {
+        if (!IsHudWanted())
+        {
+            Destroy();
+            return;
+        }
+
         s_fCachedTimeToDepleteSec = timeToDepleteSec;
         s_fCachedTimeToFullSec = timeToFullSec;
 
@@ -141,6 +153,12 @@ class SCR_RSS_StaminaHUDComponent
     //! W′ 池 / 冲刺 CD HUD 更新（canonical）
     static void UpdateWPrimeHud(float wPrimePool01, float sprintCooldownSec, float burstCooldownFullSec)
     {
+        if (!IsHudWanted())
+        {
+            Destroy();
+            return;
+        }
+
         s_fCachedAnaerobicPercent = wPrimePool01;
         s_fCachedSprintCooldownSec = sprintCooldownSec;
         if (burstCooldownFullSec > 1.0)
@@ -153,6 +171,12 @@ class SCR_RSS_StaminaHUDComponent
     // 简化版：只更新体力值（向后兼容）
     static void UpdateStaminaValue(float staminaPercent)
     {
+        if (!IsHudWanted())
+        {
+            Destroy();
+            return;
+        }
+
         s_fCachedStaminaPercent = staminaPercent;
         s_fDisplayStaminaPercent = Math.Lerp(s_fDisplayStaminaPercent, staminaPercent, STAMINA_DISPLAY_SMOOTH_ALPHA);
 
@@ -268,7 +292,7 @@ class SCR_RSS_StaminaHUDComponent
         }
 
         // 直接在 workspace 上创建布局
-        m_wRoot = workspace.CreateWidgets("{CD4F57077E64ECE5}UI/layouts/HUD/StatsPanel/StaminaHUD.layout");
+        m_wRoot = workspace.CreateWidgets("{B4E8F1A29C7D6530}UI/layouts/HUD/StatsPanel/StaminaHUD.layout");
 
         if (!m_wRoot)
         {

@@ -189,7 +189,7 @@ FrameWidgetClass {
          }
          Color 1 1 1 1
          Opacity 0.85
-         Text "STA 100%"
+         Text "STA --"
          "Font Size" 13
          "Min Font Size" 13
          "Horizontal Alignment" Center
@@ -204,7 +204,7 @@ FrameWidgetClass {
          }
          Color 1 1 1 1
          Opacity 0.85
-         Text "ETA 0"
+         Text "ETA --"
          "Font Size" 13
          "Min Font Size" 13
          "Horizontal Alignment" Center
@@ -219,7 +219,7 @@ FrameWidgetClass {
          }
          Color 1 1 1 1
          Opacity 0.85
-         Text "SPD 100%"
+         Text "SPD --"
          "Font Size" 13
          "Min Font Size" 13
          "Horizontal Alignment" Center

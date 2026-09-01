@@ -1,5 +1,13 @@
 # 更新日志
 
+## [6.2.7] - 2026-09-01
+
+### 修复：HUD 残缺条 / 双层叠加（资源 GUID 撞车）
+
+- **根因** — `StaminaHUD.layout.meta` 的 Name 仍为原版 `StatsPanelGrid.layout`，GUID `CD4F57077E64ECE5` 覆盖游戏右上角 StatsPanel：引擎自带一层默认「STA 100%」；RSS `CreateWidgets` 再叠第二层。服务器 Hint 关只 Destroy RSS 单例，原版被覆盖的那层仍留残影。
+- **修复** — 独立 GUID `B4E8F1A29C7D6530` + meta 改为 `StaminaHUD.layout`；更新路径统一 `IsHudWanted` 门禁；Hint 配置变更时 Sync；布局默认文案改为 `--`。
+- 配置版本 / ConfigManager → **6.2.7**
+
 ## [6.2.6] - 2026-09-01
 
 ### 修复：W′ 回满后引擎条过时 + 有氧回血过慢

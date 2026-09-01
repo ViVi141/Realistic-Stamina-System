@@ -1,0 +1,21 @@
+RSS v6.2.7 Change Notes
+=======================
+From 6.2.6 → 6.2.7 (config 6.2.7). HUD ghost / double bar: layout GUID collision.
+Keep server & clients on the same mod build.
+
+[EN]
+• Root cause: StaminaHUD.layout.meta still claimed vanilla StatsPanelGrid GUID,
+  so the game HUD showed a frozen "STA 100%" layer and RSS created a second bar.
+• New unique GUID B4E8F1A29C7D6530; meta Name = StaminaHUD.layout.
+• HUD update paths gate on IsHudWanted(); Hint config change Syncs HUD;
+  layout placeholders use "--" instead of "STA 100%".
+
+[中文]
+• 根因：StaminaHUD.layout.meta 仍占用原版 StatsPanelGrid GUID，引擎自带一层
+  冻结「STA 100%」，RSS 再 CreateWidgets 叠第二层。
+• 换独立 GUID B4E8F1A29C7D6530；meta 改为 StaminaHUD.layout。
+• 更新路径走 IsHudWanted；Hint 变更 Sync；布局占位改为 --。
+
+Full log: CHANGELOG.md [6.2.7] / [6.2.6] / [6.2.5]
+
+Author: ViVi141 | License: AGPL-3.0
