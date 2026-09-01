@@ -6,7 +6,8 @@
 
 - **日志** — `crash.log`：`SCR_RSS_CanteenDrinkEffect.ActivateEffect` 第 85 行 → `GadgetAnimationComponent.SyncWithCharacter(...)` 非法读 `0x3ff`。
 - **结论** — 不可在脚本里对水壶 `GadgetAnimationComponent` 手动 `SyncWithCharacter` / 当主角色图 `CallCommand`；引擎未按该路径初始化，会直接崩。
-- **回退** — 删除 `CMD_RSS_Drink` agr 覆盖；恢复角色 `BindCommand(CMD_Item_Action)` + `TryUseItemOverrideParams`（6.2.23 安全路径）。双播问题仍在，但不崩。
+- **回退** — 删除 `CMD_RSS_Drink` agr 覆盖；恢复角色 `BindCommand(CMD_Item_Action)` + `TryUseItemOverrideParams`（6.2.23 安全路径）。
+- **已知限制（已接受）** — `CMD_Item_Action` 会同时打到 player_main 与水壶 `player.asi` 全身图，出现双播；在无崩溃方案下暂不继续折腾。
 - 配置版本 / ConfigManager → **6.2.25**
 
 ## [6.2.24] - 2026-09-01
