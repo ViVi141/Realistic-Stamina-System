@@ -1,5 +1,23 @@
 # 更新日志
 
+## [6.2.25] - 2026-09-01
+
+### 紧急修复：喝水 Access Violation 崩溃
+
+- **日志** — `crash.log`：`SCR_RSS_CanteenDrinkEffect.ActivateEffect` 第 85 行 → `GadgetAnimationComponent.SyncWithCharacter(...)` 非法读 `0x3ff`。
+- **结论** — 不可在脚本里对水壶 `GadgetAnimationComponent` 手动 `SyncWithCharacter` / 当主角色图 `CallCommand`；引擎未按该路径初始化，会直接崩。
+- **回退** — 删除 `CMD_RSS_Drink` agr 覆盖；恢复角色 `BindCommand(CMD_Item_Action)` + `TryUseItemOverrideParams`（6.2.23 安全路径）。双播问题仍在，但不崩。
+- 配置版本 / ConfigManager → **6.2.25**
+
+## [6.2.24] - 2026-09-01
+
+### 修复：医疗调用链对水壶必然双播
+
+- **对照结论** — 吗啡等医疗：`CMD_HealSelf` 在 player_main（身体）与附着 `*_player.asi`（手臂互补）分层，所以不双播。
+- **水壶差异** — `Canteen_*_player.asi` 是**全身**喝水；`CMD_Item_Action` 又在 player_main 存在。只要走医疗那套 `BindCommand` + `TryUseItemOverrideParams`，两套全身动画必然叠在一起。
+- **修复** — 覆盖 agr/agf 为仅水壶有的 `CMD_RSS_Drink`；`GadgetAnimationComponent` 用 `player.asi`，脚本 `SyncWithCharacter` + `CallCommand`，**不再**对角色发 `CMD_Item_Action`；附着层改 `item.asi`（瓶体）；效果用 `CallLater` 结算。
+- 配置版本 / ConfigManager → **6.2.24**
+
 ## [6.2.23] - 2026-09-01
 
 ### 修复：按官方医疗消耗品同一套动画调用链重做水壶

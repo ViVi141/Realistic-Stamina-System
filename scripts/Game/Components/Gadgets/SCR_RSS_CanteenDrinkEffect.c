@@ -1,16 +1,13 @@
-//! 水壶喝水：完全按官方医疗消耗品同一套调用链。
-//! 吗啡/绷带/止血带：
-//!   1) 角色 CharacterAnimationComponent.BindCommand(命令)
-//!   2) GetAnimationParameters → SetCommandID → TryUseItemOverrideParams
-//!   3) 预制体 ItemActionAnimAttributes + AnimationAttachment(BindingName Gadget)
-//!   4) 无 GadgetAnimationComponent
-//! 水壶唯一差别：物品图命令是 CMD_Item_Action（官方 Canteen.agr），不是 CMD_HealSelf。
+//! 水壶喝水：走官方消耗品安全路径（角色 BindCommand + TryUseItemOverrideParams）。
+//! 禁止 SyncWithCharacter / 物品侧 CallCommand —— 会 Access Violation（见 6.2.24 crash.log:85）。
+//!
+//! 命令用 CMD_Item_Action（player_main 与水壶图均有）。双播是资产设计问题，另议；
+//! 稳定优先：先保证不崩、有动画。
 
 [BaseContainerProps()]
 class SCR_RSS_CanteenDrinkEffect : SCR_ConsumableEffectBase
 {
     protected static const string CANTEEN_DRINK_COMMAND = "CMD_Item_Action";
-    //! 喝水 clip 非循环；MaxAnimLength 须大于实际时长，避免引擎发 CommandIntArg=-1 二次切入。
     protected static const float CANTEEN_MAX_ANIM_LENGTH = 30.0;
 
     //------------------------------------------------------------------------------------------------
@@ -56,7 +53,6 @@ class SCR_RSS_CanteenDrinkEffect : SCR_ConsumableEffectBase
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 与 SCR_ConsumableEffectHealthItems.ActivateEffect 相同：缺参时先组 ItemUseParameters。
     override bool ActivateEffect(IEntity target, IEntity user, IEntity item, ItemUseParameters animParams = null)
     {
         ItemUseParameters localAnimParams = animParams;
@@ -81,7 +77,6 @@ class SCR_RSS_CanteenDrinkEffect : SCR_ConsumableEffectBase
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 与 SCR_ConsumableEffectHealthItems 相同：在角色动画组件上 BindCommand。
     override bool UpdateAnimationCommands(IEntity user)
     {
         ChimeraCharacter character = ChimeraCharacter.Cast(user);
@@ -103,7 +98,6 @@ class SCR_RSS_CanteenDrinkEffect : SCR_ConsumableEffectBase
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 与 SCR_ConsumableMorphine 相同：super 组参后再改移动/持握；MaxAnimLength 单独加大。
     override ItemUseParameters GetAnimationParameters(IEntity item, notnull IEntity target, ECharacterHitZoneGroup group = ECharacterHitZoneGroup.VIRTUAL)
     {
         ItemUseParameters itemUseParams = super.GetAnimationParameters(item, target, group);
