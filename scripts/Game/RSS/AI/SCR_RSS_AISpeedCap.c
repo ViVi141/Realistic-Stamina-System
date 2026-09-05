@@ -1,10 +1,10 @@
 //! RSS AI Speed Cap — 五级移动限速
 //!
 //! 根据体力状态决定 AI 的最高移动类型和速度上限（经 SetSpeedLimit 与灌木减速合并）。
-//! 同时包含连续速度衰减曲线（与玩家同源 STAMINA_EXPONENT = 0.6）。
+//! 限速用绝对行军 m/s → 相位顶分数（与廉价限速 / 玩家 UpdateSpeed 同形）。
 //!
-//! 调用方：PlayerBase.c 每帧 Tick
-//! 不侵入原生行为树节点——通过 SetMovementTypeWanted + SetSpeedLimit（经 SCR_RSS_SpeedBridge）间接控制。
+//! 调用方：AIManager.Tick
+//! 不侵入原生行为树——通过 SetMovementTypeWanted + SetSpeedLimit（经 SCR_RSS_SpeedBridge）间接控制。
 
 class SCR_RSS_AISpeedCap
 {
@@ -52,41 +52,47 @@ class SCR_RSS_AISpeedCap
         float speedMul;
         EMovementType maxMovement;
 
+        // 战斗层限速也按绝对 m/s→相位分数，避免 0.65×冲刺顶仍快过玩家 Run
+        float runMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+        float walkMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+        float phaseTop = ctrl.GetRssSpeedLimitEngineBaseMs();
+        if (phaseTop < 0.1)
+            phaseTop = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+
         switch (state)
         {
         case ERSS_AIStaminaState.FRESH:
-            // 全速，不干预
+            // 全速由廉价限速管线负责，此处不覆盖
             return;
 
         case ERSS_AIStaminaState.WINDED:
-            // 禁止 Sprint，其余正常
             maxMovement = EMovementType.RUN;
-            speedMul = 1.0;
             AISetMovementTypeWanted(owner, maxMovement);
-            return;  // 不高 OverrideMaxSpeed
+            speedMul = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(runMs, phaseTop, true);
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
+            return;
 
         case ERSS_AIStaminaState.FATIGUED:
-            // RUN + 限速到 65%
             maxMovement = EMovementType.RUN;
-            speedMul = SCR_RSS_AIConstants.RSS_AI_SPEED_FATIGUED_LIMIT;
+            speedMul = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
+                runMs * SCR_RSS_AIConstants.RSS_AI_SPEED_FATIGUED_LIMIT, phaseTop, true);
             break;
 
         case ERSS_AIStaminaState.EXHAUSTED:
-            // WALK + 限速到 40%
             maxMovement = EMovementType.WALK;
-            speedMul = SCR_RSS_AIConstants.RSS_AI_SPEED_EXHAUSTED_LIMIT;
+            speedMul = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
+                walkMs * SCR_RSS_AIConstants.RSS_AI_SPEED_EXHAUSTED_LIMIT, phaseTop, true);
             break;
 
         case ERSS_AIStaminaState.COLLAPSED:
-            // 无移动
             maxMovement = EMovementType.IDLE;
-            speedMul = 0.01; // 几乎不可移动
+            speedMul = 0.01;
             break;
 
         case ERSS_AIStaminaState.RECOVERING:
-            // WALK + 连续恢复曲线
             maxMovement = EMovementType.WALK;
-            speedMul = GetRecoveringSpeedMultiplier(staminaPercent);
+            speedMul = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(
+                walkMs * GetRecoveringSpeedMultiplier(staminaPercent), phaseTop, true);
             break;
 
         default:
@@ -98,19 +104,12 @@ class SCR_RSS_AISpeedCap
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 连续速度衰减曲线：v6 与玩家同源（相位目标 + 低 STA 跛行，无平台期）
-    static float GetContinuousSpeedMultiplier(float staminaPercent01)
-    {
-        return SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(staminaPercent01, 2, 0.0);
-    }
-
-    //------------------------------------------------------------------------------------------------
-    //! 恢复期间的速度乘数：体力的连续函数，确保从 COLLAPSED 渐出。
+    //! 恢复期间相对 Walk 行军速的乘数 [RECOVERING_MIN, 1]
     protected static float GetRecoveringSpeedMultiplier(float staminaPercent)
     {
-        float contMul = GetContinuousSpeedMultiplier(staminaPercent);
-        // 恢复期间至少保证能 WALK
-        return Math.Max(contMul, SCR_RSS_AIConstants.RSS_AI_SPEED_RECOVERING_MIN);
+        float t = Math.Clamp(staminaPercent / 0.30, 0.0, 1.0);
+        float minMul = SCR_RSS_AIConstants.RSS_AI_SPEED_RECOVERING_MIN;
+        return minMul + (1.0 - minMul) * t;
     }
 
     //------------------------------------------------------------------------------------------------

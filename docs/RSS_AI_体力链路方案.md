@@ -19,7 +19,7 @@
 
 | 环节 | 玩家 | AI 管线 |
 |------|------|---------|
-| 限速意图 | `UpdateSpeed` + CP 巡航帽 + 坡度射线 | `ApplyCheapAiSpeed`（V6 相位×负重） |
+| 限速意图 | `UpdateSpeed` + CP 巡航帽 + 坡度射线 | `ApplyCheapAiSpeed`：绝对行军 m/s÷相位顶（keepSource）；默认不算消耗时冲刺压到 Run |
 | 测速 | 位置差分 | 同 |
 | 坡度 | 射线/环境 `CalculateGradePercent` | **Y 差分估 grade%** + 低通 |
 | 地形系数 | 每 tick 射线 | 近 2s / 中 5s 稀采样；远距固定 1.0 |

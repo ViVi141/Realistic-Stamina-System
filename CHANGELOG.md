@@ -9,6 +9,7 @@
 - **热应激** — `SCR_RSS_AISharedEnvCache` 全服 1Hz TOD 近似，无逐 AI 环境全链。
 - **限速** — 仍一律廉价（负重+相位）；文档：`docs/RSS_AI_体力链路方案.md`。
 - **设置文案** — 菜单：`AI Fatigue Behaviors` / `Disable All AI RSS` / `Disable AI Stamina Drain`（去掉易误解的 Speed）；说明与 Attribute 对齐 6.2.28 语义。
+- **修 AI 偏快** — 廉价限速改为「绝对 m/s ÷ 相位引擎顶」（与玩家同）；`SetSpeedLimit(1.0)` 不再摘掉源；默认不算消耗时冲刺顶压到 Run；战斗 SpeedCap 同步用绝对目标。
 - 配置版本 / ConfigManager → **6.2.28**
 
 ## [6.2.27] - 2026-09-06
