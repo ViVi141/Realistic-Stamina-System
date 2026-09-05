@@ -8,7 +8,8 @@
 
 #### AI 体力与限速
 - **专用管线** — `SCR_RSS_AIStaminaPipeline` + 共享热应激；默认廉价限速，开消耗时 Tobler/CP/Sprint 轻量帽（不跑玩家 `UpdateSpeed`）。
-- **应用层** — Agent/群组 `MovementSpeedSetting`（Origin=**SCENARIO**）；巡航/跛行钉 WALK；群组 Override 按成员 maxGait **min** 聚合。
+- **应用层** — Agent/群组 `MovementSpeedSetting`（Origin=**SCENARIO**）；仅跛行/巡航闩钉 WALK；群组 Override 按成员 maxGait **min** 聚合。
+- **修复：批量放置群组慢走** — `maxGait` 曾镜像 `engPh==WALK`，新刷/编队起步被钉群组 Wanted=WALK 后自锁；现仅体力原因钉走，解除时重写 Wanted=RUN。
 - **性能** — AI LOD / 轻量 early-out / 错峰；室内坡度走缓存；`SCR_RSS_EngineReuse`（坡度/测速/地形优先官方量）。
 - **生产** — `[RSS][AI-SPD]` 与 Workbench Debug/HUD/DataExport 默认关。
 
@@ -37,9 +38,11 @@
 
 #### 玩家与联机
 - W′ 引擎条过时、有氧长休回血过慢；蹲走/站走巡航分流；联机 HUD W′；HUD GUID 撞车与双层叠加。
+- **修复：有氧恢复越来越慢** — `ExerciseTracker` 停下后过早清 `wasMoving`，休息钟几乎永不按次重置，永久卡在中/慢恢；现用 pending 边沿在 idle≥1s 重置，运动中休息钟 1:1 衰减。
 - **专用服 HUD** — 无故残影 / 开关后双层：按名清扫孤儿根；`OnControlled(false)` 仅本机失控才 Destroy 单例；管理员客户端乐观应用 Hint 后再 Sync。
 - **水壶（已知无效果）** — 军火库仍可取到，仅作**未删除的开发产物**：可上手/播喝水动画，**暂不回补 STA/W′**；保留是为后续「体力补充食物」管线做集成测试，不应当作可用补给。
 - 进服测速崩溃：禁止不可靠 `GetVelocity` 解引；陆地测速权威对齐官方案例。
+- **修复：进载具 W′ 显示为 0** — 载具 HUD 未填 `anaerobicPercent`（默认 0）刷成 W′0%；现写入真实池，并在载具分支回充 W′（此前跳过 Phase B）。
 
 #### 仓库
 - 文档整理入 `docs/`；6.1 及更早日志见 `docs/archive/CHANGELOG_pre_6.2.md`。

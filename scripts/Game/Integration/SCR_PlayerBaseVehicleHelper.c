@@ -48,6 +48,41 @@ class SCR_PlayerBaseVehicleHelper
                 exerciseTracker.Update(vehicleCurrentTimeMs, false, true);
         }
 
+        float currentWorldTime = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentWorldTime))
+            return true;
+
+        float timeDeltaSec;
+        if (lastStaminaUpdateTime >= 0.0)
+            timeDeltaSec = currentWorldTime - lastStaminaUpdateTime;
+        else
+            timeDeltaSec = speedUpdateIntervalMs / 1000.0;
+        timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
+
+        // 载具内跳过 Phase B：须在此回充 W′，并正确喂 HUD（未填 anaerobic 会显示 0%）
+        float wPrime01 = 1.0;
+        float sprintCdSec = 0.0;
+        float burstCdFullSec = SCR_RSS_ConfigBridge.GetBurstCooldownFullSeconds();
+        if (ctrl)
+        {
+            SCR_RSS_AnaerobicBurst burst = ctrl.RSS_GetWPrimeBurst();
+            if (burst)
+            {
+                // 坐姿休息：近零功率欠 CP 回充
+                burst.TickPower(0.0, false, currentWorldTime, timeDeltaSec, 0.0);
+                wPrime01 = burst.GetPool();
+                sprintCdSec = burst.GetCooldownRemainingSec(currentWorldTime);
+            }
+            else
+            {
+                wPrime01 = ctrl.GetRssWPrimePool01();
+                sprintCdSec = ctrl.GetRssSprintCooldownRemainingSec();
+            }
+
+            if (Replication.IsServer())
+                ctrl.RSS_SyncAnaerobicReplicationFromLocalBurst();
+        }
+
         float vehicleStaminaPercent = 1.0;
         if (staminaComponent)
             vehicleStaminaPercent = Math.Clamp(staminaComponent.GetTargetStamina(), 0.0, 1.0);
@@ -60,27 +95,17 @@ class SCR_PlayerBaseVehicleHelper
                 epocState, encumbranceCache, exerciseTracker, ctrl, null, true);
             float vehicleRecoveryRate = vehicleNetRatePerSec / 5.0;
 
-            float currentWorldTime = 0.0;
-            if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentWorldTime))
-                return true;
             if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 fatigueSystem.ProcessFatigueDecay(currentWorldTime, 0.0);
             float maxStaminaCap = 1.0;
             if (fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
                 maxStaminaCap = fatigueSystem.GetMaxStaminaCap();
-            float timeDeltaSec;
-            if (lastStaminaUpdateTime >= 0.0)
-                timeDeltaSec = currentWorldTime - lastStaminaUpdateTime;
-            else
-                timeDeltaSec = speedUpdateIntervalMs / 1000.0;
-            timeDeltaSec = Math.Clamp(timeDeltaSec, 0.01, 0.5);
             float tickScale = Math.Clamp(timeDeltaSec / 0.2, 0.01, 2.0);
             float oldStamina = vehicleStaminaPercent;
             float newStamina = Math.Clamp(oldStamina + vehicleRecoveryRate * tickScale, 0.0, maxStaminaCap);
             if (vehicleStaminaPercent > maxStaminaCap)
                 newStamina = maxStaminaCap;
             staminaComponent.SetTargetStamina(newStamina);
-            lastStaminaUpdateTime = currentWorldTime;
             vehicleStaminaPercent = newStamina;
 
             if (vehicleDebugCounter == 0 && isDebugEnabled)
@@ -91,6 +116,8 @@ class SCR_PlayerBaseVehicleHelper
                     vehicleNetRatePerSec.ToString());
             }
         }
+
+        lastStaminaUpdateTime = currentWorldTime;
 
         if (SCR_RSS_StaminaHUDComponent.IsHudWanted())
         {
@@ -120,7 +147,10 @@ class SCR_PlayerBaseVehicleHelper
                 vehicleTimeToFullSec,
                 terrainDetector,
                 environmentFactor,
-                stanceTransitionManager);
+                stanceTransitionManager,
+                wPrime01,
+                sprintCdSec,
+                burstCdFullSec);
             SCR_RSS_DebugDisplay.OutputHintInfo(vehicleParams);
         }
 

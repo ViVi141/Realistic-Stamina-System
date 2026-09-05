@@ -1358,6 +1358,25 @@ modded class SCR_CharacterControllerComponent
         Replication.BumpMe();
     }
 
+    //! 载具路径等：把本地 W′ 池写入 RplProp（仅服务端）
+    void RSS_SyncAnaerobicReplicationFromLocalBurst()
+    {
+        if (!Replication.IsServer())
+            return;
+        if (!m_pAnaerobicBurst)
+            return;
+
+        float replPool = m_fReplAnaerobicPool;
+        float replCd = m_fReplAnaerobicCooldownUntil;
+        SCR_RSS_NetworkSyncManager.ReadAnaerobicForReplication(
+            m_pAnaerobicBurst, replPool, replCd);
+        m_fReplAnaerobicPool = replPool;
+        m_fReplAnaerobicCooldownUntil = replCd;
+        if (m_pStaminaState)
+            m_pStaminaState.SetWPrimePool01(replPool);
+        Replication.BumpMe();
+    }
+
     SCR_RSS_AnaerobicBurst RSS_GetAnaerobicBurst()
     {
         return RSS_GetWPrimeBurst();

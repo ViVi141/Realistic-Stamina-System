@@ -7,6 +7,7 @@
 //!   - BT 每帧重写；须用 Agent/Group Settings（Origin=SCENARIO）持久裁剪
 //!   - 日志 wanted=WALK 且 ovr=RUN ⇒ 群组 Override 未钉住
 //!   - 6.2.39：群组帽 = 成员 maxGait 的 min；禁止未疲劳队友把群组抬回 RUN
+//!   - 6.3.0：maxGait 不得镜像 engPh==WALK（否则新刷/批量放置自锁慢走）；解除钉时重写 Wanted=RUN
 //!   - 角色层 SetSpeedLimit 对 AI 常无效；真正掉速靠步态离开 Run
 
 class SCR_RSS_AIMovementApply
@@ -182,6 +183,10 @@ class SCR_RSS_AIMovementApply
             s_mInstalledGroupMaxGait = new map<EntityID, int>();
 
         bool restrictGait = NeedsFixedSpeedSetting(groupCap);
+        bool wasRestricted = false;
+        int prevInstalledGait = -1;
+        if (s_mInstalledGroupMaxGait.Find(groupId, prevInstalledGait))
+            wasRestricted = true;
 
         if (groupSettings)
         {
@@ -201,7 +206,7 @@ class SCR_RSS_AIMovementApply
 
                 if (needInstall)
                 {
-                    // 群组 Setting 只有固定档；钉死最高允许步态（裁剪 BT）
+                    // 群组 Setting 是固定档（GetSpeed 忽略 desired）——仅体力需要时钉 WALK/IDLE
                     SCR_AIGroupCharactersMovementSpeedSetting groupSetting =
                         SCR_AIGroupCharactersMovementSpeedSetting.Create(
                             RSS_AI_SPEED_ORIGIN,
@@ -237,6 +242,12 @@ class SCR_RSS_AIMovementApply
                 }
 
                 groupMove.SetGroupCharactersWantedMovementType(resolved);
+            }
+            else if (wasRestricted)
+            {
+                // RemoveSetting 不会清掉先前写入的 Wanted=WALK；不重写会自锁慢走。
+                // 先回到 RUN，下一拍由编队/航点 BT 按意图覆盖。
+                groupMove.SetGroupCharactersWantedMovementType(EMovementType.RUN);
             }
 
             s_bLastGroupOk = true;

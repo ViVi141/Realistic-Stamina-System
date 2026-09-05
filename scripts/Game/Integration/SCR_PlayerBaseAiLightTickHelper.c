@@ -277,24 +277,26 @@ class SCR_PlayerBaseAiLightTickHelper
             }
         }
 
-        // —— 应用层：SCENARIO Setting 锁步态（压过航点 BT），再 SetSpeedLimit ——
-        // 巡航闩 / 跛行 → 固定钉 WALK；禁止冲刺 → Range 最高 RUN；允许冲刺 → SPRINT
+        // —— 应用层：SCENARIO Setting 锁「允许的最高步态」（非当前相位镜像）——
+        // 禁止把 engPh==WALK 当成 maxGait：新刷兵/编队起步常为走，会钉死群组 Override，
+        // 随后每 tick 仍是 Walk → 永难回到 Run（专用服批量放置时尤其明显）。
         EMovementType maxGait = EMovementType.RUN;
         if (outExhausted)
             maxGait = EMovementType.WALK;
         else if (cruiseLatched)
-            maxGait = EMovementType.WALK;
-        else if (effectivePhase == 1)
             maxGait = EMovementType.WALK;
         else if (allowAiSprintTarget && effectivePhase == 3)
             maxGait = EMovementType.SPRINT;
         else
             maxGait = EMovementType.RUN;
 
-        if (maxGait == EMovementType.WALK)
+        // outPhase 仍反映实际目标脚程（跛行/巡航闩会把 target 压到走）
+        if (outExhausted || cruiseLatched)
             outPhase = 1;
         else if (maxGait == EMovementType.SPRINT)
             outPhase = 3;
+        else if (effectivePhase == 1 && targetMs <= walkMs * 1.05)
+            outPhase = 1;
         else
             outPhase = 2;
 

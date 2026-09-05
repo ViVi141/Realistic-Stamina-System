@@ -9,6 +9,8 @@ class SCR_RSS_ExerciseTracker
     protected float m_fRestDurationMinutes = 0.0; // 连续休息时间（分钟），从停止运动开始计算
     protected float m_fLastUpdateTime = 0.0; // 上次更新时间（秒）
     protected bool m_bWasMoving = false; // 上次更新时是否在移动
+    //! 刚停下后尚未进入 idle 窗：等 idle≥1s 时重置休息钟（避免过早清 m_bWasMoving 导致永不重置）
+    protected bool m_bPendingRestSessionReset = false;
     protected float m_fLastMovementTime = 0.0; // 上次移动时间（用于判断 idle 状态）
     protected const float IDLE_THRESHOLD_TIME = 1.0; // 静止判定阈值（秒，超过此时间视为 idle）
 
@@ -22,6 +24,7 @@ class SCR_RSS_ExerciseTracker
         m_fRestDurationMinutes = 0.0;
         m_fLastUpdateTime = currentTime / 1000.0; // 转换为秒
         m_bWasMoving = false;
+        m_bPendingRestSessionReset = false;
         m_fLastMovementTime = currentTime / 1000.0; // 转换为秒
     }
 
@@ -37,31 +40,47 @@ class SCR_RSS_ExerciseTracker
         // 上限 0.5s（约 2fps 时的帧间距），超出部分视为异常帧，截断而非丢弃，保证累积连续性
         float rawDelta = currentTimeSeconds - m_fLastUpdateTime;
         float clampedDelta = Math.Clamp(rawDelta, 0.0, 0.5);
+        float deltaMinutes = 0.0;
+        if (clampedDelta > 0.0)
+            deltaMinutes = clampedDelta / 60.0;
 
         if (isCurrentlyMoving)
         {
             if (m_bWasMoving)
             {
-                // 继续运动：累积运动时间（使用截断后的 delta）
-                if (clampedDelta > 0.0)
-                    m_fExerciseDurationMinutes += clampedDelta / 60.0;
+                // 继续运动：累积运动时间
+                if (deltaMinutes > 0.0)
+                    m_fExerciseDurationMinutes = m_fExerciseDurationMinutes + deltaMinutes;
             }
             else
             {
-                // 从静止转为运动：重置运动时间；休息时间改为衰减而非清零，避免「走向载具」导致上车后 ETA 从 1 分钟突增为 4 分钟
+                // 从静止转为运动：重置运动钟
                 m_fExerciseDurationMinutes = 0.0;
-                // 不再清零 m_fRestDurationMinutes；运动时按 1:1 衰减，使短距离走向载具几乎保留休息进度
             }
+
+            // 运动中休息钟 1:1 衰减（短途走动不全丢快恢窗口；长走仍会清零）
+            if (deltaMinutes > 0.0)
+            {
+                m_fRestDurationMinutes = m_fRestDurationMinutes - deltaMinutes;
+                if (m_fRestDurationMinutes < 0.0)
+                    m_fRestDurationMinutes = 0.0;
+            }
+
+            m_bPendingRestSessionReset = false;
             m_bWasMoving = true;
             m_fLastMovementTime = currentTimeSeconds;
         }
         else
         {
-            // 静止：检查是否进入 idle 状态
-            float idleDuration = currentTimeSeconds - m_fLastMovementTime;
-            bool isIdle = (idleDuration >= IDLE_THRESHOLD_TIME);
+            // 边缘检测须在清 m_bWasMoving 之前：否则 idle≥1s 时重置分支永远走不到
+            if (m_bWasMoving)
+                m_bPendingRestSessionReset = true;
 
-            // 调试信息：idle 状态检测
+            float idleDuration = currentTimeSeconds - m_fLastMovementTime;
+            bool isIdle = false;
+            if (idleDuration >= IDLE_THRESHOLD_TIME)
+                isIdle = true;
+
             static float nextIdleLogTime = 0.0;
             if (SCR_RSS_DebugBatchManager.ShouldVerboseLog(nextIdleLogTime))
             {
@@ -73,40 +92,35 @@ class SCR_RSS_ExerciseTracker
 
             if (isIdle)
             {
-                // 进入 idle 状态：用截断后的 delta 累积休息时间，彻底消除大 delta 警告
-                float restTimeDelta = clampedDelta;
-
-                // 调试信息：休息时间累积
-                static float nextRestLogTime = 0.0;
-                if (SCR_RSS_DebugBatchManager.ShouldVerboseLog(nextRestLogTime))
+                if (m_bPendingRestSessionReset)
                 {
-                    PrintFormat("[RSS] SCR_RSS_ExerciseTracker 休息时间累积 / Rest Time Accumulation: restTimeDelta=%1s, wasMoving=%2 | restTimeDelta=%1s, wasMoving=%2",
-                        Math.Round(restTimeDelta * 10.0) / 10.0,
-                        m_bWasMoving);
+                    // 新一段陆地休息：重置；载具内视为延续休息（保留进度）
+                    if (!isInVehicle)
+                        m_fRestDurationMinutes = 0.0;
+                    m_bPendingRestSessionReset = false;
+
+                    static float nextRestLogTime = 0.0;
+                    if (SCR_RSS_DebugBatchManager.ShouldVerboseLog(nextRestLogTime))
+                    {
+                        PrintFormat("[RSS] SCR_RSS_ExerciseTracker 休息会话重置 / Rest session reset: inVehicle=%1",
+                            isInVehicle);
+                    }
                 }
 
-                if (restTimeDelta > 0.0)
+                if (deltaMinutes > 0.0)
                 {
-                    // 累积休息时间（用于多维度恢复模型）
-                    if (m_bWasMoving)
-                    {
-                        // 从运动转为 idle：通常重置休息时间；载具内保留进度（上车视为延续休息）
-                        if (isInVehicle)
-                            m_fRestDurationMinutes += restTimeDelta / 60.0;
-                        else
-                            m_fRestDurationMinutes = 0.0;
-                    }
-                    else
-                    {
-                        // 继续 idle：累积休息时间
-                        m_fRestDurationMinutes += restTimeDelta / 60.0;
-                    }
+                    m_fRestDurationMinutes = m_fRestDurationMinutes + deltaMinutes;
 
-                    // 静止时，疲劳恢复速度是累积速度的2倍（快速恢复）
+                    // 静止时，疲劳恢复速度是累积速度的2倍
                     if (m_fExerciseDurationMinutes > 0.0)
-                        m_fExerciseDurationMinutes = Math.Max(m_fExerciseDurationMinutes - (restTimeDelta / 60.0 * 2.0), 0.0);
+                    {
+                        m_fExerciseDurationMinutes = m_fExerciseDurationMinutes - (deltaMinutes * 2.0);
+                        if (m_fExerciseDurationMinutes < 0.0)
+                            m_fExerciseDurationMinutes = 0.0;
+                    }
                 }
             }
+
             m_bWasMoving = false;
         }
         m_fLastUpdateTime = currentTimeSeconds;
@@ -162,5 +176,6 @@ class SCR_RSS_ExerciseTracker
     void ResetRestDuration()
     {
         m_fRestDurationMinutes = 0.0;
+        m_bPendingRestSessionReset = false;
     }
 }

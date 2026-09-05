@@ -261,7 +261,10 @@ class SCR_PlayerBaseNetworkHelper
         float vehicleTimeToFullSec,
         SCR_RSS_TerrainDetector terrainDetector,
         SCR_RSS_EnvironmentFactor environmentFactor,
-        SCR_RSS_StanceTransitionManager stanceTransitionManager)
+        SCR_RSS_StanceTransitionManager stanceTransitionManager,
+        float wPrimePool01 = 1.0,
+        float sprintCooldownSec = 0.0,
+        float burstCooldownFullSec = 180.0)
     {
         RSS_DebugInfoParams vehicleParams = new RSS_DebugInfoParams();
         vehicleParams.owner = owner;
@@ -286,6 +289,10 @@ class SCR_PlayerBaseNetworkHelper
         vehicleParams.stanceTransitionManager = stanceTransitionManager;
         vehicleParams.timeToDepleteSec = vehicleTimeToDepleteSec;
         vehicleParams.timeToFullSec = vehicleTimeToFullSec;
+        // 未设置时 Enforce float 默认为 0，会把 HUD W′ 刷成 0%
+        vehicleParams.anaerobicPercent = Math.Clamp(wPrimePool01, 0.0, 1.0);
+        vehicleParams.sprintCooldownSec = sprintCooldownSec;
+        vehicleParams.burstCooldownFullSec = burstCooldownFullSec;
         return vehicleParams;
     }
 }

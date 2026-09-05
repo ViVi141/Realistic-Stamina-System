@@ -17,6 +17,9 @@ AI SETTINGS (what they do now)
 • AI Fatigue Behaviors (default OFF): FSM, gait pin, combat decay; needs drain OFF
 • Disable All AI RSS: stops AI RSS loop entirely (last resort for dense AI servers)
 • Group/SCENARIO gait pin so AI actually walks when exhausted (not stuck at Run override)
+• Fix: mass-placed groups stuck walking with full stamina — maxGait no longer mirrors engPh==WALK; clearing pin rewrites Wanted=RUN
+• Fix: aerobic recovery getting stuck slow — ExerciseTracker rest clock now resets each idle session (was never resetting after first stop)
+• Fix: W′ shows 0% in vehicles — HUD omitted anaerobic field (defaulted to 0); vehicle path now feeds real pool + recovers W′
 
 HUD
 • Dedicated-server ghost / double HUD fixed (orphan widget purge; only local pawn tears down singleton)
@@ -41,6 +44,9 @@ AI 设置（现行含义）
 • AI 疲劳行为（默认关）：状态机 / 步态钉 / 战斗衰减；需先开消耗
 • 完全禁用 AI RSS：停掉 AI 主循环（高密度专服保底）
 • 群组/SCENARIO 步态钉：力竭时能真正降到走，不再被群组 Override 钉在 Run
+• 修复：批量放置群组体力满仍慢走 — maxGait 不再镜像 engPh==WALK；解除钉时重写 Wanted=RUN
+• 修复：有氧回血越来越慢 — 休息钟每次站稳后重置（此前几乎永不重置）
+• 修复：进载具 W′ 显示 0% — HUD 未填无氧字段；现写入真实池并在载具内回充
 
 HUD
 • 专用服无故残影 / 开关后双层：按名清扫孤儿层；仅本机失控才 Destroy 单例
