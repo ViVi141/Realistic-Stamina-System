@@ -18,7 +18,7 @@ tools/
   test_rss_random_scenarios.py / test_rss_sim_parity.py
   optimized_rss_config_*_{v4,v6}.json
   embed_json_to_c.py / compare_presets.py / check_*.py
-  bench_physio_anchors.py / bench_rss_sim_backend.py
+  bench_physio_anchors.py / bench_rss_sim_backend.py / bench_ai_path_costs.py
   bench_standard_30kg_*.py / regen_vt_standard.py
   wb_compile_telemetry.py / Run-WbCompileTelemetry.ps1
   rss_sim/                    # PyO3 + sim_grid_random

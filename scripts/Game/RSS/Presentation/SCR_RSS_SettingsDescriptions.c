@@ -69,7 +69,7 @@ class SCR_RSS_SettingsDescriptions
         if (widgetName == "ToggleDisableAIStamina")
         {
             title = "Disable AI Stamina (Speed)";
-            body = "AI skips RSS stamina drain/recovery and the heavy Phase A path (terrain, environment, metabolic UpdateSpeed). Keeps a light encumbrance + gait speed limit only. Much cheaper under high AI counts. Lighter than Disable AI RSS (All). Does not enable experimental combat effects by itself.";
+            body = "When On: AI skips stamina drain/recovery (light tick only). When Off: AI still drains stamina for combat FSM, but speed uses the same cheap encumbrance+gait limit as the On path (no terrain/env/UpdateSpeed). Prefer Off only if you need AI STA numbers; for max FPS turn On or use Disable AI RSS (All).";
             return true;
         }
 

@@ -8,16 +8,22 @@ class SCR_RSS_AIConstants
     static const bool RSS_PERF_AI_DISTANCE_LOD_ENABLED = true;
     static const float RSS_PERF_AI_LOD_NEAR_M = 400.0;
     static const float RSS_PERF_AI_LOD_FAR_M = 1200.0;
-    //! 全量 AI 体力路径 LOD（DisableAIStaminaCalc=false）
-    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 400; // perf: 200→400，高密度 AI 减负
-    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 700;
-    static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 2000;
-    //! 轻量路径（默认 DisableAIStaminaCalc=true）：仅负重/相位限速，可更稀
-    static const int RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS = 500;
-    static const int RSS_PERF_AI_LIGHT_MID_INTERVAL_MS = 1000;
-    static const int RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS = 2500;
     //! 全服玩家原点缓存 TTL（秒）；所有 AI LOD 共用，避免每 tick 分配 GetPlayers
     static const float RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC = 0.25;
+    //! 全量体力路径 LOD（DisableAIStaminaCalc=false）；再拉稀以削 Speed 尖刺
+    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 600;
+    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 1000;
+    static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 2500;
+    //! 轻量路径（DisableAIStaminaCalc=true）：仅负重/相位限速
+    static const int RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS = 800;
+    static const int RSS_PERF_AI_LIGHT_MID_INTERVAL_MS = 1500;
+    static const int RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS = 3000;
+    //! CallLater 错峰上限（ms），避免百人 AI 同帧齐刷
+    static const int RSS_PERF_AI_TICK_STAGGER_MS = 180;
+    //! AI 战斗行为层节流（秒）
+    static const float RSS_PERF_AI_BEHAVIOR_NEAR_SEC = 0.75;
+    static const float RSS_PERF_AI_BEHAVIOR_MID_SEC = 1.5;
+    static const float RSS_PERF_AI_BEHAVIOR_FAR_SEC = 3.0;
     // [SOFT] AI 体力状态机 — 转移阈值（可在预设中调整）
     static const float RSS_AI_STATE_FRESH_DOWN = 0.80;           // FRESH → WINDED
     static const float RSS_AI_STATE_WINDED_DOWN = 0.50;          // WINDED → FATIGUED

@@ -84,15 +84,42 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        // 默认 DisableAIStaminaCalc：跳过地形/环境/代谢 Phase A，仅负重+相位限速。
-        float lightFrac = 1.0;
-        if (SCR_PlayerBaseAiLightTickHelper.TryApplyLightSpeedLimit(
-                this, loc.owner, m_pEncumbranceCache, m_fAnimSpeedCompensation, lightFrac))
+        // AI：永不走玩家级 UpdateSpeed/地形/环境（「Speed」卡顿主因）。
+        // DisableAIStaminaCalc → 仅廉价限速后结束；否则补最小测速后进 Phase B 算消耗。
+        if (!loc.isPlayer)
         {
-            m_fLastRssSpeedMultiplierApplied = lightFrac;
-            m_fAppliedSpeedLimitMs = -1.0;
-            RSS_ScheduleNextStaminaTick();
-            return false;
+            float cheapFrac = 1.0;
+            float cheapEnc = 0.0;
+            float cheapSta = 1.0;
+            int cheapPhase = 2;
+            bool cheapExhausted = false;
+            if (SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeed(
+                    this, loc.owner, m_pEncumbranceCache, m_fAnimSpeedCompensation,
+                    cheapFrac, cheapEnc, cheapSta, cheapPhase, cheapExhausted))
+            {
+                m_fLastRssSpeedMultiplierApplied = cheapFrac;
+                m_fAppliedSpeedLimitMs = -1.0;
+                loc.staminaPercent = cheapSta;
+                loc.encumbranceSpeedPenalty = cheapEnc;
+                loc.isExhausted = cheapExhausted;
+                loc.phaseNow = cheapPhase;
+                loc.effectivePhase = cheapPhase;
+                loc.finalSpeedMultiplier = cheapFrac;
+                loc.baseSpeedMultiplier = cheapFrac;
+                loc.isSprintingNow = IsSprinting();
+                loc.isSprintActive = loc.isSprintingNow;
+                if (cheapPhase == 3)
+                    loc.isSprintActive = true;
+                loc.sprintIntent = loc.isSprintActive;
+
+                if (SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
+                {
+                    RSS_ScheduleNextStaminaTick();
+                    return false;
+                }
+
+                return RSS_AiPhaseAFillForDrain(loc);
+            }
         }
 
         loc.staminaPercent = GetRssAerobicPercent();
@@ -469,6 +496,45 @@ modded class SCR_CharacterControllerComponent
         return true;
     }
 
+    //! AI 全量体力：Phase A 只做位置测速 + 体重，跳过地形/环境/UpdateSpeed。
+    //! @return true 继续 Phase B
+    bool RSS_AiPhaseAFillForDrain(RSS_StaminaTickLocals loc)
+    {
+        if (!loc || !loc.owner || !loc.world)
+        {
+            RSS_ScheduleNextStaminaTick();
+            return false;
+        }
+
+        float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
+        RSS_SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+            loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
+        m_vLastPositionSample = posSpeedResult.lastPositionSample;
+        m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
+        m_vComputedVelocity = posSpeedResult.computedVelocity;
+        m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
+
+        loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(
+            loc.owner, posSpeedResult.computedVelocity);
+        loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
+
+        loc.currentTimeForExerciseMs = loc.world.GetWorldTime();
+        loc.currentTime = loc.currentTimeForExerciseMs / 1000.0;
+
+        // AI 不采样地形/环境（射线与天气是 Speed 路径尖刺源）
+        loc.terrainFactor = 1.0;
+        loc.isSwimmingForSpeed = false;
+
+        loc.currentWeight = 0.0;
+        if (m_pEncumbranceCache && m_pEncumbranceCache.IsCacheValid())
+            loc.currentWeight = m_pEncumbranceCache.GetCurrentWeight();
+
+        loc.speedToApply = loc.finalSpeedMultiplier;
+        loc.finalSpeedToApply = Math.Clamp(loc.speedToApply, 0.01, 3.0);
+        m_sLastSpeedSource = "Server";
+        return true;
+    }
+
 //! @return false = early-out (caller should CallLater and return)
     bool RSS_StaminaTickPhaseB(RSS_StaminaTickLocals loc)
     {
@@ -500,17 +566,18 @@ modded class SCR_CharacterControllerComponent
         }
 
         loc.heatStressMultiplier = 1.0;
-        if (m_pEnvironmentFactor)
-            loc.heatStressMultiplier = m_pEnvironmentFactor.GetHeatStressMultiplier();
-
         loc.rainWeight = 0.0;
-        if (m_pEnvironmentFactor)
-            loc.rainWeight = m_pEnvironmentFactor.GetRainWeight();
-
-        if (loc.isPlayer && RSS_IsCaffeineSodiumBenzoateActive())
+        if (loc.isPlayer)
         {
-            loc.heatStressMultiplier = 1.0;
-            loc.rainWeight = 0.0;
+            if (m_pEnvironmentFactor)
+                loc.heatStressMultiplier = m_pEnvironmentFactor.GetHeatStressMultiplier();
+            if (m_pEnvironmentFactor)
+                loc.rainWeight = m_pEnvironmentFactor.GetRainWeight();
+            if (RSS_IsCaffeineSodiumBenzoateActive())
+            {
+                loc.heatStressMultiplier = 1.0;
+                loc.rainWeight = 0.0;
+            }
         }
 
         loc.totalWetWeight = SCR_RSS_SwimmingStateManager.CalculateTotalWetWeight(m_fCurrentWetWeight, loc.rainWeight);
@@ -544,18 +611,23 @@ modded class SCR_CharacterControllerComponent
             loc.velocityForDrain = vector.Zero;
 
         loc.slopeAngleDegrees = 0.0;
-        loc.gradeResult = SCR_RSS_SpeedCalculator.CalculateGradePercent(
-            this,
-            loc.currentSpeed,
-            m_pJumpVaultDetector,
-            loc.slopeAngleDegrees,
-            m_pEnvironmentFactor,
-            loc.velocityForDrain);
-        loc.gradePercent = loc.gradeResult.gradePercent;
-        loc.slopeAngleDegrees = loc.gradeResult.slopeAngleDegrees;
+        loc.gradePercent = 0.0;
+        // AI：跳过坡度射线与 CP 代谢二次限速（Speed 尖刺）；玩家保留全链。
+        if (loc.isPlayer)
+        {
+            loc.gradeResult = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+                this,
+                loc.currentSpeed,
+                m_pJumpVaultDetector,
+                loc.slopeAngleDegrees,
+                m_pEnvironmentFactor,
+                loc.velocityForDrain);
+            loc.gradePercent = loc.gradeResult.gradePercent;
+            loc.slopeAngleDegrees = loc.gradeResult.slopeAngleDegrees;
+        }
 
         // 默认 drain-only：CP 代谢伺服关时整块跳过（避免坡度平滑 + 空调用）
-        if (!loc.isExhausted && SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
+        if (loc.isPlayer && !loc.isExhausted && SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled())
         {
             float engineBase = GetRssSpeedLimitEngineBaseMs();
             if (engineBase <= 0.05)
@@ -594,53 +666,43 @@ modded class SCR_CharacterControllerComponent
             if (correctedSpeed != m_fLastRssSpeedMultiplierApplied
                 && SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
             {
-                if (IsPlayerControlled())
+                float hardFrac = RSS_SlewSpeedLimitFraction(correctedSpeed, loc.currentTime);
+                if (hardFrac > 0.999)
+                    hardFrac = 0.999;
+                float hardAbs = hardFrac * engineBase;
+                // 同 tick 二次 Apply 只允许压低；步态地板托高已在首轮 UpdateSpeed/落盘完成。
+                bool allowMetabApply = true;
+                if (appliedBeforeMetab > 0.05 && hardAbs > appliedBeforeMetab + 0.01)
+                    allowMetabApply = false;
+                if (allowMetabApply)
                 {
-                    float hardFrac = RSS_SlewSpeedLimitFraction(correctedSpeed, loc.currentTime);
-                    if (hardFrac > 0.999)
-                        hardFrac = 0.999;
-                    float hardAbs = hardFrac * engineBase;
-                    // 同 tick 二次 Apply 只允许压低；步态地板托高已在首轮 UpdateSpeed/落盘完成。
-                    bool allowMetabApply = true;
-                    if (appliedBeforeMetab > 0.05 && hardAbs > appliedBeforeMetab + 0.01)
-                        allowMetabApply = false;
-                    if (allowMetabApply)
+                    SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, hardFrac);
+                    float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
+                        hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
+                    m_fAppliedSpeedLimitMs = safeCap;
+                    m_fLastRssSpeedMultiplierApplied = hardFrac;
+                    loc.finalSpeedMultiplier = hardFrac;
+                    if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
+                        SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
+                    if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
                     {
-                        SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, hardFrac);
-                        float safeCap = SCR_RSS_SpeedBridge.GetPhaseSafePhysicsCapMs(
-                            hardAbs, engineBase, loc.isSprintingNow, loc.phaseNow);
-                        m_fAppliedSpeedLimitMs = safeCap;
-                        m_fLastRssSpeedMultiplierApplied = hardFrac;
-                        loc.finalSpeedMultiplier = hardFrac;
-                        if (SCR_RSS_SpeedBridge.IsHorizontalSpeedClampEnabled())
-                            SCR_RSS_SpeedBridge.ClampOwnerHorizontalSpeed(loc.owner, safeCap);
-                        if (SCR_RSS_Constants.V6_CP_CRUISE_OVERSPEED_PHYSICS_CLAMP)
+                        bool metabDisarmed = false;
+                        if (cpModel)
                         {
-                            bool metabDisarmed = false;
-                            if (cpModel)
-                            {
-                                if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
-                                    metabDisarmed = true;
-                            }
-                            if (metabDisarmed || loc.phaseNow == 1)
-                            {
-                                SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
-                                    loc.owner,
-                                    safeCap,
-                                    loc.currentSpeed,
-                                    loc.timeDeltaSec,
-                                    loc.gradePercent,
-                                    loc.phaseNow);
-                            }
+                            if (!SCR_RSS_DrainCalculator.IsWPrimePoolAvailableForOverspeed(cpModel))
+                                metabDisarmed = true;
+                        }
+                        if (metabDisarmed || loc.phaseNow == 1)
+                        {
+                            SCR_RSS_SpeedBridge.EnforceCpCruisePhysicsCap(
+                                loc.owner,
+                                safeCap,
+                                loc.currentSpeed,
+                                loc.timeDeltaSec,
+                                loc.gradePercent,
+                                loc.phaseNow);
                         }
                     }
-                }
-                else
-                {
-                    SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(loc.owner, correctedSpeed);
-                    m_fLastRssSpeedMultiplierApplied = correctedSpeed;
-                    m_fAppliedSpeedLimitMs = correctedSpeed * engineBase;
-                    loc.finalSpeedMultiplier = correctedSpeed;
                 }
             }
         }
@@ -741,9 +803,10 @@ modded class SCR_CharacterControllerComponent
             else
                 fatigueVal = 0.0;
 
+            float distM = SCR_RSS_AIUpdateInterval.GetNearestPlayerDistanceM(loc.owner);
             m_pAIManager.Tick(
-                loc.owner, loc.currentTime, loc.timeDeltaSec,
-                loc.staminaPercent, fatigueVal, loc.currentSpeed, loc.isPlayer);
+                loc.owner, this, loc.currentTime, loc.timeDeltaSec,
+                loc.staminaPercent, fatigueVal, loc.currentSpeed, loc.isPlayer, distM);
         }
 
         loc.isSprinting = loc.isSprintingNow;

@@ -342,6 +342,40 @@ modded class SCR_CharacterControllerComponent
         return m_pEnvironmentFactor;
     }
 
+    SCR_RSS_EncumbranceCache GetRssEncumbranceCache()
+    {
+        return m_pEncumbranceCache;
+    }
+
+    SCR_RSS_TerrainDetector GetRssTerrainDetector()
+    {
+        return m_pTerrainDetector;
+    }
+
+    SCR_RSS_CollapseTransition GetRssCollapseTransition()
+    {
+        return m_pCollapseTransition;
+    }
+
+    SCR_RSS_SlopeSpeedTransition GetRssSlopeSpeedTransition()
+    {
+        return m_pSlopeSpeedTransition;
+    }
+
+    SCR_RSS_AIManager GetRssAIManager()
+    {
+        return m_pAIManager;
+    }
+
+    //! 控制台：SCR_RSS_PerfProbe.Run() / Run(3000)
+    void RSS_RunPerfProbe(int iterations = 2000)
+    {
+        IEntity owner = GetOwner();
+        if (!owner)
+            return;
+        SCR_RSS_PerfProbe.RunOnController(this, owner, iterations);
+    }
+
     //! V6_TRY_MOVEMENT_MAX_SPEED：按绝对 m/s 写 MovementMaxSpeed
     protected void RSS_ApplyTrialMovementMaxSpeed(IEntity owner, float absMs)
     {
@@ -961,7 +995,25 @@ modded class SCR_CharacterControllerComponent
         if (!q)
             return;
         m_bRssStaminaLoopActive = true;
-        q.CallLater(SCR_PlayerBaseLoop.Tick, GetSpeedUpdateIntervalMs(), false, this);
+        int delayMs = GetSpeedUpdateIntervalMs();
+        if (!IsPlayerControlled())
+        {
+            IEntity own = GetOwner();
+            if (own)
+            {
+                int stagger = SCR_RSS_AIConstants.RSS_PERF_AI_TICK_STAGGER_MS;
+                if (stagger > 0)
+                {
+                    vector o = own.GetOrigin();
+                    float mix = o[0] * 17.3 + o[2] * 31.7;
+                    if (mix < 0.0)
+                        mix = -mix;
+                    int idHash = mix;
+                    delayMs = delayMs + (idHash % (stagger + 1));
+                }
+            }
+        }
+        q.CallLater(SCR_PlayerBaseLoop.Tick, delayMs, false, this);
     }
 
     //! 实体即将被删除时调用：清理所有引用、停止 CallLater 循环、注销静态注册表

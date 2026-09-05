@@ -1,48 +1,50 @@
-//! AI 轻量 tick：DisableAIStaminaCalc 时只保留负重/相位限速，跳过地形/环境/代谢整链。
-//! 高密度 AI 场景下 Phase A 全量路径是专服 CPU 主因之一。
+//! AI 廉价限速：所有服端 AI 共用（无论是否算体力消耗）。
+//! 跳过地形射线 / 环境因子 / UpdateCoordinator.UpdateSpeed —— 这是「Speed」选项卡顿主因。
 
 class SCR_PlayerBaseAiLightTickHelper
 {
-    //! 对 AI 应用轻量限速并返回 true（调用方应 ScheduleNext 后结束 Phase A）。
-    //! @param ctrl 角色控制器（modded PlayerBase）
-    //! @param owner 角色实体
-    //! @param encumbranceCache 负重缓存（可为 null）
-    //! @param animSpeedCompensation 动画速度补偿
-    //! @param outAppliedFrac 写出本次限速分数
-    //! @return true 表示已处理并应 early-out
-    static bool TryApplyLightSpeedLimit(
+    //! 对 AI 应用负重+相位限速（不读配置开关）。
+    //! @return true 表示已处理（调用方为 AI）
+    static bool ApplyCheapAiSpeed(
         SCR_CharacterControllerComponent ctrl,
         IEntity owner,
         SCR_RSS_EncumbranceCache encumbranceCache,
         float animSpeedCompensation,
-        out float outAppliedFrac)
+        out float outAppliedFrac,
+        out float outEncumbrancePenalty,
+        out float outStaminaPercent,
+        out int outPhase,
+        out bool outExhausted)
     {
         outAppliedFrac = 1.0;
+        outEncumbrancePenalty = 0.0;
+        outStaminaPercent = 1.0;
+        outPhase = 2;
+        outExhausted = false;
+
         if (!ctrl || !owner)
             return false;
         if (ctrl.IsPlayerControlled())
             return false;
-        if (!SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
-            return false;
 
-        float encumbranceSpeedPenalty = 0.0;
         if (encumbranceCache)
         {
             encumbranceCache.CheckAndUpdate();
-            encumbranceSpeedPenalty = encumbranceCache.GetSpeedPenaltyFraction();
-            encumbranceSpeedPenalty = encumbranceSpeedPenalty
+            outEncumbrancePenalty = encumbranceCache.GetSpeedPenaltyFraction();
+            outEncumbrancePenalty = outEncumbrancePenalty
                 * SCR_RSS_ConfigBridge.GetCustomEncumbranceSpeedPenaltyMultiplier();
             float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
-            encumbranceSpeedPenalty = Math.Clamp(encumbranceSpeedPenalty, 0.0, maxPenalty);
+            outEncumbrancePenalty = Math.Clamp(outEncumbrancePenalty, 0.0, maxPenalty);
         }
 
-        float staminaPercent = ctrl.GetRssAerobicPercent();
-        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+        outStaminaPercent = ctrl.GetRssAerobicPercent();
+        outStaminaPercent = Math.Clamp(outStaminaPercent, 0.0, 1.0);
+        outExhausted = SCR_RSS_MetabolismMath.IsExhausted(outStaminaPercent);
 
-        if (SCR_RSS_MetabolismMath.IsExhausted(staminaPercent))
+        if (outExhausted)
         {
             float limpSpeedMultiplier = SCR_RSS_MetabolismMath.GetDynamicLimpMultiplier(
-                encumbranceSpeedPenalty);
+                outEncumbrancePenalty);
             float compensatedLimpMultiplier = Math.Clamp(
                 limpSpeedMultiplier * animSpeedCompensation, 0.01, 1.0);
             if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
@@ -50,6 +52,7 @@ class SCR_PlayerBaseAiLightTickHelper
             else
                 SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, 1.0);
             outAppliedFrac = compensatedLimpMultiplier;
+            outPhase = 1;
             return true;
         }
 
@@ -59,9 +62,10 @@ class SCR_PlayerBaseAiLightTickHelper
             effectivePhase = 2;
         if (ctrl.IsSprinting())
             effectivePhase = 3;
+        outPhase = effectivePhase;
 
         float speedMult = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(
-            staminaPercent, effectivePhase, encumbranceSpeedPenalty);
+            outStaminaPercent, effectivePhase, outEncumbrancePenalty);
         speedMult = Math.Clamp(speedMult * animSpeedCompensation, 0.01, 1.0);
 
         float customSprint = SCR_RSS_ConfigBridge.GetCustomSprintSpeedMultiplier();
@@ -75,5 +79,26 @@ class SCR_PlayerBaseAiLightTickHelper
 
         outAppliedFrac = speedMult;
         return true;
+    }
+
+    //! DisableAIStaminaCalc：廉价限速后结束整 tick（不算消耗）。
+    static bool TryApplyLightSpeedLimit(
+        SCR_CharacterControllerComponent ctrl,
+        IEntity owner,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        float animSpeedCompensation,
+        out float outAppliedFrac)
+    {
+        outAppliedFrac = 1.0;
+        if (!SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
+            return false;
+
+        float enc = 0.0;
+        float sta = 1.0;
+        int phase = 2;
+        bool exhausted = false;
+        return ApplyCheapAiSpeed(
+            ctrl, owner, encumbranceCache, animSpeedCompensation,
+            outAppliedFrac, enc, sta, phase, exhausted);
     }
 }

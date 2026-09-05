@@ -4,54 +4,47 @@
 //! PlayerBase 仅需持有一个 ref SCR_RSS_AIManager，每 tick 调用 .Tick() 一次。
 //!
 //! 职责范围：
-//!   - 行为层节流（500ms）
+//!   - 行为层节流（距离 LOD）
 //!   - 体力状态机 Tick + SpeedCap / IntentFilter / CombatDecay 模块链
 
-// ============================================================================
-// Tick 返回结果
-// ============================================================================
 enum ERSS_AIManagerTickResult
 {
-    AI_TICK_NORMAL,            // 正常执行了 AI tick
-    AI_TICK_THROTTLED          // 行为层被 500ms 节流跳过
+    AI_TICK_NORMAL,
+    AI_TICK_THROTTLED,
+    AI_TICK_SKIPPED_COMBAT
 }
 
-// ============================================================================
-// AI Manager
-// ============================================================================
 class SCR_RSS_AIManager
 {
-    // ── 行为层节流（500ms） ──
     protected float m_fLastBehaviorTickTime;
-    protected static const float BEHAVIOR_TICK_INTERVAL_SEC = 0.5;
-
-    // ── AI 个体状态 ──
     protected ERSS_AIStaminaState m_eStaminaState;
     protected float m_fTimeStationarySec;
     protected float m_fLastDebugPrintTime;
+    protected ERSS_AIStaminaState m_eLastAppliedCombatState;
+    protected bool m_bHasAppliedCombatState;
 
-    // ========================================================================
-    //  构造
-    // ========================================================================
     void SCR_RSS_AIManager()
     {
         m_eStaminaState = ERSS_AIStaminaState.FRESH;
         m_fTimeStationarySec = 0.0;
         m_fLastDebugPrintTime = -1.0;
         m_fLastBehaviorTickTime = -1.0;
+        m_eLastAppliedCombatState = ERSS_AIStaminaState.FRESH;
+        m_bHasAppliedCombatState = false;
     }
 
-    // ========================================================================
-    //  主入口：每 tick 由 PlayerBase 调用一次
-    // ========================================================================
+    //! @param ctrl 已持有的角色控制器（避免每 tick FindComponent）
+    //! @param distToNearestPlayerM 距最近玩家（m）；<0 表示未知→按近距
     ERSS_AIManagerTickResult Tick(
         IEntity owner,
+        SCR_CharacterControllerComponent ctrl,
         float currentTime,
         float timeDeltaSec,
         float staminaPercent,
         float fatigueVal,
         float currentSpeed,
-        bool isPlayer)
+        bool isPlayer,
+        float distToNearestPlayerM)
     {
         if (!owner)
             return ERSS_AIManagerTickResult.AI_TICK_NORMAL;
@@ -60,19 +53,28 @@ class SCR_RSS_AIManager
         if (isPlayer)
             return ERSS_AIManagerTickResult.AI_TICK_NORMAL;
 
-        // ── 行为层节流（500ms） ──
-        if (currentTime - m_fLastBehaviorTickTime < BEHAVIOR_TICK_INTERVAL_SEC)
+        if (!SCR_RSS_ConfigBridge.IsAIStaminaCombatEffectsEnabled())
+            return ERSS_AIManagerTickResult.AI_TICK_SKIPPED_COMBAT;
+
+        float behaviorInterval = SCR_RSS_AIConstants.RSS_PERF_AI_BEHAVIOR_NEAR_SEC;
+        if (distToNearestPlayerM >= 0.0)
+        {
+            if (distToNearestPlayerM > SCR_RSS_AIConstants.RSS_PERF_AI_LOD_FAR_M)
+                behaviorInterval = SCR_RSS_AIConstants.RSS_PERF_AI_BEHAVIOR_FAR_SEC;
+            else if (distToNearestPlayerM > SCR_RSS_AIConstants.RSS_PERF_AI_LOD_NEAR_M)
+                behaviorInterval = SCR_RSS_AIConstants.RSS_PERF_AI_BEHAVIOR_MID_SEC;
+        }
+
+        if (currentTime - m_fLastBehaviorTickTime < behaviorInterval)
             return ERSS_AIManagerTickResult.AI_TICK_THROTTLED;
 
         m_fLastBehaviorTickTime = currentTime;
 
-        // ── 静止时间累计 ──
         if (currentSpeed < 0.05)
             m_fTimeStationarySec = m_fTimeStationarySec + timeDeltaSec;
         else
             m_fTimeStationarySec = 0.0;
 
-        // ── 体力状态机 ──
         ERSS_AIStaminaState prevState = m_eStaminaState;
         ERSS_AIStaminaState aiState = SCR_RSS_AIStaminaState.Tick(
             staminaPercent,
@@ -81,23 +83,28 @@ class SCR_RSS_AIManager
             m_fTimeStationarySec,
             m_eStaminaState);
 
-        // ── 模块链按序 Apply ──
-        bool isThreatened = false;  // 群组功能已移除，默认非威胁状态
-        SCR_CharacterControllerComponent ctrl = SCR_CharacterControllerComponent.Cast(
-            owner.FindComponent(SCR_CharacterControllerComponent));
+        bool isThreatened = false;
         if (ctrl)
-        {
             SCR_RSS_AISpeedCap.Apply(ctrl, owner, aiState, staminaPercent, isThreatened);
+
+        // Intent / CombatDecay：状态未变则跳过（SetStateAllActionsOfType 很贵）
+        bool stateChanged = true;
+        if (m_bHasAppliedCombatState)
+        {
+            if (aiState == m_eLastAppliedCombatState)
+                stateChanged = false;
         }
-        SCR_RSS_AIIntentFilter.Apply(owner, aiState, prevState, isThreatened);
-        SCR_RSS_AICombatDecay.Apply(owner, aiState);
+
+        if (stateChanged || prevState != aiState)
+        {
+            SCR_RSS_AIIntentFilter.Apply(owner, aiState, prevState, isThreatened);
+            SCR_RSS_AICombatDecay.Apply(owner, aiState);
+            m_eLastAppliedCombatState = aiState;
+            m_bHasAppliedCombatState = true;
+        }
 
         return ERSS_AIManagerTickResult.AI_TICK_NORMAL;
     }
-
-    // ========================================================================
-    //  公开查询方法
-    // ========================================================================
 
     ERSS_AIStaminaState GetStaminaState()
     {
@@ -114,12 +121,9 @@ class SCR_RSS_AIManager
         m_fLastDebugPrintTime = t;
     }
 
-    // ========================================================================
-    //  生命周期管理
-    // ========================================================================
-
     void OnEntityDeleted()
     {
         m_fLastBehaviorTickTime = -1.0;
+        m_bHasAppliedCombatState = false;
     }
 }

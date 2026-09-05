@@ -1,0 +1,136 @@
+{
+  "twin_available": true,
+  "meta": {
+    "iterations": 1500,
+    "warmup": 100,
+    "agents": 120,
+    "players": 8,
+    "near_frac": 0.45,
+    "mid_frac": 0.35,
+    "version_target": "6.2.27"
+  },
+  "timings": [
+    {
+      "name": "light_only",
+      "label_zh": "light speed (Speed On)",
+      "iterations": 1500,
+      "total_sec": 0.026013499999862688,
+      "ns_per_call": 17342.33333324179,
+      "ms_per_1k_calls": 17.34233333324179,
+      "relative_to_light": 1.0,
+      "notes": "enc+phase+SetSpeedLimit"
+    },
+    {
+      "name": "drain_cheap_speed",
+      "label_zh": "cheap speed + drain 6.2.27",
+      "iterations": 1500,
+      "total_sec": 0.06333509999967646,
+      "ns_per_call": 42223.399999784306,
+      "ms_per_1k_calls": 42.223399999784306,
+      "relative_to_light": 2.434701212832213,
+      "notes": "light+pos+Pandolf+W'"
+    },
+    {
+      "name": "legacy_heavy_speed",
+      "label_zh": "legacy full Speed path",
+      "iterations": 1500,
+      "total_sec": 0.6331393999998909,
+      "ns_per_call": 422092.9333332606,
+      "ms_per_1k_calls": 422.0929333332606,
+      "relative_to_light": 24.33887789045046,
+      "notes": "terrain+env+UpdateSpeed+CP"
+    },
+    {
+      "name": "combat_behavior",
+      "label_zh": "combat behavior (state change)",
+      "iterations": 1500,
+      "total_sec": 0.3003294000000096,
+      "ns_per_call": 200219.60000000644,
+      "ms_per_1k_calls": 200.21960000000644,
+      "relative_to_light": 11.545136179352836,
+      "notes": "IntentFilter+CombatDecay"
+    },
+    {
+      "name": "lod_uncached",
+      "label_zh": "LOD scan uncached",
+      "iterations": 1500,
+      "total_sec": 0.012117899999793735,
+      "ns_per_call": 8078.59999986249,
+      "ms_per_1k_calls": 8.07859999986249,
+      "relative_to_light": 0.4658312030237262,
+      "notes": "GetPlayers x8"
+    },
+    {
+      "name": "lod_cached",
+      "label_zh": "LOD shared cache",
+      "iterations": 1500,
+      "total_sec": 0.004160100000262901,
+      "ns_per_call": 2773.400000175267,
+      "ms_per_1k_calls": 2.773400000175267,
+      "relative_to_light": 0.15992081035942338,
+      "notes": "TTL~0.25s"
+    },
+    {
+      "name": "twin_metabolism",
+      "label_zh": "twin metabolism_power",
+      "iterations": 1500,
+      "total_sec": 0.008841100000609003,
+      "ns_per_call": 5894.066667072669,
+      "ms_per_1k_calls": 5.894066667072669,
+      "relative_to_light": 0.3398658389165499,
+      "notes": "math only"
+    },
+    {
+      "name": "twin_metab_cap",
+      "label_zh": "twin CP speed cap",
+      "iterations": 1500,
+      "total_sec": 0.22079719999965164,
+      "ns_per_call": 147198.13333310108,
+      "ms_per_1k_calls": 147.19813333310108,
+      "relative_to_light": 8.487792876806932,
+      "notes": "math only"
+    }
+  ],
+  "projections": [
+    {
+      "name": "A light_only @ light LOD",
+      "agents": 120,
+      "ticks_per_sec_effective": 0.8247630405184937,
+      "calls_per_sec": 98.97156486221924,
+      "ms_per_sec_cpu": 1.7163978683531667,
+      "pct_of_16ms_frame": 10.727486677207292
+    },
+    {
+      "name": "B drain_cheap_speed @ full LOD (6.2.27)",
+      "agents": 120,
+      "ticks_per_sec_effective": 1.1111881099593106,
+      "calls_per_sec": 133.34257319511727,
+      "ms_per_sec_cpu": 5.630176805017953,
+      "pct_of_16ms_frame": 35.18860503136221
+    },
+    {
+      "name": "C legacy_heavy_speed @ full LOD (old)",
+      "agents": 120,
+      "ticks_per_sec_effective": 1.1111881099593106,
+      "calls_per_sec": 133.34257319511727,
+      "ms_per_sec_cpu": 56.28295785813205,
+      "pct_of_16ms_frame": 351.7684866133253
+    },
+    {
+      "name": "D B + combat every near tick",
+      "agents": 120,
+      "ticks_per_sec_effective": 1.1111881099593106,
+      "calls_per_sec": 133.34257319511727,
+      "ms_per_sec_cpu": 14.97440563885224,
+      "pct_of_16ms_frame": 93.5900352428265
+    },
+    {
+      "name": "E C + combat (worst old config)",
+      "agents": 120,
+      "ticks_per_sec_effective": 1.5788341237767456,
+      "calls_per_sec": 189.46009485320948,
+      "ms_per_sec_cpu": 98.93657938992543,
+      "pct_of_16ms_frame": 618.3536211870338
+    }
+  ]
+}

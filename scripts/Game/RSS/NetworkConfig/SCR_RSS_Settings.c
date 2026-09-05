@@ -26,7 +26,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("6.2.26", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.2.27", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
@@ -87,7 +87,7 @@ class SCR_RSS_Settings
     [Attribute("false", UIWidgets.CheckBox, "AI: disable ALL RSS calculations for AI. Engine handles stamina completely. Also disables AI combat effects. | 完全禁用 AI 的 RSS 计算，体力交还引擎处理。同时关闭 AI 战斗效果")]
     bool m_bDisableAIAllCalc;
 
-    [Attribute("true", UIWidgets.CheckBox, "AI: light path — skip drain/recovery AND terrain/env/metabolic Phase A; keep encumbrance+gait speed limit only. Default ON. | AI 轻量路径：跳过消耗/恢复及地形环境代谢，仅保留负重+步态限速。默认开启")]
+    [Attribute("true", UIWidgets.CheckBox, "AI: when On skip drain (lightest). When Off keep drain for combat FSM but always use cheap speed (no terrain/UpdateSpeed). | On=不算消耗最轻；Off=仍算消耗供战斗，限速始终廉价")]
     bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]

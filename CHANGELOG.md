@@ -1,5 +1,16 @@
 # 更新日志
 
+## [6.2.27] - 2026-09-06
+
+### 性能：AI「Speed」全量路径尖刺（战斗效果开 + Disable Stamina Off）
+
+- **根因** — `Disable AI Stamina (Speed)=Off` 时每名 AI 仍跑玩家级 `UpdateSpeed`、地形射线、环境因子、CP 代谢二次限速；再叠加 Combat IntentFilter/`SetStateAllActionsOfType`，高密度时帧时间剧烈波动。
+- **AI 限速与玩家脱钩** — 所有服端 AI 一律廉价限速（负重+相位）；全量体力只补位置测速后进 Phase B 消耗，**不再**走地形/环境/`UpdateSpeed`/CP 二次压速。
+- **战斗层** — 状态未变跳过 IntentFilter/CombatDecay；行为节流近/中/远 0.75/1.5/3.0 s；传入已有 `ctrl` 避免 FindComponent。
+- **错峰** — AI `CallLater` 按坐标哈希错开最多 180 ms；全量 LOD 600/1000/2500 ms。
+- **Enforce 实测探针** — 控制台：`SCR_RSS_PerfProbe.Run()` / `Run(3000)`；日志 + `$profile:RSS_PerfProbe.txt`（`System.GetTickCount` 真测各链路）。
+- 配置版本 / ConfigManager → **6.2.27**
+
 ## [6.2.26] - 2026-09-05
 
 ### 性能：多 AI 专服卡顿（默认路径）

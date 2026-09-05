@@ -32,7 +32,7 @@
 |------|------|
 | `m_bEnableAIStaminaCombatEffects` | **总开关**：状态机、限速、意图过滤、战斗衰减、伤害联动（新建 JSON 默认常为 false；服主可在菜单开启） |
 | `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
-| `m_bDisableAIStaminaCalc` | 仍可算速度相关，跳过 Pandolf 消耗/恢复 |
+| `m_bDisableAIStaminaCalc` | **On**：不算 AI 消耗（最轻）。**Off**：仍算消耗供战斗 FSM，但限速与 On 同为廉价路径（无地形/UpdateSpeed） |
 | `m_bEnableMudSlipMechanism` | 泥泞滑倒（默认关；与 AI 行为层独立） |
 
 ## 3. 每 tick 顺序（服端 AI）
