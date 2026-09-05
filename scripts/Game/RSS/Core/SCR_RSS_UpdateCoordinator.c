@@ -558,9 +558,9 @@ class SCR_RSS_UpdateCoordinator
         bool usedEngineVel = false;
         float vmax = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
-        // 陆地/通用：仅 GetVelocityWS。禁止用位置差分“纠正”或兜底。
+        // 陆地/通用：官方 CharacterController.GetVelocity → WS。禁止位置差分兜底。
         vector engineVel;
-        if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
+        if (SCR_RSS_EngineReuse.TryGetCharacterVelocity(owner, engineVel))
         {
             velocity = engineVel;
             if (velocity.Length() > vmax)

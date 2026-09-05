@@ -38,7 +38,7 @@ modded class SCR_CharacterControllerComponent
             return false;
         }
 
-        // 进服/AI 生成：启发式 Game/World/Anim 未就绪则跳过；陆地测速只用 GetVelocityWS。
+        // 进服/AI 生成：启发式 Game/World/Anim 未就绪则跳过（防进服 GetVelocity AV）。
         if (!SCR_PlayerBaseRssApiHelper.IsCharacterMotionReady(loc.owner, this))
         {
             RSS_ScheduleNextStaminaTick();
@@ -241,7 +241,7 @@ modded class SCR_CharacterControllerComponent
         else
         {
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
-            // 陆地：仅 GetVelocityWS，禁止位置差分（计算与 debug 同源）
+            // 陆地：官方 GetVelocity → WS；禁止位置差分
             RSS_SpeedCalculationResult landSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
                 loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds, false);
             m_vLastPositionSample = landSpeedResult.lastPositionSample;

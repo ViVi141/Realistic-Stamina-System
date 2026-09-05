@@ -2,8 +2,9 @@
 //!
 //! 优先级约定：
 //!   坡度：CommandMove.GetMovementSlopeAngle → FloorNormal → Trace
-//!   速度（陆地）：仅 CharacterMovement.GetVelocityWS（禁止位置差分 / Physics.GetVelocity）
-//!   速度（游泳）：可由调用方另开位置差分
+//!   速度（陆地）：CharacterController.GetVelocity（官方案例）→ GetVelocityWS / GetRawVelocityWS
+//!                禁止位置差分 / Physics.GetVelocity
+//!   速度（游泳）：可由调用方另开位置差分（游泳时 Controller.GetVelocity 常为 0）
 //!   地形：Movement.GetFloorSurface → Trace 材质表
 
 class SCR_RSS_EngineReuse
@@ -60,9 +61,9 @@ class SCR_RSS_EngineReuse
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 世界速度（m/s）。仅读 GetVelocityWS；失败返回 false。
-    //! 陆地调用方禁止再用位置差分兜底。
-    static bool TryGetVelocityWS(IEntity owner, out vector outVelocity)
+    //! 陆地角色速度（m/s）。官方案例：CharacterController.GetVelocity()（Y 恒为 0）。
+    //! 其次 Movement.GetVelocityWS / GetRawVelocityWS。超上限钳制，不整段判失败。
+    static bool TryGetCharacterVelocity(IEntity owner, out vector outVelocity)
     {
         outVelocity = vector.Zero;
         if (!owner)
@@ -70,20 +71,85 @@ class SCR_RSS_EngineReuse
         if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return false;
 
+        float vmax = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        float rejectCap = vmax + 2.0;
+
+        CharacterControllerComponent ctrl = CharacterControllerComponent.Cast(
+            owner.FindComponent(CharacterControllerComponent));
+        if (ctrl)
+        {
+            // 官方：相机 bob / 铁丝网伤害等均用 GetVelocity；注释写明 Y 恒为 0
+            vector vCtrl = ctrl.GetVelocity();
+            if (IsFiniteVec(vCtrl))
+            {
+                float lenCtrl = vCtrl.Length();
+                // 近 0 时再试 Movement（避免漏采）；有读数则钳制后直接用
+                if (lenCtrl > 0.05 && lenCtrl <= rejectCap)
+                {
+                    if (lenCtrl > vmax)
+                        vCtrl = vCtrl.Normalized() * vmax;
+                    outVelocity = vCtrl;
+                    return true;
+                }
+            }
+        }
+
         CharacterMovementComponent move = ResolveMovement(owner);
         if (!move)
             return false;
 
-        vector v = move.GetVelocityWS();
-        float len = v.Length();
-        // 拒绝荒诞值（旧差分曾把陆地打到 7m/s 顶）
-        float maxLen = SCR_RSS_MetabolismMath.GAME_MAX_SPEED + 0.75;
-        if (len > maxLen)
+        // WS 近 0 时试 Raw（官方案例仍优先 Controller；此处仅兜底）
+        vector vWs = move.GetVelocityWS();
+        vector vRaw = move.GetRawVelocityWS();
+        vector vPick = vWs;
+        vector hWs = vWs;
+        hWs[1] = 0.0;
+        vector hRaw = vRaw;
+        hRaw[1] = 0.0;
+        if (hRaw.Length() > hWs.Length() + 0.05)
+            vPick = vRaw;
+
+        if (AcceptMovementVelocity(vPick, vmax, rejectCap, outVelocity))
+            return true;
+
+        return false;
+    }
+
+    //! @deprecated 请用 TryGetCharacterVelocity；保留别名避免旧调用断裂
+    static bool TryGetVelocityWS(IEntity owner, out vector outVelocity)
+    {
+        return TryGetCharacterVelocity(owner, outVelocity);
+    }
+
+    protected static bool IsFiniteVec(vector v)
+    {
+        float x = v[0];
+        float y = v[1];
+        float z = v[2];
+        if (x != x || y != y || z != z)
             return false;
-        if (len != len)
+        return true;
+    }
+
+    protected static bool AcceptMovementVelocity(
+        vector v,
+        float vmax,
+        float rejectCap,
+        out vector outVelocity)
+    {
+        outVelocity = vector.Zero;
+        if (!IsFiniteVec(v))
             return false;
 
-        outVelocity = v;
+        vector horiz = v;
+        horiz[1] = 0.0;
+        float hLen = horiz.Length();
+        if (hLen > rejectCap)
+            return false;
+        if (hLen > vmax)
+            horiz = horiz.Normalized() * vmax;
+
+        outVelocity = horiz;
         return true;
     }
 

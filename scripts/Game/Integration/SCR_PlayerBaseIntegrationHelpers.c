@@ -24,8 +24,8 @@ class SCR_PlayerBaseRssApiHelper
     }
 
     //! 进服/生成窗口启发式：Game/World 交叉 + Anim 存在才继续 tick。
-    //! 不要求 Physics：GetPhysics 非空仍可能对 GetVelocity AV。
-    //! @return true 表示可继续体力 tick（陆地测速只用 GetVelocityWS，勿用位置差分/Physics.GetVelocity）
+    //! 不要求 Physics：GetPhysics 非空仍可能对 Physics.GetVelocity AV。
+    //! @return true 表示可继续体力 tick（陆地测速走官方 Controller.GetVelocity，勿用位置差分）
     static bool IsCharacterMotionReady(IEntity owner, SCR_CharacterControllerComponent controller)
     {
         if (!owner || !controller)
@@ -37,21 +37,21 @@ class SCR_PlayerBaseRssApiHelper
         return true;
     }
 
-    //! 陆地测速：仅 CharacterMovement.GetVelocityWS。永不位置差分 / Physics.GetVelocity。
-    //! @param fallback 保留签名兼容；陆地忽略（禁止差分兜底）
+    //! 陆地测速：官方 CharacterController.GetVelocity → Movement WS。
+    //! 永不位置差分 / Physics.GetVelocity。fallback 保留签名但忽略。
     static vector SampleEntityVelocity(IEntity owner, vector fallback)
     {
         if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return vector.Zero;
 
         vector engineVel;
-        if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
+        if (SCR_RSS_EngineReuse.TryGetCharacterVelocity(owner, engineVel))
             return engineVel;
 
         return vector.Zero;
     }
 
-    //! 无 fallback 时的兼容入口：仅 GetVelocityWS。
+    //! 无 fallback 时的兼容入口。
     static vector SampleEntityVelocity(IEntity owner)
     {
         return SampleEntityVelocity(owner, vector.Zero);

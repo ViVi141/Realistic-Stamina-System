@@ -2,12 +2,13 @@
 
 ## [6.2.36] - 2026-09-06
 
-### 陆地测速：禁止位置差分（计算 + debug）
+### 陆地测速：禁止位置差分；改用官方案例 GetVelocity
 
-- **硬约束** — 陆地一切计算与 debug **不得**用位置差分；权威仅 `CharacterMovement.GetVelocityWS`，上限 `GAME_MAX_SPEED`（5.5）。旧差分曾把玩家 `v_meas` 打到假 7m/s。
-- **游泳** — 仍可显式 `allowPositionDelta=true`。
-- **AI 代谢** — WS 低估（常见 LOD）时按意图限速/行军顶记账烧 W′，**仍不用差分**；真 Idle 不虚烧。
-- Debug 去掉 `v_pos`；`SampleEntityVelocity` 不再接受差分 fallback。
+- **硬约束** — 陆地计算/debug **不用**位置差分；禁 `Physics.GetVelocity`。
+- **权威** — 与官方一致优先 `CharacterController.GetVelocity()`（相机 bob / 铁丝网等）；其次 `GetVelocityWS` / `GetRawVelocityWS`。超 `GAME_MAX_SPEED` **钳制**，不再整段判失败变成 0。
+- **游泳** — 仍可 `allowPositionDelta=true`（游泳时 Controller 速度常为 0）。
+- **AI 代谢** — WS/测速低估时按意图限速记账烧 W′；真 Idle 不虚烧。
+- Debug 去掉 `v_pos`。
 - 配置版本 → **6.2.36**
 
 ## [6.2.35] - 2026-09-06

@@ -11,7 +11,7 @@
 | 量 | 优先 | 回退 |
 |----|------|------|
 | 坡度 | `CommandMove.GetMovementSlopeAngle` → `GetFloorNormal` | Y 差分（AI）/ Trace（玩家） |
-| 测速（陆地） | 仅 `Movement.GetVelocityWS` | **禁止位置差分**；AI 代谢 WS 低估时改用意图限速 |
+| 测速（陆地） | `CharacterController.GetVelocity`（官方案例）→ `GetVelocityWS`/`GetRawVelocityWS` | **禁止位置差分**；AI 代谢低估时用意图限速 |
 | 测速（游泳） | `GetVelocityWS` | 允许位置差分 |
 | 地形系数 | `GetFloorSurface`→材质表 | Trace（稀采样；FloorSurface 常空属常态） |
 | 热应激 | 全服 1Hz TOD | — |
