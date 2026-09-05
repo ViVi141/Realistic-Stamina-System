@@ -20,7 +20,8 @@
 | `scripts/Game/Integration/PlayerBase_UpdateLoop.c` | AI 分支：轻量限速 or `AIStaminaPipeline.Tick` |
 | `scripts/Game/RSS/AI/SCR_RSS_AIStaminaPipeline.c` | AI 专用消耗/恢复/W′/疲劳管线 |
 | `scripts/Game/RSS/AI/SCR_RSS_AISharedEnvCache.c` | 全服 1Hz 热应激近似 |
-| `scripts/Game/Integration/SCR_PlayerBaseAiLightTickHelper.c` | 廉价限速 |
+| `scripts/Game/RSS/Core/SCR_RSS_UpdateLoopDebugOutput.c` | `[RSS][AI-SPD]` 近距限速诊断（默认开） |
+| `scripts/Game/Integration/SCR_PlayerBaseAiLightTickHelper.c` | 计算层目标 m/s → 交应用层 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIManager.c` | 行为层节流 + FSM 编排 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6 态体力状态机 |
 | `scripts/Game/RSS/AI/SCR_RSS_AISpeedCap.c` | 移动类型 + 限速 |
@@ -79,4 +80,4 @@
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.34（AI 先 TickPower 再巡航限速）。*
+*文档版本：2026-09-06，对齐 6.2.35（AI 应用层 Agent Setting）。*

@@ -1,5 +1,15 @@
 # 更新日志
 
+## [6.2.35] - 2026-09-06
+
+### AI 限速应用层：Agent MovementSpeed Setting（抗 BT）
+
+- **根因（应用层）** — AI 原生只有离散步态 `SetMovementTypeWanted`；BT `SCR_AICharacterSetMovementSpeed` 每帧重写 Wanted。只写 `SetSpeedLimit`/`OverrideMaxSpeed` 时，若仍停在 Sprint 相位，分数乘的是冲刺顶 → 看起来「原速」。Settings 组件在 **AIAgent** 上，以前在角色实体上 `FindComponent` 永远找不到。
+- **计算层** — 仍算绝对 `targetMs`（负重/Tobler/CP 巡航闩）。
+- **应用层** — 新 `SCR_RSS_AIMovementApply`：`SCR_AICharacterMovementSpeedSetting_Range`（Origin=COMMANDING）持久裁剪 BT → 再按该步态引擎顶写 `SetSpeedLimit`。巡航闩/跛行 → 最高 **WALK**。
+- **AI 限速诊断日志** — `[RSS][AI-SPD]` 默认开（近距≤80m / 约2s）：分 CALC / APPLY / CFG 三行；`RSS_AI_SPEED_DIAG_ENABLED` 可关。
+- 配置版本 → **6.2.35**
+
 ## [6.2.34] - 2026-09-06
 
 ### AI CP–W′ 巡航：先烧池再限速 + 即时限速

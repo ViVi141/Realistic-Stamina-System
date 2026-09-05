@@ -9,7 +9,7 @@
 //!   - 始终 Tobler 坡度缩放（GetRawSlopeAngle / 传入 grade）
 //!   - 开消耗时：Sprint→GetV6SprintSpeedMs；Walk/巡航闩→InvertCruiseCapMs + 地形
 //! 6.2.33：负重意图项与玩家同形；默认禁止 BT 冲刺顶（需 Fatigue Behaviors）
-//!   限速只走 SetSpeedLimit + SetMovementTypeWanted（AI 专用），不用玩家水平硬钳
+//! 6.2.35：应用层改走 Agent MovementSpeed Setting（BT 持久裁剪）+ 再写 SetSpeedLimit
 
 class SCR_PlayerBaseAiLightTickHelper
 {
@@ -148,7 +148,6 @@ class SCR_PlayerBaseAiLightTickHelper
             {
                 outPhase = 2;
                 effectivePhase = 2;
-                ForceAiMovementTypeWanted(owner, EMovementType.RUN);
             }
         }
 
@@ -158,7 +157,6 @@ class SCR_PlayerBaseAiLightTickHelper
             outPhase = 1;
             effectivePhase = 1;
             useMetabolicCaps = false;
-            ForceAiMovementTypeWanted(owner, EMovementType.WALK);
         }
 
         // 坡度：与玩家 Tobler 同锚（始终，含默认仅限速）
@@ -184,6 +182,7 @@ class SCR_PlayerBaseAiLightTickHelper
         if (tf > 3.0)
             tf = 3.0;
 
+        bool cruiseLatched = false;
         if (useMetabolicCaps && !outExhausted)
         {
             float gearKg = 0.0;
@@ -215,8 +214,6 @@ class SCR_PlayerBaseAiLightTickHelper
                     targetMs = sprintCap;
             }
 
-            // 巡航：Walk 始终；W′ 见底闩后 Run/假冲刺也套（勿放在 Sprint 分支 else，否则闩上仍满冲）
-            bool cruiseLatched = false;
             if (cpModel)
                 cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
 
@@ -248,14 +245,12 @@ class SCR_PlayerBaseAiLightTickHelper
                     cpEffW);
                 if (resolved < -0.01)
                 {
-                    // 掉出 Run 带：AI 用 SetMovementTypeWanted(WALK)（无玩家 SetDynamicSpeed 覆盖）
                     float walkCap = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * encMult;
                     walkCap = SCR_RSS_SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
                         walkCap, slopeAngleDeg);
                     targetMs = walkCap;
                     outPhase = 1;
                     effectivePhase = 1;
-                    ForceAiMovementTypeWanted(owner, EMovementType.WALK);
                 }
                 else if (resolved > 0.05 && resolved < targetMs)
                 {
@@ -264,7 +259,6 @@ class SCR_PlayerBaseAiLightTickHelper
                     {
                         outPhase = 2;
                         effectivePhase = 2;
-                        ForceAiMovementTypeWanted(owner, EMovementType.RUN);
                     }
                 }
             }
@@ -273,98 +267,53 @@ class SCR_PlayerBaseAiLightTickHelper
         if (animSpeedCompensation > 0.01)
             targetMs = targetMs * animSpeedCompensation;
 
-        float phaseTopMs = ResolveAiPhaseTopMs(ctrl, effectivePhase, outExhausted);
-        float frac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(targetMs, phaseTopMs, true);
-        frac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(frac, outExhausted);
-
         float customSprint = SCR_RSS_ConfigBridge.GetCustomSprintSpeedMultiplier();
         if (customSprint != 1.0 && effectivePhase == 3 && !outExhausted)
         {
             if (!drainDisabled)
             {
                 if (ctrl.GetRssSprintAllowed())
-                {
-                    float boosted = targetMs * customSprint;
-                    frac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(boosted, phaseTopMs, true);
-                    frac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(frac, false);
-                    targetMs = boosted;
-                }
+                    targetMs = targetMs * customSprint;
             }
         }
+
+        // —— 应用层：先 Agent Setting 锁步态（抗 BT），再 SetSpeedLimit 分数 ——
+        // 巡航闩 / 跛行 → WALK（AI 无连续 m/s API，离散步态才能真正掉速）
+        // 禁止冲刺 → 最高 RUN；允许冲刺 → SPRINT
+        EMovementType maxGait = EMovementType.RUN;
+        if (outExhausted)
+            maxGait = EMovementType.WALK;
+        else if (cruiseLatched)
+            maxGait = EMovementType.WALK;
+        else if (effectivePhase == 1)
+            maxGait = EMovementType.WALK;
+        else if (allowAiSprintTarget && effectivePhase == 3)
+            maxGait = EMovementType.SPRINT;
+        else
+            maxGait = EMovementType.RUN;
+
+        if (maxGait == EMovementType.WALK)
+            outPhase = 1;
+        else if (maxGait == EMovementType.SPRINT)
+            outPhase = 3;
+        else
+            outPhase = 2;
 
         bool applyInstant = false;
         if (useMetabolicCaps)
             applyInstant = true;
+        if (cruiseLatched)
+            applyInstant = true;
+        if (outExhausted)
+            applyInstant = true;
 
-        if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, frac, applyInstant);
-        else
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, 0.999, applyInstant);
+        float frac = 0.999;
+        SCR_RSS_AIMovementApply.ApplyTargetMs(
+            ctrl, owner, targetMs, maxGait, applyInstant, frac);
 
         outAppliedFrac = frac;
         outTargetMs = targetMs;
         return true;
-    }
-
-    protected static void ForceAiMovementTypeWanted(IEntity owner, EMovementType speed)
-    {
-        if (!owner)
-            return;
-
-        AICharacterMovementComponent aiMove = AICharacterMovementComponent.Cast(
-            owner.FindComponent(AICharacterMovementComponent));
-        if (!aiMove)
-            return;
-
-        EMovementType resolved = speed;
-        SCR_AICharacterSettingsComponent settingsComp = SCR_AICharacterSettingsComponent.Cast(
-            owner.FindComponent(SCR_AICharacterSettingsComponent));
-        if (settingsComp)
-        {
-            SCR_AICharacterMovementSpeedSettingBase setting = SCR_AICharacterMovementSpeedSettingBase.Cast(
-                settingsComp.GetCurrentSetting(SCR_AICharacterMovementSpeedSettingBase));
-            if (setting)
-                resolved = setting.GetSpeed(resolved);
-        }
-
-        aiMove.SetMovementTypeWanted(resolved);
-    }
-
-    protected static float ResolveAiPhaseTopMs(
-        SCR_CharacterControllerComponent ctrl,
-        int effectivePhase,
-        bool exhausted)
-    {
-        if (!ctrl)
-            return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-
-        if (exhausted)
-        {
-            float limpTop = ctrl.GetRssSpeedLimitEngineBaseMs();
-            if (limpTop > 0.1)
-                return limpTop;
-            return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-        }
-
-        if (effectivePhase == 3)
-        {
-            float sprintTop = ctrl.GetOriginalEngineMaxSpeed_Sprint();
-            if (sprintTop > 0.1)
-                return sprintTop;
-            return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
-        }
-        if (effectivePhase == 1)
-        {
-            float walkTop = ctrl.GetOriginalEngineMaxSpeed_Walk();
-            if (walkTop > 0.1)
-                return walkTop;
-            return SCR_RSS_Constants.ENGINE_WALK_TOP_MS;
-        }
-
-        float runTop = ctrl.GetOriginalEngineMaxSpeed_Run();
-        if (runTop > 0.1)
-            return runTop;
-        return SCR_RSS_MetabolismMath.TARGET_RUN_SPEED;
     }
 
     //! DisableAIStaminaCalc：廉价限速后结束整 tick（不算消耗）。

@@ -68,6 +68,7 @@ class SCR_RSS_AISpeedCap
         case ERSS_AIStaminaState.WINDED:
             maxMovement = EMovementType.RUN;
             AISetMovementTypeWanted(owner, maxMovement);
+            SCR_RSS_AIMovementApply.ApplyMaxMovementTypeSetting(owner, maxMovement);
             speedMul = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(runMs, phaseTop, true);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
             return;
@@ -100,6 +101,7 @@ class SCR_RSS_AISpeedCap
         }
 
         AISetMovementTypeWanted(owner, maxMovement);
+        SCR_RSS_AIMovementApply.ApplyMaxMovementTypeSetting(owner, maxMovement);
         SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, speedMul);
     }
 
@@ -113,29 +115,10 @@ class SCR_RSS_AISpeedCap
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 设置 AI 的想要的移动类型（经 AI 设置组件裁剪）
+    //! 设置 AI 的想要的移动类型（经 Agent Settings 裁剪）
     protected static void AISetMovementTypeWanted(IEntity owner, EMovementType speed)
     {
-        if (!owner)
-            return;
-
-        AICharacterMovementComponent aiMove = AICharacterMovementComponent.Cast(
-            owner.FindComponent(AICharacterMovementComponent));
-        if (!aiMove)
-            return;
-
-        EMovementType resolved = speed;
-        SCR_AICharacterSettingsComponent settingsComp = SCR_AICharacterSettingsComponent.Cast(
-            owner.FindComponent(SCR_AICharacterSettingsComponent));
-        if (settingsComp)
-        {
-            SCR_AICharacterMovementSpeedSettingBase setting = SCR_AICharacterMovementSpeedSettingBase.Cast(
-                settingsComp.GetCurrentSetting(SCR_AICharacterMovementSpeedSettingBase));
-            if (setting)
-                resolved = setting.GetSpeed(resolved);
-        }
-
-        aiMove.SetMovementTypeWanted(resolved);
+        SCR_RSS_AIMovementApply.ForceMovementTypeWanted(owner, speed);
     }
 
     //------------------------------------------------------------------------------------------------

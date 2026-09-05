@@ -1,6 +1,6 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.34**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
+> 版本对齐 **6.2.35**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse` + `SCR_RSS_AIMovementApply`。
 
 ## 目标
 
@@ -29,7 +29,7 @@
 
 | 环节 | 玩家 | AI 管线 |
 |------|------|---------|
-| 限速意图 | `UpdateSpeed` 全伺服 | 廉价骨架 + Tobler；开消耗再加 CP/Sprint 反解 |
+| 限速意图 | `UpdateSpeed` 全伺服 | **计算**绝对 m/s；**应用** Agent `MovementSpeedSetting` 锁步态 + `SetSpeedLimit` |
 | 测速 | VelocityWS → 位置差分 | 同 |
 | 坡度 | CmdSlope → FloorNormal → Trace | CmdSlope → FloorNormal → Y 差分（无 Trace） |
 | 地形系数 | FloorSurface → Trace | 同优先；稀采样 |

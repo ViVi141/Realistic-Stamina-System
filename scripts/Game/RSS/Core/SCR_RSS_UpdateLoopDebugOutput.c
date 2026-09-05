@@ -1,5 +1,20 @@
 //! Player/AI stamina debug output (split from PlayerBase_UpdateLoop.c for ICE relief)
 
+//! AI 限速诊断快照（避免 Enforce 单函数参数上限 16）
+class RSS_AiSpeedDiagSnap
+{
+    string pathTag;
+    float currentSpeedMs;
+    float targetMs;
+    float appliedFrac;
+    int outPhase;
+    float encPenalty;
+    float gradePercent;
+    float wPrime01;
+    bool cruiseLatched;
+    float distM;
+}
+
 class SCR_RSS_UpdateLoopDebugOutput
 {
     static void OutputPlayerStaminaAndHints(
@@ -131,6 +146,109 @@ class SCR_RSS_UpdateLoopDebugOutput
             SCR_RSS_DebugDisplay.OutputDebugInfo(debugParams);
         if (needHintOutput)
             SCR_RSS_DebugDisplay.OutputHintInfo(debugParams);
+    }
+
+    //! AI 限速诊断（计算层+应用层）。默认开（RSS_AI_SPEED_DIAG_ENABLED）。
+    //! 仅记录距玩家 ≤80m 的 AI，每实体约 2s；APPLY 细节读 AIMovementApply 上次结果。
+    protected static float s_fNextAiSpeedDiagGateMs = 0.0;
+    protected static bool s_bAiSpeedDiagBannerPrinted = false;
+
+    static void LogAiSpeedDiag(
+        IEntity owner,
+        SCR_CharacterControllerComponent ctrl,
+        SCR_RSS_AIManager aiManager,
+        RSS_AiSpeedDiagSnap snap)
+    {
+        if (!owner || !ctrl || !snap)
+            return;
+        if (!SCR_RSS_AIConstants.RSS_AI_SPEED_DIAG_ENABLED)
+            return;
+        if (ctrl.IsPlayerControlled())
+            return;
+
+        float distM = snap.distM;
+        if (distM < 0.0)
+            distM = SCR_RSS_AIUpdateInterval.GetNearestPlayerDistanceM(owner);
+        if (distM < 0.0 || distM > SCR_RSS_AIConstants.RSS_AI_SPEED_DIAG_MAX_DIST_M)
+            return;
+
+        float nowMs = 0.0;
+        if (!SCR_RSS_RuntimeGuard.TryGetWorldTimeMs(nowMs))
+            return;
+
+        if (nowMs < s_fNextAiSpeedDiagGateMs)
+            return;
+
+        float aiLast = -1.0;
+        if (aiManager)
+            aiLast = aiManager.GetDebugLastPrintTime();
+        if (aiLast >= 0.0 && (nowMs - aiLast) < SCR_RSS_AIConstants.RSS_AI_SPEED_DIAG_INTERVAL_MS)
+            return;
+
+        s_fNextAiSpeedDiagGateMs = nowMs + 250.0;
+        if (aiManager)
+            aiManager.SetDebugLastPrintTime(nowMs);
+
+        if (!s_bAiSpeedDiagBannerPrinted)
+        {
+            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/gait/setOK CFG=drainOff");
+            s_bAiSpeedDiagBannerPrinted = true;
+        }
+
+        int enginePhase = ctrl.GetCurrentMovementPhase();
+        bool sprinting = ctrl.IsSprinting();
+        bool drainOff = SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled();
+        bool allOff = SCR_RSS_ConfigBridge.IsAiAllCalcDisabled();
+        bool combatOn = SCR_RSS_ConfigBridge.IsAIStaminaCombatEffectsEnabled();
+
+        string name = owner.GetName();
+        if (name == "")
+            name = "AI";
+
+        EMovementType maxGait = SCR_RSS_AIMovementApply.GetLastMaxGait();
+        EMovementType wantedAfter = SCR_RSS_AIMovementApply.GetLastWanted();
+        bool settingsOk = SCR_RSS_AIMovementApply.GetLastSettingsOk();
+        bool aiMoveOk = SCR_RSS_AIMovementApply.GetLastAiMoveOk();
+        float phaseTopMs = SCR_RSS_AIMovementApply.GetLastPhaseTopMs();
+
+        string gaitStr = typename.EnumToString(EMovementType, maxGait);
+        string wantedStr = typename.EnumToString(EMovementType, wantedAfter);
+
+        PrintFormat(
+            "[RSS][AI-SPD] %1 path=%2 dist=%3m CALC v=%4 tgt=%5 ph=%6 enc=%7 grade=%8",
+            name,
+            snap.pathTag,
+            Math.Round(distM).ToString(),
+            (Math.Round(snap.currentSpeedMs * 100.0) / 100.0).ToString(),
+            (Math.Round(snap.targetMs * 100.0) / 100.0).ToString(),
+            snap.outPhase.ToString(),
+            (Math.Round(snap.encPenalty * 1000.0) / 1000.0).ToString(),
+            (Math.Round(snap.gradePercent * 10.0) / 10.0).ToString());
+
+        PrintFormat(
+            "[RSS][AI-SPD] %1 CALC W'=%2 latch=%3",
+            name,
+            (Math.Round(snap.wPrime01 * 100.0) / 100.0).ToString(),
+            snap.cruiseLatched.ToString());
+
+        PrintFormat(
+            "[RSS][AI-SPD] %1 APPLY frac=%2 top=%3 maxGait=%4 wanted=%5 setOK=%6 moveOK=%7 engPh=%8 sprint=%9",
+            name,
+            (Math.Round(snap.appliedFrac * 1000.0) / 1000.0).ToString(),
+            (Math.Round(phaseTopMs * 100.0) / 100.0).ToString(),
+            gaitStr,
+            wantedStr,
+            settingsOk.ToString(),
+            aiMoveOk.ToString(),
+            enginePhase.ToString(),
+            sprinting.ToString());
+
+        PrintFormat(
+            "[RSS][AI-SPD] %1 CFG drainOff=%2 allOff=%3 combat=%4",
+            name,
+            drainOff.ToString(),
+            allOff.ToString(),
+            combatOn.ToString());
     }
 
     //! AI tick debug (kept out of modded PlayerBase fragments for link reliability)

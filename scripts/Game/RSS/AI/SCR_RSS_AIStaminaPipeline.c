@@ -237,6 +237,28 @@ class SCR_RSS_AIStaminaPipeline
         if (ctx.appliedSpeedLimitMs < 0.05)
             ctx.appliedSpeedLimitMs = -1.0;
 
+        // AI 限速诊断（DebugLog 开即可；近距 2s）
+        float wPrime01Log = 1.0;
+        bool cruiseLatchLog = false;
+        if (cpModel)
+        {
+            wPrime01Log = cpModel.GetPool01();
+            cruiseLatchLog = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
+        }
+        RSS_AiSpeedDiagSnap diag = new RSS_AiSpeedDiagSnap();
+        diag.pathTag = "pipeline";
+        diag.currentSpeedMs = currentSpeed;
+        diag.targetMs = cheapTargetMs;
+        diag.appliedFrac = cheapFrac;
+        diag.outPhase = cheapPhase;
+        diag.encPenalty = cheapEnc;
+        diag.gradePercent = m_fCachedGradePercent;
+        diag.wPrime01 = wPrime01Log;
+        diag.cruiseLatched = cruiseLatchLog;
+        diag.distM = distM;
+        SCR_RSS_UpdateLoopDebugOutput.LogAiSpeedDiag(
+            ctx.owner, ctx.ctrl, ctx.aiManager, diag);
+
         drainParams.appliedSpeedLimitMs = ctx.appliedSpeedLimitMs;
         drainParams.staminaPercent = cheapSta;
         drainParams.currentMovementPhase = cheapPhase;

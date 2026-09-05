@@ -100,6 +100,29 @@ modded class SCR_CharacterControllerComponent
                     cheapFrac, cheapEnc, cheapSta, cheapPhase, cheapExhausted);
                 m_fLastRssSpeedMultiplierApplied = cheapFrac;
                 m_fAppliedSpeedLimitMs = -1.0;
+
+                float wPrimeCheap = 1.0;
+                bool latchCheap = false;
+                if (m_pAnaerobicBurst && m_pAnaerobicBurst.GetCpModel())
+                {
+                    wPrimeCheap = m_pAnaerobicBurst.GetCpModel().GetPool01();
+                    latchCheap = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(
+                        m_pAnaerobicBurst.GetCpModel());
+                }
+                RSS_AiSpeedDiagSnap diagCheap = new RSS_AiSpeedDiagSnap();
+                diagCheap.pathTag = "cheap";
+                diagCheap.currentSpeedMs = 0.0;
+                diagCheap.targetMs = -1.0;
+                diagCheap.appliedFrac = cheapFrac;
+                diagCheap.outPhase = cheapPhase;
+                diagCheap.encPenalty = cheapEnc;
+                diagCheap.gradePercent = 0.0;
+                diagCheap.wPrime01 = wPrimeCheap;
+                diagCheap.cruiseLatched = latchCheap;
+                diagCheap.distM = -1.0;
+                SCR_RSS_UpdateLoopDebugOutput.LogAiSpeedDiag(
+                    loc.owner, this, m_pAIManager, diagCheap);
+
                 RSS_ScheduleNextStaminaTick();
                 return false;
             }
