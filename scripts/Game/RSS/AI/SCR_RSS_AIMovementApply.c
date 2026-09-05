@@ -26,6 +26,7 @@ class SCR_RSS_AIMovementApply
     protected static EMovementType s_eLastWanted;
     protected static EMovementType s_eLastOverride;
     protected static EMovementType s_eLastGroupCap;
+    protected static int s_iLastGroupAgentCount;
     protected static float s_fLastPhaseTopMs;
 
     protected static ref map<EntityID, int> s_mInstalledMaxGait;
@@ -72,6 +73,11 @@ class SCR_RSS_AIMovementApply
     static EMovementType GetLastGroupCap()
     {
         return s_eLastGroupCap;
+    }
+
+    static int GetLastGroupAgentCount()
+    {
+        return s_iLastGroupAgentCount;
     }
 
     static float GetLastPhaseTopMs()
@@ -145,10 +151,15 @@ class SCR_RSS_AIMovementApply
     {
         s_bLastGroupOk = false;
         s_eLastGroupCap = maxType;
+        s_iLastGroupAgentCount = 0;
 
         AIGroup parentGroup = ResolveParentGroup(characterOwner);
         if (!parentGroup)
             return;
+
+        array<AIAgent> agentsProbe = {};
+        parentGroup.GetAgents(agentsProbe);
+        s_iLastGroupAgentCount = agentsProbe.Count();
 
         if (!s_mMemberMaxGait)
             s_mMemberMaxGait = new map<EntityID, int>();
@@ -328,6 +339,7 @@ class SCR_RSS_AIMovementApply
         s_eLastWanted = maxGait;
         s_eLastOverride = maxGait;
         s_eLastGroupCap = maxGait;
+        s_iLastGroupAgentCount = 0;
         s_fLastPhaseTopMs = 0.0;
 
         if (!ctrl || !characterOwner)

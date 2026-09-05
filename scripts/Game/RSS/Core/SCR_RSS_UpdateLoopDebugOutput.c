@@ -148,7 +148,7 @@ class SCR_RSS_UpdateLoopDebugOutput
             SCR_RSS_DebugDisplay.OutputHintInfo(debugParams);
     }
 
-    //! AI 限速诊断（计算层+应用层）。默认开（RSS_AI_SPEED_DIAG_ENABLED）。
+    //! AI 限速诊断（计算层+应用层）。生产默认关（RSS_AI_SPEED_DIAG_ENABLED）。
     //! 仅记录距玩家 ≤80m 的 AI，每实体约 2s；APPLY 细节读 AIMovementApply 上次结果。
     protected static float s_fNextAiSpeedDiagGateMs = 0.0;
     protected static bool s_bAiSpeedDiagBannerPrinted = false;
@@ -247,13 +247,15 @@ class SCR_RSS_UpdateLoopDebugOutput
         bool groupOk = SCR_RSS_AIMovementApply.GetLastGroupOk();
         EMovementType groupCap = SCR_RSS_AIMovementApply.GetLastGroupCap();
         string groupCapStr = typename.EnumToString(EMovementType, groupCap);
+        int groupN = SCR_RSS_AIMovementApply.GetLastGroupAgentCount();
         PrintFormat(
-            "[RSS][AI-SPD] %1 APPLY setOK=%2 moveOK=%3 grpOK=%4 grpCap=%5 engPh=%6 sprint=%7",
+            "[RSS][AI-SPD] %1 APPLY setOK=%2 moveOK=%3 grpOK=%4 grpCap=%5 groupN=%6 engPh=%7 sprint=%8",
             name,
             settingsOk.ToString(),
             aiMoveOk.ToString(),
             groupOk.ToString(),
             groupCapStr,
+            groupN.ToString(),
             enginePhase.ToString(),
             sprinting.ToString());
 

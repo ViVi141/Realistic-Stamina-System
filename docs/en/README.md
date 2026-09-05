@@ -1,6 +1,6 @@
 # RSS docs — English index
 
-> Chinese docs live in [`../`](../). Master index: [`../README.md`](../README.md). Config version: **6.2.31**.
+> Chinese docs live in [`../`](../). Master index: [`../README.md`](../README.md). Config version: **6.3.0**.
 
 | English | Chinese |
 |---------|---------|

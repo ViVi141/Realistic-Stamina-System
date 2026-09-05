@@ -41,6 +41,17 @@
 
 Full: 600 / 1000 / 2500 ms. Light: 800 / 1500 / 3000 ms. Terrain sample: 2 s / 5 s; far = terrain 1.0, skip W′/fatigue.
 
+### Perf vs 6.2.6 (PerfProbe, µs/call)
+
+Baseline **6.2.6 @ `883a051`** vs **6.3.0 tip** `RunNearestAi`.
+
+| Scenario | 6.2.6 AI | 6.3.0 prod | ≈faster |
+|----------|----------|------------|---------|
+| Default limit | =A ~48 | **`03f` ≈ 16.7** | **~2.9×** |
+| Drain on (est.) | =B ~55 | ~22 | ~2.5× |
+
+Probe D≈1.7 / F≈7 are **not** production. Player: `UpdateSpeed` ~6×, A ~3.3× — see root `CHANGELOG.md` **[6.3.0]**.
+
 ---
 
-*Doc version: 2026-09-06, aligned with 6.2.31 (EngineReuse + indoor cache slope suppress).*
+*Doc version: 2026-09-06, aligned with 6.3.0 (AI pipeline + SCENARIO/group gait pin).*

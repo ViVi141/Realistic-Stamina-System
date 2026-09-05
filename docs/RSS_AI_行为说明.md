@@ -20,7 +20,7 @@
 | `scripts/Game/Integration/PlayerBase_UpdateLoop.c` | AI 分支：轻量限速 or `AIStaminaPipeline.Tick` |
 | `scripts/Game/RSS/AI/SCR_RSS_AIStaminaPipeline.c` | AI 专用消耗/恢复/W′/疲劳管线 |
 | `scripts/Game/RSS/AI/SCR_RSS_AISharedEnvCache.c` | 全服 1Hz 热应激近似 |
-| `scripts/Game/RSS/Core/SCR_RSS_UpdateLoopDebugOutput.c` | `[RSS][AI-SPD]` 近距限速诊断（默认开） |
+| `scripts/Game/RSS/Core/SCR_RSS_UpdateLoopDebugOutput.c` | `[RSS][AI-SPD]` 近距限速诊断（生产默认关） |
 | `scripts/Game/Integration/SCR_PlayerBaseAiLightTickHelper.c` | 计算层目标 m/s → 交应用层 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIManager.c` | 行为层节流 + FSM 编排 |
 | `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6 态体力状态机 |
@@ -74,10 +74,21 @@
 
 彻底停循环：勾选 `m_bDisableAIAllCalc`。
 
+### 相对 6.2.6（PerfProbe，µs/次）
+
+基线 **6.2.6 @ `883a051`**；**6.3.0 tip** `RunNearestAi` 现测。
+
+| 场景 | 6.2.6 AI | 6.3.0 生产 | 约快 |
+|------|----------|-----------|------|
+| 默认限速 | =A ~48 | **`03f` ≈ 16.7** | **~2.9×** |
+| 开消耗（估） | =B ~55 | ~22 | ~2.5× |
+
+探针 D≈1.7 / F≈7 **不是**生产路径。玩家：`UpdateSpeed` ~6×，A ~3.3×。
+
 ## 6. 伤害联动
 
 按血量分段调整消耗与恢复（`SCR_RSS_AIInjuryLink`，在 `UpdateStaminaValue` 内应用）。
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.39（AI 群组 Override 按成员 min 钉步态）。*
+*文档版本：2026-09-06，对齐 6.3.0（AI 群组 Override 按成员 min 钉步态；生产默认关诊断）。*

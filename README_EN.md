@@ -1,17 +1,17 @@
-# Realistic Stamina System (RSS) v6.2.31
+# Realistic Stamina System (RSS) v6.3.0
 
 [中文 README](README_CN.md) | [English README (current)](README_EN.md) | [Mixed README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.31-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.3.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** is a realistic stamina & speed mod for Arma Reforger.  
 It dynamically adjusts movement speed based on stamina, encumbrance, slope, environment, and more—using medical/physiological models (e.g. Pandolf energy expenditure).
 
 
 - **GUID**: `68649101601CC93D`
-- **Config version**: **6.2.31**
+- **Config version**: **6.3.0**
 - **Recommended game**: Arma Reforger **1.7+**
 
 > The **Chinese README** (`README_CN.md`) is the full narrative (features, formulas, version history). This English file keeps release notes and an expanded feature/tech summary aligned to the current tree.
@@ -62,20 +62,27 @@ EliteStandard · **StandardMilsim** (default) · TacticalAction · Custom — ba
 
 Authoritative math (Chinese): `docs/RSS_v6_计算逻辑权威版.md` · Full Chinese README: `README_CN.md` · Changelog: `CHANGELOG.md`
 
-## v6.2.31 Updates
+## v6.3.0 Updates
 
-**2026-09-06** — See `CHANGELOG.md` **[6.2.31]** (and 6.2.28–6.2.30).
-AI stamina pipeline + EngineReuse; indoor slope suppress via cache; repo docs tidy (`docs/README.md`). Config **6.2.31**.
+**2026-09-06** — See `CHANGELOG.md` **[6.3.0]** (folds **6.2.6–6.2.40**).
+AI stamina pipeline + group/SCENARIO gait pin; EngineReuse; production debug defaults OFF. Detail: `docs/archive/CHANGELOG_6.2.6_to_6.2.40.md`. Config **6.3.0**.
 
-## v6.2.7 Updates
+**Canteen**: still in arsenal as an **undeleted dev artifact** — equip/drink anim only; **no STA/W′ restore yet**. Kept to test a future stamina-food pipeline; not a usable supply.
 
-**2026-09-01** — See `CHANGELOG.md` **[6.2.7]**
-Fix HUD ghost/double bar caused by StaminaHUD layout GUID colliding with vanilla StatsPanelGrid; config **6.2.7**.
+### Perf vs 6.2.6 (PerfProbe, µs/call)
 
-## v6.2.6 Updates
+Baseline **6.2.6 @ `883a051`** vs **6.3.0 tip** (`Run` / `RunNearestAi`, 3000 iters). Speedup ≈ old ÷ new.
 
-**2026-09-01** — See `CHANGELOG.md` **[6.2.6]**
-Stop stale W′ FX on engine GetStamina() after W′ recovers (≥85%, snap); slow long-rest recovery only near full STA so 38%→100% is not ~50 min; config **6.2.6**.
+| Scenario | 6.2.6 | 6.3.0 | ≈faster |
+|----------|-------|-------|---------|
+| `UpdateSpeed` (player) | 44 | 7.3 | ~6× |
+| grade (no indoor rays) | 37 | ~0–0.3 | ~∞ |
+| A speed-limit stack | ~48.5 | ~15 | ~3.3× |
+| B full | ~55 | 21 | ~2.6× |
+| **AI default (prod `03f`)** | ~48 | **16.7** | **~2.9×** |
+| AI drain on (est. `03f+F−D`) | ~55 | ~22 | ~2.5× |
+
+Do **not** use probe D≈1.7 / F≈7 as production AI cost (old “~30×/~9×” claims are obsolete). See `CHANGELOG.md` **[6.3.0]**.
 
 ## v6.2.5 Updates
 

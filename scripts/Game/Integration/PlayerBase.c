@@ -849,11 +849,20 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        if (controlled && owner == SCR_PlayerController.GetLocalControlledEntity())
+        IEntity localEnt = SCR_PlayerController.GetLocalControlledEntity();
+        bool isLocalControlled = false;
+        if (owner && localEnt && owner == localEnt)
+            isLocalControlled = true;
+
+        if (controlled && isLocalControlled)
         {
             InputManager inputManager = GetGame().GetInputManager();
             if (inputManager)
             {
+                // 先卸再挂，避免死亡重生后重复监听
+                inputManager.RemoveActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.AddActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.AddActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
                 inputManager.AddActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
@@ -865,17 +874,28 @@ modded class SCR_CharacterControllerComponent
             if (GetGame() && GetGame().GetCallqueue())
                 GetGame().GetCallqueue().CallLater(SCR_PlayerBaseLoop.InitStaminaHudBridge, 1000, false, this);
         }
-        else
+        else if (!controlled)
         {
-            InputManager inputManager = GetGame().GetInputManager();
-            if (inputManager)
-            {
-                inputManager.RemoveActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
-                inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
-                inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
-            }
+            // HUD 是进程级单例：仅当「本机角色失控」或「已无本机角色」时销毁。
+            // 远程玩家/AI 的 OnControlled(false) 绝不能拆本机 HUD，否则专用服易留孤儿层再叠第二层。
+            bool shouldTearDownHud = false;
+            if (!localEnt)
+                shouldTearDownHud = true;
+            else if (owner == localEnt)
+                shouldTearDownHud = true;
 
-            SCR_RSS_StaminaHUDComponent.Destroy();
+            if (shouldTearDownHud)
+            {
+                InputManager inputManager = GetGame().GetInputManager();
+                if (inputManager)
+                {
+                    inputManager.RemoveActionListener("Jump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                    inputManager.RemoveActionListener("CharacterJump", EActionTrigger.DOWN, OnJumpActionTriggered);
+                    inputManager.RemoveActionListener("CharacterJumpClimb", EActionTrigger.DOWN, OnJumpActionTriggered);
+                }
+
+                SCR_RSS_StaminaHUDComponent.Destroy();
+            }
         }
     }
 

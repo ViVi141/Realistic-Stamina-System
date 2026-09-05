@@ -96,6 +96,18 @@ class SCR_RSS_SettingsSubMenu : SCR_SettingsSubMenuBase
 
                 // 专用服务器管理员客户端：通过 RPC 推送到服务端
                 SendConfigToServer("", debugLog, hudServer, dataExportKeep, mudSlip, aiCombat, disableAI, disableAISt);
+
+                // 复制到达前先乐观写入本地，避免 Sync 仍读旧 Hint 而拆/建错层
+                SCR_RSS_Settings sLocal = GetSettings();
+                if (sLocal)
+                {
+                    sLocal.m_bHintDisplayEnabled           = hudServer;
+                    sLocal.m_bDebugLogEnabled              = debugLog;
+                    sLocal.m_bEnableMudSlipMechanism       = mudSlip;
+                    sLocal.m_bEnableAIStaminaCombatEffects = aiCombat;
+                    sLocal.m_bDisableAIAllCalc             = disableAI;
+                    sLocal.m_bDisableAIStaminaCalc         = disableAISt;
+                }
             }
             SCR_RSS_StaminaHUDComponent.SyncHintDisplayWithSettings();
         }

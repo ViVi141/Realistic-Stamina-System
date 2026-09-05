@@ -1,5 +1,5 @@
 FrameWidgetClass {
- Name "rootFrame"
+ Name "RSS_StaminaHUD_Root"
  Slot FrameWidgetSlot "{5D9940FCD3D2AE99}" {
   OffsetLeft 0
   OffsetTop 0

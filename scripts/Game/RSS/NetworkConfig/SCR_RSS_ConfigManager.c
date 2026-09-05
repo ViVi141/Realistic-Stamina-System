@@ -8,7 +8,7 @@ class SCR_RSS_ConfigManager
     protected static const string CONFIG_PATH = "$profile:RealisticStaminaSystem.json";
     protected static const string CONFIG_BACKUP_PATH = "$profile:RealisticStaminaSystem.bak.json";  // 配置备份路径
     protected static const int MAX_BACKUP_COUNT = 3;  // 最大备份文件数量
-    protected static const string CURRENT_VERSION = "6.2.39";
+    protected static const string CURRENT_VERSION = "6.3.0";
     protected static ref SCR_RSS_Settings m_Settings;
     protected static bool m_bIsLoaded = false;
     protected static float m_fLastLoadTime = 0.0;
@@ -58,10 +58,11 @@ class SCR_RSS_ConfigManager
         m_Settings = new SCR_RSS_Settings();
         m_Settings.m_sSelectedPreset = "EliteStandard";
         m_Settings.InitPresets(true);
-        // Workbench: debug 开启，统一波次每秒输出
-        m_Settings.m_bDebugLogEnabled = true;
-        m_Settings.m_bHintDisplayEnabled = true;
-        m_Settings.m_bDataExportEnabled = true;
+        // Workbench：与生产一致，默认关调试/HUD/导出（需排查时在菜单里开）
+        m_Settings.m_bDebugLogEnabled = false;
+        m_Settings.m_bVerboseLogging = false;
+        m_Settings.m_bHintDisplayEnabled = false;
+        m_Settings.m_bDataExportEnabled = false;
         m_Settings.m_iDebugUpdateInterval = DEFAULT_DEBUG_BATCH_INTERVAL_MS;
         m_Settings.m_bEnableMudSlipMechanism = false;  // NOTE: disabled pending camera tuning (see SCR_RSS_Constants design note)
         m_Settings.m_bEnableAIStaminaCombatEffects = false;
@@ -70,7 +71,7 @@ class SCR_RSS_ConfigManager
         m_fLastLoadTime = 0.0;
         EnsureDefaultValues();
         UpdateConfigCache();
-        Print("[RSS_ConfigManager] Workbench: Using embedded preset values (profile bypassed). Debug ON, batch 1s, HUD ON, DataExport ON, MudSlip OFF (tuning pending), AI stamina calc OFF.");
+        Print("[RSS_ConfigManager] Workbench: Embedded presets (profile bypassed). Debug/HUD/DataExport OFF (production defaults).");
         return;
         #endif
 

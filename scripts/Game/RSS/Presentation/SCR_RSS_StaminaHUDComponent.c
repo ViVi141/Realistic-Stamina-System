@@ -64,7 +64,47 @@ class SCR_RSS_StaminaHUDComponent
     protected static int s_iWorldGeneration = 0;
     protected int m_iCreatedInGeneration = -1;
 
+    //! 布局根 Name（须与 StaminaHUD.layout 一致）。按名清扫可去掉失去单例引用的孤儿层。
+    protected static const string HUD_ROOT_NAME = "RSS_StaminaHUD_Root";
+
     // ==================== 公共静态方法 ====================
+
+    //! 从当前 Workspace 按名卸掉所有 RSS HUD 根（含单例丢失后的残层）。
+    //! 专用服重进 / OnGameStart 代际跳跃后，仅 null 单例不 Remove 会留下冻结「STA --」。
+    //! @param keepRoot 若非空则保留该根（复用单例时清掉其它叠层）
+    protected static void PurgeOrphanHudRoots(Widget keepRoot = null)
+    {
+        if (!GetGame())
+            return;
+
+        WorkspaceWidget workspace = GetGame().GetWorkspace();
+        if (!workspace)
+            return;
+
+        string keepName = "";
+        if (keepRoot)
+        {
+            keepName = keepRoot.GetName();
+            keepRoot.SetName("RSS_StaminaHUD_Root_Keep");
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            Widget orphan = workspace.FindAnyWidget(HUD_ROOT_NAME);
+            if (!orphan)
+                break;
+            orphan.RemoveFromHierarchy();
+        }
+
+        if (keepRoot)
+        {
+            if (keepName != "")
+                keepRoot.SetName(keepName);
+            else
+                keepRoot.SetName(HUD_ROOT_NAME);
+        }
+    }
+
 
     //! 是否应显示 HUD：服务器 Hint 开 ∧（未设本地覆盖则跟服，已设则跟本地）。
     //! 服务器关时绝不出 HUD，避免残缺默认「STA 100%」叠在正常 HUD 上。
@@ -206,12 +246,19 @@ class SCR_RSS_StaminaHUDComponent
             return;
         }
 
-        // 已有有效实例则复用，避免 CreateWidgets 叠第二层
+        // 已有有效实例则复用，避免 CreateWidgets 叠第二层；仍清扫其它孤儿根
         if (s_Instance)
         {
             if (s_Instance.m_wRoot && s_Instance.m_iCreatedInGeneration == s_iWorldGeneration)
+            {
+                PurgeOrphanHudRoots(s_Instance.m_wRoot);
                 return;
+            }
             Destroy();
+        }
+        else
+        {
+            PurgeOrphanHudRoots();
         }
 
         SCR_RSS_StaminaHUDComponent inst = new SCR_RSS_StaminaHUDComponent();
@@ -246,16 +293,28 @@ class SCR_RSS_StaminaHUDComponent
             s_fDisplayCurrentSpeed = 0.0;
             s_sCachedGroundMaterialLabel = "";
         }
+
+        // 无论单例是否存在，都按名清扫（专用服双层 / 无故残影）
+        PurgeOrphanHudRoots();
     }
 
     //! 新 world session 开始前调用（由 SCR_BaseGameMode::OnGameStart 触发）。
-    //! 递增代际计数器 + 销毁旧 HUD。递增后的 s_iWorldGeneration 与旧 HUD 实例的
-    //! m_iCreatedInGeneration 不再匹配，DestroyHUD 跳过 RemoveFromHierarchy，
-    //! 避免对上一 session 已释放的 C++ widget 操作导致崩溃。
+    //! 先在同代际尝试 Remove；再递增代际并按名清扫仍挂在存活 Workspace 上的孤儿。
+    //! 悬空 C++ 指针（世界已毁）只靠代际跳过 Remove，不靠 Purge（Find 不到已毁树）。
     static void OnNewWorldSession()
     {
+        if (s_Instance)
+        {
+            s_Instance.DestroyHUD();
+            s_Instance = null;
+            s_fDisplayStaminaPercent = 1.0;
+            s_fDisplaySpeedMultiplier = 1.0;
+            s_fDisplayCurrentSpeed = 0.0;
+            s_sCachedGroundMaterialLabel = "";
+        }
+
+        PurgeOrphanHudRoots();
         s_iWorldGeneration++;
-        Destroy();
     }
 
     // 获取本地 HUD 覆盖状态
@@ -386,12 +445,8 @@ class SCR_RSS_StaminaHUDComponent
     {
         if (m_wRoot)
         {
-            // CRITICAL FIX: Check world generation before calling RemoveFromHierarchy.
-            // After Workbench reloads scripts+world, this DestroyHUD may be called
-            // for a HUD created in a previous world session. Its m_wRoot points to
-            // a C++ widget object that was freed when the old workspace was destroyed.
-            // Calling RemoveFromHierarchy on a stale widget = Access violation at 0x0.
-            // Normal entity deletion (in-game delete / game stop): generation matches.
+            // 仅在同代际时对缓存指针 Remove：跨 session 该指针可能已悬空。
+            // 存活 Workspace 上的残层由 PurgeOrphanHudRoots 按名卸掉。
             if (GetGame() && GetGame().GetWorkspace() && m_iCreatedInGeneration == s_iWorldGeneration)
                 m_wRoot.RemoveFromHierarchy();
             m_wRoot = null;

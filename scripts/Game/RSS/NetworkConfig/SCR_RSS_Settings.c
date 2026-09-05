@@ -26,7 +26,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("6.2.39", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.3.0", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
@@ -59,7 +59,7 @@ class SCR_RSS_Settings
     }
 
     // ==================== 调试配置 ====================
-    [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Workbench auto-on. | 调试：控制台输出详细日志，工作台模式自动开启")]
+    [Attribute("false", UIWidgets.CheckBox, "Debug: Enable detailed RSS logs in console. Default OFF. | 调试：控制台详细日志，默认关")]
     bool m_bDebugLogEnabled;
 
     [Attribute("1000", UIWidgets.EditBox, "Debug batch interval (ms). Unified output per second. | 调试批次间隔（毫秒），统一波次每秒")]

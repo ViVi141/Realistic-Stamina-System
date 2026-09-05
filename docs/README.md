@@ -1,6 +1,6 @@
 # docs 索引
 
-当前代码配置版本：**6.2.31**（以 `SCR_RSS_ConfigManager.CURRENT_VERSION` 为准）。
+当前代码配置版本：**6.3.0**（以 `SCR_RSS_ConfigManager.CURRENT_VERSION` 为准）。
 
 ## 现行（先看这些）
 

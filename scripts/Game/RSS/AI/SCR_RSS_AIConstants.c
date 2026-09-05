@@ -77,8 +77,8 @@ class SCR_RSS_AIConstants
     // [SOFT] AI 行为过滤 — 常量
     static const float RSS_AI_INTENT_WAIT_PROMOTED_PRIORITY = 100.0;
 
-    //! 近距 AI 限速 CALC/APPLY 诊断（默认开；不依赖 Verbose）
-    static const bool RSS_AI_SPEED_DIAG_ENABLED = true;
+    //! 近距 AI 限速 CALC/APPLY 诊断（生产默认关；排查时改 true）
+    static const bool RSS_AI_SPEED_DIAG_ENABLED = false;
     static const float RSS_AI_SPEED_DIAG_MAX_DIST_M = 80.0;
     static const float RSS_AI_SPEED_DIAG_INTERVAL_MS = 2000.0;
 }

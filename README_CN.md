@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.2.31
+# Realistic Stamina System (RSS) v6.3.0
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.31-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.3.0-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.31**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.3.0**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -31,6 +31,21 @@
 - 不参与本地 RSS 的复制体不再每 tick 调度体力循环，减轻客户端负载；AI 实体不构建/更新右上角体力 Hint（仅玩家）。
 - 专用服大规模 AI：可通过设置关闭 AI 全量计算（`m_bDisableAIAllCalc` / `m_bDisableAIStaminaCalc`），或关闭实验性 AI 战斗效果（`m_bEnableAIStaminaCombatEffects`）。
 - 历史「远距群组仅队长全量计算」等性能路径的常量名见 [SCR_RSS_Constants.c](scripts/Game/RSS/Core/SCR_RSS_Constants.c) 中 `RSS_PERF_*` 与 [CHANGELOG.md](CHANGELOG.md)；**当前 AI 编排入口为 `SCR_RSS_AIManager`**，以 `scripts/Game/RSS/AI/` 源码为准。
+
+### 相对 6.2.6 的实测（PerfProbe，µs/次）
+
+基线 **6.2.6 @ `883a051`** vs **6.3.0 tip**（`Run` / `RunNearestAi`，3000 iters）。约快 ≈ 旧 ÷ 新。
+
+| 场景 | 6.2.6 | 6.3.0 | 约快 |
+|------|-------|-------|------|
+| `UpdateSpeed`（玩家） | 44 | 7.3 | ~6× |
+| grade（无室内射线） | 37 | ~0–0.3 | ~∞ |
+| A 限速全栈 | ~48.5 | ~15 | ~3.3× |
+| B 全量 | ~55 | 21 | ~2.6× |
+| **AI 默认（生产 `03f`）** | ~48 | **16.7** | **~2.9×** |
+| AI 开消耗（估 `03f+F−D`） | ~55 | ~22 | ~2.5× |
+
+> 勿用探针 D≈1.7 / F≈7 当生产 AI 数字（旧「~30×/~9×」已作废）。详见 [CHANGELOG.md](CHANGELOG.md) **[6.3.0]**。
 
 ## 功能说明
 
@@ -225,28 +240,13 @@ Realistic-Stamina-System/
 ```
 
 
-## v6.2.31 版本更新 / Latest
+## v6.3.0 版本更新 / Latest
 
-**2026-09-06**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.31]** 及 6.2.28–6.2.30）
-
-- AI 专用体力管线 + EngineReuse；室内抑坡走缓存；玩家 UpdateSpeed 热路径优化
-- 配置版本 **6.2.31**
-- 仓库整理：Workshop / 旧 CHANGELOG / 死脚本归档，见 [docs/README.md](docs/README.md)
-
-## v6.2.7 版本更新 / v6.2.7 Updates
-
-**2026-09-01**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.7]**）
-
-- **HUD GUID** — 不再占用原版 StatsPanelGrid；修残缺「STA 100%」与双层叠加
-- 配置版本 **6.2.7**
-
-## v6.2.6 版本更新 / v6.2.6 Updates
-
-**2026-09-01**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.6]**）
-
-- **引擎条** — W′≥85% 不再压条；解除伪装时 Snap，避免过时低值
-- **有氧恢复** — 长休慢速期仅近满血生效；中低体力不再约 50 分钟爬满
-- 配置版本 **6.2.6**
+**2026-09-06**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.3.0]**；明细 [docs/archive/CHANGELOG_6.2.6_to_6.2.40.md](docs/archive/CHANGELOG_6.2.6_to_6.2.40.md)）
+- 合并 **6.2.6～6.2.40**：AI 专用体力管线与群组/SCENARIO 步态钉、EngineReuse、性能 LOD、生产默认关调试
+- **相对 6.2.6（现测）**：玩家 `UpdateSpeed` ~6×、A ~3.3×；**AI 默认生产 `03f` ~2.9×**（旧「~30×」作废）
+- **水壶** — 军火库可取，**暂无体力效果**（未删开发产物，供后续体力食物测试）；勿当作补给
+- 配置版本 **6.3.0**
 
 ## v6.2.5 版本更新 / v6.2.5 Updates
 
@@ -1146,7 +1146,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.2.31** (当前版本) - AI 管线 / EngineReuse / 热路径；仓库文档整理。此前见 CHANGELOG。
+- **v6.3.0** (当前版本) - 合并 6.2.6～6.2.40：AI 专用管线与群组/SCENARIO 步态钉、EngineReuse、生产默认关调试。明细见 archive。
 - **v6.2.6** - W′ 回满后引擎条过时与有氧回血过慢修复（见上文 v6.2.6 与 CHANGELOG）
 - **v6.2.5** - W′ 空蹲走与站走同速修复（见上文 v6.2.5 与 CHANGELOG）
 - **v6.2.4** - HUD 残缺条 / 双层叠加修复（见上文 v6.2.4 与 CHANGELOG）
