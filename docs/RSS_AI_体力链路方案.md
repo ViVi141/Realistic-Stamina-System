@@ -1,6 +1,6 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.37**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse` + `SCR_RSS_AIMovementApply`。
+> 版本对齐 **6.2.39**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse` + `SCR_RSS_AIMovementApply`。
 
 ## 目标
 
@@ -16,7 +16,7 @@
 | 地形系数 | `GetFloorSurface`→材质表 | Trace（稀采样；FloorSurface 常空属常态） |
 | 热应激 | 全服 1Hz TOD | — |
 | 室内抑坡 | `UpdateIndoorCache`（2s） | 热路径禁止每 tick 屋顶射线（玩家） |
-| AI 步态 | Agent `MovementSpeedSetting`（Origin=**SCENARIO**，巡航钉死固定 Setting）+ `SetMovementTypeWanted` | 角色层 `SetSpeedLimit` / `SetMovementMaxSpeed` |
+| AI 步态 | 群组 Override（成员 maxGait **min**；仅 IDLE/WALK 钉 SCENARIO）+ 单体 Wanted | 角色层 `SetSpeedLimit`（AI 常无效） |
 
 ## 开关语义（菜单文案 → 字段）
 
@@ -31,7 +31,7 @@
 
 | 环节 | 玩家 | AI 管线 |
 |------|------|---------|
-| 限速意图 | `UpdateSpeed` 全伺服 | **计算**绝对 m/s；**应用** Agent Setting（SCENARIO；巡航固定钉 WALK）+ `SetSpeedLimit` / `SetMovementMaxSpeed` |
+| 限速意图 | `UpdateSpeed` 全伺服 | **计算**绝对 m/s；**应用** 群组 min 帽 + Agent Setting（SCENARIO）+ `SetSpeedLimit` / `SetMovementMaxSpeed` |
 | 测速 | VelocityWS → 位置差分 | 同 |
 | 坡度 | CmdSlope → FloorNormal → Trace | CmdSlope → FloorNormal → Y 差分（无 Trace） |
 | 地形系数 | FloorSurface → Trace | 同优先；稀采样 |

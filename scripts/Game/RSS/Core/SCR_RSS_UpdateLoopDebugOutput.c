@@ -191,7 +191,7 @@ class SCR_RSS_UpdateLoopDebugOutput
 
         if (!s_bAiSpeedDiagBannerPrinted)
         {
-            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/gait/ovr/fixed CFG=drainOff");
+            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/gait/ovr/fixed/grpCap CFG=drainOff");
             s_bAiSpeedDiagBannerPrinted = true;
         }
 
@@ -244,11 +244,16 @@ class SCR_RSS_UpdateLoopDebugOutput
             ovrStr,
             fixedSetting.ToString());
 
+        bool groupOk = SCR_RSS_AIMovementApply.GetLastGroupOk();
+        EMovementType groupCap = SCR_RSS_AIMovementApply.GetLastGroupCap();
+        string groupCapStr = typename.EnumToString(EMovementType, groupCap);
         PrintFormat(
-            "[RSS][AI-SPD] %1 APPLY setOK=%2 moveOK=%3 engPh=%4 sprint=%5",
+            "[RSS][AI-SPD] %1 APPLY setOK=%2 moveOK=%3 grpOK=%4 grpCap=%5 engPh=%6 sprint=%7",
             name,
             settingsOk.ToString(),
             aiMoveOk.ToString(),
+            groupOk.ToString(),
+            groupCapStr,
             enginePhase.ToString(),
             sprinting.ToString());
 

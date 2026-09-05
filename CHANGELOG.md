@@ -1,5 +1,22 @@
 # 更新日志
 
+## [6.2.39] - 2026-09-06
+
+### AI 限速：群组 Override 成员 min 聚合
+
+- **日志** — `wanted=WALK` 但 `ovr=RUN`、`engPh=2`、`v` 仍 ≈3.8：群组 Override 未落到 Walk。
+- **根因** — 6.2.38 已写群组钉，但任一未疲劳队友 tick 会把群组 Setting 抬回 **RUN**，盖掉疲劳成员的 WALK。
+- **修复** — 群组帽 = 各成员最近 `maxGait` 的 **min**；仅 IDLE/WALK 安装 SCENARIO 固定 Setting；成员均允许 RUN+ 时**撤钉**还给 BT。诊断增加 `grpCap`。
+- 配置版本 → **6.2.39**
+
+## [6.2.38] - 2026-09-06
+
+### AI 限速：钉群组 Override（wanted=WALK 仍 ovr=RUN）
+
+- **日志根因** — 单体 `SetMovementTypeWanted(WALK)` 成功，但 `GetMovementTypeOverride()` 仍为 **RUN**：群组 `SetGroupCharactersWantedMovementType` 盖掉单体。
+- **修复** — 同步写 `AIGroupMovementComponent` + `SCR_AIGroupCharactersMovementSpeedSetting`（SCENARIO）；先群组后单体。
+- 诊断增加 `grpOK`。配置版本 → **6.2.38**
+
 ## [6.2.37] - 2026-09-06
 
 ### AI 限速：官方步态钉死（压过航点）

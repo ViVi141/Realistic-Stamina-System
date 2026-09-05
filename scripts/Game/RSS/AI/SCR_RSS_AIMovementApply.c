@@ -1,36 +1,38 @@
 //! AI 限速应用层（与计算层分离）。
 //!
 //! 引擎事实：
-//!   - AI 原生控制是离散步态：AICharacterMovementComponent.SetMovementTypeWanted
-//!   - BT 节点 SCR_AICharacterSetMovementSpeed 每模拟帧重写 Wanted；一次性 Set 会被盖掉
-//!   - 持久上限必须写在 Agent 的 SCR_AICharacterSettingsComponent
-//!     （SCR_AICharacterMovementSpeedSetting / _Range），BT 经 GetSpeed() 裁剪
-//!   - Origin 优先级：EDITOR > SCENARIO > WAYPOINT > COMMANDING > …
-//!     航点常以 WAYPOINT 写冲刺；RSS 须用 SCENARIO 才能压过航点
-//!   - 巡航/跛行用固定 Setting（钉死 WALK），勿用 Range（仍允许 BT 选 WALK 内最高）
-//!   - Chimera SetSpeedLimit / SetMovementMaxSpeed 是角色层帽；步态仍 Sprint 时
-//!     分数乘冲刺顶 → 看起来「原速」。先锁步态再写分数。
+//!   - 单体：AICharacterMovementComponent.SetMovementTypeWanted
+//!   - 群组：AIGroupMovementComponent.SetGroupCharactersWantedMovementType
+//!     → 写入各成员 GetMovementTypeOverride；会盖掉单体 Wanted
+//!   - BT 每帧重写；须用 Agent/Group Settings（Origin=SCENARIO）持久裁剪
+//!   - 日志 wanted=WALK 且 ovr=RUN ⇒ 群组 Override 未钉住
+//!   - 6.2.39：群组帽 = 成员 maxGait 的 min；禁止未疲劳队友把群组抬回 RUN
+//!   - 角色层 SetSpeedLimit 对 AI 常无效；真正掉速靠步态离开 Run
 
 class SCR_RSS_AIMovementApply
 {
     //! 压过航点 WAYPOINT(4000)：SCENARIO=5000
     protected static const SCR_EAISettingOrigin RSS_AI_SPEED_ORIGIN =
         SCR_EAISettingOrigin.SCENARIO;
-    //! 6.2.35 曾用 COMMANDING；升级时清掉残留以免与 SCENARIO 并存混淆诊断
+    //! 6.2.35 曾用 COMMANDING；升级时清掉残留
     protected static const SCR_EAISettingOrigin RSS_AI_SPEED_ORIGIN_LEGACY =
         SCR_EAISettingOrigin.COMMANDING;
 
-    //! 最近一次 ApplyTargetMs 诊断（供 AI 调试日志读取）
     protected static bool s_bLastSettingsOk;
     protected static bool s_bLastAiMoveOk;
+    protected static bool s_bLastGroupOk;
     protected static bool s_bLastUsedFixedSetting;
     protected static EMovementType s_eLastMaxGait;
     protected static EMovementType s_eLastWanted;
     protected static EMovementType s_eLastOverride;
+    protected static EMovementType s_eLastGroupCap;
     protected static float s_fLastPhaseTopMs;
 
-    //! 每实体已安装的最高步态（避免每 tick 重复 AddSetting）
     protected static ref map<EntityID, int> s_mInstalledMaxGait;
+    //! 群组当前已安装的限制档（仅 IDLE/WALK）；RUN+ 时移除 Setting
+    protected static ref map<EntityID, int> s_mInstalledGroupMaxGait;
+    //! 各成员最近一次 RSS 限速步态（用于群组 min 聚合）
+    protected static ref map<EntityID, int> s_mMemberMaxGait;
 
     static bool GetLastSettingsOk()
     {
@@ -40,6 +42,11 @@ class SCR_RSS_AIMovementApply
     static bool GetLastAiMoveOk()
     {
         return s_bLastAiMoveOk;
+    }
+
+    static bool GetLastGroupOk()
+    {
+        return s_bLastGroupOk;
     }
 
     static bool GetLastUsedFixedSetting()
@@ -62,12 +69,17 @@ class SCR_RSS_AIMovementApply
         return s_eLastOverride;
     }
 
+    static EMovementType GetLastGroupCap()
+    {
+        return s_eLastGroupCap;
+    }
+
     static float GetLastPhaseTopMs()
     {
         return s_fLastPhaseTopMs;
     }
 
-    //! 安装/刷新步态上限。WALK/IDLE → 固定 Setting；RUN/SPRINT → Range。
+    //! 安装/刷新单体步态上限。WALK/IDLE → 固定 Setting；RUN/SPRINT → Range。
     static void ApplyMaxMovementTypeSetting(IEntity characterOwner, EMovementType maxType)
     {
         if (!characterOwner)
@@ -92,7 +104,6 @@ class SCR_RSS_AIMovementApply
         {
             if (prevGait == maxType)
             {
-                // ApplyTargetMs 入口会清 s_bLastSettingsOk；已安装同档则直接认为 Setting 仍有效
                 s_bLastUsedFixedSetting = NeedsFixedSpeedSetting(maxType);
                 s_bLastSettingsOk = true;
                 return;
@@ -129,7 +140,143 @@ class SCR_RSS_AIMovementApply
         s_bLastSettingsOk = true;
     }
 
-    //! 立刻把 Wanted 压到不超过 maxType（不等下一次 BT）
+    //! 群组步态：成员 maxGait 取 min → 仅 IDLE/WALK 钉 Setting；禁止队友抬回 RUN。
+    static void ApplyGroupMovementCap(IEntity characterOwner, EMovementType maxType)
+    {
+        s_bLastGroupOk = false;
+        s_eLastGroupCap = maxType;
+
+        AIGroup parentGroup = ResolveParentGroup(characterOwner);
+        if (!parentGroup)
+            return;
+
+        if (!s_mMemberMaxGait)
+            s_mMemberMaxGait = new map<EntityID, int>();
+
+        EntityID charId = characterOwner.GetID();
+        s_mMemberMaxGait.Set(charId, maxType);
+
+        EMovementType groupCap = ResolveGroupCapFromMembers(parentGroup, maxType);
+        s_eLastGroupCap = groupCap;
+
+        SCR_AIGroupSettingsComponent groupSettings =
+            SCR_AIGroupSettingsComponent.Cast(
+                parentGroup.FindComponent(SCR_AIGroupSettingsComponent));
+        AIGroupMovementComponent groupMove =
+            AIGroupMovementComponent.Cast(
+                parentGroup.FindComponent(AIGroupMovementComponent));
+
+        EntityID groupId = parentGroup.GetID();
+        if (!s_mInstalledGroupMaxGait)
+            s_mInstalledGroupMaxGait = new map<EntityID, int>();
+
+        bool restrictGait = NeedsFixedSpeedSetting(groupCap);
+
+        if (groupSettings)
+        {
+            groupSettings.RemoveSettingsOfTypeAndOrigin(
+                SCR_AIGroupCharactersMovementSpeedSettingBase, RSS_AI_SPEED_ORIGIN_LEGACY);
+
+            if (restrictGait)
+            {
+                int prevGroupGait = -1;
+                bool hasPrev = s_mInstalledGroupMaxGait.Find(groupId, prevGroupGait);
+                bool needInstall = true;
+                if (hasPrev)
+                {
+                    if (prevGroupGait == groupCap)
+                        needInstall = false;
+                }
+
+                if (needInstall)
+                {
+                    // 群组 Setting 只有固定档；钉死最高允许步态（裁剪 BT）
+                    SCR_AIGroupCharactersMovementSpeedSetting groupSetting =
+                        SCR_AIGroupCharactersMovementSpeedSetting.Create(
+                            RSS_AI_SPEED_ORIGIN,
+                            groupCap);
+                    groupSettings.AddSetting(groupSetting, false, true);
+                    s_mInstalledGroupMaxGait.Set(groupId, groupCap);
+                }
+            }
+            else
+            {
+                // 成员均允许 RUN+：撤掉我们的 SCENARIO 钉，把控制权还给 BT/航点
+                groupSettings.RemoveSettingsOfTypeAndOrigin(
+                    SCR_AIGroupCharactersMovementSpeedSettingBase, RSS_AI_SPEED_ORIGIN);
+                int unusedPrev = -1;
+                if (s_mInstalledGroupMaxGait.Find(groupId, unusedPrev))
+                    s_mInstalledGroupMaxGait.Remove(groupId);
+            }
+        }
+
+        if (groupMove)
+        {
+            if (restrictGait)
+            {
+                EMovementType resolved = groupCap;
+                if (groupSettings)
+                {
+                    SCR_AIGroupCharactersMovementSpeedSettingBase gSetting =
+                        SCR_AIGroupCharactersMovementSpeedSettingBase.Cast(
+                            groupSettings.GetCurrentSetting(
+                                SCR_AIGroupCharactersMovementSpeedSettingBase));
+                    if (gSetting)
+                        resolved = gSetting.GetSpeed(resolved);
+                }
+
+                groupMove.SetGroupCharactersWantedMovementType(resolved);
+            }
+
+            s_bLastGroupOk = true;
+        }
+    }
+
+    //! 本群已知成员限速步态取最严（枚举 IDLE<WALK<RUN<SPRINT）
+    protected static EMovementType ResolveGroupCapFromMembers(
+        AIGroup parentGroup,
+        EMovementType selfMaxType)
+    {
+        EMovementType groupCap = selfMaxType;
+        if (!parentGroup || !s_mMemberMaxGait)
+            return groupCap;
+
+        array<AIAgent> agents = {};
+        parentGroup.GetAgents(agents);
+        int agentCount = agents.Count();
+        int i = 0;
+        while (i < agentCount)
+        {
+            AIAgent agent = agents[i];
+            i = i + 1;
+            if (!agent)
+                continue;
+
+            IEntity ent = agent.GetControlledEntity();
+            if (!ent)
+                continue;
+
+            int otherGait = -1;
+            if (!s_mMemberMaxGait.Find(ent.GetID(), otherGait))
+                continue;
+
+            if (otherGait < groupCap)
+            {
+                if (otherGait == EMovementType.IDLE)
+                    groupCap = EMovementType.IDLE;
+                else if (otherGait == EMovementType.WALK)
+                    groupCap = EMovementType.WALK;
+                else if (otherGait == EMovementType.RUN)
+                    groupCap = EMovementType.RUN;
+                else
+                    groupCap = EMovementType.SPRINT;
+            }
+        }
+
+        return groupCap;
+    }
+
+    //! 立刻把单体 Wanted 压到不超过 maxType
     static void ForceMovementTypeWanted(IEntity characterOwner, EMovementType maxType)
     {
         if (!characterOwner)
@@ -163,10 +310,7 @@ class SCR_RSS_AIMovementApply
         s_eLastOverride = aiMove.GetMovementTypeOverride();
     }
 
-    //! 计算目标 → 应用：Setting 锁步态 + SetSpeedLimit + 绝对 MovementMaxSpeed
-    //! @param targetMs 计算层绝对帽
-    //! @param maxGait 允许的最高步态
-    //! @param instant 巡航等需立刻压速时 true
+    //! 计算目标 → 应用：群组+单体 Setting 锁步态，再角色层限速
     static void ApplyTargetMs(
         SCR_CharacterControllerComponent ctrl,
         IEntity characterOwner,
@@ -178,10 +322,12 @@ class SCR_RSS_AIMovementApply
         outFrac = 0.999;
         s_bLastSettingsOk = false;
         s_bLastAiMoveOk = false;
+        s_bLastGroupOk = false;
         s_bLastUsedFixedSetting = false;
         s_eLastMaxGait = maxGait;
         s_eLastWanted = maxGait;
         s_eLastOverride = maxGait;
+        s_eLastGroupCap = maxGait;
         s_fLastPhaseTopMs = 0.0;
 
         if (!ctrl || !characterOwner)
@@ -189,11 +335,11 @@ class SCR_RSS_AIMovementApply
         if (targetMs < 0.05)
             targetMs = 0.05;
 
+        // 先群组（清 Override），再单体 Wanted
+        ApplyGroupMovementCap(characterOwner, maxGait);
         ApplyMaxMovementTypeSetting(characterOwner, maxGait);
         ForceMovementTypeWanted(characterOwner, maxGait);
 
-        // SetSpeedLimit 倍率相对「引擎当前相位顶」，不是意图步态顶。
-        // Idle(engPh=0) 时不要用 walkTop 当分母（否则 frac≈1 且 top 显示 1.49）。
         int engPhase = ctrl.GetCurrentMovementPhase();
         float phaseTopMs = 0.0;
         if (engPhase >= 1)
@@ -209,10 +355,8 @@ class SCR_RSS_AIMovementApply
         else
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(characterOwner, 0.999, instant);
 
-        // AI：SetSpeedLimit 常被 BT/相位滞后吃掉。并行写绝对 MovementMaxSpeed。
         SCR_RSS_SpeedBridge.ApplyAbsoluteMovementMaxSpeed(characterOwner, targetMs);
 
-        // 巡航/跛行：玩家同款 CapsLock Walk 覆盖，迫使 engPh 离开 Run
         if (maxGait == EMovementType.WALK)
             SCR_RSS_SpeedBridge.HoldWalkDynamicSpeedOverride(ctrl);
         else if (maxGait == EMovementType.IDLE)
@@ -220,8 +364,26 @@ class SCR_RSS_AIMovementApply
         else
             SCR_RSS_SpeedBridge.EndWalkDynamicSpeedOverride(ctrl, 1.0);
 
-        // 角色层写完后再钉一次 Wanted（防本 tick 内被其它系统盖掉）
+        // 再钉群组+单体（角色层写完后 Override 可能被刷回）
+        ApplyGroupMovementCap(characterOwner, maxGait);
         ForceMovementTypeWanted(characterOwner, maxGait);
+    }
+
+    protected static AIGroup ResolveParentGroup(IEntity characterOwner)
+    {
+        if (!characterOwner)
+            return null;
+
+        AIControlComponent aiCtrl =
+            AIControlComponent.Cast(characterOwner.FindComponent(AIControlComponent));
+        if (!aiCtrl)
+            return null;
+
+        AIAgent agent = aiCtrl.GetAIAgent();
+        if (!agent)
+            return null;
+
+        return agent.GetParentGroup();
     }
 
     protected static bool NeedsFixedSpeedSetting(EMovementType maxType)
@@ -233,7 +395,6 @@ class SCR_RSS_AIMovementApply
         return false;
     }
 
-    //! 按引擎当前相位取顶速（供 SetSpeedLimit 分母）
     protected static float ResolvePhaseTopMsForEnginePhase(
         SCR_CharacterControllerComponent ctrl,
         IEntity characterOwner,
