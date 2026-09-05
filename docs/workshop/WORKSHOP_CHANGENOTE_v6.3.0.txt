@@ -1,0 +1,56 @@
+RSS v6.3.0 Change Notes
+=======================
+From 6.2.6 → 6.3.0 (config 6.3.0). Big performance pass + clearer AI settings.
+Keep server & clients on the same mod build.
+
+[EN]
+PERFORMANCE (vs 6.2.6 @ 883a051, PerfProbe)
+• Default config (AI stamina drain OFF):
+  – Player speed stack ~3.3× faster (~69% less cost per tick)
+  – AI cheap limit path ~2.9× faster (~65% less vs old shared full stack)
+• AI stamina drain ON: ~2.5× faster (~60% less) vs old AI full stack; still no player UpdateSpeed
+• Indoor slope rays removed from hot path; EngineReuse (floor normal / VelocityWS / terrain)
+
+AI SETTINGS (what they do now)
+• Disable AI Stamina Drain (default ON): cheap speed limit + Tobler; sprint intent capped to Run
+• Disable AI Stamina Drain OFF: dedicated AI drain pipeline + Tobler/CP caps; Sprint only if AI Fatigue Behaviors is ON
+• AI Fatigue Behaviors (default OFF): FSM, gait pin, combat decay; needs drain OFF
+• Disable All AI RSS: stops AI RSS loop entirely (last resort for dense AI servers)
+• Group/SCENARIO gait pin so AI actually walks when exhausted (not stuck at Run override)
+
+HUD
+• Dedicated-server ghost / double HUD fixed (orphan widget purge; only local pawn tears down singleton)
+• Server Hint OFF + Local HUD: no frozen leftover bar; re-enable shows one live HUD
+• Debug / HUD / DataExport default OFF in production
+
+CANTEEN
+• Still in arsenal as undeleted DEV ARTIFACT — equip/drink anim only
+• NO stamina / W′ restore yet — kept to test a future stamina-food pipeline; not a usable supply
+
+[中文]
+性能（相对 6.2.6 @ 883a051，PerfProbe）
+• 默认配置（禁用 AI 体力消耗 = 开）：
+  – 玩家限速全栈约快 3.3×（单次约省 ~69%）
+  – AI 廉价限速约快 2.9×（相对旧同全栈约省 ~65%）
+• 关闭「禁用 AI 体力消耗」开 drain：相对旧 AI 全栈约快 2.5×（约省 ~60%）；仍不跑玩家 UpdateSpeed
+• 室内坡度热路径去射线；EngineReuse（脚下法线 / VelocityWS / 地形）
+
+AI 设置（现行含义）
+• 禁用 AI 体力消耗（默认开）：廉价限速 + Tobler；冲刺意图压到 Run
+• 关掉该项 = 开 drain：AI 专用消耗管线 + Tobler/CP 帽；冲刺还需开「AI 疲劳行为」
+• AI 疲劳行为（默认关）：状态机 / 步态钉 / 战斗衰减；需先开消耗
+• 完全禁用 AI RSS：停掉 AI 主循环（高密度专服保底）
+• 群组/SCENARIO 步态钉：力竭时能真正降到走，不再被群组 Override 钉在 Run
+
+HUD
+• 专用服无故残影 / 开关后双层：按名清扫孤儿层；仅本机失控才 Destroy 单例
+• 服务器 Hint 关 + 本地 HUD：不再留冻结条；再开只显示一条实时 HUD
+• 生产默认关 Debug / HUD / DataExport
+
+水壶
+• 军火库仍可取，仅为未删除的开发产物（可上手/动画）
+• 暂不回补 STA/W′ — 留给后续「体力补充食物」测试，勿当补给使用
+
+Full log: CHANGELOG.md [6.3.0] · archive/CHANGELOG_6.2.6_to_6.2.40.md
+
+Author: ViVi141 | License: AGPL-3.0
