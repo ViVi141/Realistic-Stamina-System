@@ -29,7 +29,7 @@
 |------------|-------|--------|
 | **AI Fatigue Behaviors** | `m_bEnableAIStaminaCombatEffects` | FSM, tier cap, intent filter, combat decay, injury link (needs drain On) |
 | **Disable All AI RSS** | `m_bDisableAIAllCalc` | Stop AI RSS loop entirely |
-| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On** (default): cheap limit only. **Off**: AI drain pipeline (no player UpdateSpeed) |
+| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On** (default): cheap limit + Tobler; offline vs player ~**mean 15% / max ~79%**. **Off**: drain pipeline + CP/Sprint caps; ~**mean 1% / max ~2%** (`bench_player_ai_speed_gap.py`) |
 
 ## 3. Tick (`DisableAIStaminaCalc=Off`)
 

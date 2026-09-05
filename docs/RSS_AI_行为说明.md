@@ -37,7 +37,7 @@
 |----------|------|------|
 | **AI Fatigue Behaviors** | `m_bEnableAIStaminaCombatEffects` | 状态机、步态限速、意图过滤、战斗衰减、伤势联动（需消耗开启） |
 | **Disable All AI RSS** | `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
-| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On**（默认）：廉价限速 + Tobler。**Off**：消耗管线 + Tobler + CP/Sprint 帽 |
+| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On**（默认）：廉价限速 + Tobler。离线相对玩家脚程约 **均差 15% / 最大 ~79%**（W′ 见底上坡最差）。**Off**：消耗管线 + Tobler + CP/Sprint 帽，约 **均差 1% / 最大 ~2%**（`tools/bench_player_ai_speed_gap.py`） |
 | Mud Slip Mechanic | `m_bEnableMudSlipMechanism` | 泥泞（玩家侧；AI 管线不算泥泞） |
 
 ## 3. 每 tick 顺序（服端 AI，`DisableAIStaminaCalc=Off`）

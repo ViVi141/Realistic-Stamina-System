@@ -6,6 +6,7 @@
 
 - **默认仅限速** — `ApplyCheapAiSpeed` 始终用 `GetRawSlopeAngle` 做 Tobler，上坡不再比玩家明显偏快。
 - **开消耗（AI 管线）** — 先算坡度/地形再限速；Sprint→`GetV6SprintSpeedMs`；Walk/W′ 巡航闩→`InvertCruiseCapMs`；写入 `appliedSpeedLimitMs` 供消耗记账。
+- **设置说明** — `Disable AI Stamina Drain` 文案写入离线脚程差距：On≈均差15%/最大~79%；Off≈均差1%/最大~2%（`bench_player_ai_speed_gap.py`）。
 - 配置版本 → **6.2.32**
 
 ## [6.2.31] - 2026-09-06

@@ -87,7 +87,7 @@ class SCR_RSS_Settings
     [Attribute("false", UIWidgets.CheckBox, "Disable All AI RSS: stop entire AI RSS loop (limit/drain/behaviors). Engine stamina. Overrides other AI toggles. | 完全禁用 AI RSS（限速/消耗/行为全停），体力交还引擎；开启时覆盖另两项 AI 开关")]
     bool m_bDisableAIAllCalc;
 
-    [Attribute("true", UIWidgets.CheckBox, "Disable AI Stamina Drain: On=cheap speed limit only (default, best FPS). Off=AI stamina pipeline (accurate drain, higher CPU; never player UpdateSpeed). | 禁用 AI 体力消耗：On=仅廉价限速（默认、最省）；Off=AI 专用消耗管线（较准、更耗 CPU；不走玩家 UpdateSpeed）")]
+    [Attribute("true", UIWidgets.CheckBox, "Disable AI Stamina Drain: On=cheap limit+Tobler (default; offline vs player ~mean 15%/max~79% gap). Off=AI pipeline drain+CP/Sprint caps (~mean 1%/max~2% gap; ~4× CPU; never player UpdateSpeed). | 禁用 AI 体力消耗：On=廉价限速+Tobler（默认；离线相对玩家约均差15%/最大约79%）。Off=专用消耗管线+CP/冲刺帽（约均差1%/最大约2%；CPU约4倍；不走玩家UpdateSpeed）")]
     bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]

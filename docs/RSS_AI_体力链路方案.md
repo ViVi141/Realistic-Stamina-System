@@ -21,8 +21,8 @@
 | 菜单项 | 字段 | AI 行为 |
 |--------|------|---------|
 | **Disable All AI RSS** = On | `m_bDisableAIAllCalc` | 不跑 RSS 循环（覆盖下列两项） |
-| **Disable AI Stamina Drain** = On（默认） | `m_bDisableAIStaminaCalc` | 廉价限速 + **Tobler 坡度**（无消耗/无 CP 帽） |
-| **Disable AI Stamina Drain** = Off | 同上 = false | 管线：消耗 + Tobler + CP/Sprint 帽 |
+| **Disable AI Stamina Drain** = On（默认） | `m_bDisableAIStaminaCalc` | 廉价限速 + Tobler；离线 vs 玩家约均差 **15%** / 最大 **~79%** |
+| **Disable AI Stamina Drain** = Off | 同上 = false | 管线：消耗 + Tobler + CP/Sprint；离线 vs 玩家约均差 **1%** / 最大 **~2%** |
 | **AI Fatigue Behaviors** = On | `m_bEnableAIStaminaCombatEffects` | 状态机/意图/战斗衰减（需 Drain=Off） |
 
 ## 与玩家对照

@@ -69,7 +69,7 @@ class SCR_RSS_SettingsDescriptions
         if (widgetName == "ToggleDisableAIStamina")
         {
             title = "Disable AI Stamina Drain";
-            body = "On (default, recommended): AI only gets a cheap encumbrance + gait speed limit — no stamina drain. Off: AI runs the dedicated stamina pipeline (near-player accuracy, higher CPU). Speed never uses the heavy player UpdateSpeed path. Turn Off only if you want AI to tire / feed Fatigue Behaviors.";
+            body = "On (default): cheap speed only (encumbrance + gait + Tobler slope). No stamina drain / no CP cruise cap. Offline vs player speed gap: ~mean 15% |max ~79% (worst when W' empty on hills). Off: AI stamina pipeline — same metabolic core as players + Tobler + CP/Sprint caps (still NOT player UpdateSpeed). Offline gap vs player: ~mean 1% |max ~2%. Higher CPU (~4× cheap path). Turn Off for foot-speed parity and Fatigue Behaviors.";
             return true;
         }
 
