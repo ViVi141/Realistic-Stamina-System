@@ -84,6 +84,17 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
+        // 默认 DisableAIStaminaCalc：跳过地形/环境/代谢 Phase A，仅负重+相位限速。
+        float lightFrac = 1.0;
+        if (SCR_PlayerBaseAiLightTickHelper.TryApplyLightSpeedLimit(
+                this, loc.owner, m_pEncumbranceCache, m_fAnimSpeedCompensation, lightFrac))
+        {
+            m_fLastRssSpeedMultiplierApplied = lightFrac;
+            m_fAppliedSpeedLimitMs = -1.0;
+            RSS_ScheduleNextStaminaTick();
+            return false;
+        }
+
         loc.staminaPercent = GetRssAerobicPercent();
         loc.staminaPercent = Math.Clamp(loc.staminaPercent, 0.0, 1.0);
 
@@ -438,12 +449,6 @@ modded class SCR_CharacterControllerComponent
             m_sLastSpeedSource = "Client";
         else
             m_sLastSpeedSource = "Server";
-
-        if (!loc.isPlayer && SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
-        {
-            RSS_ScheduleNextStaminaTick();
-            return false;
-        }
 
         loc.isCriticalData = (loc.staminaPercent <= 0.05 || (m_pNetworkSyncManager && m_pNetworkSyncManager.GetLastReportedStaminaPercent() > 0.5 && loc.staminaPercent <= 0.1));
         if (loc.isPlayer && !Replication.IsServer() && m_pNetworkSyncManager && SCR_RSS_ConfigManager.GetServerDataExportEnabled())

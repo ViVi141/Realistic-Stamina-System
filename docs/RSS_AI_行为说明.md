@@ -64,8 +64,12 @@
 
 | 机制 | 常量 | 说明 |
 |------|------|------|
-| 距离 LOD | `RSS_PERF_AI_*` | 近 400 m：200 ms；中 1200 m：300 ms；远：1500 ms |
+| 距离 LOD | `RSS_PERF_AI_*` | 全量：近 400 m→400 ms；中→700 ms；远→2000 ms |
+| 轻量 LOD | `RSS_PERF_AI_LIGHT_*` | `DisableAIStaminaCalc`：500 / 1000 / 2500 ms；仅负重+限速 |
+| 玩家原点缓存 | `RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC` | 0.25 s 全服共享，避免每 AI tick 分配 |
 | LOD 总开关 | `RSS_PERF_AI_DISTANCE_LOD_ENABLED` | `false` 时 AI 固定 `RSS_AI_SPEED_UPDATE_INTERVAL_MS`（100 ms） |
+
+`DisableAIStaminaCalc`（默认开）走 `SCR_PlayerBaseAiLightTickHelper`，**不**跑地形/环境/Pandolf。需要彻底停循环时勾选 `m_bDisableAIAllCalc`。
 
 ## 6. 伤害联动
 

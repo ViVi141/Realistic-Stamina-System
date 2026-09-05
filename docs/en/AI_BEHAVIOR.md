@@ -32,7 +32,7 @@
 |-------|--------|
 | `m_bEnableAIStaminaCombatEffects` | **Master switch**: FSM, caps, intent filter, combat decay, injury link (new JSON often defaults false; host can enable) |
 | `m_bDisableAIAllCalc` | Server AI skips RSS main loop entirely |
-| `m_bDisableAIStaminaCalc` | May still compute speed-related bits; skip Pandolf drain/recovery |
+| `m_bDisableAIStaminaCalc` | **Default ON**: light path — encumbrance + gait limit only; skip terrain/env/Pandolf |
 | `m_bEnableMudSlipMechanism` | Mud slip (default off; independent of AI behavior layer) |
 
 ## 3. Per-tick order (server AI)
@@ -64,8 +64,12 @@ Stationary time drives `COLLAPSED→RECOVERING` and forced recovery at very low 
 
 | Mechanism | Constants | Notes |
 |-----------|-----------|-------|
-| Distance LOD | `RSS_PERF_AI_*` | Near 400 m: 200 ms; mid 1200 m: 300 ms; far: 1500 ms |
+| Full-path LOD | `RSS_PERF_AI_LOD_*` | Near 400 m→400 ms; mid→700 ms; far→2000 ms |
+| Light LOD | `RSS_PERF_AI_LIGHT_*` | When `DisableAIStaminaCalc`: 500 / 1000 / 2500 ms |
+| Player origin cache | `RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC` | Shared 0.25 s cache; avoids per-AI `GetPlayers` alloc |
 | LOD master | `RSS_PERF_AI_DISTANCE_LOD_ENABLED` | If `false`, AI uses fixed `RSS_AI_SPEED_UPDATE_INTERVAL_MS` (100 ms) |
+
+Default `DisableAIStaminaCalc` uses `SCR_PlayerBaseAiLightTickHelper` (no terrain/env/Pandolf). For zero AI RSS cost, enable `m_bDisableAIAllCalc`.
 
 ## 6. Injury link
 
@@ -73,4 +77,4 @@ Blood-based drain/recovery multipliers (`SCR_RSS_AIInjuryLink.c`, `RSS_AI_INJURY
 
 ---
 
-*Doc version: 2026-08-09, aligned with current `SCR_RSS_AIManager` per-agent pipeline.*
+*Doc version: 2026-09-05, aligned with 6.2.26 AI light-path perf fix.*

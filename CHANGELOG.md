@@ -1,5 +1,16 @@
 # 更新日志
 
+## [6.2.26] - 2026-09-05
+
+### 性能：多 AI 专服卡顿（默认路径）
+
+- **根因** — 默认 `m_bDisableAIStaminaCalc=true` 只在 Phase A 末尾跳过消耗，此前每名 AI 仍跑地形射线、环境因子、`UpdateSpeed` 全链；近距 200ms tick 在百人 AI 场景下打满专服 CPU。另：`GetNearestPlayerDistanceM` 每 AI 每 tick `new array` + `GetPlayers`。
+- **轻量路径** — `DisableAIStaminaCalc` 时 Phase A 开头 early-out：仅负重缓存 + V6 相位/跛行限速（`SCR_PlayerBaseAiLightTickHelper`），跳过地形/环境/代谢。
+- **LOD** — 全量路径近/中/远间隔 400/700/2000 ms；轻量路径 500/1000/2500 ms。
+- **距离查询** — 全服玩家原点 0.25s 共享缓存 + 静态复用数组；`TerrainDetector` 改走同一入口。
+- 配置版本 / ConfigManager → **6.2.26**
+- **服主** — 仍卡顿时可勾选「完全禁用 AI RSS」（`m_bDisableAIAllCalc`）彻底停循环。
+
 ## [6.2.25] - 2026-09-01
 
 ### 紧急修复：喝水 Access Violation 崩溃

@@ -8,9 +8,16 @@ class SCR_RSS_AIConstants
     static const bool RSS_PERF_AI_DISTANCE_LOD_ENABLED = true;
     static const float RSS_PERF_AI_LOD_NEAR_M = 400.0;
     static const float RSS_PERF_AI_LOD_FAR_M = 1200.0;
-    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 200; // perf: 100→200，高密度 AI 减负。体力变化是秒级，200ms 精度足够
-    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 300;
-    static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 1500;
+    //! 全量 AI 体力路径 LOD（DisableAIStaminaCalc=false）
+    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 400; // perf: 200→400，高密度 AI 减负
+    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 700;
+    static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 2000;
+    //! 轻量路径（默认 DisableAIStaminaCalc=true）：仅负重/相位限速，可更稀
+    static const int RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS = 500;
+    static const int RSS_PERF_AI_LIGHT_MID_INTERVAL_MS = 1000;
+    static const int RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS = 2500;
+    //! 全服玩家原点缓存 TTL（秒）；所有 AI LOD 共用，避免每 tick 分配 GetPlayers
+    static const float RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC = 0.25;
     // [SOFT] AI 体力状态机 — 转移阈值（可在预设中调整）
     static const float RSS_AI_STATE_FRESH_DOWN = 0.80;           // FRESH → WINDED
     static const float RSS_AI_STATE_WINDED_DOWN = 0.50;          // WINDED → FATIGUED

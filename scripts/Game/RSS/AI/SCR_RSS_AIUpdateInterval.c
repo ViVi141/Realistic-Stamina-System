@@ -2,31 +2,92 @@
 
 class SCR_RSS_AIUpdateInterval
 {
+    protected static ref array<int> s_aReusablePlayerIds;
+    protected static ref array<vector> s_aCachedPlayerOrigins;
+    protected static float s_fPlayerPosCacheTimeSec = -1.0;
+
+    //! 刷新全服玩家原点缓存（所有 AI 共享，避免每 tick 每 AI 分配 + GetPlayers）
+    protected static void RefreshPlayerOriginsCacheIfNeeded()
+    {
+        float nowSec = 0.0;
+        if (GetGame())
+        {
+            World world = GetGame().GetWorld();
+            if (world)
+                nowSec = world.GetWorldTime() / 1000.0;
+        }
+
+        float ttl = SCR_RSS_AIConstants.RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC;
+        if (s_fPlayerPosCacheTimeSec >= 0.0)
+        {
+            if ((nowSec - s_fPlayerPosCacheTimeSec) < ttl)
+                return;
+        }
+
+        if (!s_aReusablePlayerIds)
+            s_aReusablePlayerIds = new array<int>();
+        else
+            s_aReusablePlayerIds.Clear();
+
+        if (!s_aCachedPlayerOrigins)
+            s_aCachedPlayerOrigins = new array<vector>();
+        else
+            s_aCachedPlayerOrigins.Clear();
+
+        PlayerManager pm = null;
+        if (GetGame())
+            pm = GetGame().GetPlayerManager();
+        if (!pm)
+        {
+            s_fPlayerPosCacheTimeSec = nowSec;
+            return;
+        }
+
+        pm.GetPlayers(s_aReusablePlayerIds);
+        int n = s_aReusablePlayerIds.Count();
+        for (int i = 0; i < n; i++)
+        {
+            IEntity pe = pm.GetPlayerControlledEntity(s_aReusablePlayerIds.Get(i));
+            if (!pe)
+                continue;
+            s_aCachedPlayerOrigins.Insert(pe.GetOrigin());
+        }
+
+        s_fPlayerPosCacheTimeSec = nowSec;
+    }
+
     static float GetNearestPlayerDistanceM(IEntity ownerEntity)
     {
         if (!ownerEntity)
             return -1.0;
 
-        PlayerManager pm = GetGame().GetPlayerManager();
-        if (!pm)
+        RefreshPlayerOriginsCacheIfNeeded();
+        if (!s_aCachedPlayerOrigins)
+            return -1.0;
+        if (s_aCachedPlayerOrigins.IsEmpty())
             return -1.0;
 
-        array<int> playerIds = {};
-        pm.GetPlayers(playerIds);
-        float nearM = 99999.0;
-        for (int pi = 0; pi < playerIds.Count(); pi++)
+        vector ownerPos = ownerEntity.GetOrigin();
+        float nearSq = 99999.0 * 99999.0;
+        bool any = false;
+        int n = s_aCachedPlayerOrigins.Count();
+        for (int i = 0; i < n; i++)
         {
-            IEntity pe = pm.GetPlayerControlledEntity(playerIds.Get(pi));
-            if (pe)
+            float dSq = vector.DistanceSq(ownerPos, s_aCachedPlayerOrigins.Get(i));
+            if (!any)
             {
-                float d = vector.Distance(ownerEntity.GetOrigin(), pe.GetOrigin());
-                if (d < nearM)
-                    nearM = d;
+                nearSq = dSq;
+                any = true;
+            }
+            else if (dSq < nearSq)
+            {
+                nearSq = dSq;
             }
         }
-        if (nearM < 99999.0)
-            return nearM;
-        return -1.0;
+
+        if (!any)
+            return -1.0;
+        return Math.Sqrt(nearSq);
     }
 
     static int GetSpeedUpdateIntervalMs(bool isPlayerControlled, IEntity ownerEntity)
@@ -45,10 +106,22 @@ class SCR_RSS_AIUpdateInterval
 
         float distM = GetNearestPlayerDistanceM(ownerEntity);
 
+        bool lightMode = SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled();
+
         if (distM < 0.0 || distM <= SCR_RSS_AIConstants.RSS_PERF_AI_LOD_NEAR_M)
+        {
+            if (lightMode)
+                return SCR_RSS_AIConstants.RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS;
             return SCR_RSS_AIConstants.RSS_PERF_AI_LOD_NEAR_INTERVAL_MS;
+        }
         if (distM <= SCR_RSS_AIConstants.RSS_PERF_AI_LOD_FAR_M)
+        {
+            if (lightMode)
+                return SCR_RSS_AIConstants.RSS_PERF_AI_LIGHT_MID_INTERVAL_MS;
             return SCR_RSS_AIConstants.RSS_PERF_AI_LOD_MID_INTERVAL_MS;
+        }
+        if (lightMode)
+            return SCR_RSS_AIConstants.RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS;
         return SCR_RSS_AIConstants.RSS_PERF_AI_LOD_FAR_INTERVAL_MS;
     }
 
