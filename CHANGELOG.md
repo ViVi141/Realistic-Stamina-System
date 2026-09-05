@@ -1,5 +1,14 @@
 # 更新日志
 
+## [6.2.29] - 2026-09-06
+
+### 性能：坡度优先复用引擎脚下法线
+
+- **`GetFloorNormal` 优先** — `GetRawSlopeAngle` / `CalculateGradePercent` 先读 `CharacterMovementComponent.GetFloorNormal()`（移动物理已算）；失败才 `SCR_TerrainHelper` Trace；同一次法线同时算幅值+投影（去掉双 Trace）。
+- **AI 管线** — 有脚下法线则复用；否则仍用 Y 差分；**不**对 AI 做 Trace 回退。
+- **探针** — 新增 `01g2_floor_normal` / `01g3_trace_normal` 对比。
+- 配置版本 / ConfigManager → **6.2.29**
+
 ## [6.2.28] - 2026-09-06
 
 ### AI 专用体力链路（精度对齐 + 避开 Speed 热点）
@@ -10,6 +19,7 @@
 - **限速** — 仍一律廉价（负重+相位）；文档：`docs/RSS_AI_体力链路方案.md`。
 - **设置文案** — 菜单：`AI Fatigue Behaviors` / `Disable All AI RSS` / `Disable AI Stamina Drain`（去掉易误解的 Speed）；说明与 Attribute 对齐 6.2.28 语义。
 - **修 AI 偏快** — 廉价限速改为「绝对 m/s ÷ 相位引擎顶」（与玩家同）；`SetSpeedLimit(1.0)` 不再摘掉源；默认不算消耗时冲刺顶压到 Run；战斗 SpeedCap 同步用绝对目标。
+- **PerfProbe 全链路拆分** — `SCR_RSS_PerfProbe.Run(3000)` / `RunNearestAi(3000)`：限速原子（含 FromInputs/坡度/引擎顶/UpdateSpeed）、消耗原子、组合路径 A–G 与相对 `D_ai_cheap_abs` 倍率。
 - 配置版本 / ConfigManager → **6.2.28**
 
 ## [6.2.27] - 2026-09-06

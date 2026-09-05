@@ -380,7 +380,7 @@ modded class SCR_CharacterControllerComponent
         IEntity owner = GetOwner();
         if (!owner)
             return;
-        SCR_RSS_PerfProbe.RunOnController(this, owner, iterations);
+        SCR_RSS_PerfProbe.RunOnController(this, owner, iterations, "playerbase");
     }
 
     //! V6_TRY_MOVEMENT_MAX_SPEED：按绝对 m/s 写 MovementMaxSpeed

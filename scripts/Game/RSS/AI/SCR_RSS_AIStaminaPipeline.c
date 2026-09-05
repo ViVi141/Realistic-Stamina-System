@@ -104,8 +104,8 @@ class SCR_RSS_AIStaminaPipeline
             ctx.owner, pos.computedVelocity);
         float currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
 
-        // 坡度：Y 差分（敏感度上坡度对油耗最大；无射线）
-        UpdateGradeFromPosition(ctx.owner.GetOrigin(), currentSpeed, timeDeltaSec);
+        // 坡度：优先引擎 GetFloorNormal；否则 Y 差分（无 Trace）
+        UpdateGrade(ctx.ctrl, ctx.owner.GetOrigin(), velocity, currentSpeed, timeDeltaSec);
 
         // 地形：近/中稀采样射线；远距固定 1.0
         UpdateTerrainFactor(ctx, nowSec, currentSpeed, distM, farLod);
@@ -283,7 +283,42 @@ class SCR_RSS_AIStaminaPipeline
         return nowSec;
     }
 
-    protected void UpdateGradeFromPosition(vector origin, float currentSpeed, float timeDeltaSec)
+    protected void UpdateGrade(
+        SCR_CharacterControllerComponent ctrl,
+        vector origin,
+        vector velocity,
+        float currentSpeed,
+        float timeDeltaSec)
+    {
+        // 仅复用引擎脚下法线；失败用 Y 差分。AI 路径禁止 Trace 回退。
+        if (ctrl && currentSpeed > 0.05)
+        {
+            vector normal;
+            if (SCR_RSS_SpeedCalculator.TryGetCharacterFloorNormal(ctrl, normal))
+            {
+                float magnitude = SCR_RSS_SpeedCalculator.SlopeMagnitudeDegreesFromNormal(normal);
+                float cosAngle = SCR_RSS_SpeedCalculator.GetSlopeProjectionCos(normal, velocity);
+                float angleDeg = magnitude * cosAngle;
+                angleDeg = Math.Clamp(angleDeg, -45.0, 45.0);
+                float slopeRatio = Math.Tan(angleDeg * Math.DEG2RAD);
+                slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
+                float gradeFromFloor = slopeRatio * 100.0;
+                if (gradeFromFloor > 35.0)
+                    gradeFromFloor = 35.0;
+                if (gradeFromFloor < -25.0)
+                    gradeFromFloor = -25.0;
+                m_fCachedGradePercent = m_fCachedGradePercent * 0.7 + gradeFromFloor * 0.3;
+                m_vLastGradePos = origin;
+                m_bHasGradePos = true;
+                return;
+            }
+        }
+
+        UpdateGradeFromPositionFallback(origin, timeDeltaSec);
+    }
+
+    //! FloorNormal 不可用时：位置 Y 差分估 grade%
+    protected void UpdateGradeFromPositionFallback(vector origin, float timeDeltaSec)
     {
         if (!m_bHasGradePos)
         {
@@ -308,7 +343,6 @@ class SCR_RSS_AIStaminaPipeline
         if (grade < -25.0)
             grade = -25.0;
 
-        // 低通，避免 AI 抖动台阶
         m_fCachedGradePercent = m_fCachedGradePercent * 0.7 + grade * 0.3;
     }
 

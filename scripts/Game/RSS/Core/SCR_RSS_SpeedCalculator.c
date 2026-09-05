@@ -465,26 +465,109 @@ class SCR_RSS_SpeedCalculator
     protected static const float VELOCITY_SIGN_THRESHOLD = 0.1;
     // [仅用于 GetSlopeSignFromVelocity 等] 等高线判定阈值；有效坡度已改为“幅值×cos(速度与上坡夹角)”，等高线自然为 0
     protected static const float CONTOUR_COS_THRESHOLD = 0.2;
+    //! 脚下法线最短长度；过短视为无效，回退 Trace
+    protected static const float FLOOR_NORMAL_MIN_LEN = 0.5;
+
+    //------------------------------------------------------------------------------------------------
+    //! 优先复用引擎移动已算好的脚下法线（无额外 Trace）；失败再 Trace。
+    //! @return true 且 outNormal 为单位附近法线
+    static bool TryGetCharacterFloorNormal(
+        SCR_CharacterControllerComponent controller,
+        out vector outNormal)
+    {
+        outNormal = vector.Up;
+        if (!controller)
+            return false;
+
+        IEntity owner = controller.GetOwner();
+        if (!owner)
+            return false;
+
+        CharacterMovementComponent move = null;
+        CharacterEntity charEnt = CharacterEntity.Cast(owner);
+        if (charEnt)
+            move = charEnt.GetMovementComponent();
+        if (!move)
+            move = CharacterMovementComponent.Cast(
+                owner.FindComponent(CharacterMovementComponent));
+        if (!move)
+            return false;
+
+        // 离地/坠落时脚下接触不可靠
+        if (!move.IsMovingOnGround())
+        {
+            if (move.IsFalling())
+                return false;
+            if (move.IsSwimming())
+                return false;
+        }
+
+        vector n = move.GetFloorNormal();
+        float len = n.Length();
+        if (len < FLOOR_NORMAL_MIN_LEN)
+            return false;
+
+        // 法线应大致朝上；倒置/噪声回退 Trace
+        float upDot = vector.Dot(n, vector.Up) / len;
+        if (upDot < 0.1)
+            return false;
+
+        outNormal = n * (1.0 / len);
+        return true;
+    }
+
+    //! Trace 回退：SCR_TerrainHelper.GetTerrainNormal
+    static bool TryGetTracedTerrainNormal(
+        SCR_CharacterControllerComponent controller,
+        out vector outNormal)
+    {
+        outNormal = vector.Up;
+        if (!controller)
+            return false;
+        IEntity owner = controller.GetOwner();
+        if (!owner)
+            return false;
+        BaseWorld world = owner.GetWorld();
+        if (!world)
+            return false;
+
+        vector pos = owner.GetOrigin();
+        vector n = SCR_TerrainHelper.GetTerrainNormal(pos, world, false, null);
+        float len = n.Length();
+        if (len < 0.1)
+            return false;
+        outNormal = n * (1.0 / len);
+        return true;
+    }
+
+    //! 脚下/地形法线：FloorNormal 优先，Trace 回退。单次采样供幅值+投影共用。
+    static bool TryGetSlopeNormal(
+        SCR_CharacterControllerComponent controller,
+        out vector outNormal)
+    {
+        if (TryGetCharacterFloorNormal(controller, outNormal))
+            return true;
+        return TryGetTracedTerrainNormal(controller, outNormal);
+    }
+
+    //! 法线 → 坡度幅值（度，0..45）
+    static float SlopeMagnitudeDegreesFromNormal(vector normal)
+    {
+        float dotUp = vector.Dot(normal, vector.Up);
+        dotUp = Math.Clamp(dotUp, 0.0, 1.0);
+        float slopeAngleDegrees = Math.Acos(dotUp) * Math.RAD2DEG;
+        return Math.Clamp(slopeAngleDegrees, 0.0, 45.0);
+    }
 
     // 通过地面法线计算地形坡度幅值（与移动方向无关）
     // @param controller 角色控制器组件
     // @return 坡度角度幅值（0..45 度），失败返回 0
     static float GetTerrainSlopeAngleMagnitude(SCR_CharacterControllerComponent controller)
     {
-        if (!controller)
+        vector normal;
+        if (!TryGetSlopeNormal(controller, normal))
             return 0.0;
-        IEntity owner = controller.GetOwner();
-        if (!owner)
-            return 0.0;
-        BaseWorld world = owner.GetWorld();
-        if (!world)
-            return 0.0;
-        vector pos = owner.GetOrigin();
-        vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, world, false, null);
-        float dotUp = vector.Dot(normal, vector.Up);
-        dotUp = Math.Clamp(dotUp, 0.0, 1.0);
-        float slopeAngleDegrees = Math.Acos(dotUp) * Math.RAD2DEG;
-        return Math.Clamp(slopeAngleDegrees, 0.0, 45.0);
+        return SlopeMagnitudeDegreesFromNormal(normal);
     }
 
     // 根据速度矢量与坡向得到“沿运动方向”的投影系数 cos(速度与上坡夹角)
@@ -526,8 +609,8 @@ class SCR_RSS_SpeedCalculator
     }
 
     // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
-    // 使用“运动方向有效坡度”：幅值由地形法线得到，再投影到速度方向（magnitude × cos(速度与上坡夹角)），
-    // 使沿等高线移动时坡度为 0、斜向移动时坡度按几何比例缩放，与 Pandolf 的“沿路径坡度”一致，避免法线全幅导致的不合理。
+    // 使用“运动方向有效坡度”：幅值由脚下/地形法线得到，再投影到速度方向。
+    // 优先 CharacterMovementComponent.GetFloorNormal（引擎已算）；失败才 Trace。
     // @param controller 角色控制器组件
     // @param velocity 速度矢量（可选，vector.Zero 时从 controller 获取；静止时有效坡度=0）
     // @return 有效坡度角度（度），正=上坡，负=下坡，0=平地/等高线/静止
@@ -538,11 +621,15 @@ class SCR_RSS_SpeedCalculator
         IEntity owner = controller.GetOwner();
         if (!owner)
             return 0.0;
-        float magnitude = GetTerrainSlopeAngleMagnitude(controller);
+
+        vector normal;
+        if (!TryGetSlopeNormal(controller, normal))
+            return 0.0;
+
+        float magnitude = SlopeMagnitudeDegreesFromNormal(normal);
         if (magnitude < 0.01)
             return 0.0;
-        vector pos = owner.GetOrigin();
-        vector normal = SCR_TerrainHelper.GetTerrainNormal(pos, owner.GetWorld(), false, null);
+
         if (velocity.Length() < VELOCITY_SIGN_THRESHOLD)
             velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(owner, vector.Zero);
         float cosAngle = GetSlopeProjectionCos(normal, velocity);

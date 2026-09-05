@@ -21,7 +21,7 @@
 |------|------|---------|
 | 限速意图 | `UpdateSpeed` + CP 巡航帽 + 坡度射线 | `ApplyCheapAiSpeed`：绝对行军 m/s÷相位顶（keepSource）；默认不算消耗时冲刺压到 Run |
 | 测速 | 位置差分 | 同 |
-| 坡度 | 射线/环境 `CalculateGradePercent` | **Y 差分估 grade%** + 低通 |
+| 坡度 | 射线/环境 `CalculateGradePercent` | **优先 `GetFloorNormal`**；否则 Y 差分；**无 Trace** |
 | 地形系数 | 每 tick 射线 | 近 2s / 中 5s 稀采样；远距固定 1.0 |
 | 热应激 | `EnvironmentFactor` 全链 | **全服 1Hz** TOD 抛物线近似 |
 | 代谢功率 / 消耗 | `CalculateTotalDrainRate` | **同核** |
