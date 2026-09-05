@@ -95,8 +95,7 @@ class SCR_RSS_MetabolismMath
     static const float TOBLER_W_AT_FLAT_KMH = 5.039;
 
     // ==================== 数学工具函数 ====================
-    // 注意：Pow() 函数已移至 SCR_RSS_StaminaHelpers.c 模块
-    // 使用 SCR_RSS_StaminaHelpers.Pow() 调用
+    // 幂运算直接用 Math.Pow（原 StaminaHelpers 包装已删除）
 
     // ==================== 核心计算函数 ====================
 

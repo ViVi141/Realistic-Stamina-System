@@ -3,7 +3,7 @@
 > **中文** | [English](en/AI_BEHAVIOR.md)
 
 本文说明 **Realistic Stamina System (RSS)** 对 **AI 角色** 的行为与实现入口。  
-以 `scripts/Game/RSS/AI/` 源码为准。旧版群组机动 / GroupSync / 群组代理等模块**已移除**；历史设计见归档稿 [`RSS_AI体力集成全盘设计方案.md`](RSS_AI体力集成全盘设计方案.md)。  
+以 `scripts/Game/RSS/AI/` 源码为准。旧版群组机动 / GroupSync / 群组代理等模块**已移除**；历史设计见 [`archive/RSS_AI体力集成全盘设计方案.md`](archive/RSS_AI体力集成全盘设计方案.md)。  
 **AI 专用体力精度方案**见 [`RSS_AI_体力链路方案.md`](RSS_AI_体力链路方案.md)。
 
 ## 0. 总体思想
@@ -78,4 +78,4 @@
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.28 AI 专用体力管线。*
+*文档版本：2026-09-06，对齐 6.2.31（EngineReuse + 室内缓存抑坡）。*

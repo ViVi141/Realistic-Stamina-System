@@ -19,7 +19,8 @@
 
 **Precedence on conflict**: source code > this guide / calculation authority > historical README prose > archived design drafts.
 
-Do not treat as implementation truth: Chinese archive `../RSS_AI体力集成全盘设计方案.md`.
+Do not treat as implementation truth: Chinese archive [`../archive/RSS_AI体力集成全盘设计方案.md`](../archive/RSS_AI体力集成全盘设计方案.md).
+Current AI: [`../RSS_AI_体力链路方案.md`](../RSS_AI_体力链路方案.md), [`AI_BEHAVIOR.md`](AI_BEHAVIOR.md). Index: [`../README.md`](../README.md).
 
 ---
 

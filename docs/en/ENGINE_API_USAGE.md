@@ -2,7 +2,9 @@
 
 > [中文](../engine_api_usage.md) | **English**
 >
-> **v6.1.x (current)**: speed limits via `SCR_RSS_SpeedBridge` → `SetSpeedLimit` (min-merge with foliage, etc.). Aerobic authority is `m_fTargetStamina`, written through the `SCR_StaminaOverride` shell. W′ does **not** change aerobic authority, but by default `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` drives native sway/blur (`Exhaustion`). Coding rules: [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
+> **v6.2.31 (current)**: speed limits via `SCR_RSS_SpeedBridge` → `SetSpeedLimit` (min-merge with foliage, etc.). Aerobic authority is `m_fTargetStamina`, written through the `SCR_StaminaOverride` shell. W′ does **not** change aerobic authority, but by default `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` drives native sway/blur (`Exhaustion`). Prefer `SCR_RSS_EngineReuse` for slope / velocity / floor surface. Coding rules: [`CODING_STANDARDS.md`](CODING_STANDARDS.md).
+>
+> Tables below are largely historical enumerations; see Chinese doc + EngineReuse for the reuse path.
 
 > Scope: all `.c` under `scripts/`  
 > Excludes project-internal types from the “official API” framing (`SCR_RSS_*`, many `SCR_Stamina*`)  

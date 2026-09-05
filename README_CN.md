@@ -1,10 +1,10 @@
-# Realistic Stamina System (RSS) v6.2.8
+# Realistic Stamina System (RSS) v6.2.31
 
 [中文 README（当前）](README_CN.md) | [English README](README_EN.md) | [混合版 README](README.md)
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Arma Reforger](https://img.shields.io/badge/Arma-Reforger-orange)](https://www.bohemia.net/games/arma-reforger)
-[![Version](https://img.shields.io/badge/Version-6.2.8-brightgreen)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-6.2.31-brightgreen)](CHANGELOG.md)
 
 **Realistic Stamina System (RSS)** - 一个结合体力和负重动态调整移动速度的拟真模组，基于精确的医学/生理学模型（v6：Pandolf/ACSM + Critical Power–W′）。
 
@@ -12,7 +12,7 @@
 
 - **模组 ID / GUID**: `Realistic Stamina System` / `68649101601CC93D`
 - **建议游戏版本**: Arma Reforger **1.7+**
-- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.8**
+- **配置版本**: `SCR_RSS_ConfigManager.CURRENT_VERSION` = **6.2.31**
 
 > 本文在保留历史特性说明与版本记录的同时，已把路径/类名对齐到当前仓库，并在关键处标注 **【v6】**。逐条变更仍以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
@@ -181,7 +181,7 @@ Realistic-Stamina-System/
 │   │   │   ├── SCR_RSS_CollapseTransition.c / SprintGate.c / SprintBlockSpeedTransition.c
 │   │   │   ├── SCR_RSS_EncumbranceCache.c / StanceTransitionManager.c
 │   │   │   ├── SCR_RSS_SwimmingStaminaModel.c / ExerciseTracker.c
-│   │   │   ├── SCR_RSS_Constants.c / ConfigBridge.c / StaminaHelpers.c / StaminaState.c
+│   │   │   ├── SCR_RSS_Constants.c / ConfigBridge.c / EngineReuse.c / StaminaState.c
 │   │   │   ├── SCR_RSS_CombatStimController.c / WPrimeServerTick.c
 │   │   │   └── …（调试批处理 / NetRate / UpdateLoop* 等）
 │   │   ├── Environment/                  # 环境（~18）
@@ -210,7 +210,7 @@ Realistic-Stamina-System/
 │   │   └── Presentation/                 # HUD / 镜头 / 屏效 / 设置 UI（~12）
 │   │       ├── SCR_RSS_StaminaHUDComponent.c / UISignalBridge.c / DebugDisplay.c
 │   │       ├── CharacterCamera1stPerson.c / PresentationBridge.c
-│   │       ├── SCR_RSS_AdminMenuUI.c / SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
+│   │       ├── SCR_RSS_SettingsTab.c / SettingsSubMenu.c / SettingsDescriptions.c
 │   │       └── CombatStim / Stamina 屏效脚本
 │   ├── Components/Gadgets/               # CSB / 吗啡等
 │   ├── UserActions/
@@ -225,12 +225,13 @@ Realistic-Stamina-System/
 ```
 
 
-## v6.2.8 版本更新 / v6.2.8 Updates
+## v6.2.31 版本更新 / Latest
 
-**2026-09-01**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.8]**）
+**2026-09-06**（详见 [CHANGELOG.md](CHANGELOG.md) **[6.2.31]** 及 6.2.28–6.2.30）
 
-- 军火箱可取美/苏水壶（EntityCatalog + HQ Equipment overwrite）
-- 配置版本 **6.2.8**
+- AI 专用体力管线 + EngineReuse；室内抑坡走缓存；玩家 UpdateSpeed 热路径优化
+- 配置版本 **6.2.31**
+- 仓库整理：Workshop / 旧 CHANGELOG / 死脚本归档，见 [docs/README.md](docs/README.md)
 
 ## v6.2.7 版本更新 / v6.2.7 Updates
 
@@ -1145,7 +1146,7 @@ GetGame().GetCallqueue().CallLater(UpdateSpeedBasedOnStamina, 200, false);
 
 ## 版本历史
 
-- **v6.2.8** (当前版本) - 军火箱登记水壶；此前 v6.2.7 HUD GUID 撞车修复见 CHANGELOG
+- **v6.2.31** (当前版本) - AI 管线 / EngineReuse / 热路径；仓库文档整理。此前见 CHANGELOG。
 - **v6.2.6** - W′ 回满后引擎条过时与有氧回血过慢修复（见上文 v6.2.6 与 CHANGELOG）
 - **v6.2.5** - W′ 空蹲走与站走同速修复（见上文 v6.2.5 与 CHANGELOG）
 - **v6.2.4** - HUD 残缺条 / 双层叠加修复（见上文 v6.2.4 与 CHANGELOG）

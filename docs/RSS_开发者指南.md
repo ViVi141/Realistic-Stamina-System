@@ -20,7 +20,9 @@
 
 **冲突时优先级**：源码 > 本指南 / 计算逻辑权威版 > README 历史叙述 > 归档设计稿。
 
-归档勿当实现依据：[`RSS_AI体力集成全盘设计方案.md`](RSS_AI体力集成全盘设计方案.md)。
+归档勿当实现依据：[`archive/RSS_AI体力集成全盘设计方案.md`](archive/RSS_AI体力集成全盘设计方案.md)。
+现行 AI：[`RSS_AI_体力链路方案.md`](RSS_AI_体力链路方案.md)、[`RSS_AI_行为说明.md`](RSS_AI_行为说明.md)。
+文档总索引：[`README.md`](README.md)。
 
 ---
 

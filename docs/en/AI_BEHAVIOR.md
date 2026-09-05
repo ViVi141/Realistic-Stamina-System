@@ -43,4 +43,4 @@ Full: 600 / 1000 / 2500 ms. Light: 800 / 1500 / 3000 ms. Terrain sample: 2 s / 5
 
 ---
 
-*Doc version: 2026-09-06, aligned with 6.2.28 AI stamina pipeline.*
+*Doc version: 2026-09-06, aligned with 6.2.31 (EngineReuse + indoor cache slope suppress).*

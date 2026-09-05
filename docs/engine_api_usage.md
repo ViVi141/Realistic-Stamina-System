@@ -2,7 +2,9 @@
 
 > **中文** | [English](en/ENGINE_API_USAGE.md)
 >
-> **v6.1.x（当前）**：限速经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`（与灌木等 min 合并）。有氧权威在 `m_fTargetStamina`，经 `SCR_StaminaOverride` 拦截壳写入。W′ **不**改有氧权威，但默认经 `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` 驱动原生晃动/模糊（`Exhaustion`）。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
+> **v6.2.31（当前）**：限速经 `SCR_RSS_SpeedBridge` → `SetSpeedLimit`（与灌木等 min 合并）。有氧权威在 `m_fTargetStamina`，经 `SCR_StaminaOverride` 拦截壳写入。W′ **不**改有氧权威，但默认经 `SCR_RSS_SprintGate` → `ApplyTransientEngineStamina` 驱动原生晃动/模糊（`Exhaustion`）。坡度/测速/地形优先见 `SCR_RSS_EngineReuse`。编码规范见 [`RSS_CODING_STANDARDS.md`](RSS_CODING_STANDARDS.md)。
+>
+> 下表多为历史枚举；新增复用入口以 `EngineReuse` / 开发者指南为准。
 
 > 统计范围：`scripts/` 目录下所有 `.c` 文件  
 > 排除自定义类（`SCR_RSS_*`、`SCR_Stamina*` 等项目内部类）  

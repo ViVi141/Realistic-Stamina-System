@@ -4,7 +4,7 @@
 >
 > **Math kernel**: 6.0.0 | **Code alignment**: 6.1.x (2026-08-14 audit-aligned)  
 > Supersedes v5 and older “willpower plateau / Givoni / legacy module names”. Source wins.  
-> ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [RSS_数学模型审计_2026-08-14.md](../RSS_数学模型审计_2026-08-14.md).  
+> ⚠️ 2026-08-14 math audit: §1–§7 corrected to actual code/baked values; drift log in [archive/RSS_数学模型审计_2026-08-14.md](../archive/RSS_数学模型审计_2026-08-14.md).  
 > **Speed default (since v6.1.7)**: `V6_APPLY_CP_METABOLIC_SPEED_CAP = true` (after W′ depletion, CP-cruise command speed is pressed via `SetSpeedLimit`; ≤6.1.5 was drain-only: overspend only hits STA/W′). Cruise invert clamps grade to 15% and ignores terrain η for speed; Walk invert floors at `V6_CP_HIKE_FLOOR_MS=1.0` (`GetMetabolicSpeedCapMs` and UpdateCoordinator both use `InvertCruiseCapMs`, not a raw invert). The CP cruise cap is **in-gait only** (Run about 0.5–1.0× phase top, and ≥ `V6_RUN_GAIT_FLOOR_MS` 2.2 or the 1.95–2.2 soft band). If invert falls out of the Run band, do **not** write Walk/crawl speed onto the Run phase (foot-slide). After W′ empty while still holding movement, switch to engine Walk gait (`V6_CP_OUT_OF_BAND_WALK_OVERRIDE`: CapsLock-style `SetDynamicSpeed(0.5)` + override). Known limit: the mouse wheel (`SetDynamicSpeed`) can still bypass the max-speed layer in-band (engine limitation); physics clamps stay off (Bang-Bang oscillation). W′ may drive engine sway/blur via transient (`SCR_RSS_SprintGate`).
 
 ---
