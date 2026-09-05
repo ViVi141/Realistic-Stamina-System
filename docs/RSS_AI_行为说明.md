@@ -42,8 +42,9 @@
 ## 3. 每 tick 顺序（服端 AI，`DisableAIStaminaCalc=Off`）
 
 1. Phase A：`AIStaminaPipeline.Tick`
-   - 廉价限速 → 位置测速 → Y 估坡 → LOD 地形采样 → 共享热应激
-   - `CalculateTotalDrainRate` → W′（近中）→ 疲劳积分（近中）→ `UpdateStaminaValue`
+   - 位置测速 → Y 估坡 → LOD 地形采样 → 共享热应激
+   - CP 上下文 → **W′ TickPower** → 廉价限速（Tobler + CP 巡航闩 / Sprint）
+   - `CalculateTotalDrainRate` → 疲劳积分（近中）→ `UpdateStaminaValue`
    - `AIManager.Tick`（Combat 开时，行为 LOD 节流）
 2. 直接 `ScheduleNext`，**不进**玩家 Phase B/C。
 
@@ -78,4 +79,4 @@
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.33（AI Run 顶 / 负重意图项）。*
+*文档版本：2026-09-06，对齐 6.2.34（AI 先 TickPower 再巡航限速）。*

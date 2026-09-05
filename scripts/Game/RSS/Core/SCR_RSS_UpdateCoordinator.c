@@ -571,10 +571,29 @@ class SCR_RSS_UpdateCoordinator
             float hLenE = horizE.Length();
             if (hLenE <= 7.5)
             {
-                velocity = engineVel;
-                if (velocity.Length() > 7.0)
-                    velocity = velocity.Normalized() * 7.0;
-                usedEngineVel = true;
+                // AI/部分帧 WS 近 0 但人在走：勿锁死 usedEngine，否则 W′ 永不消耗、巡航闩不上
+                bool trustEngine = true;
+                if (hLenE < 0.25 && hasLastPositionSample && dtSeconds > 0.001)
+                {
+                    vector deltaProbe = currentPos - lastPositionSample;
+                    float deltaLenProbe = deltaProbe.Length();
+                    if (deltaLenProbe < 1.6)
+                    {
+                        vector posVelProbe = deltaProbe / dtSeconds;
+                        vector horizP = posVelProbe;
+                        horizP[1] = 0.0;
+                        if (horizP.Length() > hLenE + 0.2)
+                            trustEngine = false;
+                    }
+                }
+
+                if (trustEngine)
+                {
+                    velocity = engineVel;
+                    if (velocity.Length() > 7.0)
+                        velocity = velocity.Normalized() * 7.0;
+                    usedEngineVel = true;
+                }
             }
         }
 

@@ -1,5 +1,16 @@
 # 更新日志
 
+## [6.2.34] - 2026-09-06
+
+### AI CP–W′ 巡航：先烧池再限速 + 即时限速
+
+- **根因** — 管线先 `ApplyCheap` 再 `TickPower`：W′ 见底当 tick 仍按满 Run 顶；LOD 间隔内玩家已巡航、AI 仍原速。另：引擎 `SetSpeedLimit` 减速默认缓动，AI 600ms tick 下长时间停在满速。
+- **顺序** — 测速 → CP 上下文 → **TickPower** → **ApplyCheap**（本 tick 即可闩巡航）。
+- **W′** — 远距也算（不再因 farLod 跳过），否则近旁 AI 可能永远不见底。
+- **巡航** — 与 Sprint 帽并列（非 else）；掉出 Run 带时 `SetMovementTypeWanted(WALK)`；开消耗时 `SetSpeedLimit(..., instant=true)`。
+- **测速** — `GetVelocityWS` 近 0 时回退位置差分，避免 W′ 虚空不烧。
+- 配置版本 → **6.2.34**
+
 ## [6.2.33] - 2026-09-06
 
 ### AI 同行偏快：冲刺顶 + 负重意图项

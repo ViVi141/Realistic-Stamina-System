@@ -1,6 +1,6 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.33**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
+> 版本对齐 **6.2.34**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
 
 ## 目标
 
@@ -38,4 +38,4 @@
 
 ## 调用路径
 
-`PlayerBase_UpdateLoop` Phase A：若非玩家且未禁消耗 → 测速/坡度/地形 → `ApplyCheapAiSpeedEx` → 消耗 → `ScheduleNext`，**不进** Phase B/C。
+`PlayerBase_UpdateLoop` Phase A：若非玩家且未禁消耗 → 测速/坡度/地形 → **TickPower** → `ApplyCheapAiSpeedEx` → 有氧消耗 → `ScheduleNext`，**不进** Phase B/C。

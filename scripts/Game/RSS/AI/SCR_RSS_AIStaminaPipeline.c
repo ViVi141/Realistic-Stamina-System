@@ -3,7 +3,8 @@
 //! 与玩家对齐：
 //!   - Pandolf/ACSM MetabolismPowerWatts + StaminaDrainRatePerSecondFromPowerWatts
 //!   - CalculateTotalDrainRate / UpdateStaminaValue / W′ TickPower / 疲劳积分
-//!   - 限速：廉价骨架 + Tobler 坡度 +（开消耗时）CP 巡航/Sprint 反解（6.2.32）
+//!   - 限速：廉价骨架 + Tobler 坡度 +（开消耗时）CP 巡航/Sprint 反解
+//!   - 6.2.34：先 TickPower 闩巡航，再 ApplyCheap；巡航限速 instant SetSpeedLimit
 //!
 //! 相对玩家的有意简化：
 //!   - 坡度：引擎复用 / Y 差分（无 Trace）；地形稀采样
@@ -88,51 +89,48 @@ class SCR_RSS_AIStaminaPipeline
         UpdateGrade(ctx.ctrl, ctx.owner.GetOrigin(), velocity, currentSpeed, timeDeltaSec);
         UpdateTerrainFactor(ctx, nowSec, currentSpeed, distM, farLod);
 
-        float cheapFrac = 1.0;
-        float cheapEnc = 0.0;
-        float cheapSta = 1.0;
-        int cheapPhase = 2;
-        bool cheapExhausted = false;
-        float cheapTargetMs = 0.0;
-        SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeedEx(
-            ctx.ctrl,
-            ctx.owner,
-            ctx.encumbranceCache,
-            ctx.animSpeedCompensation,
-            m_fCachedGradePercent,
-            m_fCachedTerrainFactor,
-            true,
-            cheapFrac,
-            cheapEnc,
-            cheapSta,
-            cheapPhase,
-            cheapExhausted,
-            cheapTargetMs);
-
-        ctx.lastRssSpeedMultiplierApplied = cheapFrac;
-        ctx.appliedSpeedLimitMs = cheapTargetMs;
-        if (ctx.appliedSpeedLimitMs < 0.05)
-            ctx.appliedSpeedLimitMs = -1.0;
-
         float heatMult = 1.0;
         if (!farLod)
             heatMult = SCR_RSS_AISharedEnvCache.GetHeatStressMultiplier(nowSec);
 
         float gearKg = 0.0;
         if (ctx.encumbranceCache && ctx.encumbranceCache.IsCacheValid())
+        {
+            ctx.encumbranceCache.CheckAndUpdate();
             gearKg = ctx.encumbranceCache.GetCurrentWeight();
+        }
         float totalWeight = gearKg + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
         float totalWithWet = totalWeight;
 
-        float staminaPercent = cheapSta;
-        int phase = cheapPhase;
-        if (phase < 1)
-            phase = 2;
+        // 限速前先更新 CP 上下文 + 烧 W′，本 tick 即可闩上有氧巡航（原先先限速后 TickPower，
+        // 玩家已巡航时 AI 仍按满 Run 顶跑一整档 LOD）
+        int phaseForDrain = ctx.ctrl.GetCurrentMovementPhase();
+        if (phaseForDrain < 1)
+            phaseForDrain = 2;
+        if (ctx.ctrl.IsSprinting())
+        {
+            if (SCR_RSS_ConfigBridge.IsAIStaminaCombatEffectsEnabled())
+                phaseForDrain = 3;
+            else
+                phaseForDrain = 2;
+        }
 
+        float prevLimitMs = ctx.appliedSpeedLimitMs;
         float speedRatio = Math.Clamp(
             currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
 
-        // 与玩家同源消耗核
+        float staminaPercent = ctx.ctrl.GetRssAerobicPercent();
+        staminaPercent = Math.Clamp(staminaPercent, 0.0, 1.0);
+
+        float cheapEnc = 0.0;
+        if (ctx.encumbranceCache)
+        {
+            cheapEnc = ctx.encumbranceCache.GetSpeedPenaltyFraction();
+            cheapEnc = cheapEnc * SCR_RSS_ConfigBridge.GetCustomEncumbranceSpeedPenaltyMultiplier();
+            float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
+            cheapEnc = Math.Clamp(cheapEnc, 0.0, maxPenalty);
+        }
+
         RSS_StaminaDrainTickParams drainParams = new RSS_StaminaDrainTickParams();
         drainParams.useSwimmingModel = false;
         drainParams.currentSpeed = currentSpeed;
@@ -148,9 +146,9 @@ class SCR_RSS_AIStaminaPipeline
         drainParams.controller = ctx.ctrl;
         drainParams.environmentFactor = null;
         drainParams.isSprinting = false;
-        if (phase == 3)
+        if (phaseForDrain == 3)
             drainParams.isSprinting = true;
-        drainParams.currentMovementPhase = phase;
+        drainParams.currentMovementPhase = phaseForDrain;
         drainParams.speedRatio = speedRatio;
         drainParams.heatStressMultiplier = heatMult;
         drainParams.isSprintActive = drainParams.isSprinting;
@@ -162,7 +160,7 @@ class SCR_RSS_AIStaminaPipeline
         drainParams.epocState = ctx.epocState;
         drainParams.currentTimeSec = nowSec;
         drainParams.currentTimeForExerciseMs = nowMs;
-        drainParams.appliedSpeedLimitMs = ctx.appliedSpeedLimitMs;
+        drainParams.appliedSpeedLimitMs = prevLimitMs;
         drainParams.effectiveCriticalPowerWatts = -1.0;
         drainParams.wPrimePool01 = 1.0;
 
@@ -189,26 +187,19 @@ class SCR_RSS_AIStaminaPipeline
                 drainParams.effectiveCriticalPowerWatts = cpFallback;
         }
 
-        RSS_StaminaDrainTickResult drainTick = SCR_RSS_UpdateCoordinator.CalculateTotalDrainRate(
-            drainParams);
-        float totalDrainRate = drainTick.totalDrainRate;
-        float baseDrain = drainTick.baseDrainRateByVelocity;
-        float baseDrainMod = drainTick.baseDrainRateByVelocityForModule;
-        // 伤害联动在 UpdateStaminaValue 内对 AI 统一处理，此处不重复乘
-
-        // W′：近/中距保留；远距跳过以减负（有氧仍算）
-        if (!farLod && ctx.anaerobicBurst)
+        // W′ 始终算（远距也算）：否则玩家已闩巡航时近旁 AI 可能从未见底
+        if (ctx.anaerobicBurst)
         {
             float pool01Before = 1.0;
             if (cpModel)
                 pool01Before = cpModel.GetPool01();
             float powerW = SCR_RSS_DrainCalculator.GetMetabolicAccountingPowerWatts(
                 currentSpeed,
-                ctx.appliedSpeedLimitMs,
+                prevLimitMs,
                 totalWithWet,
                 m_fCachedGradePercent,
                 m_fCachedTerrainFactor,
-                phase,
+                phaseForDrain,
                 pool01Before,
                 drainParams.isSprintActive);
             ctx.anaerobicBurst.TickPower(
@@ -217,7 +208,49 @@ class SCR_RSS_AIStaminaPipeline
                 nowSec,
                 timeDeltaSec,
                 currentSpeed);
+            if (cpModel)
+                drainParams.wPrimePool01 = cpModel.GetPool01();
         }
+
+        float cheapFrac = 1.0;
+        float cheapSta = staminaPercent;
+        int cheapPhase = phaseForDrain;
+        bool cheapExhausted = false;
+        float cheapTargetMs = 0.0;
+        SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeedEx(
+            ctx.ctrl,
+            ctx.owner,
+            ctx.encumbranceCache,
+            ctx.animSpeedCompensation,
+            m_fCachedGradePercent,
+            m_fCachedTerrainFactor,
+            true,
+            cheapFrac,
+            cheapEnc,
+            cheapSta,
+            cheapPhase,
+            cheapExhausted,
+            cheapTargetMs);
+
+        ctx.lastRssSpeedMultiplierApplied = cheapFrac;
+        ctx.appliedSpeedLimitMs = cheapTargetMs;
+        if (ctx.appliedSpeedLimitMs < 0.05)
+            ctx.appliedSpeedLimitMs = -1.0;
+
+        drainParams.appliedSpeedLimitMs = ctx.appliedSpeedLimitMs;
+        drainParams.staminaPercent = cheapSta;
+        drainParams.currentMovementPhase = cheapPhase;
+        drainParams.isSprinting = false;
+        if (cheapPhase == 3)
+            drainParams.isSprinting = true;
+        drainParams.isSprintActive = drainParams.isSprinting;
+        drainParams.encumbranceSpeedPenalty = cheapEnc;
+
+        RSS_StaminaDrainTickResult drainTick = SCR_RSS_UpdateCoordinator.CalculateTotalDrainRate(
+            drainParams);
+        float totalDrainRate = drainTick.totalDrainRate;
+        float baseDrain = drainTick.baseDrainRateByVelocity;
+        float baseDrainMod = drainTick.baseDrainRateByVelocityForModule;
 
         // 疲劳积分：近距保留（Decay 已在 CalculateTotalDrainRate 内）
         if (!farLod && ctx.fatigueSystem && SCR_RSS_ConfigBridge.IsFatigueSystemEnabled())
@@ -231,7 +264,7 @@ class SCR_RSS_AIStaminaPipeline
                     totalWithWet,
                     m_fCachedGradePercent,
                     m_fCachedTerrainFactor,
-                    phase);
+                    cheapPhase);
                 ctx.fatigueSystem.ProcessFatigueIntegral(
                     powerFat,
                     gearKg,
@@ -245,7 +278,7 @@ class SCR_RSS_AIStaminaPipeline
 
         float newSta = SCR_RSS_UpdateCoordinator.UpdateStaminaValue(
             ctx.staminaComponent,
-            staminaPercent,
+            cheapSta,
             false,
             currentSpeed,
             totalDrainRate,

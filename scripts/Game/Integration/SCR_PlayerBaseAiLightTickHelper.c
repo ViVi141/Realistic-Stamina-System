@@ -214,31 +214,58 @@ class SCR_PlayerBaseAiLightTickHelper
                 if (sprintCap > 0.05 && sprintCap < targetMs)
                     targetMs = sprintCap;
             }
-            else if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled() && cpModel)
+
+            // 巡航：Walk 始终；W′ 见底闩后 Run/假冲刺也套（勿放在 Sprint 分支 else，否则闩上仍满冲）
+            bool cruiseLatched = false;
+            if (cpModel)
+                cruiseLatched = SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel);
+
+            bool applyCruise = false;
+            if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled() && cpModel)
             {
-                bool applyCruise = false;
                 if (effectivePhase == 1)
                     applyCruise = true;
-                else if (SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel))
+                else if (cruiseLatched)
                     applyCruise = true;
+            }
 
-                if (applyCruise)
+            if (applyCruise)
+            {
+                float cpEffW = cpModel.GetEffectiveCriticalPowerWatts();
+                int invertPhase = effectivePhase;
+                if (invertPhase < 1)
+                    invertPhase = 2;
+                if (invertPhase == 3)
+                    invertPhase = 2;
+                float rawCap = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
+                    cpEffW, totalWeightKg, gradeClamped, tf, invertPhase);
+                float resolved = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
+                    rawCap,
+                    invertPhase,
+                    gradeClamped,
+                    totalWeightKg,
+                    tf,
+                    cpEffW);
+                if (resolved < -0.01)
                 {
-                    float cpEffW = cpModel.GetEffectiveCriticalPowerWatts();
-                    int invertPhase = effectivePhase;
-                    if (invertPhase < 1)
-                        invertPhase = 2;
-                    float rawCap = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
-                        cpEffW, totalWeightKg, gradeClamped, tf, invertPhase);
-                    float resolved = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
-                        rawCap,
-                        invertPhase,
-                        gradeClamped,
-                        totalWeightKg,
-                        tf,
-                        cpEffW);
-                    if (resolved > 0.05 && resolved < targetMs)
-                        targetMs = resolved;
+                    // 掉出 Run 带：AI 用 SetMovementTypeWanted(WALK)（无玩家 SetDynamicSpeed 覆盖）
+                    float walkCap = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs() * encMult;
+                    walkCap = SCR_RSS_SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+                        walkCap, slopeAngleDeg);
+                    targetMs = walkCap;
+                    outPhase = 1;
+                    effectivePhase = 1;
+                    ForceAiMovementTypeWanted(owner, EMovementType.WALK);
+                }
+                else if (resolved > 0.05 && resolved < targetMs)
+                {
+                    targetMs = resolved;
+                    if (effectivePhase == 3)
+                    {
+                        outPhase = 2;
+                        effectivePhase = 2;
+                        ForceAiMovementTypeWanted(owner, EMovementType.RUN);
+                    }
                 }
             }
         }
@@ -265,10 +292,14 @@ class SCR_PlayerBaseAiLightTickHelper
             }
         }
 
+        bool applyInstant = false;
+        if (useMetabolicCaps)
+            applyInstant = true;
+
         if (SCR_RSS_SpeedBridge.IsStaminaSpeedPressEnabled())
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, frac);
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, frac, applyInstant);
         else
-            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, 0.999);
+            SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, 0.999, applyInstant);
 
         outAppliedFrac = frac;
         outTargetMs = targetMs;

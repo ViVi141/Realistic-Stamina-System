@@ -363,6 +363,12 @@ class SCR_RSS_SpeedBridge
     //! limit=1.0 时引擎从 m_mSpeedReferences 移除本 source。
     static void ApplyStaminaSpeedLimit(IEntity owner, float limit)
     {
+        ApplyStaminaSpeedLimit(owner, limit, false);
+    }
+
+    //! @param instant true：立刻 OverrideMaxSpeed（AI LOD 稀疏时缓动会长时间停在满速）
+    static void ApplyStaminaSpeedLimit(IEntity owner, float limit, bool instant)
+    {
         if (!owner)
             return;
 
@@ -371,7 +377,7 @@ class SCR_RSS_SpeedBridge
         SCR_ChimeraCharacter character = SCR_ChimeraCharacter.Cast(owner);
         if (character)
         {
-            character.SetSpeedLimit(GetStaminaSpeedSource(), limit);
+            character.SetSpeedLimit(GetStaminaSpeedSource(), limit, instant);
             return;
         }
 
@@ -385,7 +391,7 @@ class SCR_RSS_SpeedBridge
     {
         if (!ctrl)
             return;
-        ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit);
+        ApplyStaminaSpeedLimit(ctrl.GetOwner(), limit, false);
     }
 
     static void ApplyHardStaminaSpeedClamp(IEntity owner, float limit)
