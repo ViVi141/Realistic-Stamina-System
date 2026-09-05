@@ -1,11 +1,11 @@
-//! RSS Enforce 全链路实测探针（控制台，非聊天）。
+//! RSS Enforce full-path performance probe (console, not chat).
 //!
-//! 用法（进世界有本地角色后）：
+//! Usage (after entering world with a local character):
 //!   SCR_RSS_PerfProbe.Run();
 //!   SCR_RSS_PerfProbe.Run(3000);
-//!   SCR_RSS_PerfProbe.RunNearestAi(3000);  // 真实 AI 廉价限速（玩家实体上 ApplyCheap 会 early-out）
+//!   SCR_RSS_PerfProbe.RunNearestAi(3000);  // real AI cheap speed limit
 //!
-//! 输出：脚本日志 + $profile:RSS_PerfProbe.txt
+//! Output: script log + .txt
 
 class SCR_RSS_PerfProbe
 {
@@ -25,7 +25,7 @@ class SCR_RSS_PerfProbe
         IEntity owner = SCR_PlayerController.GetLocalControlledEntity();
         if (!owner)
         {
-            Print("[RSS_PerfProbe] no local controlled entity — enter world as player first", LogLevel.WARNING);
+            Print("[RSS_PerfProbe] no local controlled entity - enter world as player first", LogLevel.WARNING);
             return;
         }
 
@@ -47,7 +47,7 @@ class SCR_RSS_PerfProbe
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 找一只附近非玩家角色实测（含真实 ApplyCheapAiSpeed）。
+    //! Find nearest non-player character for probe (includes real ApplyCheapAiSpeed).
     static void RunNearestAi(int iterations = DEFAULT_ITERS)
     {
         if (iterations < 100)
@@ -169,12 +169,12 @@ class SCR_RSS_PerfProbe
             tag, iterations, isPlayer, owner.ToString());
         AppendLine(string.Format("RSS_PerfProbe START tag=%1 iters=%2 player=%3", tag, iterations, isPlayer));
 
-        // ========== 00 校准 ==========
+        // ========== 00 æ ¡å ==========
         Section("00_CALIBRATION");
         s_fBaselineMs = MeasureEmptyLoop(iterations);
         Report("00_empty_loop", s_fBaselineMs, iterations, "tick calibration");
 
-        // ========== 01 限速原子 ==========
+        // ========== 01 ééåå­?==========
         Section("01_ATOMIC_SPEED");
         Report("01_encumbrance", MeasureEncumbrance(enc, iterations), iterations, "CheckAndUpdate");
         Report("01b_phase_v6_mult", MeasurePhaseMult(stamina, phase, encPen, iterations), iterations,
@@ -190,7 +190,7 @@ class SCR_RSS_PerfProbe
         Report("01g0_cmd_slope", MeasureCmdSlope(ctrl, iterations), iterations,
             "CommandMove.GetMovementSlopeAngle");
         Report("01g_slope_raw", MeasureSlopeRaw(ctrl, vel, iterations), iterations,
-            "GetRawSlopeAngle (Cmd→Floor→Trace)");
+            "GetRawSlopeAngle (CmdâFloorâTrace)");
         Report("01g2_floor_normal", MeasureFloorNormal(ctrl, iterations), iterations,
             "TryGetCharacterFloorNormal only");
         Report("01g3_trace_normal", MeasureTraceNormal(ctrl, iterations), iterations,
@@ -205,7 +205,7 @@ class SCR_RSS_PerfProbe
             ctrl, stamina, encPen, collapse, currentSpeed, env, slope, vel, terrainFactor, phase, iterations),
             iterations, "UpdateCoordinator.UpdateSpeed FULL");
 
-        // ========== 02 消耗原子 ==========
+        // ========== 02 æ¶èåå­?==========
         Section("02_ATOMIC_DRAIN");
         Report("02a_metabolism_power", MeasureMetabolism(currentSpeed, enc, iterations), iterations,
             "MetabolismPowerWatts");
@@ -218,7 +218,7 @@ class SCR_RSS_PerfProbe
         Report("02e_cp_metab_cap", MeasureCpCap(ctrl, stamina, encPen, currentSpeed, enc, terrainFactor, phase, iterations),
             iterations, "GetMetabolicCorrectedSpeedMultiplier");
 
-        // ========== 03 AI 辅助 ==========
+        // ========== 03 AI è¾å© ==========
         Section("03_ATOMIC_AI_AUX");
         Report("03a_pos_delta", MeasurePosDelta(owner, lastPos, hasPos, vel, iterations), iterations,
             "CalculateCurrentSpeed");
@@ -233,7 +233,7 @@ class SCR_RSS_PerfProbe
         Report("03f_apply_cheap_ai", MeasureApplyCheapAi(ctrl, owner, enc, iterations), iterations,
             "ApplyCheapAiSpeed (false on player)");
 
-        // ========== 04 组合路径 ==========
+        // ========== 04 ç»åè·¯å¾ ==========
         Section("04_COMPOSED_PATHS");
         float msPlayerSpeedStack = MeasureComposedPlayerSpeedStack(
             ctrl, enc, terrain, env, collapse, slope, owner,
@@ -753,7 +753,7 @@ class SCR_RSS_PerfProbe
         for (w = 0; w < WARMUP_ITERS; w++)
         {
             RSS_SpeedCalculationResult r = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r.lastPositionSample;
             hp = r.hasLastPositionSample;
             cv = r.computedVelocity;
@@ -762,7 +762,7 @@ class SCR_RSS_PerfProbe
         for (int i = 0; i < iterations; i++)
         {
             RSS_SpeedCalculationResult r2 = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r2.lastPositionSample;
             hp = r2.hasLastPositionSample;
             cv = r2.computedVelocity;
@@ -978,7 +978,7 @@ class SCR_RSS_PerfProbe
             if (enc)
                 enc.CheckAndUpdate();
             RSS_SpeedCalculationResult r = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r.lastPositionSample;
             hp = r.hasLastPositionSample;
             cv = r.computedVelocity;
@@ -998,7 +998,7 @@ class SCR_RSS_PerfProbe
             if (enc)
                 enc.CheckAndUpdate();
             RSS_SpeedCalculationResult r2 = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r2.lastPositionSample;
             hp = r2.hasLastPositionSample;
             cv = r2.computedVelocity;
@@ -1048,7 +1048,7 @@ class SCR_RSS_PerfProbe
             sink = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(target, top, true);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, sink);
             RSS_SpeedCalculationResult r = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r.lastPositionSample;
             hp = r.hasLastPositionSample;
             cv = r.computedVelocity;
@@ -1068,7 +1068,7 @@ class SCR_RSS_PerfProbe
             sink = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(target2, top2, true);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, sink);
             RSS_SpeedCalculationResult r2 = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r2.lastPositionSample;
             hp = r2.hasLastPositionSample;
             cv = r2.computedVelocity;
@@ -1106,7 +1106,7 @@ class SCR_RSS_PerfProbe
             sink = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(stamina, phase, encPen);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, sink);
             RSS_SpeedCalculationResult r = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r.lastPositionSample;
             hp = r.hasLastPositionSample;
             cv = r.computedVelocity;
@@ -1121,7 +1121,7 @@ class SCR_RSS_PerfProbe
             sink = SCR_RSS_SpeedCalculator.CalculateV6PhaseSpeedMultiplier(stamina, phase, encPen);
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, sink);
             RSS_SpeedCalculationResult r2 = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r2.lastPositionSample;
             hp = r2.hasLastPositionSample;
             cv = r2.computedVelocity;
@@ -1163,7 +1163,7 @@ class SCR_RSS_PerfProbe
             if (enc)
                 enc.CheckAndUpdate();
             RSS_SpeedCalculationResult r = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r.lastPositionSample;
             hp = r.hasLastPositionSample;
             cv = r.computedVelocity;
@@ -1188,7 +1188,7 @@ class SCR_RSS_PerfProbe
             if (enc)
                 enc.CheckAndUpdate();
             RSS_SpeedCalculationResult r2 = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                owner, lp, hp, cv, 0.2);
+                owner, lp, hp, cv, 0.2, false);
             lp = r2.lastPositionSample;
             hp = r2.hasLastPositionSample;
             cv = r2.computedVelocity;

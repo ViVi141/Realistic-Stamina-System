@@ -2,7 +2,8 @@
 //!
 //! 优先级约定：
 //!   坡度：CommandMove.GetMovementSlopeAngle → FloorNormal → Trace
-//!   速度：Movement.GetVelocityWS → 位置差分（永不 Physics.GetVelocity）
+//!   速度（陆地）：仅 CharacterMovement.GetVelocityWS（禁止位置差分 / Physics.GetVelocity）
+//!   速度（游泳）：可由调用方另开位置差分
 //!   地形：Movement.GetFloorSurface → Trace 材质表
 
 class SCR_RSS_EngineReuse
@@ -59,7 +60,8 @@ class SCR_RSS_EngineReuse
     }
 
     //------------------------------------------------------------------------------------------------
-    //! 世界速度（m/s）。优先 GetVelocityWS；失败返回 false（调用方用位置差分）。
+    //! 世界速度（m/s）。仅读 GetVelocityWS；失败返回 false。
+    //! 陆地调用方禁止再用位置差分兜底。
     static bool TryGetVelocityWS(IEntity owner, out vector outVelocity)
     {
         outVelocity = vector.Zero;
@@ -72,10 +74,11 @@ class SCR_RSS_EngineReuse
         if (!move)
             return false;
 
-        // 游泳/坠落仍可读 WS；进服无 Anim 时外层 IsCharacterMotionReady 已挡
         vector v = move.GetVelocityWS();
         float len = v.Length();
-        if (len > 20.0)
+        // 拒绝荒诞值（旧差分曾把陆地打到 7m/s 顶）
+        float maxLen = SCR_RSS_MetabolismMath.GAME_MAX_SPEED + 0.75;
+        if (len > maxLen)
             return false;
         if (len != len)
             return false;

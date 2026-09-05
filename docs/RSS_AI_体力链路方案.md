@@ -1,17 +1,18 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.35**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse` + `SCR_RSS_AIMovementApply`。
+> 版本对齐 **6.2.36**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse` + `SCR_RSS_AIMovementApply`。
 
 ## 目标
 
 在专服多 AI 场景下，**体力数值**尽量贴近玩家 RSS（Pandolf / CP–W′ / 负重 / 坡度），**脚程**在开消耗时用轻量 Tobler/CP 帽靠近玩家，同时**绝不**走玩家级 `UpdateSpeed` 全链。
 
-## 官方复用优先级（6.2.30+）
+## 官方复用优先级（6.2.36+）
 
 | 量 | 优先 | 回退 |
 |----|------|------|
 | 坡度 | `CommandMove.GetMovementSlopeAngle` → `GetFloorNormal` | Y 差分（AI）/ Trace（玩家） |
-| 测速 | `Movement.GetVelocityWS` | 位置差分（禁 Physics.GetVelocity） |
+| 测速（陆地） | 仅 `Movement.GetVelocityWS` | **禁止位置差分**；AI 代谢 WS 低估时改用意图限速 |
+| 测速（游泳） | `GetVelocityWS` | 允许位置差分 |
 | 地形系数 | `GetFloorSurface`→材质表 | Trace（稀采样；FloorSurface 常空属常态） |
 | 热应激 | 全服 1Hz TOD | — |
 | 室内抑坡 | `UpdateIndoorCache`（2s） | 热路径禁止每 tick 屋顶射线（玩家） |

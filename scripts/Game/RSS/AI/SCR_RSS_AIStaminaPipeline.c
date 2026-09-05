@@ -72,22 +72,23 @@ class SCR_RSS_AIStaminaPipeline
             farLod = true;
 
         // 测速 → 坡度/地形（先于限速，使 Tobler/CP 帽与消耗同源）
+        // 陆地禁止位置差分：仅 GetVelocityWS
         float dtSample = timeDeltaSec;
         RSS_SpeedCalculationResult pos = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
             ctx.owner,
             ctx.lastPositionSample,
             ctx.hasLastPositionSample,
             ctx.computedVelocity,
-            dtSample);
+            dtSample,
+            false);
         ctx.lastPositionSample = pos.lastPositionSample;
         ctx.hasLastPositionSample = pos.hasLastPositionSample;
         ctx.computedVelocity = pos.computedVelocity;
-        vector velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(
-            ctx.owner, pos.computedVelocity);
-        float currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
+        vector velocity = pos.computedVelocity;
+        float measuredSpeed = pos.currentSpeed;
 
-        UpdateGrade(ctx.ctrl, ctx.owner.GetOrigin(), velocity, currentSpeed, timeDeltaSec);
-        UpdateTerrainFactor(ctx, nowSec, currentSpeed, distM, farLod);
+        UpdateGrade(ctx.ctrl, ctx.owner.GetOrigin(), velocity, measuredSpeed, timeDeltaSec);
+        UpdateTerrainFactor(ctx, nowSec, measuredSpeed, distM, farLod);
 
         float heatMult = 1.0;
         if (!farLod)
@@ -104,7 +105,8 @@ class SCR_RSS_AIStaminaPipeline
 
         // 限速前先更新 CP 上下文 + 烧 W′，本 tick 即可闩上有氧巡航（原先先限速后 TickPower，
         // 玩家已巡航时 AI 仍按满 Run 顶跑一整档 LOD）
-        int phaseForDrain = ctx.ctrl.GetCurrentMovementPhase();
+        int enginePhaseRaw = ctx.ctrl.GetCurrentMovementPhase();
+        int phaseForDrain = enginePhaseRaw;
         if (phaseForDrain < 1)
             phaseForDrain = 2;
         if (ctx.ctrl.IsSprinting())
@@ -116,6 +118,9 @@ class SCR_RSS_AIStaminaPipeline
         }
 
         float prevLimitMs = ctx.appliedSpeedLimitMs;
+        // WS 常低估 AI 水平速：代谢用意图限速（禁止位置差分）
+        float currentSpeed = ResolveAiAccountingSpeedMs(
+            measuredSpeed, phaseForDrain, prevLimitMs, enginePhaseRaw);
         float speedRatio = Math.Clamp(
             currentSpeed / SCR_RSS_MetabolismMath.GAME_MAX_SPEED, 0.0, 1.0);
 
@@ -391,6 +396,43 @@ class SCR_RSS_AIStaminaPipeline
         }
 
         UpdateGradeFromPositionFallback(origin, timeDeltaSec);
+    }
+
+    //! AI 陆地代谢速度：WS 低估时用意图限速。禁止位置差分。
+    protected static float ResolveAiAccountingSpeedMs(
+        float measuredWsMs,
+        int accountingPhase,
+        float prevAppliedLimitMs,
+        int enginePhase)
+    {
+        // 真静止：不按意图虚烧 W′
+        if (enginePhase < 1
+            && measuredWsMs < SCR_RSS_Constants.RSS_IDLE_SPEED_THRESHOLD_MPS)
+        {
+            return measuredWsMs;
+        }
+
+        float intentMs = prevAppliedLimitMs;
+        if (intentMs < 0.05)
+        {
+            if (accountingPhase >= 3)
+                intentMs = SCR_RSS_ConfigBridge.GetMarchSprintSpeedMs();
+            else if (accountingPhase >= 2)
+                intentMs = SCR_RSS_ConfigBridge.GetMarchRunSpeedMs();
+            else if (accountingPhase >= 1)
+                intentMs = SCR_RSS_ConfigBridge.GetMarchWalkSpeedMs();
+            else
+                intentMs = 0.0;
+        }
+
+        if (intentMs <= 0.5)
+            return measuredWsMs;
+
+        // WS 明显低于意图（AI LOD 常见）：按意图记账
+        if (measuredWsMs < intentMs * 0.6)
+            return intentMs;
+
+        return measuredWsMs;
     }
 
     //! FloorNormal 不可用时：位置 Y 差分估 grade%

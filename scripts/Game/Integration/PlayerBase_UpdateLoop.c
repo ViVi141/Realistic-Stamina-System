@@ -38,7 +38,7 @@ modded class SCR_CharacterControllerComponent
             return false;
         }
 
-        // 进服/AI 生成：启发式 Game/World/Anim 未就绪则跳过；测速只用位置差分。
+        // 进服/AI 生成：启发式 Game/World/Anim 未就绪则跳过；陆地测速只用 GetVelocityWS。
         if (!SCR_PlayerBaseRssApiHelper.IsCharacterMotionReady(loc.owner, this))
         {
             RSS_ScheduleNextStaminaTick();
@@ -225,28 +225,32 @@ modded class SCR_CharacterControllerComponent
         if (loc.isSwimmingForSpeed)
         {
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
+            // 游泳允许位置差分（陆地禁止）
             RSS_SpeedCalculationResult speedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
+                loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds, true);
             loc.velocity = speedResult.computedVelocity;
-            loc.currentSpeed = Math.Min(speedResult.computedVelocity.Length(), 7.0);
+            float swimMax = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+            loc.currentSpeed = speedResult.computedVelocity.Length();
+            if (loc.currentSpeed > swimMax)
+                loc.currentSpeed = swimMax;
             m_vLastPositionSample = speedResult.lastPositionSample;
             m_bHasLastPositionSample = speedResult.hasLastPositionSample;
             m_vComputedVelocity = speedResult.computedVelocity;
+            m_fLandPositionDeltaSpeedMs = -1.0;
         }
         else
         {
             float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
-            RSS_SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-                loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
-            m_vLastPositionSample = posSpeedResult.lastPositionSample;
-            m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
-            m_vComputedVelocity = posSpeedResult.computedVelocity;
-            m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
+            // 陆地：仅 GetVelocityWS，禁止位置差分（计算与 debug 同源）
+            RSS_SpeedCalculationResult landSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+                loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds, false);
+            m_vLastPositionSample = landSpeedResult.lastPositionSample;
+            m_bHasLastPositionSample = landSpeedResult.hasLastPositionSample;
+            m_vComputedVelocity = landSpeedResult.computedVelocity;
+            m_fLandPositionDeltaSpeedMs = -1.0;
 
-            // 启发式：永不调用 GetVelocity；陆地权威测速 = 位置差分。
-            loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(
-                loc.owner, posSpeedResult.computedVelocity);
-            loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
+            loc.velocity = landSpeedResult.computedVelocity;
+            loc.currentSpeed = landSpeedResult.currentSpeed;
         }
 
         loc.isSprintingNow = IsSprinting();
@@ -548,16 +552,15 @@ modded class SCR_CharacterControllerComponent
         }
 
         float dtSeconds = GetSpeedUpdateIntervalMs() / 1000.0;
-        RSS_SpeedCalculationResult posSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
-            loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds);
-        m_vLastPositionSample = posSpeedResult.lastPositionSample;
-        m_bHasLastPositionSample = posSpeedResult.hasLastPositionSample;
-        m_vComputedVelocity = posSpeedResult.computedVelocity;
-        m_fLandPositionDeltaSpeedMs = posSpeedResult.currentSpeed;
+        RSS_SpeedCalculationResult landSpeedResult = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
+            loc.owner, m_vLastPositionSample, m_bHasLastPositionSample, m_vComputedVelocity, dtSeconds, false);
+        m_vLastPositionSample = landSpeedResult.lastPositionSample;
+        m_bHasLastPositionSample = landSpeedResult.hasLastPositionSample;
+        m_vComputedVelocity = landSpeedResult.computedVelocity;
+        m_fLandPositionDeltaSpeedMs = -1.0;
 
-        loc.velocity = SCR_PlayerBaseRssApiHelper.SampleEntityVelocity(
-            loc.owner, posSpeedResult.computedVelocity);
-        loc.currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(loc.velocity);
+        loc.velocity = landSpeedResult.computedVelocity;
+        loc.currentSpeed = landSpeedResult.currentSpeed;
 
         loc.currentTimeForExerciseMs = loc.world.GetWorldTime();
         loc.currentTime = loc.currentTimeForExerciseMs / 1000.0;

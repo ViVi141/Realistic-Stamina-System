@@ -16,14 +16,16 @@ class SCR_PlayerBaseRssApiHelper
     {
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0;
-        return Math.Min(horizontalVelocity.Length(), 7.0);
+        float speed = horizontalVelocity.Length();
+        float vmax = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
+        if (speed > vmax)
+            return vmax;
+        return speed;
     }
 
     //! 进服/生成窗口启发式：Game/World 交叉 + Anim 存在才继续 tick。
     //! 不要求 Physics：GetPhysics 非空仍可能对 GetVelocity AV。
-    //! @param owner 角色实体
-    //! @param controller 角色控制器
-    //! @return true 表示可继续体力 tick（测速须走位置差分，勿调 GetVelocity）
+    //! @return true 表示可继续体力 tick（陆地测速只用 GetVelocityWS，勿用位置差分/Physics.GetVelocity）
     static bool IsCharacterMotionReady(IEntity owner, SCR_CharacterControllerComponent controller)
     {
         if (!owner || !controller)
@@ -35,11 +37,8 @@ class SCR_PlayerBaseRssApiHelper
         return true;
     }
 
-    //! 启发式测速：优先 CharacterMovement.GetVelocityWS（引擎已算）；
-    //! 失败则用 fallback（通常为位置差分）。永不 Physics.GetVelocity。
-    //! @param owner 角色实体
-    //! @param fallback 已由位置差分等算出的速度
-    //! @return 可用速度；不可用则为 Zero
+    //! 陆地测速：仅 CharacterMovement.GetVelocityWS。永不位置差分 / Physics.GetVelocity。
+    //! @param fallback 保留签名兼容；陆地忽略（禁止差分兜底）
     static vector SampleEntityVelocity(IEntity owner, vector fallback)
     {
         if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
@@ -47,23 +46,12 @@ class SCR_PlayerBaseRssApiHelper
 
         vector engineVel;
         if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
-        {
-            vector horiz = engineVel;
-            horiz[1] = 0.0;
-            float hLen = horiz.Length();
-            if (hLen > 0.01 && hLen <= 7.5)
-                return engineVel;
-        }
+            return engineVel;
 
-        // 二次启发式：Physics 句柄不稳定则仍只用 fallback
-        if (!SCR_RSS_RuntimeGuard.IsPhysicsHandlePresent(owner))
-            return fallback;
-        return fallback;
+        return vector.Zero;
     }
 
-    //! 无 fallback 时的兼容入口：仅启发式校验，永不调用 GetVelocity。
-    //! @param owner 角色实体
-    //! @return 恒为 Zero（调用方应改用带 fallback 重载或位置差分）
+    //! 无 fallback 时的兼容入口：仅 GetVelocityWS。
     static vector SampleEntityVelocity(IEntity owner)
     {
         return SampleEntityVelocity(owner, vector.Zero);

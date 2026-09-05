@@ -975,13 +975,12 @@ class SCR_RSS_DebugDisplay
         }
 
         string line3Head = string.Format(
-            "[RSS][P] 代谢=%1W CP=%2 v_drain=%3m/s v_acct=%4m/s v_meas=%5m/s v_pos=%6m/s v_limit=%7",
+            "[RSS][P] 代谢=%1W CP=%2 v_drain=%3m/s v_acct=%4m/s v_meas=%5m/s v_limit=%6",
             Math.Round(tick.powerWatts),
             cpStr,
             Math.Round(drainVelMs * 100.0) / 100.0,
             Math.Round(acctVelMs * 100.0) / 100.0,
             Math.Round(tick.currentSpeed * 100.0) / 100.0,
-            Math.Round(tick.landPositionDeltaSpeedMs * 100.0) / 100.0,
             limitStr);
         float fatiguePowerDbg = SCR_RSS_DrainCalculator.GetMetabolicFatiguePowerWatts(
             tick.currentSpeed,

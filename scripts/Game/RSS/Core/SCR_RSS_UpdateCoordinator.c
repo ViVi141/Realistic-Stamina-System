@@ -524,21 +524,16 @@ class SCR_RSS_UpdateCoordinator
         return finalSpeedMultiplier;
     }
 
-    // ==================== 速度计算（位置差分测速）====================
+    // ==================== 速度计算 ====================
 
-    // 计算当前速度（使用位置差分测速，适用于游泳）
-    // @param owner 角色实体
-    // @param lastPositionSample 上一帧位置（输入）
-    // @param hasLastPositionSample 是否有上一帧位置（输入）
-    // @param computedVelocity 计算得到的速度（输入，通常为vector.Zero）
-    // @param dtSeconds 时间步长（秒）
-    // @return 速度计算结果（包含速度、位置、标志和速度向量）
+    //! @param allowPositionDelta true=仅游泳等允许位置差分；陆地必须 false
     static RSS_SpeedCalculationResult CalculateCurrentSpeed(
         IEntity owner,
         vector lastPositionSample,
         bool hasLastPositionSample,
         vector computedVelocity,
-        float dtSeconds)
+        float dtSeconds,
+        bool allowPositionDelta)
     {
         RSS_SpeedCalculationResult emptyResult = new RSS_SpeedCalculationResult();
         if (!owner)
@@ -561,53 +556,31 @@ class SCR_RSS_UpdateCoordinator
         vector currentPos = owner.GetOrigin();
         vector velocity = vector.Zero;
         bool usedEngineVel = false;
+        float vmax = SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
-        // 优先引擎 GetVelocityWS（已算好）；失败再用位置差分
+        // 陆地/通用：仅 GetVelocityWS。禁止用位置差分“纠正”或兜底。
         vector engineVel;
         if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
         {
-            vector horizE = engineVel;
-            horizE[1] = 0.0;
-            float hLenE = horizE.Length();
-            if (hLenE <= 7.5)
-            {
-                // AI/部分帧 WS 近 0 但人在走：勿锁死 usedEngine，否则 W′ 永不消耗、巡航闩不上
-                bool trustEngine = true;
-                if (hLenE < 0.25 && hasLastPositionSample && dtSeconds > 0.001)
-                {
-                    vector deltaProbe = currentPos - lastPositionSample;
-                    float deltaLenProbe = deltaProbe.Length();
-                    if (deltaLenProbe < 1.6)
-                    {
-                        vector posVelProbe = deltaProbe / dtSeconds;
-                        vector horizP = posVelProbe;
-                        horizP[1] = 0.0;
-                        if (horizP.Length() > hLenE + 0.2)
-                            trustEngine = false;
-                    }
-                }
-
-                if (trustEngine)
-                {
-                    velocity = engineVel;
-                    if (velocity.Length() > 7.0)
-                        velocity = velocity.Normalized() * 7.0;
-                    usedEngineVel = true;
-                }
-            }
+            velocity = engineVel;
+            if (velocity.Length() > vmax)
+                velocity = velocity.Normalized() * vmax;
+            usedEngineVel = true;
         }
 
-        if (!usedEngineVel && hasLastPositionSample)
+        // 仅游泳等显式允许差分；陆地 allowPositionDelta=false
+        if (!usedEngineVel && allowPositionDelta && hasLastPositionSample)
         {
             vector deltaPos = currentPos - lastPositionSample;
             float deltaLen = deltaPos.Length();
-
-            // 防止传送/同步跳变导致天文速度
-            if (deltaLen < 1.6 && dtSeconds > 0.001)
+            float maxDelta = vmax * dtSeconds + 0.35;
+            if (maxDelta < 1.6)
+                maxDelta = 1.6;
+            if (deltaLen < maxDelta && dtSeconds > 0.001)
             {
                 velocity = deltaPos / dtSeconds;
-                if (velocity.Length() > 7.0)
-                    velocity = velocity.Normalized() * 7.0;
+                if (velocity.Length() > vmax)
+                    velocity = velocity.Normalized() * vmax;
             }
             else
             {
@@ -616,14 +589,14 @@ class SCR_RSS_UpdateCoordinator
         }
         else if (!usedEngineVel)
         {
-            velocity = computedVelocity;
+            velocity = vector.Zero;
         }
 
-        // 计算水平速度
         vector horizontalVelocity = velocity;
         horizontalVelocity[1] = 0.0;
         float currentSpeed = horizontalVelocity.Length();
-        currentSpeed = Math.Min(currentSpeed, 7.0);
+        if (currentSpeed > vmax)
+            currentSpeed = vmax;
 
         RSS_SpeedCalculationResult s_pResultSpeedCalc = new RSS_SpeedCalculationResult();
         s_pResultSpeedCalc.currentSpeed = currentSpeed;

@@ -590,7 +590,7 @@ modded class SCR_CharacterControllerComponent
         if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return;
 
-        // 启发式：勿用 GetVelocity；Debug 采样改用 tick 位置差分缓存
+        // 启发式：勿用 Physics.GetVelocity；Debug 采样用 tick 缓存的 GetVelocityWS
         vector velocity = m_vComputedVelocity;
         vector velocityXZ = vector.Zero;
         velocityXZ[0] = velocity[0];
