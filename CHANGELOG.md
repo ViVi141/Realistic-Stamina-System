@@ -8,7 +8,8 @@
 - **权威** — 与官方一致优先 `CharacterController.GetVelocity()`（相机 bob / 铁丝网等）；其次 `GetVelocityWS` / `GetRawVelocityWS`。超 `GAME_MAX_SPEED` **钳制**，不再整段判失败变成 0。
 - **游泳** — 仍可 `allowPositionDelta=true`（游泳时 Controller 速度常为 0）。
 - **AI 代谢** — WS/测速低估时按意图限速记账烧 W′；真 Idle 不虚烧。
-- **AI 限速分母** — `SetSpeedLimit` 必须除以**当前 engPh 顶速**。巡航闩 WALK 但相位仍 Run 时，若按 walkTop 算 `frac≈1` 会乘 Run 顶 → 假「未限速」（日志 latch + v=3.7）。
+- **AI 限速分母** — `SetSpeedLimit` 必须除以**当前 engPh 顶速**。巡航闩 WALK 但相位仍 Run 时，若按 walkTop 算 `frac≈1` 会乘 Run 顶 → 假「未限速」。
+- **AI 限速落地** — 仅 `SetSpeedLimit` 对 AI 不够（`frac=0.64` 仍 `v=3.5`）。并行 `SetMovementMaxSpeed(绝对m/s)`；巡航/跛行再钉玩家同款 `SetDynamicSpeed(0.5)` Walk 覆盖。
 - Debug 去掉 `v_pos`。
 - 配置版本 → **6.2.36**
 

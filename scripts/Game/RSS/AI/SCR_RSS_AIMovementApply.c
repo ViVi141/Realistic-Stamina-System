@@ -100,7 +100,7 @@ class SCR_RSS_AIMovementApply
         s_eLastWanted = resolved;
     }
 
-    //! 计算目标 → 应用：Setting 锁步态 + SetSpeedLimit 分数（相对该步态引擎顶）
+    //! 计算目标 → 应用：Setting 锁步态 + SetSpeedLimit + 绝对 MovementMaxSpeed
     //! @param targetMs 计算层绝对帽
     //! @param maxGait 允许的最高步态
     //! @param instant 巡航等需立刻压速时 true
@@ -128,10 +128,11 @@ class SCR_RSS_AIMovementApply
         ForceMovementTypeWanted(characterOwner, maxGait);
 
         // SetSpeedLimit 倍率相对「引擎当前相位顶」，不是意图步态顶。
-        // 巡航闩 WALK 但 engPh 仍停 Run 时，若用 walkTop=1.5 算 frac≈1，
-        // 实际会乘 Run 顶≈3.8 → 看起来完全没限速（日志：latch + v=3.7）。
+        // Idle(engPh=0) 时不要用 walkTop 当分母（否则 frac≈1 且 top 显示 1.49）。
         int engPhase = ctrl.GetCurrentMovementPhase();
-        float phaseTopMs = ResolvePhaseTopMsForEnginePhase(ctrl, characterOwner, engPhase);
+        float phaseTopMs = 0.0;
+        if (engPhase >= 1)
+            phaseTopMs = ResolvePhaseTopMsForEnginePhase(ctrl, characterOwner, engPhase);
         if (phaseTopMs < 0.1)
             phaseTopMs = ResolvePhaseTopMs(ctrl, characterOwner, maxGait);
         s_fLastPhaseTopMs = phaseTopMs;
@@ -142,6 +143,16 @@ class SCR_RSS_AIMovementApply
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(characterOwner, outFrac, instant);
         else
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(characterOwner, 0.999, instant);
+
+        // AI：SetSpeedLimit 常被 BT/相位滞后吃掉（日志 latch+frac=0.64 仍 v=3.5）。
+        // 并行写绝对 MovementMaxSpeed（与玩家试跑同 API），直接帽住 m/s。
+        SCR_RSS_SpeedBridge.ApplyAbsoluteMovementMaxSpeed(characterOwner, targetMs);
+
+        // 巡航/跛行：与玩家 CP 掉带同款 CapsLock Walk 覆盖，迫使 engPh 离开 Run
+        if (maxGait == EMovementType.WALK)
+            SCR_RSS_SpeedBridge.HoldWalkDynamicSpeedOverride(ctrl);
+        else
+            SCR_RSS_SpeedBridge.EndWalkDynamicSpeedOverride(ctrl, 1.0);
     }
 
     //! 按引擎当前相位取顶速（供 SetSpeedLimit 分母）
