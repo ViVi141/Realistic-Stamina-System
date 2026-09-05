@@ -4,6 +4,10 @@
 //! 限速语义与玩家 UpdateSpeed 对齐：绝对目标 m/s ÷ 当前相位引擎顶 → SetSpeedLimit。
 //! 禁止把 CalculateV6PhaseSpeedMultiplier（相对 GAME_MAX_SPEED）直接当相位分数——
 //! 冲刺时会得到 ≈1.0，Chimera 会移除限速源，AI 变成原版满速冲刺。
+//!
+//! 6.2.32：与玩家脚程对齐（仍不跑 UpdateSpeed）
+//!   - 始终 Tobler 坡度缩放（GetRawSlopeAngle / 传入 grade）
+//!   - 开消耗时：Sprint→GetV6SprintSpeedMs；Walk/巡航闩→InvertCruiseCapMs + 地形
 
 class SCR_PlayerBaseAiLightTickHelper
 {
@@ -20,11 +24,49 @@ class SCR_PlayerBaseAiLightTickHelper
         out int outPhase,
         out bool outExhausted)
     {
+        float unusedTarget = 0.0;
+        return ApplyCheapAiSpeedEx(
+            ctrl,
+            owner,
+            encumbranceCache,
+            animSpeedCompensation,
+            0.0,
+            1.0,
+            false,
+            outAppliedFrac,
+            outEncumbrancePenalty,
+            outStaminaPercent,
+            outPhase,
+            outExhausted,
+            unusedTarget);
+    }
+
+    //! 带坡度/地形/代谢帽的廉价限速（AI 消耗管线用）。
+    //! @param gradePercent 已估 grade%（管线缓存）；0 且 useGradeHint=false 时内部自取坡度
+    //! @param terrainFactor 稀采样地形系数
+    //! @param useMetabolicCaps true=开消耗时套 CP/Sprint 反解
+    //! @param useGradeHint true=用传入 gradePercent 做 Tobler/CP（与消耗同源）
+    static bool ApplyCheapAiSpeedEx(
+        SCR_CharacterControllerComponent ctrl,
+        IEntity owner,
+        SCR_RSS_EncumbranceCache encumbranceCache,
+        float animSpeedCompensation,
+        float gradePercent,
+        float terrainFactor,
+        bool useMetabolicCaps,
+        out float outAppliedFrac,
+        out float outEncumbrancePenalty,
+        out float outStaminaPercent,
+        out int outPhase,
+        out bool outExhausted,
+        out float outTargetMs)
+    {
         outAppliedFrac = 1.0;
         outEncumbrancePenalty = 0.0;
         outStaminaPercent = 1.0;
         outPhase = 2;
         outExhausted = false;
+        outTargetMs = 0.0;
 
         if (!ctrl || !owner)
             return false;
@@ -68,20 +110,22 @@ class SCR_PlayerBaseAiLightTickHelper
             targetMs = sprintMs;
 
         // 不算消耗：没有体力经济，禁止无限原版冲刺 → 指令顶压到 Run
-        if (SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
+        bool drainDisabled = SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled();
+        if (drainDisabled)
         {
             if (targetMs > runMs)
                 targetMs = runMs;
             if (effectivePhase == 3)
                 outPhase = 2;
+            useMetabolicCaps = false;
         }
         else
         {
-            // 有消耗管线：W′/冲刺门与玩家一致，不允许空池硬冲
             if (effectivePhase == 3 && !ctrl.GetRssSprintAllowed())
             {
                 targetMs = runMs;
                 outPhase = 2;
+                effectivePhase = 2;
             }
         }
 
@@ -89,26 +133,110 @@ class SCR_PlayerBaseAiLightTickHelper
         {
             targetMs = SCR_RSS_MetabolismMath.GetDynamicLimpSpeedMs(outEncumbrancePenalty);
             outPhase = 1;
+            effectivePhase = 1;
+            useMetabolicCaps = false;
+        }
+
+        // 坡度：与玩家 Tobler 同锚（始终，含默认仅限速）
+        float slopeAngleDeg = 0.0;
+        float gradeForCaps = gradePercent;
+        if (useMetabolicCaps)
+        {
+            // 管线传入的 grade 与消耗同源
+            slopeAngleDeg = Math.Atan2(gradeForCaps, 100.0) * Math.RAD2DEG;
+        }
+        else
+        {
+            vector velHint = vector.Zero;
+            slopeAngleDeg = SCR_RSS_SpeedCalculator.GetRawSlopeAngle(ctrl, velHint);
+            gradeForCaps = SCR_RSS_SpeedCalculator.GradePercentFromSlopeDegrees(slopeAngleDeg);
+        }
+        targetMs = SCR_RSS_SpeedCalculator.CalculateSlopeAdjustedTargetSpeed(
+            targetMs, slopeAngleDeg);
+
+        float tf = terrainFactor;
+        if (tf < 0.5)
+            tf = 0.5;
+        if (tf > 3.0)
+            tf = 3.0;
+
+        if (useMetabolicCaps && !outExhausted)
+        {
+            float gearKg = 0.0;
+            if (encumbranceCache && encumbranceCache.IsCacheValid())
+                gearKg = encumbranceCache.GetCurrentWeight();
+            float totalWeightKg = gearKg + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
+
+            float worldTimeSec = 0.0;
+            SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(worldTimeSec);
+
+            SCR_RSS_AnaerobicBurst ana = ctrl.RSS_GetWPrimeBurst();
+            SCR_RSS_CriticalPowerModel cpModel = null;
+            if (ana)
+                cpModel = ana.GetCpModel();
+
+            float gradeClamped = SCR_RSS_SpeedBridge.ClampGradePercentForMetabolicSpeed(gradeForCaps);
+
+            if (effectivePhase == 3 && cpModel)
+            {
+                float sprintCap = SCR_RSS_SpeedCalculator.GetV6SprintSpeedMs(
+                    outEncumbrancePenalty,
+                    totalWeightKg,
+                    gradeClamped,
+                    tf,
+                    cpModel,
+                    worldTimeSec,
+                    0.2);
+                if (sprintCap > 0.05 && sprintCap < targetMs)
+                    targetMs = sprintCap;
+            }
+            else if (SCR_RSS_SpeedBridge.IsCpMetabolicSpeedCapEnabled() && cpModel)
+            {
+                bool applyCruise = false;
+                if (effectivePhase == 1)
+                    applyCruise = true;
+                else if (SCR_RSS_DrainCalculator.IsAerobicCruiseLatched(cpModel))
+                    applyCruise = true;
+
+                if (applyCruise)
+                {
+                    float cpEffW = cpModel.GetEffectiveCriticalPowerWatts();
+                    int invertPhase = effectivePhase;
+                    if (invertPhase < 1)
+                        invertPhase = 2;
+                    float rawCap = SCR_RSS_DrainCalculator.InvertCruiseCapMs(
+                        cpEffW, totalWeightKg, gradeClamped, tf, invertPhase);
+                    float resolved = SCR_RSS_DrainCalculator.ResolveRunCruiseCapMs(
+                        rawCap,
+                        invertPhase,
+                        gradeClamped,
+                        totalWeightKg,
+                        tf,
+                        cpEffW);
+                    if (resolved > 0.05 && resolved < targetMs)
+                        targetMs = resolved;
+                }
+            }
         }
 
         if (animSpeedCompensation > 0.01)
             targetMs = targetMs * animSpeedCompensation;
 
         float phaseTopMs = ResolveAiPhaseTopMs(ctrl, effectivePhase, outExhausted);
-        // keepSource：禁止 1.0 移除限速源（否则 AI 冲刺回到引擎 5.5）
         float frac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(targetMs, phaseTopMs, true);
         frac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(frac, outExhausted);
 
         float customSprint = SCR_RSS_ConfigBridge.GetCustomSprintSpeedMultiplier();
         if (customSprint != 1.0 && effectivePhase == 3 && !outExhausted)
         {
-            if (!SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
+            if (!drainDisabled)
             {
                 if (ctrl.GetRssSprintAllowed())
                 {
                     float boosted = targetMs * customSprint;
                     frac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(boosted, phaseTopMs, true);
                     frac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(frac, false);
+                    targetMs = boosted;
                 }
             }
         }
@@ -119,6 +247,7 @@ class SCR_PlayerBaseAiLightTickHelper
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(owner, 0.999);
 
         outAppliedFrac = frac;
+        outTargetMs = targetMs;
         return true;
     }
 
@@ -130,7 +259,6 @@ class SCR_PlayerBaseAiLightTickHelper
         if (!ctrl)
             return SCR_RSS_MetabolismMath.GAME_MAX_SPEED;
 
-        // 耗尽跛行时限速源挂在当前引擎相位上，用实时相位顶作分母
         if (exhausted)
         {
             float limpTop = ctrl.GetRssSpeedLimitEngineBaseMs();

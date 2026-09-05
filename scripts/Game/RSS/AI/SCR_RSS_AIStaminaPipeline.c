@@ -3,12 +3,12 @@
 //! 与玩家对齐：
 //!   - Pandolf/ACSM MetabolismPowerWatts + StaminaDrainRatePerSecondFromPowerWatts
 //!   - CalculateTotalDrainRate / UpdateStaminaValue / W′ TickPower / 疲劳积分
-//!   - 廉价限速 = V6 相位 × 负重（同玩家指令速骨架）
+//!   - 限速：廉价骨架 + Tobler 坡度 +（开消耗时）CP 巡航/Sprint 反解（6.2.32）
 //!
-//! 相对玩家的有意简化（敏感度上损失可控）：
-//!   - 坡度：位置 Y 差分估 grade%（无射线）；地形射线按距离 LOD 稀采样
+//! 相对玩家的有意简化：
+//!   - 坡度：引擎复用 / Y 差分（无 Trace）；地形稀采样
 //!   - 热应激：全服共享 1Hz 近似，无室内/湿重/游泳动作消耗
-//!   - 不做 UpdateSpeed / CP 二次限速 / 泥泞 / 跳跃翻越
+//!   - 不做完整 UpdateSpeed / 泥泞 / 跳跃翻越
 //!
 //! 入口：DisableAIStaminaCalc=false 时由 PlayerBase_UpdateLoop 调用 Tick，不再进玩家 Phase B/C。
 
@@ -58,25 +58,6 @@ class SCR_RSS_AIStaminaPipeline
         if (!ctx || !ctx.ctrl || !ctx.owner || !ctx.world)
             return ctx.lastStaminaUpdateTime;
 
-        float cheapFrac = 1.0;
-        float cheapEnc = 0.0;
-        float cheapSta = 1.0;
-        int cheapPhase = 2;
-        bool cheapExhausted = false;
-        SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeed(
-            ctx.ctrl,
-            ctx.owner,
-            ctx.encumbranceCache,
-            ctx.animSpeedCompensation,
-            cheapFrac,
-            cheapEnc,
-            cheapSta,
-            cheapPhase,
-            cheapExhausted);
-
-        ctx.lastRssSpeedMultiplierApplied = cheapFrac;
-        ctx.appliedSpeedLimitMs = -1.0;
-
         float nowMs = ctx.world.GetWorldTime();
         float nowSec = nowMs / 1000.0;
         float timeDeltaSec = SCR_RSS_AIConstants.RSS_PERF_AI_LOD_NEAR_INTERVAL_MS / 1000.0;
@@ -89,7 +70,7 @@ class SCR_RSS_AIStaminaPipeline
         if (distM >= 0.0 && distM > SCR_RSS_AIConstants.RSS_PERF_AI_LOD_FAR_M)
             farLod = true;
 
-        // 测速（位置差分，与玩家同源）
+        // 测速 → 坡度/地形（先于限速，使 Tobler/CP 帽与消耗同源）
         float dtSample = timeDeltaSec;
         RSS_SpeedCalculationResult pos = SCR_RSS_UpdateCoordinator.CalculateCurrentSpeed(
             ctx.owner,
@@ -104,11 +85,34 @@ class SCR_RSS_AIStaminaPipeline
             ctx.owner, pos.computedVelocity);
         float currentSpeed = SCR_PlayerBaseRssApiHelper.CalculateCurrentSpeed(velocity);
 
-        // 坡度：优先引擎 GetFloorNormal；否则 Y 差分（无 Trace）
         UpdateGrade(ctx.ctrl, ctx.owner.GetOrigin(), velocity, currentSpeed, timeDeltaSec);
-
-        // 地形：近/中稀采样射线；远距固定 1.0
         UpdateTerrainFactor(ctx, nowSec, currentSpeed, distM, farLod);
+
+        float cheapFrac = 1.0;
+        float cheapEnc = 0.0;
+        float cheapSta = 1.0;
+        int cheapPhase = 2;
+        bool cheapExhausted = false;
+        float cheapTargetMs = 0.0;
+        SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeedEx(
+            ctx.ctrl,
+            ctx.owner,
+            ctx.encumbranceCache,
+            ctx.animSpeedCompensation,
+            m_fCachedGradePercent,
+            m_fCachedTerrainFactor,
+            true,
+            cheapFrac,
+            cheapEnc,
+            cheapSta,
+            cheapPhase,
+            cheapExhausted,
+            cheapTargetMs);
+
+        ctx.lastRssSpeedMultiplierApplied = cheapFrac;
+        ctx.appliedSpeedLimitMs = cheapTargetMs;
+        if (ctx.appliedSpeedLimitMs < 0.05)
+            ctx.appliedSpeedLimitMs = -1.0;
 
         float heatMult = 1.0;
         if (!farLod)

@@ -1,10 +1,10 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.31**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
+> 版本对齐 **6.2.32**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
 
 ## 目标
 
-在专服多 AI 场景下，**体力数值**尽量贴近玩家 RSS（Pandolf / CP–W′ / 负重 / 坡度），同时**绝不**走玩家级 `UpdateSpeed` 全链，并尽量复用引擎已算状态。
+在专服多 AI 场景下，**体力数值**尽量贴近玩家 RSS（Pandolf / CP–W′ / 负重 / 坡度），**脚程**在开消耗时用轻量 Tobler/CP 帽靠近玩家，同时**绝不**走玩家级 `UpdateSpeed` 全链。
 
 ## 官方复用优先级（6.2.30+）
 
@@ -14,22 +14,22 @@
 | 测速 | `Movement.GetVelocityWS` | 位置差分（禁 Physics.GetVelocity） |
 | 地形系数 | `GetFloorSurface`→材质表 | Trace（稀采样；FloorSurface 常空属常态） |
 | 热应激 | 全服 1Hz TOD | — |
-| 室内抑坡 | `UpdateIndoorCache`（2s） | 热路径禁止每 tick 屋顶射线 |
+| 室内抑坡 | `UpdateIndoorCache`（2s） | 热路径禁止每 tick 屋顶射线（玩家） |
 
 ## 开关语义（菜单文案 → 字段）
 
 | 菜单项 | 字段 | AI 行为 |
 |--------|------|---------|
 | **Disable All AI RSS** = On | `m_bDisableAIAllCalc` | 不跑 RSS 循环（覆盖下列两项） |
-| **Disable AI Stamina Drain** = On（默认） | `m_bDisableAIStaminaCalc` | 仅廉价限速（负重+相位） |
-| **Disable AI Stamina Drain** = Off | 同上 = false | **本管线**：廉价限速 + 同源代谢消耗/恢复 |
+| **Disable AI Stamina Drain** = On（默认） | `m_bDisableAIStaminaCalc` | 廉价限速 + **Tobler 坡度**（无消耗/无 CP 帽） |
+| **Disable AI Stamina Drain** = Off | 同上 = false | 管线：消耗 + Tobler + CP/Sprint 帽 |
 | **AI Fatigue Behaviors** = On | `m_bEnableAIStaminaCombatEffects` | 状态机/意图/战斗衰减（需 Drain=Off） |
 
 ## 与玩家对照
 
 | 环节 | 玩家 | AI 管线 |
 |------|------|---------|
-| 限速意图 | `UpdateSpeed`（坡度/grade 复用已算角度） | `ApplyCheapAiSpeed` 绝对行军 m/s |
+| 限速意图 | `UpdateSpeed` 全伺服 | 廉价骨架 + Tobler；开消耗再加 CP/Sprint 反解 |
 | 测速 | VelocityWS → 位置差分 | 同 |
 | 坡度 | CmdSlope → FloorNormal → Trace | CmdSlope → FloorNormal → Y 差分（无 Trace） |
 | 地形系数 | FloorSurface → Trace | 同优先；稀采样 |
@@ -38,4 +38,4 @@
 
 ## 调用路径
 
-`PlayerBase_UpdateLoop` Phase A：若非玩家且未禁消耗 → `m_pAIStaminaPipeline.Tick(ctx)` → `ScheduleNext`，**不进** Phase B/C。
+`PlayerBase_UpdateLoop` Phase A：若非玩家且未禁消耗 → 测速/坡度/地形 → `ApplyCheapAiSpeedEx` → 消耗 → `ScheduleNext`，**不进** Phase B/C。

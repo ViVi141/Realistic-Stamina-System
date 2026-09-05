@@ -9,7 +9,8 @@
 ## 0. 总体思想
 
 - **数值层**：`DisableAIStaminaCalc=Off` 时走 `SCR_RSS_AIStaminaPipeline`——与玩家共用 Pandolf / CP–W′ / `UpdateStaminaValue` 核，但避开 `UpdateSpeed` 与逐 AI 环境全链。
-- **限速层**：始终廉价（负重 + V6 相位 / 跛行），与是否算消耗无关。
+- **限速层**：廉价（负重 + 相位 / 跛行）+ **Tobler 坡度**；开消耗时再套 CP 巡航 / Sprint 反解（与玩家脚程靠近，仍不跑 `UpdateSpeed`）。
+
 - **行为层**（可选）：状态机 → SpeedCap → 意图过滤 → 战斗衰减（需 Combat 开）。
 - **不侵入** 原生行为树；通过 `SetMovementTypeWanted` + SpeedBridge 间接约束。
 
@@ -36,7 +37,7 @@
 |----------|------|------|
 | **AI Fatigue Behaviors** | `m_bEnableAIStaminaCombatEffects` | 状态机、步态限速、意图过滤、战斗衰减、伤势联动（需消耗开启） |
 | **Disable All AI RSS** | `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
-| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On**（默认）：仅廉价限速。**Off**：AI 专用管线算消耗（无玩家 UpdateSpeed） |
+| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On**（默认）：廉价限速 + Tobler。**Off**：消耗管线 + Tobler + CP/Sprint 帽 |
 | Mud Slip Mechanic | `m_bEnableMudSlipMechanism` | 泥泞（玩家侧；AI 管线不算泥泞） |
 
 ## 3. 每 tick 顺序（服端 AI，`DisableAIStaminaCalc=Off`）
@@ -78,4 +79,4 @@
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.31（EngineReuse + 室内缓存抑坡）。*
+*文档版本：2026-09-06，对齐 6.2.32（AI Tobler/CP 脚程对齐）。*

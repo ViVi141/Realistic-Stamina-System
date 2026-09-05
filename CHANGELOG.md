@@ -1,5 +1,13 @@
 # 更新日志
 
+## [6.2.32] - 2026-09-06
+
+### AI 脚程对齐：Tobler + CP/Sprint 轻量帽（仍不跑玩家 UpdateSpeed）
+
+- **默认仅限速** — `ApplyCheapAiSpeed` 始终用 `GetRawSlopeAngle` 做 Tobler，上坡不再比玩家明显偏快。
+- **开消耗（AI 管线）** — 先算坡度/地形再限速；Sprint→`GetV6SprintSpeedMs`；Walk/W′ 巡航闩→`InvertCruiseCapMs`；写入 `appliedSpeedLimitMs` 供消耗记账。
+- 配置版本 → **6.2.32**
+
 ## [6.2.31] - 2026-09-06
 
 ### 热路径：室内坡度抑制走缓存；grade 不再重复查坡 / new
