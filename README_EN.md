@@ -69,20 +69,21 @@ AI stamina pipeline + group/SCENARIO gait pin; EngineReuse; production debug def
 
 **Canteen**: still in arsenal as an **undeleted dev artifact** — equip/drink anim only; **no STA/W′ restore yet**. Kept to test a future stamina-food pipeline; not a usable supply.
 
-### Perf vs 6.2.6 (PerfProbe, µs/call)
+### Perf vs 6.2.6 (PerfProbe)
 
-Baseline **6.2.6 @ `883a051`** vs **6.3.0 tip** (`Run` / `RunNearestAi`, 3000 iters). Speedup ≈ old ÷ new.
+Baseline **6.2.6 @ `883a051`** (player & AI same full stack) vs **6.3.0 tip**.
 
-| Scenario | 6.2.6 | 6.3.0 | ≈faster |
-|----------|-------|-------|---------|
-| `UpdateSpeed` (player) | 44 | 7.3 | ~6× |
-| grade (no indoor rays) | 37 | ~0–0.3 | ~∞ |
-| A speed-limit stack | ~48.5 | ~15 | ~3.3× |
-| B full | ~55 | 21 | ~2.6× |
-| **AI default (prod `03f`)** | ~48 | **16.7** | **~2.9×** |
-| AI drain on (est. `03f+F−D`) | ~55 | ~22 | ~2.5× |
+**Default config** (AI drain off): player speed stack ~48.5→~15 (**~3.3× / ~69% less**); AI prod `03f` ~48→16.7 (**~2.9× / ~65% less**).
 
-Do **not** use probe D≈1.7 / F≈7 as production AI cost (old “~30×/~9×” claims are obsolete). See `CHANGELOG.md` **[6.3.0]**.
+**AI drain on** vs old AI full stack B≈55→~22 (**~2.5× / ~60% less**).
+
+| Compare | 6.2.6 | 6.3.0 | ≈faster | ≈less cost |
+|---------|-------|-------|---------|------------|
+| Default · player A | ~48.5 | ~15 | ~3.3× | ~69% |
+| Default · AI `03f` | ~48 | 16.7 | ~2.9× | ~65% |
+| AI drain vs old B | ~55 | ~22 | ~2.5× | ~60% |
+
+See `CHANGELOG.md` **[6.3.0]** (do not treat probe D/F as production).
 
 ## v6.2.5 Updates
 

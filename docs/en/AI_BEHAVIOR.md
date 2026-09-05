@@ -41,16 +41,12 @@
 
 Full: 600 / 1000 / 2500 ms. Light: 800 / 1500 / 3000 ms. Terrain sample: 2 s / 5 s; far = terrain 1.0, skip W′/fatigue.
 
-### Perf vs 6.2.6 (PerfProbe, µs/call)
+### Perf vs 6.2.6 (PerfProbe)
 
-Baseline **6.2.6 @ `883a051`** vs **6.3.0 tip** `RunNearestAi`.
+**Default** (drain off): AI ~48→`03f`≈16.7 (**~2.9× / ~65% less**); player speed stack **~3.3× / ~69% less**.  
+**Drain on** vs old AI full stack B≈55→~22 (**~2.5× / ~60% less**).
 
-| Scenario | 6.2.6 AI | 6.3.0 prod | ≈faster |
-|----------|----------|------------|---------|
-| Default limit | =A ~48 | **`03f` ≈ 16.7** | **~2.9×** |
-| Drain on (est.) | =B ~55 | ~22 | ~2.5× |
-
-Probe D≈1.7 / F≈7 are **not** production. Player: `UpdateSpeed` ~6×, A ~3.3× — see root `CHANGELOG.md` **[6.3.0]**.
+See root `CHANGELOG.md` **[6.3.0]**.
 
 ---
 

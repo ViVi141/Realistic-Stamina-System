@@ -11,7 +11,7 @@
 **English**: A realistic stamina and speed system mod for Arma Reforger that dynamically adjusts movement speed based on stamina and encumbrance, using precise medical/physiological models.
 
 - **GUID**: `68649101601CC93D` · **Config**: **6.3.0** · **Game**: Reforger **1.7+**
-- **相对 6.2.6**：玩家 `UpdateSpeed` ~6×、A ~3.3×；AI 默认生产 **~2.9×**（`03f`；旧「~30×」作废；见 [CHANGELOG.md](CHANGELOG.md)）
+- **相对 6.2.6**：默认配置下玩家限速栈省 ~69%、AI 省 ~65%；AI 开 drain 相对旧全栈省 ~60%（见 [CHANGELOG.md](CHANGELOG.md)）
 - **水壶**：军火库可取，**暂无体力效果**（开发产物，供后续体力食物测试）
 - 完整中文说明（含历史版本记录与系统特性细则）：[README_CN.md](README_CN.md)
 - English overview：[README_EN.md](README_EN.md)
