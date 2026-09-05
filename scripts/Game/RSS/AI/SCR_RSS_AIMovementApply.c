@@ -127,7 +127,13 @@ class SCR_RSS_AIMovementApply
         ApplyMaxMovementTypeSetting(characterOwner, maxGait);
         ForceMovementTypeWanted(characterOwner, maxGait);
 
-        float phaseTopMs = ResolvePhaseTopMs(ctrl, characterOwner, maxGait);
+        // SetSpeedLimit 倍率相对「引擎当前相位顶」，不是意图步态顶。
+        // 巡航闩 WALK 但 engPh 仍停 Run 时，若用 walkTop=1.5 算 frac≈1，
+        // 实际会乘 Run 顶≈3.8 → 看起来完全没限速（日志：latch + v=3.7）。
+        int engPhase = ctrl.GetCurrentMovementPhase();
+        float phaseTopMs = ResolvePhaseTopMsForEnginePhase(ctrl, characterOwner, engPhase);
+        if (phaseTopMs < 0.1)
+            phaseTopMs = ResolvePhaseTopMs(ctrl, characterOwner, maxGait);
         s_fLastPhaseTopMs = phaseTopMs;
         outFrac = SCR_RSS_SpeedBridge.FractionForAbsoluteSpeed(targetMs, phaseTopMs, true);
         outFrac = SCR_RSS_DrainCalculator.ClampSpeedLimitFractionToGaitBand(outFrac, false);
@@ -136,6 +142,22 @@ class SCR_RSS_AIMovementApply
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(characterOwner, outFrac, instant);
         else
             SCR_RSS_SpeedBridge.ApplyStaminaSpeedLimit(characterOwner, 0.999, instant);
+    }
+
+    //! 按引擎当前相位取顶速（供 SetSpeedLimit 分母）
+    protected static float ResolvePhaseTopMsForEnginePhase(
+        SCR_CharacterControllerComponent ctrl,
+        IEntity characterOwner,
+        int enginePhase)
+    {
+        EMovementType gait = EMovementType.RUN;
+        if (enginePhase <= 0)
+            gait = EMovementType.IDLE;
+        else if (enginePhase == 1)
+            gait = EMovementType.WALK;
+        else if (enginePhase >= 3)
+            gait = EMovementType.SPRINT;
+        return ResolvePhaseTopMs(ctrl, characterOwner, gait);
     }
 
     protected static float ResolvePhaseTopMs(

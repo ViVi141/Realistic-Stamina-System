@@ -191,7 +191,7 @@ class SCR_RSS_UpdateLoopDebugOutput
 
         if (!s_bAiSpeedDiagBannerPrinted)
         {
-            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/gait/setOK CFG=drainOff");
+            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/top@engPh/gait CFG=drainOff");
             s_bAiSpeedDiagBannerPrinted = true;
         }
 
