@@ -1,5 +1,15 @@
 # 更新日志
 
+## [6.2.37] - 2026-09-06
+
+### AI 限速：官方步态钉死（压过航点）
+
+- **根因** — Setting Origin 用 `COMMANDING`(3000) 时，航点 `WAYPOINT`(4000) 仍可盖掉限速；Range 上限 WALK 也不如固定 Setting 稳。
+- **应用层** — Origin 升为 **SCENARIO**；巡航/跛行/IDLE 用 `SCR_AICharacterMovementSpeedSetting` **钉死**步态；RUN/SPRINT 仍用 Range。清掉旧 COMMANDING 残留。
+- **重钉** — 角色层写完后再 `ForceMovementTypeWanted`；近距 LOD 200/250ms。
+- **诊断** — `[RSS][AI-SPD]` 增加 `ovr` / `fixed`。
+- 配置版本 → **6.2.37**
+
 ## [6.2.36] - 2026-09-06
 
 ### 陆地测速：禁止位置差分；改用官方案例 GetVelocity

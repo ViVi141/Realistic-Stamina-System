@@ -11,7 +11,7 @@
 - **数值层**：`DisableAIStaminaCalc=Off` 时走 `SCR_RSS_AIStaminaPipeline`——与玩家共用 Pandolf / CP–W′ / `UpdateStaminaValue` 核，但避开 `UpdateSpeed` 与逐 AI 环境全链。
 - **限速层**：廉价（负重意图项 + 相位 / 跛行）+ **Tobler**；开消耗时再套 CP 巡航 / Sprint 反解。未开 Fatigue Behaviors 时冲刺意图压到 Run。
 - **行为层**（可选）：状态机 → SpeedCap → 意图过滤 → 战斗衰减（需 Combat 开）。
-- **不侵入** 原生行为树；通过 `SetMovementTypeWanted` + SpeedBridge 间接约束。
+- **不侵入** 原生行为树；通过 Agent `MovementSpeedSetting`（SCENARIO）+ `SetMovementTypeWanted` + SpeedBridge 间接约束。
 
 ## 1. 实现文件
 
@@ -66,8 +66,8 @@
 
 | 机制 | 说明 |
 |------|------|
-| 全量 LOD | 近/中/远 600 / 1000 / 2500 ms（算消耗时） |
-| 轻量 LOD | 800 / 1500 / 3000 ms（仅限速） |
+| 全量 LOD | 近/中/远 200 / 800 / 2500 ms（算消耗时） |
+| 轻量 LOD | 250 / 1200 / 3000 ms（仅限速） |
 | 地形采样 | 近 2 s / 中 5 s；远距固定 terrain=1 |
 | 错峰 | CallLater 最多 180 ms |
 | 玩家原点缓存 | 0.25 s 全服共享 |
@@ -80,4 +80,4 @@
 
 ---
 
-*文档版本：2026-09-06，对齐 6.2.35（AI 应用层 Agent Setting）。*
+*文档版本：2026-09-06，对齐 6.2.37（AI 应用层 SCENARIO 固定钉步态）。*

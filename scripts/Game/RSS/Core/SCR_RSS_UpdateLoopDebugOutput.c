@@ -191,7 +191,7 @@ class SCR_RSS_UpdateLoopDebugOutput
 
         if (!s_bAiSpeedDiagBannerPrinted)
         {
-            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/top@engPh/gait CFG=drainOff");
+            Print("[RSS][AI-SPD] diag ON (near<=80m, ~2s). CALC=v/tgt/W'/latch APPLY=frac/gait/ovr/fixed CFG=drainOff");
             s_bAiSpeedDiagBannerPrinted = true;
         }
 
@@ -207,12 +207,15 @@ class SCR_RSS_UpdateLoopDebugOutput
 
         EMovementType maxGait = SCR_RSS_AIMovementApply.GetLastMaxGait();
         EMovementType wantedAfter = SCR_RSS_AIMovementApply.GetLastWanted();
+        EMovementType overrideGait = SCR_RSS_AIMovementApply.GetLastOverride();
         bool settingsOk = SCR_RSS_AIMovementApply.GetLastSettingsOk();
         bool aiMoveOk = SCR_RSS_AIMovementApply.GetLastAiMoveOk();
+        bool fixedSetting = SCR_RSS_AIMovementApply.GetLastUsedFixedSetting();
         float phaseTopMs = SCR_RSS_AIMovementApply.GetLastPhaseTopMs();
 
         string gaitStr = typename.EnumToString(EMovementType, maxGait);
         string wantedStr = typename.EnumToString(EMovementType, wantedAfter);
+        string ovrStr = typename.EnumToString(EMovementType, overrideGait);
 
         PrintFormat(
             "[RSS][AI-SPD] %1 path=%2 dist=%3m CALC v=%4 tgt=%5 ph=%6 enc=%7 grade=%8",
@@ -232,12 +235,18 @@ class SCR_RSS_UpdateLoopDebugOutput
             snap.cruiseLatched.ToString());
 
         PrintFormat(
-            "[RSS][AI-SPD] %1 APPLY frac=%2 top=%3 maxGait=%4 wanted=%5 setOK=%6 moveOK=%7 engPh=%8 sprint=%9",
+            "[RSS][AI-SPD] %1 APPLY frac=%2 top=%3 maxGait=%4 wanted=%5 ovr=%6 fixed=%7",
             name,
             (Math.Round(snap.appliedFrac * 1000.0) / 1000.0).ToString(),
             (Math.Round(phaseTopMs * 100.0) / 100.0).ToString(),
             gaitStr,
             wantedStr,
+            ovrStr,
+            fixedSetting.ToString());
+
+        PrintFormat(
+            "[RSS][AI-SPD] %1 APPLY setOK=%2 moveOK=%3 engPh=%4 sprint=%5",
+            name,
             settingsOk.ToString(),
             aiMoveOk.ToString(),
             enginePhase.ToString(),

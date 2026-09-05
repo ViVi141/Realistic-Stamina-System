@@ -10,13 +10,14 @@ class SCR_RSS_AIConstants
     static const float RSS_PERF_AI_LOD_FAR_M = 1200.0;
     //! 全服玩家原点缓存 TTL（秒）；所有 AI LOD 共用，避免每 tick 分配 GetPlayers
     static const float RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC = 0.25;
-    //! 全量体力路径 LOD（DisableAIStaminaCalc=false）；再拉稀以削 Speed 尖刺
-    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 600;
-    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 1000;
+    //! 全量体力路径 LOD（DisableAIStaminaCalc=false）
+    //! 近距加稠：角色层 SetSpeedLimit / Walk 覆盖需更勤重钉；步态靠 Agent Setting 抗 BT
+    static const int RSS_PERF_AI_LOD_NEAR_INTERVAL_MS = 200;
+    static const int RSS_PERF_AI_LOD_MID_INTERVAL_MS = 800;
     static const int RSS_PERF_AI_LOD_FAR_INTERVAL_MS = 2500;
     //! 轻量路径（DisableAIStaminaCalc=true）：仅负重/相位限速
-    static const int RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS = 800;
-    static const int RSS_PERF_AI_LIGHT_MID_INTERVAL_MS = 1500;
+    static const int RSS_PERF_AI_LIGHT_NEAR_INTERVAL_MS = 250;
+    static const int RSS_PERF_AI_LIGHT_MID_INTERVAL_MS = 1200;
     static const int RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS = 3000;
     //! CallLater 错峰上限（ms），避免百人 AI 同帧齐刷
     static const int RSS_PERF_AI_TICK_STAGGER_MS = 180;

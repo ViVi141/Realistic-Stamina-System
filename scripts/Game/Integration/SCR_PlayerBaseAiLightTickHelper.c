@@ -277,9 +277,8 @@ class SCR_PlayerBaseAiLightTickHelper
             }
         }
 
-        // —— 应用层：先 Agent Setting 锁步态（抗 BT），再 SetSpeedLimit 分数 ——
-        // 巡航闩 / 跛行 → WALK（AI 无连续 m/s API，离散步态才能真正掉速）
-        // 禁止冲刺 → 最高 RUN；允许冲刺 → SPRINT
+        // —— 应用层：SCENARIO Setting 锁步态（压过航点 BT），再 SetSpeedLimit ——
+        // 巡航闩 / 跛行 → 固定钉 WALK；禁止冲刺 → Range 最高 RUN；允许冲刺 → SPRINT
         EMovementType maxGait = EMovementType.RUN;
         if (outExhausted)
             maxGait = EMovementType.WALK;
