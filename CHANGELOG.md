@@ -1,5 +1,15 @@
 # 更新日志
 
+## [6.2.33] - 2026-09-06
+
+### AI 同行偏快：冲刺顶 + 负重意图项
+
+- **根因** — 行为树常默认冲刺；开消耗时只要 W′ 允许就给 Sprint 行军顶（~4.5 m/s），玩家慢跑（~3.x）会被拉开。另：AI 负重只乘 `1−base`，玩家还有意图速比项。
+- **策略** — 未开 **AI Fatigue Behaviors** 时，AI 速度顶压到 **Run**（`SetMovementTypeWanted(RUN)` + `SetSpeedLimit`）；仅 Behaviors + `GetRssSprintAllowed` 才允许冲刺顶。
+- **负重** — 与玩家同形：`base × (1 + intentSpeedRatio)`，冲刺再 `ScaleSprintEncumbrancePenalty`。
+- **不**对 AI 做玩家侧 `ClampOwnerHorizontalSpeed`（AI 用 `SetMovementTypeWanted` / `SetSpeedLimit`）。
+- 配置版本 → **6.2.33**
+
 ## [6.2.32] - 2026-09-06
 
 ### AI 脚程对齐：Tobler + CP/Sprint 轻量帽（仍不跑玩家 UpdateSpeed）

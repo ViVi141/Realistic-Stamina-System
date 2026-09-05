@@ -1,6 +1,6 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.32**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
+> 版本对齐 **6.2.33**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
 
 ## 目标
 

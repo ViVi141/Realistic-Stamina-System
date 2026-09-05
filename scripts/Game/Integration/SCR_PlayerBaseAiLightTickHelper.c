@@ -8,6 +8,8 @@
 //! 6.2.32：与玩家脚程对齐（仍不跑 UpdateSpeed）
 //!   - 始终 Tobler 坡度缩放（GetRawSlopeAngle / 传入 grade）
 //!   - 开消耗时：Sprint→GetV6SprintSpeedMs；Walk/巡航闩→InvertCruiseCapMs + 地形
+//! 6.2.33：负重意图项与玩家同形；默认禁止 BT 冲刺顶（需 Fatigue Behaviors）
+//!   限速只走 SetSpeedLimit + SetMovementTypeWanted（AI 专用），不用玩家水平硬钳
 
 class SCR_PlayerBaseAiLightTickHelper
 {
@@ -73,13 +75,13 @@ class SCR_PlayerBaseAiLightTickHelper
         if (ctrl.IsPlayerControlled())
             return false;
 
+        float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
         if (encumbranceCache)
         {
             encumbranceCache.CheckAndUpdate();
             outEncumbrancePenalty = encumbranceCache.GetSpeedPenaltyFraction();
             outEncumbrancePenalty = outEncumbrancePenalty
                 * SCR_RSS_ConfigBridge.GetCustomEncumbranceSpeedPenaltyMultiplier();
-            float maxPenalty = SCR_RSS_ConfigBridge.GetEncumbranceSpeedPenaltyMax();
             outEncumbrancePenalty = Math.Clamp(outEncumbrancePenalty, 0.0, maxPenalty);
         }
 
@@ -95,7 +97,18 @@ class SCR_PlayerBaseAiLightTickHelper
             effectivePhase = 3;
         outPhase = effectivePhase;
 
-        float encMult = 1.0 - outEncumbrancePenalty;
+        // 与玩家 UpdateSpeed 同形：base × (1 + 意图速比)〔冲刺再缩放〕
+        bool wantSprint = false;
+        if (effectivePhase == 3)
+            wantSprint = true;
+        float speedRatio = SCR_RSS_SpeedCalculator.GetEncumbranceIntentSpeedRatio(
+            effectivePhase, wantSprint);
+        float intentEnc = outEncumbrancePenalty * (1.0 + speedRatio);
+        if (wantSprint)
+            intentEnc = SCR_RSS_SpeedCalculator.ScaleSprintEncumbrancePenalty(intentEnc);
+        intentEnc = Math.Clamp(intentEnc, 0.0, maxPenalty);
+
+        float encMult = 1.0 - intentEnc;
         if (encMult < 0.5)
             encMult = 0.5;
 
@@ -109,23 +122,33 @@ class SCR_PlayerBaseAiLightTickHelper
         else if (effectivePhase == 3)
             targetMs = sprintMs;
 
-        // 不算消耗：没有体力经济，禁止无限原版冲刺 → 指令顶压到 Run
+        // 冲刺顶策略：
+        // - 关消耗：无体力经济 → 永远压到 Run
+        // - 开消耗但未开 Fatigue Behaviors：BT 常默认冲刺，玩家慢跑同行会「快很多」→ 压到 Run
+        // - 开消耗且 Fatigue Behaviors：才允许 W′ 门控冲刺（与战斗层一致）
         bool drainDisabled = SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled();
+        bool allowAiSprintTarget = false;
+        if (!drainDisabled)
+        {
+            if (SCR_RSS_ConfigBridge.IsAIStaminaCombatEffectsEnabled())
+            {
+                if (ctrl.GetRssSprintAllowed())
+                    allowAiSprintTarget = true;
+            }
+        }
+
         if (drainDisabled)
+            useMetabolicCaps = false;
+
+        if (!allowAiSprintTarget)
         {
             if (targetMs > runMs)
                 targetMs = runMs;
             if (effectivePhase == 3)
-                outPhase = 2;
-            useMetabolicCaps = false;
-        }
-        else
-        {
-            if (effectivePhase == 3 && !ctrl.GetRssSprintAllowed())
             {
-                targetMs = runMs;
                 outPhase = 2;
                 effectivePhase = 2;
+                ForceAiMovementTypeWanted(owner, EMovementType.RUN);
             }
         }
 
@@ -135,6 +158,7 @@ class SCR_PlayerBaseAiLightTickHelper
             outPhase = 1;
             effectivePhase = 1;
             useMetabolicCaps = false;
+            ForceAiMovementTypeWanted(owner, EMovementType.WALK);
         }
 
         // 坡度：与玩家 Tobler 同锚（始终，含默认仅限速）
@@ -249,6 +273,30 @@ class SCR_PlayerBaseAiLightTickHelper
         outAppliedFrac = frac;
         outTargetMs = targetMs;
         return true;
+    }
+
+    protected static void ForceAiMovementTypeWanted(IEntity owner, EMovementType speed)
+    {
+        if (!owner)
+            return;
+
+        AICharacterMovementComponent aiMove = AICharacterMovementComponent.Cast(
+            owner.FindComponent(AICharacterMovementComponent));
+        if (!aiMove)
+            return;
+
+        EMovementType resolved = speed;
+        SCR_AICharacterSettingsComponent settingsComp = SCR_AICharacterSettingsComponent.Cast(
+            owner.FindComponent(SCR_AICharacterSettingsComponent));
+        if (settingsComp)
+        {
+            SCR_AICharacterMovementSpeedSettingBase setting = SCR_AICharacterMovementSpeedSettingBase.Cast(
+                settingsComp.GetCurrentSetting(SCR_AICharacterMovementSpeedSettingBase));
+            if (setting)
+                resolved = setting.GetSpeed(resolved);
+        }
+
+        aiMove.SetMovementTypeWanted(resolved);
     }
 
     protected static float ResolveAiPhaseTopMs(

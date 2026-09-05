@@ -26,7 +26,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("6.2.32", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.2.33", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
@@ -81,13 +81,13 @@ class SCR_RSS_Settings
     [Attribute("false", UIWidgets.CheckBox, "Mud slip mechanic: ragdoll + camera stress on slippery wet terrain. Server chooses via JSON; default OFF. | 泥泞滑倒机制（湿滑地形布娃娃/镜头失稳），服主在 JSON 中开关，默认关闭")]
     bool m_bEnableMudSlipMechanism;
 
-    [Attribute("false", UIWidgets.CheckBox, "[Experimental] AI Fatigue Behaviors: FSM, movement tier cap, intent filter, combat decay, injury–stamina link. Needs drain On (Disable AI Stamina Drain=Off). Default OFF. | 【实验性】AI 疲劳行为：状态机、步态限速、意图过滤、战斗衰减、伤势联动；需关闭「禁用 AI 体力消耗」。默认关")]
+    [Attribute("false", UIWidgets.CheckBox, "[Experimental] AI Fatigue Behaviors: FSM, movement tier, combat decay; FRESH may Sprint. Needs Disable AI Stamina Drain=Off. Default OFF. | 【实验性】AI 疲劳行为；FRESH 才允许冲刺顶。需关闭「禁用 AI 体力消耗」。默认关")]
     bool m_bEnableAIStaminaCombatEffects;
 
     [Attribute("false", UIWidgets.CheckBox, "Disable All AI RSS: stop entire AI RSS loop (limit/drain/behaviors). Engine stamina. Overrides other AI toggles. | 完全禁用 AI RSS（限速/消耗/行为全停），体力交还引擎；开启时覆盖另两项 AI 开关")]
     bool m_bDisableAIAllCalc;
 
-    [Attribute("true", UIWidgets.CheckBox, "Disable AI Stamina Drain: On=cheap limit+Tobler (default; offline vs player ~mean 15%/max~79% gap). Off=AI pipeline drain+CP/Sprint caps (~mean 1%/max~2% gap; ~4× CPU; never player UpdateSpeed). | 禁用 AI 体力消耗：On=廉价限速+Tobler（默认；离线相对玩家约均差15%/最大约79%）。Off=专用消耗管线+CP/冲刺帽（约均差1%/最大约2%；CPU约4倍；不走玩家UpdateSpeed）")]
+    [Attribute("true", UIWidgets.CheckBox, "Disable AI Stamina Drain: On=cheap limit+Tobler+Run ceiling. Off=AI drain pipeline+CP; Sprint only with Fatigue Behaviors. | 禁用 AI 体力消耗：On=廉价限速+Tobler+Run顶。Off=消耗管线+CP；冲刺需开 Fatigue Behaviors")]
     bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]

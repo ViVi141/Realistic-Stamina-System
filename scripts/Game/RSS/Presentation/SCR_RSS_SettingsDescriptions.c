@@ -55,7 +55,7 @@ class SCR_RSS_SettingsDescriptions
         if (widgetName == "ToggleAICombat")
         {
             title = "AI Fatigue Behaviors";
-            body = "Experimental. When On: tired AI change movement tier, block Attack intents when exhausted, lose perception/fire rate/aim as stamina drops, and wounded AI drain faster / recover slower. Needs AI stamina drain enabled (Disable AI Stamina Drain = Off) to drive the state machine. When Off: no combat/behavior layer — only movement limit and optional drain. Default Off.";
+            body = "Experimental. When On: tired AI change movement tier, block Attack when exhausted, lose perception/fire rate/aim as stamina drops, wounded AI drain faster / recover slower, and FRESH AI may use Sprint speed caps. Needs Disable AI Stamina Drain = Off. When Off: no combat layer; AI foot-speed stays at Run ceiling (BT sprint does not outrun a jogging player). Default Off.";
             return true;
         }
 
@@ -69,7 +69,7 @@ class SCR_RSS_SettingsDescriptions
         if (widgetName == "ToggleDisableAIStamina")
         {
             title = "Disable AI Stamina Drain";
-            body = "On (default): cheap speed only (encumbrance + gait + Tobler slope). No stamina drain / no CP cruise cap. Offline vs player speed gap: ~mean 15% |max ~79% (worst when W' empty on hills). Off: AI stamina pipeline — same metabolic core as players + Tobler + CP/Sprint caps (still NOT player UpdateSpeed). Offline gap vs player: ~mean 1% |max ~2%. Higher CPU (~4× cheap path). Turn Off for foot-speed parity and Fatigue Behaviors.";
+            body = "On (default): cheap speed only (encumbrance + gait + Tobler). No drain / no CP cruise. Sprint intent is forced to Run. Off: AI stamina pipeline (same metabolic core + Tobler + CP caps; still NOT player UpdateSpeed). Without Fatigue Behaviors, sprint intent stays capped at Run so AI do not outrun a jogging player. Turn On Fatigue Behaviors if you want AI short sprints when W' allows. Higher CPU when Off (~4× cheap path).";
             return true;
         }
 
