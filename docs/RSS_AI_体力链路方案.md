@@ -1,10 +1,20 @@
 # RSS AI 专用体力链路（精度对齐方案）
 
-> 版本对齐 **6.2.28**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache`。
+> 版本对齐 **6.2.31**。实现：`SCR_RSS_AIStaminaPipeline` + `SCR_RSS_AISharedEnvCache` + `SCR_RSS_EngineReuse`。
 
 ## 目标
 
-在专服多 AI 场景下，**体力数值**尽量贴近玩家 RSS（Pandolf / CP–W′ / 负重 / 坡度），同时**绝不**走玩家级 `UpdateSpeed`、逐 AI 环境全链、CP 二次限速等热点。
+在专服多 AI 场景下，**体力数值**尽量贴近玩家 RSS（Pandolf / CP–W′ / 负重 / 坡度），同时**绝不**走玩家级 `UpdateSpeed` 全链，并尽量复用引擎已算状态。
+
+## 官方复用优先级（6.2.30+）
+
+| 量 | 优先 | 回退 |
+|----|------|------|
+| 坡度 | `CommandMove.GetMovementSlopeAngle` → `GetFloorNormal` | Y 差分（AI）/ Trace（玩家） |
+| 测速 | `Movement.GetVelocityWS` | 位置差分（禁 Physics.GetVelocity） |
+| 地形系数 | `GetFloorSurface`→材质表 | Trace（稀采样；FloorSurface 常空属常态） |
+| 热应激 | 全服 1Hz TOD | — |
+| 室内抑坡 | `UpdateIndoorCache`（2s） | 热路径禁止每 tick 屋顶射线 |
 
 ## 开关语义（菜单文案 → 字段）
 
@@ -19,37 +29,13 @@
 
 | 环节 | 玩家 | AI 管线 |
 |------|------|---------|
-| 限速意图 | `UpdateSpeed` + CP 巡航帽 + 坡度射线 | `ApplyCheapAiSpeed`：绝对行军 m/s÷相位顶（keepSource）；默认不算消耗时冲刺压到 Run |
-| 测速 | 位置差分 | 同 |
-| 坡度 | 射线/环境 `CalculateGradePercent` | **优先 `GetFloorNormal`**；否则 Y 差分；**无 Trace** |
-| 地形系数 | 每 tick 射线 | 近 2s / 中 5s 稀采样；远距固定 1.0 |
-| 热应激 | `EnvironmentFactor` 全链 | **全服 1Hz** TOD 抛物线近似 |
-| 代谢功率 / 消耗 | `CalculateTotalDrainRate` | **同核** |
-| W′ / 疲劳 | Phase B 全量 | 近中距同核；**远距跳过 W′/疲劳**（有氧仍算） |
-| 游泳/湿重/跳跃/泥泞 | 有 | **无**（AI 场景极少需要） |
-| 伤害联动 | `UpdateStaminaValue` 内 | 同 |
-| 战斗 FSM | `AIManager.Tick` | 同（需 Combat 开） |
-
-## 精度取舍（基于敏感度）
-
-保留对油耗/限速影响最大的项：
-
-1. **实测速度**（功率∝速度）
-2. **负重**（限速 + 功率）
-3. **坡度近似**（功率对坡度最敏感）
-4. **同源 Pandolf→STA 记账**
-
-可接受损失：
-
-- 坡度无射线 → 台阶/短坡略钝，长坡趋势对齐
-- 地形稀采样 / 远距 1.0 → 泥地长时间远距 AI 略省油
-- 热应激简化 → 主要影响 CP/W′ 分流，有氧 STA 差通常很小
-- 无 `UpdateSpeed` 连续拧速 → STA≥5% 时玩家本就不拧速；跛行仍走廉价限速
+| 限速意图 | `UpdateSpeed`（坡度/grade 复用已算角度） | `ApplyCheapAiSpeed` 绝对行军 m/s |
+| 测速 | VelocityWS → 位置差分 | 同 |
+| 坡度 | CmdSlope → FloorNormal → Trace | CmdSlope → FloorNormal → Y 差分（无 Trace） |
+| 地形系数 | FloorSurface → Trace | 同优先；稀采样 |
+| 热应激 | `EnvironmentFactor` | 全服 1Hz TOD |
+| 代谢 / W′ | 全量 | 近中同核；远距跳过 W′/疲劳 |
 
 ## 调用路径
 
 `PlayerBase_UpdateLoop` Phase A：若非玩家且未禁消耗 → `m_pAIStaminaPipeline.Tick(ctx)` → `ScheduleNext`，**不进** Phase B/C。
-
-## LOD
-
-沿用 `RSS_PERF_AI_LOD_*` 刷新间隔 + CallLater 错峰；远距（>1200 m）跳过 W′/疲劳与热应激。

@@ -139,7 +139,7 @@ class SCR_RSS_TerrainDetector
         return d;
     }
 
-    // 获取地形密度（使用射线追踪）
+    // 获取地形密度：优先引擎脚下材质，失败再 Trace
     // @param owner 角色实体
     // @return 地面密度值（-1 表示获取失败）
     float GetTerrainDensity(IEntity owner)
@@ -150,23 +150,34 @@ class SCR_RSS_TerrainDetector
             return -1.0;
         }
 
+        GameMaterial floorMat;
+        if (SCR_RSS_EngineReuse.TryGetFloorGameMaterial(owner, floorMat))
+        {
+            float floorDensity = SCR_RSS_EngineReuse.ResolveDensityFromMaterial(floorMat);
+            if (floorDensity >= 0.0)
+            {
+                m_sCachedGroundMaterialLabel = SCR_RSS_MaterialTerrainTable.GetGenericMaterialLabel(floorMat);
+                return floorDensity;
+            }
+        }
+
+        if (!owner.GetWorld())
+        {
+            m_sCachedGroundMaterialLabel = "";
+            return -1.0;
+        }
+
         if (!m_pTraceParamGround)
             m_pTraceParamGround = new TraceParam();
 
-        // 执行射线追踪检测地面
-        m_pTraceParamGround.Start = owner.GetOrigin() + (vector.Up * 0.1); // 角色位置上方 0.1 米
-        m_pTraceParamGround.End = m_pTraceParamGround.Start - (vector.Up * 0.5); // 向下追踪 0.5 米
+        m_pTraceParamGround.Start = owner.GetOrigin() + (vector.Up * 0.1);
+        m_pTraceParamGround.End = m_pTraceParamGround.Start - (vector.Up * 0.5);
         m_pTraceParamGround.Flags = TraceFlags.WORLD | TraceFlags.ENTS;
         m_pTraceParamGround.Exclude = owner;
-        // 优化：使用更合适的物理层以确保稳定获取地面材质
-        // 建议：EPhysicsLayerPresets.Character 或 EPhysicsLayerPresets.Static 可能更稳定
-        // 如果 Projectile 层在某些情况下无法命中地面，可以尝试其他层
-        m_pTraceParamGround.LayerMask = EPhysicsLayerPresets.Projectile; // 当前使用 Projectile（与官方示例一致）
+        m_pTraceParamGround.LayerMask = EPhysicsLayerPresets.Projectile;
 
-        // 执行追踪
         owner.GetWorld().TraceMove(m_pTraceParamGround, FilterTerrainCallback);
 
-        // 获取表面材质
         GameMaterial material = m_pTraceParamGround.SurfaceProps;
         if (!material)
         {
@@ -176,12 +187,10 @@ class SCR_RSS_TerrainDetector
 
         m_sCachedGroundMaterialLabel = SCR_RSS_MaterialTerrainTable.GetGenericMaterialLabel(material);
 
-        // 获取弹道信息（包含密度）
         BallisticInfo ballisticInfo = material.GetBallisticInfo();
         if (!ballisticInfo)
             return -1.0;
 
-        // 优先使用内置 CSV 表（SCR_RSS_MaterialTerrainTable），与原版材质 basename 对齐；否则用弹道密度
         float density = ballisticInfo.GetDensity();
         density = SCR_RSS_MaterialTerrainTable.ResolveDensity(material, density);
         return density;

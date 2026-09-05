@@ -35,8 +35,8 @@ class SCR_PlayerBaseRssApiHelper
         return true;
     }
 
-    //! 启发式测速：禁止 CharacterController/Physics.GetVelocity（非空句柄进服仍 AV）。
-    //! 校验不通过或无 fallback 时返回 Zero；通过时原样返回 fallback（通常为位置差分）。
+    //! 启发式测速：优先 CharacterMovement.GetVelocityWS（引擎已算）；
+    //! 失败则用 fallback（通常为位置差分）。永不 Physics.GetVelocity。
     //! @param owner 角色实体
     //! @param fallback 已由位置差分等算出的速度
     //! @return 可用速度；不可用则为 Zero
@@ -44,7 +44,18 @@ class SCR_PlayerBaseRssApiHelper
     {
         if (!SCR_RSS_RuntimeGuard.IsEntityWorldUsable(owner))
             return vector.Zero;
-        // 二次启发式：Physics 句柄不稳定则仍只用 fallback（绝不解引 GetVelocity）
+
+        vector engineVel;
+        if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
+        {
+            vector horiz = engineVel;
+            horiz[1] = 0.0;
+            float hLen = horiz.Length();
+            if (hLen > 0.01 && hLen <= 7.5)
+                return engineVel;
+        }
+
+        // 二次启发式：Physics 句柄不稳定则仍只用 fallback
         if (!SCR_RSS_RuntimeGuard.IsPhysicsHandlePresent(owner))
             return fallback;
         return fallback;

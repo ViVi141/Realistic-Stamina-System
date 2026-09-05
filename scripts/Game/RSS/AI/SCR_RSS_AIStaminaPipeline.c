@@ -290,7 +290,24 @@ class SCR_RSS_AIStaminaPipeline
         float currentSpeed,
         float timeDeltaSec)
     {
-        // 仅复用引擎脚下法线；失败用 Y 差分。AI 路径禁止 Trace 回退。
+        // 1) 引擎 CommandMove 坡度（度）— 无 Trace
+        float cmdSlopeDeg;
+        if (ctrl && SCR_RSS_EngineReuse.TryGetCommandMoveSlopeDegrees(ctrl, cmdSlopeDeg))
+        {
+            float slopeRatio = Math.Tan(cmdSlopeDeg * Math.DEG2RAD);
+            slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
+            float gradeCmd = slopeRatio * 100.0;
+            if (gradeCmd > 35.0)
+                gradeCmd = 35.0;
+            if (gradeCmd < -25.0)
+                gradeCmd = -25.0;
+            m_fCachedGradePercent = m_fCachedGradePercent * 0.7 + gradeCmd * 0.3;
+            m_vLastGradePos = origin;
+            m_bHasGradePos = true;
+            return;
+        }
+
+        // 2) 仅复用引擎脚下法线；失败用 Y 差分。AI 路径禁止 Trace。
         if (ctrl && currentSpeed > 0.05)
         {
             vector normal;
@@ -300,9 +317,9 @@ class SCR_RSS_AIStaminaPipeline
                 float cosAngle = SCR_RSS_SpeedCalculator.GetSlopeProjectionCos(normal, velocity);
                 float angleDeg = magnitude * cosAngle;
                 angleDeg = Math.Clamp(angleDeg, -45.0, 45.0);
-                float slopeRatio = Math.Tan(angleDeg * Math.DEG2RAD);
-                slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
-                float gradeFromFloor = slopeRatio * 100.0;
+                float slopeRatio2 = Math.Tan(angleDeg * Math.DEG2RAD);
+                slopeRatio2 = Math.Clamp(slopeRatio2, -1.0, 1.0);
+                float gradeFromFloor = slopeRatio2 * 100.0;
                 if (gradeFromFloor > 35.0)
                     gradeFromFloor = 35.0;
                 if (gradeFromFloor < -25.0)
@@ -367,6 +384,19 @@ class SCR_RSS_AIStaminaPipeline
             return;
 
         m_fLastTerrainSampleSec = nowSec;
+
+        // AI：优先脚下材质；失败再用 TerrainDetector（其内部亦优先 FloorSurface）
+        GameMaterial floorMat;
+        if (ctx.owner && SCR_RSS_EngineReuse.TryGetFloorGameMaterial(ctx.owner, floorMat))
+        {
+            float density = SCR_RSS_EngineReuse.ResolveDensityFromMaterial(floorMat);
+            if (density >= 0.0)
+            {
+                m_fCachedTerrainFactor = SCR_RSS_MetabolismMath.GetTerrainFactorFromDensity(density);
+                return;
+            }
+        }
+
         if (!ctx.terrainDetector)
         {
             m_fCachedTerrainFactor = 1.0;

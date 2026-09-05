@@ -1,5 +1,27 @@
 # 更新日志
 
+## [6.2.31] - 2026-09-06
+
+### 热路径：室内坡度抑制走缓存；grade 不再重复查坡 / new
+
+- **根因（PerfProbe）** — `01g_slope_raw` 已 ~0.3µs，但 `01h_grade`/`01i_update_speed` 仍 ~27–33µs：`ShouldSuppressTerrainSlopeForEntity` 每调用做一次室内屋顶/OBB 射线（缓存形同虚设）。
+- **`ShouldSuppress` → 读 `UpdateIndoorCache`**（过期才刷新）；热路径不再每 tick 双射线。
+- **`UpdateSpeed`** — 已判室内后直接 `GetRawSlopeAngle` + `GradePercentFromSlopeDegrees`；去掉二次 `CalculateGradePercent`/`new`。
+- **`CalculateGradePercentInto`** — UpdateLoop 复用 `gradeResult`；探针 `01h` 测纯 tan 路径。
+- `GetFloorSurface` 为空属引擎常态，地形仍 Trace 回退（`03b` 本就很便宜）。
+- 配置版本 → **6.2.31**
+
+## [6.2.30] - 2026-09-06
+
+### 计算链路大改造：能复用官方已算量就复用
+
+- **新增** `SCR_RSS_EngineReuse`：统一入口。
+- **坡度** — `CommandMove.GetMovementSlopeAngle` → `GetFloorNormal` → Trace。
+- **测速** — `Movement.GetVelocityWS` → 位置差分（仍禁用 `Physics.GetVelocity`）。
+- **地形** — `GetFloorSurface`→材质表 → Trace；AI 稀采样同优先脚下材质。
+- 探针增加 cmd 坡度 / VelocityWS / FloorSurface 分项。
+- 配置版本 / ConfigManager → **6.2.30**
+
 ## [6.2.29] - 2026-09-06
 
 ### 性能：坡度优先复用引擎脚下法线

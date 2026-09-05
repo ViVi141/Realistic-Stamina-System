@@ -633,13 +633,17 @@ modded class SCR_CharacterControllerComponent
         // AI：跳过坡度射线与 CP 代谢二次限速（Speed 尖刺）；玩家保留全链。
         if (loc.isPlayer)
         {
-            loc.gradeResult = SCR_RSS_SpeedCalculator.CalculateGradePercent(
+            if (!loc.gradeResult)
+                loc.gradeResult = new RSS_GradeCalculationResult();
+            SCR_RSS_SpeedCalculator.CalculateGradePercentInto(
                 this,
                 loc.currentSpeed,
                 m_pJumpVaultDetector,
                 loc.slopeAngleDegrees,
                 m_pEnvironmentFactor,
-                loc.velocityForDrain);
+                loc.velocityForDrain,
+                false,
+                loc.gradeResult);
             loc.gradePercent = loc.gradeResult.gradePercent;
             loc.slopeAngleDegrees = loc.gradeResult.slopeAngleDegrees;
         }

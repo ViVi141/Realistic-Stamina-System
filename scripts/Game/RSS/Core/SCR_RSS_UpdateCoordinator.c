@@ -205,10 +205,10 @@ class SCR_RSS_UpdateCoordinator
             return 1.0;
         float currentWorldTime = GetGame().GetWorld().GetWorldTime() / 1000.0; // 转换为秒
 
-        // 室内（含楼梯间宽松判定）时硬归零，避免任何坡度速度惩罚
+        // 室内已在上方判定：复用同一帧 rawSlopeAngle，避免再 GetSlopeAngle/ShouldSuppress
         float slopeAngleDegrees = 0.0;
         if (!shouldSuppressSlope)
-            slopeAngleDegrees = SCR_RSS_SpeedCalculator.GetSlopeAngle(controller, environmentFactor, velocity);
+            slopeAngleDegrees = rawSlopeAngle;
         float runBaseSpeedMultiplier = SCR_RSS_SpeedCalculator.CalculateBaseSpeedMultiplier(
             staminaPercent, collapseTransition, currentWorldTime);
 
@@ -279,12 +279,10 @@ class SCR_RSS_UpdateCoordinator
                     float totalWeightKg = controller.GetRssCurrentWeight()
                         + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
                     float gradePct = 0.0;
-                    if (!shouldSuppressSlope)
+                    if (!shouldSuppressSlope && currentSpeed > 0.05 && !controller.IsClimbing())
                     {
-                        RSS_GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
-                            controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                         gradePct = SCR_RSS_SpeedBridge.ClampGradePercentForMetabolicSpeed(
-                            gradeRes.gradePercent);
+                            SCR_RSS_SpeedCalculator.GradePercentFromSlopeDegrees(slopeAngleDegrees));
                     }
                     float sprintTerrainFactor = terrainFactor;
                     if (sprintTerrainFactor < 0.5)
@@ -334,12 +332,11 @@ class SCR_RSS_UpdateCoordinator
                     float totalWeightKg = controller.GetRssCurrentWeight()
                         + SCR_RSS_MetabolismMath.CHARACTER_WEIGHT;
                     float gradePct = 0.0;
-                    if (!shouldSuppressSlope)
+                    if (!shouldSuppressSlope && currentSpeed > 0.05 && !controller.IsClimbing())
                     {
-                        RSS_GradeCalculationResult gradeRes = SCR_RSS_SpeedCalculator.CalculateGradePercent(
-                            controller, currentSpeed, null, slopeAngleDegrees, environmentFactor, velocity);
                         gradePct = controller.RSS_SmoothGradePercentForSpeed(
-                            gradeRes.gradePercent, currentWorldTime);
+                            SCR_RSS_SpeedCalculator.GradePercentFromSlopeDegrees(slopeAngleDegrees),
+                            currentWorldTime);
                     }
                     float runTerrain = terrainFactor;
                     if (runTerrain < 0.5)
@@ -563,34 +560,50 @@ class SCR_RSS_UpdateCoordinator
 
         vector currentPos = owner.GetOrigin();
         vector velocity = vector.Zero;
+        bool usedEngineVel = false;
 
-        if (hasLastPositionSample)
+        // 优先引擎 GetVelocityWS（已算好）；失败再用位置差分
+        vector engineVel;
+        if (SCR_RSS_EngineReuse.TryGetVelocityWS(owner, engineVel))
+        {
+            vector horizE = engineVel;
+            horizE[1] = 0.0;
+            float hLenE = horizE.Length();
+            if (hLenE <= 7.5)
+            {
+                velocity = engineVel;
+                if (velocity.Length() > 7.0)
+                    velocity = velocity.Normalized() * 7.0;
+                usedEngineVel = true;
+            }
+        }
+
+        if (!usedEngineVel && hasLastPositionSample)
         {
             vector deltaPos = currentPos - lastPositionSample;
             float deltaLen = deltaPos.Length();
 
             // 防止传送/同步跳变导致天文速度
-            // 在0.2s采样周期内，如果位移超过1.6米（对应时速约28.8km/h，超过人体Sprint极限），判定为异常跳变
             if (deltaLen < 1.6 && dtSeconds > 0.001)
             {
                 velocity = deltaPos / dtSeconds;
-                // 增加物理硬上限保护：强制将velocity模长限制在7.0 m/s以内
                 if (velocity.Length() > 7.0)
                     velocity = velocity.Normalized() * 7.0;
             }
             else
             {
-                // 异常跳变时，保持上一周期的速度
                 velocity = computedVelocity;
             }
+        }
+        else if (!usedEngineVel)
+        {
+            velocity = computedVelocity;
         }
 
         // 计算水平速度
         vector horizontalVelocity = velocity;
-        horizontalVelocity[1] = 0.0; // 忽略垂直速度
+        horizontalVelocity[1] = 0.0;
         float currentSpeed = horizontalVelocity.Length();
-
-        // 确保currentSpeed不超过物理上限
         currentSpeed = Math.Min(currentSpeed, 7.0);
 
         RSS_SpeedCalculationResult s_pResultSpeedCalc = new RSS_SpeedCalculationResult();

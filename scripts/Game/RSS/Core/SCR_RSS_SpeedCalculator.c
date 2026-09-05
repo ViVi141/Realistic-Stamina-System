@@ -609,10 +609,9 @@ class SCR_RSS_SpeedCalculator
     }
 
     // 获取原始坡度角度（不做室内归零，供室内楼梯判定等使用）
-    // 使用“运动方向有效坡度”：幅值由脚下/地形法线得到，再投影到速度方向。
-    // 优先 CharacterMovementComponent.GetFloorNormal（引擎已算）；失败才 Trace。
+    // 优先级：CommandMove.GetMovementSlopeAngle → FloorNormal → Trace。
     // @param controller 角色控制器组件
-    // @param velocity 速度矢量（可选，vector.Zero 时从 controller 获取；静止时有效坡度=0）
+    // @param velocity 速度矢量（可选；CommandMove 成功时可不依赖）
     // @return 有效坡度角度（度），正=上坡，负=下坡，0=平地/等高线/静止
     static float GetRawSlopeAngle(SCR_CharacterControllerComponent controller, vector velocity = vector.Zero)
     {
@@ -622,6 +621,12 @@ class SCR_RSS_SpeedCalculator
         if (!owner)
             return 0.0;
 
+        // 1) 引擎移动命令已算好的运动向坡度（度）
+        float cmdSlopeDeg;
+        if (SCR_RSS_EngineReuse.TryGetCommandMoveSlopeDegrees(controller, cmdSlopeDeg))
+            return cmdSlopeDeg;
+
+        // 2) 脚下法线 + 速度投影
         vector normal;
         if (!TryGetSlopeNormal(controller, normal))
             return 0.0;
@@ -654,16 +659,66 @@ class SCR_RSS_SpeedCalculator
         return GetRawSlopeAngle(controller, velocity);
     }
 
+    //------------------------------------------------------------------------------------------------
+    //! 角度（度）→ grade%（tan×100，钳 ±100%）。无分配、无室内查询。
+    static float GradePercentFromSlopeDegrees(float slopeAngleDegrees)
+    {
+        float slopeRatio = Math.Tan(slopeAngleDegrees * Math.DEG2RAD);
+        slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
+        return slopeRatio * 100.0;
+    }
+
+    //------------------------------------------------------------------------------------------------
+    //! 写入已有结果对象（避免热路径 new RSS_GradeCalculationResult）。
+    //! @param slopeAngleAlreadyResolved true 时直接用 slopeAngleDegrees，不再 GetSlopeAngle / ShouldSuppress
+    static void CalculateGradePercentInto(
+        SCR_CharacterControllerComponent controller,
+        float currentSpeed,
+        SCR_RSS_JumpVaultDetector jumpVaultDetector,
+        float slopeAngleDegrees,
+        SCR_RSS_EnvironmentFactor environmentFactor,
+        vector velocity,
+        bool slopeAngleAlreadyResolved,
+        notnull RSS_GradeCalculationResult result)
+    {
+        result.gradePercent = 0.0;
+        result.slopeAngleDegrees = slopeAngleDegrees;
+
+        if (!controller)
+            return;
+
+        if (!slopeAngleAlreadyResolved && environmentFactor)
+        {
+            IEntity ownerForCheck = controller.GetOwner();
+            if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
+            {
+                result.slopeAngleDegrees = 0.0;
+                return;
+            }
+        }
+
+        bool isClimbingForSlope = controller.IsClimbing();
+        bool isJumpingForSlope = false;
+        if (jumpVaultDetector)
+            isJumpingForSlope = jumpVaultDetector.GetJumpInputTriggered();
+
+        if (isClimbingForSlope)
+            return;
+        if (isJumpingForSlope)
+            return;
+        if (currentSpeed <= 0.05)
+            return;
+
+        float rawAngleDeg = slopeAngleDegrees;
+        if (!slopeAngleAlreadyResolved)
+            rawAngleDeg = GetSlopeAngle(controller, environmentFactor, velocity);
+
+        result.slopeAngleDegrees = rawAngleDeg;
+        result.gradePercent = GradePercentFromSlopeDegrees(rawAngleDeg);
+    }
+
     // 计算坡度百分比（考虑攀爬和跳跃状态）
-    // 返回值中的 gradePercent 为坡度的百分比（rise/run × 100）。
-    // 注意：原始角度由 GetSlopeAngle 返回（度），需要通过 tan() 转换。
-    // @param controller 角色控制器组件
-    // @param currentSpeed 当前速度（m/s）
-    // @param jumpVaultDetector 跳跃检测器（可选）
-    // @param slopeAngleDegrees 坡度角度（输入，通常为0.0；输出会被替换）
-    // @param environmentFactor 环境因子组件（可选，用于室内检测）
-    // @param velocity 速度矢量（可选，用于判断上下坡，游泳时传 computedVelocity）
-    // @return 坡度计算结果（包含坡度百分比和角度）
+    // 兼容旧调用：仍会 new；热路径请用 CalculateGradePercentInto / GradePercentFromSlopeDegrees。
     static RSS_GradeCalculationResult CalculateGradePercent(
         SCR_CharacterControllerComponent controller,
         float currentSpeed,
@@ -673,39 +728,15 @@ class SCR_RSS_SpeedCalculator
         vector velocity = vector.Zero)
     {
         RSS_GradeCalculationResult result = new RSS_GradeCalculationResult();
-        result.gradePercent = 0.0;
-        result.slopeAngleDegrees = slopeAngleDegrees;
-
-        // 完整室内或建筑物内有顶体积：返回零坡度（与 GetSlopeAngle 一致）
-        if (environmentFactor && controller)
-        {
-            IEntity ownerForCheck = controller.GetOwner();
-            if (ownerForCheck && environmentFactor.ShouldSuppressTerrainSlopeForEntity(ownerForCheck))
-            {
-                result.slopeAngleDegrees = 0.0;
-                return result;
-            }
-        }
-
-        // 检查是否在攀爬或跳跃状态
-        bool isClimbingForSlope = controller.IsClimbing();
-        bool isJumpingForSlope = false;
-        if (jumpVaultDetector)
-            isJumpingForSlope = jumpVaultDetector.GetJumpInputTriggered();
-
-        // 只在非攀爬、非跳跃状态下获取坡度
-        if (!isClimbingForSlope && !isJumpingForSlope && currentSpeed > 0.05)
-        {
-            // 获取坡度角度并转换为坡度百分比（传入 velocity 用于判断上下坡）
-            float rawAngleDeg = GetSlopeAngle(controller, environmentFactor, velocity);
-            result.slopeAngleDegrees = rawAngleDeg;
-            // 将角度转换为斜率比：tan(angle_rad)
-            float slopeRatio = Math.Tan(rawAngleDeg * Math.DEG2RAD);
-            // 始终钳到 ±100%（±45°）。旧逻辑误把 Clamp 放进 IsDebugEnabled，正式局会读到悬崖噪声。
-            slopeRatio = Math.Clamp(slopeRatio, -1.0, 1.0);
-            result.gradePercent = slopeRatio * 100.0;
-        }
-
+        CalculateGradePercentInto(
+            controller,
+            currentSpeed,
+            jumpVaultDetector,
+            slopeAngleDegrees,
+            environmentFactor,
+            velocity,
+            false,
+            result);
         return result;
     }
 }

@@ -53,15 +53,29 @@ class SCR_RSS_IndoorDetection
     }
 
     // 地形坡度是否应按「非室外」处理为零
+    // 热路径：只用 UpdateIndoorCache 写入的缓存，禁止每 tick 再跑屋顶/OBB 射线。
+    // 缓存未初始化或已过期时，按 INDOOR_CHECK_INTERVAL 同步刷新一次。
     bool ShouldSuppressTerrainSlopeForEntity(IEntity owner)
     {
         if (!SCR_RSS_ConfigBridge.IsIndoorDetectionEnabled())
             return false;
         if (!owner)
             return false;
-        if (IsIndoorForEntity(owner))
+
+        float currentTime = 0.0;
+        if (SCR_RSS_RuntimeGuard.TryGetWorldTimeSec(currentTime))
+        {
+            if (m_fLastIndoorCheckTime <= 0.0)
+                UpdateIndoorCache(owner, currentTime);
+            else if (currentTime - m_fLastIndoorCheckTime >= INDOOR_CHECK_INTERVAL)
+                UpdateIndoorCache(owner, currentTime);
+        }
+
+        if (m_bCachedIndoorState)
             return true;
-        return IsRoofedBuildingVolumeForEntity(owner);
+        if (m_bCachedRoofedVolumeForSlopeState)
+            return true;
+        return false;
     }
 
     // 检查指定实体是否在室内（用于坡度/速度计算）

@@ -187,14 +187,20 @@ class SCR_RSS_PerfProbe
             "SpeedBridge.ApplyStaminaSpeedLimit WRITE");
         Report("01f_engine_top", MeasureEngineTop(ctrl, iterations), iterations,
             "GetOriginalEngineMaxSpeed_Run/Sprint");
+        Report("01g0_cmd_slope", MeasureCmdSlope(ctrl, iterations), iterations,
+            "CommandMove.GetMovementSlopeAngle");
         Report("01g_slope_raw", MeasureSlopeRaw(ctrl, vel, iterations), iterations,
-            "GetRawSlopeAngle (FloorNormal→Trace)");
+            "GetRawSlopeAngle (Cmd→Floor→Trace)");
         Report("01g2_floor_normal", MeasureFloorNormal(ctrl, iterations), iterations,
             "TryGetCharacterFloorNormal only");
         Report("01g3_trace_normal", MeasureTraceNormal(ctrl, iterations), iterations,
             "TryGetTracedTerrainNormal only");
+        Report("01g4_velocity_ws", MeasureVelocityWS(owner, iterations), iterations,
+            "EngineReuse.TryGetVelocityWS");
+        Report("01g5_floor_surf", MeasureFloorSurf(owner, iterations), iterations,
+            "EngineReuse.TryGetFloorGameMaterial");
         Report("01h_grade_percent", MeasureGrade(ctrl, currentSpeed, env, vel, iterations), iterations,
-            "CalculateGradePercent");
+            "GradePercentFromSlopeDegrees (no indoor rays / no new)");
         Report("01i_update_speed", MeasureUpdateSpeed(
             ctrl, stamina, encPen, collapse, currentSpeed, env, slope, vel, terrainFactor, phase, iterations),
             iterations, "UpdateCoordinator.UpdateSpeed FULL");
@@ -444,6 +450,51 @@ class SCR_RSS_PerfProbe
         return System.GetTickCount(t0);
     }
 
+    protected static float MeasureCmdSlope(SCR_CharacterControllerComponent ctrl, int iterations)
+    {
+        float sink = 0.0;
+        bool ok = false;
+        int w;
+        for (w = 0; w < WARMUP_ITERS; w++)
+            ok = SCR_RSS_EngineReuse.TryGetCommandMoveSlopeDegrees(ctrl, sink);
+        int t0 = System.GetTickCount();
+        for (int i = 0; i < iterations; i++)
+            ok = SCR_RSS_EngineReuse.TryGetCommandMoveSlopeDegrees(ctrl, sink);
+        if (!ok && sink < -100.0)
+            Print("[RSS_PerfProbe] cmdSlope");
+        return System.GetTickCount(t0);
+    }
+
+    protected static float MeasureVelocityWS(IEntity owner, int iterations)
+    {
+        vector v;
+        bool ok = false;
+        int w;
+        for (w = 0; w < WARMUP_ITERS; w++)
+            ok = SCR_RSS_EngineReuse.TryGetVelocityWS(owner, v);
+        int t0 = System.GetTickCount();
+        for (int i = 0; i < iterations; i++)
+            ok = SCR_RSS_EngineReuse.TryGetVelocityWS(owner, v);
+        if (!ok && v[0] < -100.0)
+            Print("[RSS_PerfProbe] velWS");
+        return System.GetTickCount(t0);
+    }
+
+    protected static float MeasureFloorSurf(IEntity owner, int iterations)
+    {
+        GameMaterial mat;
+        bool ok = false;
+        int w;
+        for (w = 0; w < WARMUP_ITERS; w++)
+            ok = SCR_RSS_EngineReuse.TryGetFloorGameMaterial(owner, mat);
+        int t0 = System.GetTickCount();
+        for (int i = 0; i < iterations; i++)
+            ok = SCR_RSS_EngineReuse.TryGetFloorGameMaterial(owner, mat);
+        if (!ok)
+            Print("[RSS_PerfProbe] floorSurf miss (engine GetFloorSurface null; Trace fallback OK)");
+        return System.GetTickCount(t0);
+    }
+
     protected static float MeasureSlopeRaw(
         SCR_CharacterControllerComponent ctrl, vector vel, int iterations)
     {
@@ -496,22 +547,16 @@ class SCR_RSS_PerfProbe
         vector vel,
         int iterations)
     {
-        float angle = 0.0;
         float sink = 0.0;
+        float angle = 0.0;
+        if (ctrl)
+            angle = SCR_RSS_SpeedCalculator.GetRawSlopeAngle(ctrl, vel);
         int w;
         for (w = 0; w < WARMUP_ITERS; w++)
-        {
-            RSS_GradeCalculationResult g = SCR_RSS_SpeedCalculator.CalculateGradePercent(
-                ctrl, speed, null, angle, env, vel);
-            sink = g.gradePercent;
-        }
+            sink = SCR_RSS_SpeedCalculator.GradePercentFromSlopeDegrees(angle);
         int t0 = System.GetTickCount();
         for (int i = 0; i < iterations; i++)
-        {
-            RSS_GradeCalculationResult g2 = SCR_RSS_SpeedCalculator.CalculateGradePercent(
-                ctrl, speed, null, angle, env, vel);
-            sink = g2.gradePercent;
-        }
+            sink = SCR_RSS_SpeedCalculator.GradePercentFromSlopeDegrees(angle);
         if (sink < -100.0)
             Print("[RSS_PerfProbe] grade");
         return System.GetTickCount(t0);
