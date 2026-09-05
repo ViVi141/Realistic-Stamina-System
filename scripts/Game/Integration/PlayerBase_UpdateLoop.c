@@ -84,42 +84,59 @@ modded class SCR_CharacterControllerComponent
             }
         }
 
-        // AI：永不走玩家级 UpdateSpeed/地形/环境（「Speed」卡顿主因）。
-        // DisableAIStaminaCalc → 仅廉价限速后结束；否则补最小测速后进 Phase B 算消耗。
+        // AI：永不进玩家 Phase B/C（避开 UpdateSpeed/环境全链）。
+        // DisableAIStaminaCalc → 仅廉价限速；否则走 AI 专用体力管线（同源代谢核 + Y 估坡）。
         if (!loc.isPlayer)
         {
-            float cheapFrac = 1.0;
-            float cheapEnc = 0.0;
-            float cheapSta = 1.0;
-            int cheapPhase = 2;
-            bool cheapExhausted = false;
-            if (SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeed(
-                    this, loc.owner, m_pEncumbranceCache, m_fAnimSpeedCompensation,
-                    cheapFrac, cheapEnc, cheapSta, cheapPhase, cheapExhausted))
+            if (SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
             {
+                float cheapFrac = 1.0;
+                float cheapEnc = 0.0;
+                float cheapSta = 1.0;
+                int cheapPhase = 2;
+                bool cheapExhausted = false;
+                SCR_PlayerBaseAiLightTickHelper.ApplyCheapAiSpeed(
+                    this, loc.owner, m_pEncumbranceCache, m_fAnimSpeedCompensation,
+                    cheapFrac, cheapEnc, cheapSta, cheapPhase, cheapExhausted);
                 m_fLastRssSpeedMultiplierApplied = cheapFrac;
                 m_fAppliedSpeedLimitMs = -1.0;
-                loc.staminaPercent = cheapSta;
-                loc.encumbranceSpeedPenalty = cheapEnc;
-                loc.isExhausted = cheapExhausted;
-                loc.phaseNow = cheapPhase;
-                loc.effectivePhase = cheapPhase;
-                loc.finalSpeedMultiplier = cheapFrac;
-                loc.baseSpeedMultiplier = cheapFrac;
-                loc.isSprintingNow = IsSprinting();
-                loc.isSprintActive = loc.isSprintingNow;
-                if (cheapPhase == 3)
-                    loc.isSprintActive = true;
-                loc.sprintIntent = loc.isSprintActive;
-
-                if (SCR_RSS_ConfigBridge.IsAiStaminaCalcDisabled())
-                {
-                    RSS_ScheduleNextStaminaTick();
-                    return false;
-                }
-
-                return RSS_AiPhaseAFillForDrain(loc);
+                RSS_ScheduleNextStaminaTick();
+                return false;
             }
+
+            if (!m_pAIStaminaPipeline)
+                m_pAIStaminaPipeline = new SCR_RSS_AIStaminaPipeline();
+
+            RSS_AIStaminaPipelineContext aiCtx = new RSS_AIStaminaPipelineContext();
+            aiCtx.ctrl = this;
+            aiCtx.owner = loc.owner;
+            aiCtx.world = loc.world;
+            aiCtx.staminaComponent = m_pStaminaComponent;
+            aiCtx.staminaState = m_pStaminaState;
+            aiCtx.encumbranceCache = m_pEncumbranceCache;
+            aiCtx.anaerobicBurst = m_pAnaerobicBurst;
+            aiCtx.fatigueSystem = m_pFatigueSystem;
+            aiCtx.epocState = m_pEpocState;
+            aiCtx.exerciseTracker = m_pExerciseTracker;
+            aiCtx.terrainDetector = m_pTerrainDetector;
+            aiCtx.aiManager = m_pAIManager;
+            aiCtx.animSpeedCompensation = m_fAnimSpeedCompensation;
+            aiCtx.lastStaminaUpdateTime = m_fLastStaminaUpdateTime;
+            aiCtx.lastPositionSample = m_vLastPositionSample;
+            aiCtx.hasLastPositionSample = m_bHasLastPositionSample;
+            aiCtx.computedVelocity = m_vComputedVelocity;
+            aiCtx.appliedSpeedLimitMs = m_fAppliedSpeedLimitMs;
+            aiCtx.lastRssSpeedMultiplierApplied = m_fLastRssSpeedMultiplierApplied;
+
+            m_fLastStaminaUpdateTime = m_pAIStaminaPipeline.Tick(aiCtx);
+            m_vLastPositionSample = aiCtx.lastPositionSample;
+            m_bHasLastPositionSample = aiCtx.hasLastPositionSample;
+            m_vComputedVelocity = aiCtx.computedVelocity;
+            m_fAppliedSpeedLimitMs = aiCtx.appliedSpeedLimitMs;
+            m_fLastRssSpeedMultiplierApplied = aiCtx.lastRssSpeedMultiplierApplied;
+
+            RSS_ScheduleNextStaminaTick();
+            return false;
         }
 
         loc.staminaPercent = GetRssAerobicPercent();
@@ -497,6 +514,7 @@ modded class SCR_CharacterControllerComponent
     }
 
     //! AI 全量体力：Phase A 只做位置测速 + 体重，跳过地形/环境/UpdateSpeed。
+    //! @deprecated 6.2.28 起 AI 走 SCR_RSS_AIStaminaPipeline，不再经 Phase B。
     //! @return true 继续 Phase B
     bool RSS_AiPhaseAFillForDrain(RSS_StaminaTickLocals loc)
     {

@@ -147,6 +147,7 @@ modded class SCR_CharacterControllerComponent
     protected bool m_bIsDeleted = false;
 
     protected ref SCR_RSS_AIManager m_pAIManager;
+    protected ref SCR_RSS_AIStaminaPipeline m_pAIStaminaPipeline;
 
     protected ref SCR_RSS_AnaerobicBurst m_pAnaerobicBurst;
     protected ref SCR_RSS_StaminaState m_pStaminaState;
@@ -205,6 +206,7 @@ modded class SCR_CharacterControllerComponent
             m_pEpocState = null;
             m_pNetworkSyncManager = null;
             m_pCpCruise = null;
+            m_pAIStaminaPipeline = null;
             return;
         }
 
@@ -276,6 +278,11 @@ modded class SCR_CharacterControllerComponent
         {
             m_pAIManager.OnEntityDeleted();
             m_pAIManager = null;
+        }
+        if (m_pAIStaminaPipeline)
+        {
+            m_pAIStaminaPipeline.OnEntityDeleted();
+            m_pAIStaminaPipeline = null;
         }
     }
 
@@ -1166,6 +1173,8 @@ modded class SCR_CharacterControllerComponent
 
         if (!m_pAIManager)
             m_pAIManager = new SCR_RSS_AIManager();
+        if (!IsPlayerControlled() && !m_pAIStaminaPipeline)
+            m_pAIStaminaPipeline = new SCR_RSS_AIStaminaPipeline();
 
         if (!m_pAnaerobicBurst)
             m_pAnaerobicBurst = new SCR_RSS_AnaerobicBurst();

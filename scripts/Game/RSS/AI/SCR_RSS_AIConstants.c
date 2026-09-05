@@ -20,6 +20,9 @@ class SCR_RSS_AIConstants
     static const int RSS_PERF_AI_LIGHT_FAR_INTERVAL_MS = 3000;
     //! CallLater 错峰上限（ms），避免百人 AI 同帧齐刷
     static const int RSS_PERF_AI_TICK_STAGGER_MS = 180;
+    //! AI 专用链路：地形射线采样间隔（秒）；坡度用 Y 差分，不依赖射线
+    static const float RSS_AI_TERRAIN_SAMPLE_NEAR_SEC = 2.0;
+    static const float RSS_AI_TERRAIN_SAMPLE_MID_SEC = 5.0;
     //! AI 战斗行为层节流（秒）
     static const float RSS_PERF_AI_BEHAVIOR_NEAR_SEC = 0.75;
     static const float RSS_PERF_AI_BEHAVIOR_MID_SEC = 1.5;

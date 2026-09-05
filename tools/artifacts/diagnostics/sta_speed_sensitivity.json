@@ -1,0 +1,668 @@
+{
+  "baseline": {
+    "preset": "StandardMilsim",
+    "load_kg": 30.0,
+    "grade_pct": 0.0,
+    "terrain": 1.0,
+    "stamina": 1.0,
+    "phase": "RUN",
+    "enc_penalty": 0.049039028502114015,
+    "cmd_speed_ms": 3.404440277962432,
+    "power_w": 2044.9963443770746,
+    "cp_eff_w": 1793.1530954774826,
+    "drain_frac_per_s": 0.001226516717306598,
+    "drain_pct_per_s": 0.1226516717306598,
+    "time_to_empty_s": 815.317056742591,
+    "cruise_cap_ms_wprime_empty": 2.4
+  },
+  "top_speed": [
+    {
+      "factor": "stamina_0.02",
+      "label_zh": "体力降至STA 2%跛行",
+      "axis": "speed",
+      "delta_pct": -75.7669416220817,
+      "baseline": 3.404440277962432,
+      "perturbed": 0.825,
+      "detail": "phase=RUN enc=0.049"
+    },
+    {
+      "factor": "phase_Walk",
+      "label_zh": "步态改Walk",
+      "axis": "speed",
+      "delta_pct": -60.89385474860336,
+      "baseline": 3.404440277962432,
+      "perturbed": 1.3313453600970402,
+      "detail": "STA=100% enc=0.049"
+    },
+    {
+      "factor": "phase_Sprint",
+      "label_zh": "步态改Sprint",
+      "axis": "speed",
+      "delta_pct": 25.69832402234635,
+      "baseline": 3.404440277962432,
+      "perturbed": 4.279324371740486,
+      "detail": "STA=100% enc=0.049"
+    },
+    {
+      "factor": "load_speed_60.0",
+      "label_zh": "负重改速度(60kg)",
+      "axis": "speed",
+      "delta_pct": -23.148479677031347,
+      "baseline": 3.404440277962432,
+      "perturbed": 2.616364112101629,
+      "detail": "enc_penalty=0.269"
+    },
+    {
+      "factor": "combo_sta5_load60",
+      "label_zh": "组合: STA5%+60kg",
+      "axis": "speed",
+      "delta_pct": -23.148479677031347,
+      "baseline": 3.404440277962432,
+      "perturbed": 2.616364112101629,
+      "detail": "worst command stack"
+    },
+    {
+      "factor": "load_speed_0.0",
+      "label_zh": "负重改速度(空载)",
+      "axis": "speed",
+      "delta_pct": 5.156786658118181,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.58,
+      "detail": "enc_penalty=0.000"
+    },
+    {
+      "factor": "load_speed_45.0",
+      "label_zh": "负重改速度(45kg)",
+      "axis": "speed",
+      "delta_pct": -3.0319406937282425,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.301219667781214,
+      "detail": "enc_penalty=0.078"
+    },
+    {
+      "factor": "load_speed_15.0",
+      "label_zh": "负重改速度(15kg)",
+      "axis": "speed",
+      "delta_pct": 2.600559847514523,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.4929747848637347,
+      "detail": "enc_penalty=0.024"
+    }
+  ],
+  "top_drain": [
+    {
+      "factor": "fatigue_drain_1.0",
+      "label_zh": "累积疲劳改消耗(疲劳满)",
+      "axis": "drain",
+      "delta_pct": -14.583333333333345,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1047649696032719,
+      "detail": "CP_eff=1532"
+    },
+    {
+      "factor": "fatigue_drain_0.6",
+      "label_zh": "累积疲劳改消耗(疲劳0.6)",
+      "axis": "drain",
+      "delta_pct": -10.800000000000002,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.10940529118374853,
+      "detail": "CP_eff=1599"
+    },
+    {
+      "factor": "heat_drain_0.3",
+      "label_zh": "热应激改有氧消耗(热应激峰)",
+      "axis": "drain",
+      "delta_pct": -10.500000000000002,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.10977324619894052,
+      "detail": "envCpMult=0.895 excessW=440"
+    },
+    {
+      "factor": "speed_drain_-0.5",
+      "label_zh": "速度扰动改消耗(-0.5m/s)",
+      "axis": "drain",
+      "delta_pct": -10.190328551434208,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11015306340747902,
+      "detail": "v=2.90"
+    },
+    {
+      "factor": "load_drain_60.0",
+      "label_zh": "负重改消耗(60kg)",
+      "axis": "drain",
+      "delta_pct": -8.31852632651718,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11244886012783144,
+      "detail": "v=2.62 P=1644W"
+    },
+    {
+      "factor": "fatigue_drain_0.3",
+      "label_zh": "累积疲劳改消耗(疲劳0.3)",
+      "axis": "drain",
+      "delta_pct": -5.400000000000019,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11602848145720415,
+      "detail": "CP_eff=1696"
+    },
+    {
+      "factor": "heat_drain_0.15",
+      "label_zh": "热应激改有氧消耗(热应激中)",
+      "axis": "drain",
+      "delta_pct": -5.250000000000009,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11621245896480015,
+      "detail": "envCpMult=0.948 excessW=346"
+    },
+    {
+      "factor": "load_drain_15.0",
+      "label_zh": "负重改消耗(15kg)",
+      "axis": "drain",
+      "delta_pct": 3.125000000000005,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12648453647224292,
+      "detail": "v=3.49 P=1926W"
+    }
+  ],
+  "top_power": [
+    {
+      "factor": "grade_power_20.0",
+      "label_zh": "坡度改功率(20%坡)",
+      "axis": "power",
+      "delta_pct": 70.00000000000003,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3476.4937854410273,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "grade_power_15.0",
+      "label_zh": "坡度改功率(15%坡)",
+      "axis": "power",
+      "delta_pct": 52.500000000000014,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3118.619425175039,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "speed_power_1.0",
+      "label_zh": "速度扰动改功率(+1.0m/s)",
+      "axis": "power",
+      "delta_pct": 49.73812712744733,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3062.1392258949945,
+      "detail": "v=4.40"
+    },
+    {
+      "factor": "grade_power_10.0",
+      "label_zh": "坡度改功率(10%坡)",
+      "axis": "power",
+      "delta_pct": 35.00000000000002,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2760.745064909051,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "speed_power_0.5",
+      "label_zh": "速度扰动改功率(+0.5m/s)",
+      "axis": "power",
+      "delta_pct": 23.662867438508535,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2528.9011184693672,
+      "detail": "v=3.90"
+    },
+    {
+      "factor": "speed_power_-0.5",
+      "label_zh": "速度扰动改功率(-0.5m/s)",
+      "axis": "power",
+      "delta_pct": -21.250475188078376,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1610.4249036181145,
+      "detail": "v=2.90"
+    },
+    {
+      "factor": "load_power_60.0",
+      "label_zh": "负重改功率(60kg)",
+      "axis": "power",
+      "delta_pct": -19.609187191177828,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1643.9891831554305,
+      "detail": "v=2.62 CP=1681"
+    },
+    {
+      "factor": "grade_power_5.0",
+      "label_zh": "坡度改功率(5%坡)",
+      "axis": "power",
+      "delta_pct": 17.500000000000004,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2402.8707046430627,
+      "detail": "v=3.40"
+    }
+  ],
+  "cruise_by_grade": [
+    {
+      "label": "平地",
+      "grade": 0.0,
+      "cp_eff": 1793.1530954774826,
+      "cruise_ms": 2.4,
+      "delta_pct_vs_flat": 0.0
+    },
+    {
+      "label": "5%",
+      "grade": 5.0,
+      "cp_eff": 1793.0858522364022,
+      "cruise_ms": 2.4,
+      "delta_pct_vs_flat": 0.0
+    },
+    {
+      "label": "10%",
+      "grade": 10.0,
+      "cp_eff": 1792.884122513161,
+      "cruise_ms": 2.4,
+      "delta_pct_vs_flat": 0.0
+    },
+    {
+      "label": "15%",
+      "grade": 15.0,
+      "cp_eff": 1792.547906307759,
+      "cruise_ms": 2.3687623143196106,
+      "delta_pct_vs_flat": -1.3015702366828883
+    }
+  ],
+  "all": [
+    {
+      "factor": "stamina_0.5",
+      "label_zh": "体力降至STA 50%",
+      "axis": "speed",
+      "delta_pct": 0.0,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.404440277962432,
+      "detail": "phase=RUN enc=0.049"
+    },
+    {
+      "factor": "stamina_0.2",
+      "label_zh": "体力降至STA 20%",
+      "axis": "speed",
+      "delta_pct": 0.0,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.404440277962432,
+      "detail": "phase=RUN enc=0.049"
+    },
+    {
+      "factor": "stamina_0.05",
+      "label_zh": "体力降至STA 5%跛行点",
+      "axis": "speed",
+      "delta_pct": 0.0,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.404440277962432,
+      "detail": "phase=RUN enc=0.049"
+    },
+    {
+      "factor": "stamina_0.02",
+      "label_zh": "体力降至STA 2%跛行",
+      "axis": "speed",
+      "delta_pct": -75.7669416220817,
+      "baseline": 3.404440277962432,
+      "perturbed": 0.825,
+      "detail": "phase=RUN enc=0.049"
+    },
+    {
+      "factor": "load_speed_0.0",
+      "label_zh": "负重改速度(空载)",
+      "axis": "speed",
+      "delta_pct": 5.156786658118181,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.58,
+      "detail": "enc_penalty=0.000"
+    },
+    {
+      "factor": "load_speed_15.0",
+      "label_zh": "负重改速度(15kg)",
+      "axis": "speed",
+      "delta_pct": 2.600559847514523,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.4929747848637347,
+      "detail": "enc_penalty=0.024"
+    },
+    {
+      "factor": "load_speed_45.0",
+      "label_zh": "负重改速度(45kg)",
+      "axis": "speed",
+      "delta_pct": -3.0319406937282425,
+      "baseline": 3.404440277962432,
+      "perturbed": 3.301219667781214,
+      "detail": "enc_penalty=0.078"
+    },
+    {
+      "factor": "load_speed_60.0",
+      "label_zh": "负重改速度(60kg)",
+      "axis": "speed",
+      "delta_pct": -23.148479677031347,
+      "baseline": 3.404440277962432,
+      "perturbed": 2.616364112101629,
+      "detail": "enc_penalty=0.269"
+    },
+    {
+      "factor": "phase_Walk",
+      "label_zh": "步态改Walk",
+      "axis": "speed",
+      "delta_pct": -60.89385474860336,
+      "baseline": 3.404440277962432,
+      "perturbed": 1.3313453600970402,
+      "detail": "STA=100% enc=0.049"
+    },
+    {
+      "factor": "phase_Sprint",
+      "label_zh": "步态改Sprint",
+      "axis": "speed",
+      "delta_pct": 25.69832402234635,
+      "baseline": 3.404440277962432,
+      "perturbed": 4.279324371740486,
+      "detail": "STA=100% enc=0.049"
+    },
+    {
+      "factor": "combo_sta5_load60",
+      "label_zh": "组合: STA5%+60kg",
+      "axis": "speed",
+      "delta_pct": -23.148479677031347,
+      "baseline": 3.404440277962432,
+      "perturbed": 2.616364112101629,
+      "detail": "worst command stack"
+    },
+    {
+      "factor": "load_power_0.0",
+      "label_zh": "负重改功率(空载)",
+      "axis": "power",
+      "delta_pct": -12.405124589811889,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1791.312,
+      "detail": "v=3.58 CP=1868"
+    },
+    {
+      "factor": "load_drain_0.0",
+      "label_zh": "负重改消耗(空载)",
+      "axis": "drain",
+      "delta_pct": -0.10267363573841254,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12252574079999999,
+      "detail": "v=3.58 P=1791W"
+    },
+    {
+      "factor": "load_power_15.0",
+      "label_zh": "负重改功率(15kg)",
+      "axis": "power",
+      "delta_pct": -5.82498195450197,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1925.875676346885,
+      "detail": "v=3.49 CP=1849"
+    },
+    {
+      "factor": "load_drain_15.0",
+      "label_zh": "负重改消耗(15kg)",
+      "axis": "drain",
+      "delta_pct": 3.125000000000005,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12648453647224292,
+      "detail": "v=3.49 P=1926W"
+    },
+    {
+      "factor": "load_power_45.0",
+      "label_zh": "负重改功率(45kg)",
+      "axis": "power",
+      "delta_pct": 4.44120626560992,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2135.818850155043,
+      "detail": "v=3.30 CP=1737"
+    },
+    {
+      "factor": "load_drain_45.0",
+      "label_zh": "负重改消耗(45kg)",
+      "axis": "drain",
+      "delta_pct": -3.125000000000005,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11881880698907668,
+      "detail": "v=3.30 P=2136W"
+    },
+    {
+      "factor": "load_power_60.0",
+      "label_zh": "负重改功率(60kg)",
+      "axis": "power",
+      "delta_pct": -19.609187191177828,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1643.9891831554305,
+      "detail": "v=2.62 CP=1681"
+    },
+    {
+      "factor": "load_drain_60.0",
+      "label_zh": "负重改消耗(60kg)",
+      "axis": "drain",
+      "delta_pct": -8.31852632651718,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11244886012783144,
+      "detail": "v=2.62 P=1644W"
+    },
+    {
+      "factor": "grade_power_5.0",
+      "label_zh": "坡度改功率(5%坡)",
+      "axis": "power",
+      "delta_pct": 17.500000000000004,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2402.8707046430627,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "grade_drain_5.0",
+      "label_zh": "坡度改消耗(5%坡)",
+      "axis": "drain",
+      "delta_pct": -0.003750000000010854,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12264707229296988,
+      "detail": "CP_eff=1793"
+    },
+    {
+      "factor": "grade_power_10.0",
+      "label_zh": "坡度改功率(10%坡)",
+      "axis": "power",
+      "delta_pct": 35.00000000000002,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2760.745064909051,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "grade_drain_10.0",
+      "label_zh": "坡度改消耗(10%坡)",
+      "axis": "drain",
+      "delta_pct": -0.015000000000008057,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12263327397990019,
+      "detail": "CP_eff=1793"
+    },
+    {
+      "factor": "grade_power_15.0",
+      "label_zh": "坡度改功率(15%坡)",
+      "axis": "power",
+      "delta_pct": 52.500000000000014,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3118.619425175039,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "grade_drain_15.0",
+      "label_zh": "坡度改消耗(15%坡)",
+      "axis": "drain",
+      "delta_pct": -0.033750000000009286,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12261027679145069,
+      "detail": "CP_eff=1793"
+    },
+    {
+      "factor": "grade_power_20.0",
+      "label_zh": "坡度改功率(20%坡)",
+      "axis": "power",
+      "delta_pct": 70.00000000000003,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3476.4937854410273,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "grade_drain_20.0",
+      "label_zh": "坡度改消耗(20%坡)",
+      "axis": "drain",
+      "delta_pct": -0.059999999999996875,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.12257808072762141,
+      "detail": "CP_eff=1792"
+    },
+    {
+      "factor": "terrain_power_1.2",
+      "label_zh": "地形改功率(软土1.2)",
+      "axis": "power",
+      "delta_pct": 0.0,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2044.9963443770746,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "terrain_drain_1.2",
+      "label_zh": "地形改消耗(软土1.2)",
+      "axis": "drain",
+      "delta_pct": 0.0,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1226516717306598,
+      "detail": ""
+    },
+    {
+      "factor": "terrain_power_1.5",
+      "label_zh": "地形改功率(泥沼1.5)",
+      "axis": "power",
+      "delta_pct": 0.0,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2044.9963443770746,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "terrain_drain_1.5",
+      "label_zh": "地形改消耗(泥沼1.5)",
+      "axis": "drain",
+      "delta_pct": 0.0,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1226516717306598,
+      "detail": ""
+    },
+    {
+      "factor": "terrain_power_2.0",
+      "label_zh": "地形改功率(极难2.0)",
+      "axis": "power",
+      "delta_pct": 0.0,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2044.9963443770746,
+      "detail": "v=3.40"
+    },
+    {
+      "factor": "terrain_drain_2.0",
+      "label_zh": "地形改消耗(极难2.0)",
+      "axis": "drain",
+      "delta_pct": 0.0,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1226516717306598,
+      "detail": ""
+    },
+    {
+      "factor": "heat_drain_0.15",
+      "label_zh": "热应激改有氧消耗(热应激中)",
+      "axis": "drain",
+      "delta_pct": -5.250000000000009,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11621245896480015,
+      "detail": "envCpMult=0.948 excessW=346"
+    },
+    {
+      "factor": "heat_drain_0.3",
+      "label_zh": "热应激改有氧消耗(热应激峰)",
+      "axis": "drain",
+      "delta_pct": -10.500000000000002,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.10977324619894052,
+      "detail": "envCpMult=0.895 excessW=440"
+    },
+    {
+      "factor": "fatigue_drain_0.3",
+      "label_zh": "累积疲劳改消耗(疲劳0.3)",
+      "axis": "drain",
+      "delta_pct": -5.400000000000019,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11602848145720415,
+      "detail": "CP_eff=1696"
+    },
+    {
+      "factor": "fatigue_drain_0.6",
+      "label_zh": "累积疲劳改消耗(疲劳0.6)",
+      "axis": "drain",
+      "delta_pct": -10.800000000000002,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.10940529118374853,
+      "detail": "CP_eff=1599"
+    },
+    {
+      "factor": "fatigue_drain_1.0",
+      "label_zh": "累积疲劳改消耗(疲劳满)",
+      "axis": "drain",
+      "delta_pct": -14.583333333333345,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1047649696032719,
+      "detail": "CP_eff=1532"
+    },
+    {
+      "factor": "speed_power_0.5",
+      "label_zh": "速度扰动改功率(+0.5m/s)",
+      "axis": "power",
+      "delta_pct": 23.662867438508535,
+      "baseline": 2044.9963443770746,
+      "perturbed": 2528.9011184693672,
+      "detail": "v=3.90"
+    },
+    {
+      "factor": "speed_drain_0.5",
+      "label_zh": "速度扰动改消耗(+0.5m/s)",
+      "axis": "drain",
+      "delta_pct": 0.0,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1226516717306598,
+      "detail": "v=3.90"
+    },
+    {
+      "factor": "speed_power_1.0",
+      "label_zh": "速度扰动改功率(+1.0m/s)",
+      "axis": "power",
+      "delta_pct": 49.73812712744733,
+      "baseline": 2044.9963443770746,
+      "perturbed": 3062.1392258949945,
+      "detail": "v=4.40"
+    },
+    {
+      "factor": "speed_drain_1.0",
+      "label_zh": "速度扰动改消耗(+1.0m/s)",
+      "axis": "drain",
+      "delta_pct": 0.0,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.1226516717306598,
+      "detail": "v=4.40"
+    },
+    {
+      "factor": "speed_power_-0.5",
+      "label_zh": "速度扰动改功率(-0.5m/s)",
+      "axis": "power",
+      "delta_pct": -21.250475188078376,
+      "baseline": 2044.9963443770746,
+      "perturbed": 1610.4249036181145,
+      "detail": "v=2.90"
+    },
+    {
+      "factor": "speed_drain_-0.5",
+      "label_zh": "速度扰动改消耗(-0.5m/s)",
+      "axis": "drain",
+      "delta_pct": -10.190328551434208,
+      "baseline": 0.1226516717306598,
+      "perturbed": 0.11015306340747902,
+      "detail": "v=2.90"
+    }
+  ]
+}

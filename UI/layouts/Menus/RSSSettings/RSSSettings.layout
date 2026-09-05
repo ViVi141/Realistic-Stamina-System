@@ -169,7 +169,7 @@ HorizontalLayoutWidgetClass {
        }
        components {
         SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "AI Stamina Combat (Experimental)"
+         m_sLabel "AI Fatigue Behaviors"
          m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
          m_aElementNames {
           "Off" "On"
@@ -186,7 +186,7 @@ HorizontalLayoutWidgetClass {
        }
        components {
         SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "Disable AI RSS (All)"
+         m_sLabel "Disable All AI RSS"
          m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
          m_aElementNames {
           "Off" "On"
@@ -203,7 +203,7 @@ HorizontalLayoutWidgetClass {
        }
        components {
         SCR_SpinBoxComponent "{5472C6CBC0640458}" {
-         m_sLabel "Disable AI Stamina (Speed)"
+         m_sLabel "Disable AI Stamina Drain"
          m_sLabelLayout "{F003823FF141983C}UI/layouts/Menus/SettingsMenu/CustomWidgets/SettingsLabel.layout"
          m_aElementNames {
           "Off" "On"

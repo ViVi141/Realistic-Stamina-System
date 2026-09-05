@@ -3,48 +3,51 @@
 > **中文** | [English](en/AI_BEHAVIOR.md)
 
 本文说明 **Realistic Stamina System (RSS)** 对 **AI 角色** 的行为与实现入口。  
-以 `scripts/Game/RSS/AI/` 源码为准。旧版群组机动 / GroupSync / 群组代理等模块**已移除**；历史设计见归档稿 [`RSS_AI体力集成全盘设计方案.md`](RSS_AI体力集成全盘设计方案.md)。
+以 `scripts/Game/RSS/AI/` 源码为准。旧版群组机动 / GroupSync / 群组代理等模块**已移除**；历史设计见归档稿 [`RSS_AI体力集成全盘设计方案.md`](RSS_AI体力集成全盘设计方案.md)。  
+**AI 专用体力精度方案**见 [`RSS_AI_体力链路方案.md`](RSS_AI_体力链路方案.md)。
 
 ## 0. 总体思想
 
-- AI 与玩家共用同一套 Pandolf / CP–W′ 体力主循环（服端）。
-- 在体力数值之上，另有 **个体** 行为层（约 500 ms）：状态机 → 限速 → 意图过滤 → 战斗衰减。
-- **不侵入** 原生行为树；通过 `SetMovementTypeWanted` + `SCR_RSS_SpeedBridge` / `SetSpeedLimit` 间接约束。
-- 群组协同（统一步速、休息路点、远距代理等）当前**未启用**（`SCR_RSS_AIManager` 内 `isThreatened` 固定为 false）。
+- **数值层**：`DisableAIStaminaCalc=Off` 时走 `SCR_RSS_AIStaminaPipeline`——与玩家共用 Pandolf / CP–W′ / `UpdateStaminaValue` 核，但避开 `UpdateSpeed` 与逐 AI 环境全链。
+- **限速层**：始终廉价（负重 + V6 相位 / 跛行），与是否算消耗无关。
+- **行为层**（可选）：状态机 → SpeedCap → 意图过滤 → 战斗衰减（需 Combat 开）。
+- **不侵入** 原生行为树；通过 `SetMovementTypeWanted` + SpeedBridge 间接约束。
 
 ## 1. 实现文件
 
 | 文件 | 职责 |
 |------|------|
-| `scripts/Game/Integration/PlayerBase.c` | 持有 `SCR_RSS_AIManager`；主循环调用 `Tick` |
-| `scripts/Game/RSS/AI/SCR_RSS_AIManager.c` | 行为层节流 + 状态机 + SpeedCap / IntentFilter / CombatDecay 编排 |
-| `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6 态体力状态机（滞回） |
-| `scripts/Game/RSS/AI/SCR_RSS_AISpeedCap.c` | 移动类型 + 经 SpeedBridge 的限速 |
-| `scripts/Game/RSS/AI/SCR_RSS_AIIntentFilter.c` | 力竭时禁用 Attack/追击类意图 |
+| `scripts/Game/Integration/PlayerBase_UpdateLoop.c` | AI 分支：轻量限速 or `AIStaminaPipeline.Tick` |
+| `scripts/Game/RSS/AI/SCR_RSS_AIStaminaPipeline.c` | AI 专用消耗/恢复/W′/疲劳管线 |
+| `scripts/Game/RSS/AI/SCR_RSS_AISharedEnvCache.c` | 全服 1Hz 热应激近似 |
+| `scripts/Game/Integration/SCR_PlayerBaseAiLightTickHelper.c` | 廉价限速 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIManager.c` | 行为层节流 + FSM 编排 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6 态体力状态机 |
+| `scripts/Game/RSS/AI/SCR_RSS_AISpeedCap.c` | 移动类型 + 限速 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIIntentFilter.c` | 力竭时禁用 Attack/追击 |
 | `scripts/Game/RSS/AI/SCR_RSS_AICombatDecay.c` | 感知 / 射速 / 技能衰减 |
-| `scripts/Game/RSS/AI/SCR_RSS_AIInjuryLink.c` | 受伤 → 消耗加速 / 恢复减慢 |
-| `scripts/Game/RSS/AI/SCR_RSS_AIUpdateInterval.c` | 距玩家距离 LOD 刷新间隔、Workbench 预览过滤 |
-| `scripts/Game/RSS/AI/SCR_RSS_AIConstants.c` | `RSS_AI_*`、`RSS_PERF_AI_*` 常量 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIInjuryLink.c` | 受伤 → 消耗/恢复倍率 |
+| `scripts/Game/RSS/AI/SCR_RSS_AIUpdateInterval.c` | 距离 LOD |
+| `scripts/Game/RSS/AI/SCR_RSS_AIConstants.c` | `RSS_AI_*` / `RSS_PERF_AI_*` |
 
 ## 2. 配置开关（`SCR_RSS_Settings`）
 
-| 字段 | 作用 |
-|------|------|
-| `m_bEnableAIStaminaCombatEffects` | **总开关**：状态机、限速、意图过滤、战斗衰减、伤害联动（新建 JSON 默认常为 false；服主可在菜单开启） |
-| `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
-| `m_bDisableAIStaminaCalc` | **On**：不算 AI 消耗（最轻）。**Off**：仍算消耗供战斗 FSM，但限速与 On 同为廉价路径（无地形/UpdateSpeed） |
-| `m_bEnableMudSlipMechanism` | 泥泞滑倒（默认关；与 AI 行为层独立） |
+| 菜单文案 | 字段 | 作用 |
+|----------|------|------|
+| **AI Fatigue Behaviors** | `m_bEnableAIStaminaCombatEffects` | 状态机、步态限速、意图过滤、战斗衰减、伤势联动（需消耗开启） |
+| **Disable All AI RSS** | `m_bDisableAIAllCalc` | 服端 AI 完全不跑 RSS 主循环 |
+| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On**（默认）：仅廉价限速。**Off**：AI 专用管线算消耗（无玩家 UpdateSpeed） |
+| Mud Slip Mechanic | `m_bEnableMudSlipMechanism` | 泥泞（玩家侧；AI 管线不算泥泞） |
 
-## 3. 每 tick 顺序（服端 AI）
+## 3. 每 tick 顺序（服端 AI，`DisableAIStaminaCalc=Off`）
 
-1. 主循环按 `SCR_RSS_AIUpdateInterval` 间隔更新速度/消耗（玩家 ~17 ms；AI 距离 LOD 或固定 100 ms）。
-2. `SCR_RSS_AIManager.Tick`（行为层 **500 ms** 节流）：
-   - 静止时长累计
-   - `SCR_RSS_AIStaminaState.Tick`
-   - `SCR_RSS_AISpeedCap.Apply`
-   - `SCR_RSS_AIIntentFilter.Apply`
-   - `SCR_RSS_AICombatDecay.Apply`
-3. Pandolf 消耗/恢复 → `UpdateStaminaValue`（可含 **伤害联动** 倍率，见 InjuryLink）。
+1. Phase A：`AIStaminaPipeline.Tick`
+   - 廉价限速 → 位置测速 → Y 估坡 → LOD 地形采样 → 共享热应激
+   - `CalculateTotalDrainRate` → W′（近中）→ 疲劳积分（近中）→ `UpdateStaminaValue`
+   - `AIManager.Tick`（Combat 开时，行为 LOD 节流）
+2. 直接 `ScheduleNext`，**不进**玩家 Phase B/C。
+
+`DisableAIStaminaCalc=On`：仅 `ApplyCheapAiSpeed` 后结束。
 
 ## 4. 体力状态机
 
@@ -57,24 +60,22 @@
 | COLLAPSED | <10% | 近乎 IDLE | 最重衰减 |
 | RECOVERING | 回升中 | WALK + 连续曲线 | 中等衰减 |
 
-阈值与倍率以 `SCR_RSS_AIConstants` 为准。  
-静止累计用于 `COLLAPSED→RECOVERING` 与极低体力强制恢复；移动时清零。
-
 ## 5. 性能：距离 LOD
 
-| 机制 | 常量 | 说明 |
-|------|------|------|
-| 距离 LOD | `RSS_PERF_AI_*` | 全量：近 400 m→400 ms；中→700 ms；远→2000 ms |
-| 轻量 LOD | `RSS_PERF_AI_LIGHT_*` | `DisableAIStaminaCalc`：500 / 1000 / 2500 ms；仅负重+限速 |
-| 玩家原点缓存 | `RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC` | 0.25 s 全服共享，避免每 AI tick 分配 |
-| LOD 总开关 | `RSS_PERF_AI_DISTANCE_LOD_ENABLED` | `false` 时 AI 固定 `RSS_AI_SPEED_UPDATE_INTERVAL_MS`（100 ms） |
+| 机制 | 说明 |
+|------|------|
+| 全量 LOD | 近/中/远 600 / 1000 / 2500 ms（算消耗时） |
+| 轻量 LOD | 800 / 1500 / 3000 ms（仅限速） |
+| 地形采样 | 近 2 s / 中 5 s；远距固定 terrain=1 |
+| 错峰 | CallLater 最多 180 ms |
+| 玩家原点缓存 | 0.25 s 全服共享 |
 
-`DisableAIStaminaCalc`（默认开）走 `SCR_PlayerBaseAiLightTickHelper`，**不**跑地形/环境/Pandolf。需要彻底停循环时勾选 `m_bDisableAIAllCalc`。
+彻底停循环：勾选 `m_bDisableAIAllCalc`。
 
 ## 6. 伤害联动
 
-按血量分段调整消耗与恢复倍率（`SCR_RSS_AIInjuryLink.c` 与 `RSS_AI_INJURY_*`）。
+按血量分段调整消耗与恢复（`SCR_RSS_AIInjuryLink`，在 `UpdateStaminaValue` 内应用）。
 
 ---
 
-*文档版本：2026-08-09，对齐现行 `SCR_RSS_AIManager` 个体管线。*
+*文档版本：2026-09-06，对齐 6.2.28 AI 专用体力管线。*

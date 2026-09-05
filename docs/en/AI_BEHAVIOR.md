@@ -2,79 +2,45 @@
 
 > [中文](../RSS_AI_行为说明.md) | **English**
 >
-> How **Realistic Stamina System (RSS)** affects **AI characters**, and where it is implemented.  
-> Source of truth: `scripts/Game/RSS/AI/`. Legacy group locomotion / GroupSync / group proxy modules are **removed**; historical design (Chinese archive): `../RSS_AI体力集成全盘设计方案.md`.
+> How **Realistic Stamina System (RSS)** affects **AI characters**.  
+> Source: `scripts/Game/RSS/AI/`. Precision pipeline design (Chinese): [`../RSS_AI_体力链路方案.md`](../RSS_AI_体力链路方案.md).
 
 ## 0. Design intent
 
-- AI shares the same Pandolf / CP–W′ stamina main loop as players (server).
-- On top of stamina values, a **per-agent** behavior layer (~500 ms): state machine → speed cap → intent filter → combat decay.
-- **No** edits to vanilla behavior trees; constrain via `SetMovementTypeWanted` + `SCR_RSS_SpeedBridge` / `SetSpeedLimit`.
-- Group cohesion (unified pace, rest waypoints, distant proxy, etc.) is **not active** (`isThreatened` is hard-coded `false` in `SCR_RSS_AIManager`).
+- **Values**: with `DisableAIStaminaCalc=Off`, AI uses `SCR_RSS_AIStaminaPipeline` — same Pandolf / CP–W′ / `UpdateStaminaValue` core as players, **without** player `UpdateSpeed` or per-AI full environment.
+- **Speed limit**: always cheap (encumbrance + V6 phase / limp).
+- **Behavior layer** (optional Combat): FSM → SpeedCap → IntentFilter → CombatDecay.
+- No vanilla BT edits.
 
-## 1. Implementation files
+## 1. Key files
 
 | File | Role |
 |------|------|
-| `scripts/Game/Integration/PlayerBase.c` | Owns `SCR_RSS_AIManager`; main loop calls `Tick` |
-| `scripts/Game/RSS/AI/SCR_RSS_AIManager.c` | Behavior throttle + state machine + SpeedCap / IntentFilter / CombatDecay |
-| `scripts/Game/RSS/AI/SCR_RSS_AIStaminaState.c` | 6-state stamina FSM (hysteresis) |
-| `scripts/Game/RSS/AI/SCR_RSS_AISpeedCap.c` | Movement type + SpeedBridge limits |
-| `scripts/Game/RSS/AI/SCR_RSS_AIIntentFilter.c` | Disable Attack/chase intents when exhausted |
-| `scripts/Game/RSS/AI/SCR_RSS_AICombatDecay.c` | Perception / fire rate / skill decay |
-| `scripts/Game/RSS/AI/SCR_RSS_AIInjuryLink.c` | Injury → faster drain / slower recovery |
-| `scripts/Game/RSS/AI/SCR_RSS_AIUpdateInterval.c` | Distance LOD intervals, Workbench preview filter |
-| `scripts/Game/RSS/AI/SCR_RSS_AIConstants.c` | `RSS_AI_*`, `RSS_PERF_AI_*` |
+| `PlayerBase_UpdateLoop.c` | AI branch: light limit or `AIStaminaPipeline.Tick` |
+| `SCR_RSS_AIStaminaPipeline.c` | AI drain / recovery / W′ / fatigue |
+| `SCR_RSS_AISharedEnvCache.c` | Server-wide 1 Hz heat approx |
+| `SCR_PlayerBaseAiLightTickHelper.c` | Cheap speed limit |
+| `SCR_RSS_AIManager.c` | Behavior orchestration |
+| `SCR_RSS_AIConstants.c` | LOD / FSM constants |
 
-## 2. Settings (`SCR_RSS_Settings`)
+## 2. Settings
 
-| Field | Effect |
-|-------|--------|
-| `m_bEnableAIStaminaCombatEffects` | **Master switch**: FSM, caps, intent filter, combat decay, injury link (new JSON often defaults false; host can enable) |
-| `m_bDisableAIAllCalc` | Server AI skips RSS main loop entirely |
-| `m_bDisableAIStaminaCalc` | **Default ON**: light path — encumbrance + gait limit only; skip terrain/env/Pandolf |
-| `m_bEnableMudSlipMechanism` | Mud slip (default off; independent of AI behavior layer) |
+| Menu label | Field | Effect |
+|------------|-------|--------|
+| **AI Fatigue Behaviors** | `m_bEnableAIStaminaCombatEffects` | FSM, tier cap, intent filter, combat decay, injury link (needs drain On) |
+| **Disable All AI RSS** | `m_bDisableAIAllCalc` | Stop AI RSS loop entirely |
+| **Disable AI Stamina Drain** | `m_bDisableAIStaminaCalc` | **On** (default): cheap limit only. **Off**: AI drain pipeline (no player UpdateSpeed) |
 
-## 3. Per-tick order (server AI)
+## 3. Tick (`DisableAIStaminaCalc=Off`)
 
-1. Main loop updates speed/drain on `SCR_RSS_AIUpdateInterval` (players ~17 ms; AI distance LOD or fixed 100 ms).
-2. `SCR_RSS_AIManager.Tick` (behavior layer **500 ms** throttle):
-   - accumulate stationary time
-   - `SCR_RSS_AIStaminaState.Tick`
-   - `SCR_RSS_AISpeedCap.Apply`
-   - `SCR_RSS_AIIntentFilter.Apply`
-   - `SCR_RSS_AICombatDecay.Apply`
-3. Pandolf drain/recovery → `UpdateStaminaValue` (may include **injury** multipliers).
+1. Cheap limit → position speed → Y-delta grade → LOD terrain sample → shared heat  
+2. `CalculateTotalDrainRate` → W′/fatigue (near/mid) → `UpdateStaminaValue` → `AIManager.Tick`  
+3. Schedule next — **skip** player Phase B/C.
 
-## 4. Stamina state machine
+## 4. LOD
 
-| State | Approx. STA | Movement | Combat |
-|-------|-------------|----------|--------|
-| FRESH | ≥80% (hysteresis) | no intervention | 100% |
-| WINDED | 50–80% | no Sprint | slight decay |
-| FATIGUED | 25–50% | RUN + ~65% speed | clear decay |
-| EXHAUSTED | 10–25% | WALK + ~40% speed | heavy decay; may block Attack/chase |
-| COLLAPSED | <10% | near IDLE | heaviest decay |
-| RECOVERING | recovering | WALK + continuous curve | medium decay |
-
-Thresholds/multipliers: `SCR_RSS_AIConstants`.  
-Stationary time drives `COLLAPSED→RECOVERING` and forced recovery at very low STA; cleared when moving.
-
-## 5. Performance: distance LOD
-
-| Mechanism | Constants | Notes |
-|-----------|-----------|-------|
-| Full-path LOD | `RSS_PERF_AI_LOD_*` | Near 400 m→400 ms; mid→700 ms; far→2000 ms |
-| Light LOD | `RSS_PERF_AI_LIGHT_*` | When `DisableAIStaminaCalc`: 500 / 1000 / 2500 ms |
-| Player origin cache | `RSS_PERF_AI_PLAYER_POS_CACHE_TTL_SEC` | Shared 0.25 s cache; avoids per-AI `GetPlayers` alloc |
-| LOD master | `RSS_PERF_AI_DISTANCE_LOD_ENABLED` | If `false`, AI uses fixed `RSS_AI_SPEED_UPDATE_INTERVAL_MS` (100 ms) |
-
-Default `DisableAIStaminaCalc` uses `SCR_PlayerBaseAiLightTickHelper` (no terrain/env/Pandolf). For zero AI RSS cost, enable `m_bDisableAIAllCalc`.
-
-## 6. Injury link
-
-Blood-based drain/recovery multipliers (`SCR_RSS_AIInjuryLink.c`, `RSS_AI_INJURY_*`).
+Full: 600 / 1000 / 2500 ms. Light: 800 / 1500 / 3000 ms. Terrain sample: 2 s / 5 s; far = terrain 1.0, skip W′/fatigue.
 
 ---
 
-*Doc version: 2026-09-05, aligned with 6.2.26 AI light-path perf fix.*
+*Doc version: 2026-09-06, aligned with 6.2.28 AI stamina pipeline.*

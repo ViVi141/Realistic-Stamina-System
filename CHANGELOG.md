@@ -1,5 +1,16 @@
 # 更新日志
 
+## [6.2.28] - 2026-09-06
+
+### AI 专用体力链路（精度对齐 + 避开 Speed 热点）
+
+- **新增** `SCR_RSS_AIStaminaPipeline`：`DisableAIStaminaCalc=Off` 时 AI **不再进**玩家 Phase B/C；同源 `CalculateTotalDrainRate` / `UpdateStaminaValue` / W′ / 疲劳。
+- **坡度** — 位置 Y 差分估 grade%（无射线），地形射线近 2s / 中 5s 稀采样；远距跳过 W′/疲劳。
+- **热应激** — `SCR_RSS_AISharedEnvCache` 全服 1Hz TOD 近似，无逐 AI 环境全链。
+- **限速** — 仍一律廉价（负重+相位）；文档：`docs/RSS_AI_体力链路方案.md`。
+- **设置文案** — 菜单：`AI Fatigue Behaviors` / `Disable All AI RSS` / `Disable AI Stamina Drain`（去掉易误解的 Speed）；说明与 Attribute 对齐 6.2.28 语义。
+- 配置版本 / ConfigManager → **6.2.28**
+
 ## [6.2.27] - 2026-09-06
 
 ### 性能：AI「Speed」全量路径尖刺（战斗效果开 + Disable Stamina Off）

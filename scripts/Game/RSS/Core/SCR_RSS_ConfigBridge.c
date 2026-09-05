@@ -598,7 +598,7 @@ class SCR_RSS_ConfigBridge
         return settings.m_bEnableAIStaminaCombatEffects;
     }
 
-    //! 完全禁用 AI RSS 计算（交还引擎）。勾选时同时关闭 AI combat 效果。
+    //! Disable All AI RSS：停整条 AI RSS 循环（限速/消耗/行为），交还引擎。
     static bool IsAiAllCalcDisabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();
@@ -607,7 +607,7 @@ class SCR_RSS_ConfigBridge
         return settings.m_bDisableAIAllCalc;
     }
 
-    //! 仅禁用 AI 体力消耗/恢复计算，仍保留 RSS 速度倍率
+    //! Disable AI Stamina Drain：true=仅廉价限速；false=走 AI 专用消耗管线（SCR_RSS_AIStaminaPipeline）。
     static bool IsAiStaminaCalcDisabled()
     {
         SCR_RSS_Settings settings = SCR_RSS_ConfigManager.GetSettings();

@@ -54,22 +54,22 @@ class SCR_RSS_SettingsDescriptions
 
         if (widgetName == "ToggleAICombat")
         {
-            title = "AI Stamina Combat (Experimental)";
-            body = "Experimental. When On: AI stamina state machine (FRESH/WINDED/FATIGUED/EXHAUSTED/COLLAPSED/RECOVERING), speed caps (lowers movement tier when tired), intent filter (blocks Attack when exhausted), combat decay (reduces perception/fire rate/aim as stamina drops), and injury-stamina link (wounded AI drains faster, recovers slower). When Off: AI still uses RSS drain/recovery and speed multipliers, but not these combat behaviors. Default Off on new dedicated servers.";
+            title = "AI Fatigue Behaviors";
+            body = "Experimental. When On: tired AI change movement tier, block Attack intents when exhausted, lose perception/fire rate/aim as stamina drops, and wounded AI drain faster / recover slower. Needs AI stamina drain enabled (Disable AI Stamina Drain = Off) to drive the state machine. When Off: no combat/behavior layer — only movement limit and optional drain. Default Off.";
             return true;
         }
 
         if (widgetName == "ToggleDisableAI")
         {
-            title = "Disable AI RSS (All)";
-            body = "Stops all RSS processing for AI; stamina returns to engine behavior. Also disables experimental AI combat effects. Use for compatibility with other AI mods or performance testing.";
+            title = "Disable All AI RSS";
+            body = "Stops the entire RSS loop for AI (no speed limit, no drain, no fatigue behaviors). Engine handles AI stamina. Use for max performance or AI-mod compatibility. Overrides the other two AI toggles while On.";
             return true;
         }
 
         if (widgetName == "ToggleDisableAIStamina")
         {
-            title = "Disable AI Stamina (Speed)";
-            body = "When On: AI skips stamina drain/recovery (light tick only). When Off: AI still drains stamina for combat FSM, but speed uses the same cheap encumbrance+gait limit as the On path (no terrain/env/UpdateSpeed). Prefer Off only if you need AI STA numbers; for max FPS turn On or use Disable AI RSS (All).";
+            title = "Disable AI Stamina Drain";
+            body = "On (default, recommended): AI only gets a cheap encumbrance + gait speed limit — no stamina drain. Off: AI runs the dedicated stamina pipeline (near-player accuracy, higher CPU). Speed never uses the heavy player UpdateSpeed path. Turn Off only if you want AI to tire / feed Fatigue Behaviors.";
             return true;
         }
 

@@ -26,7 +26,7 @@ class SCR_RSS_Settings
     static const int SETTINGS_BOOLS_SIZE_LEGACY = 15;
 
     // ==================== 基础配置 ====================
-    [Attribute("6.2.27", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
+    [Attribute("6.2.28", desc: "Config version for migration. Do not edit. | 配置版本号，用于迁移，请勿修改")]
     string m_sConfigVersion;
 
     [Attribute("StandardMilsim", UIWidgets.ComboBox, "Preset: EliteStandard | StandardMilsim | TacticalAction | Custom", "EliteStandard StandardMilsim TacticalAction Custom")]
@@ -81,13 +81,13 @@ class SCR_RSS_Settings
     [Attribute("false", UIWidgets.CheckBox, "Mud slip mechanic: ragdoll + camera stress on slippery wet terrain. Server chooses via JSON; default OFF. | 泥泞滑倒机制（湿滑地形布娃娃/镜头失稳），服主在 JSON 中开关，默认关闭")]
     bool m_bEnableMudSlipMechanism;
 
-    [Attribute("false", UIWidgets.CheckBox, "[Experimental] AI stamina combat: state machine, speed cap, intent filter, combat decay, group sync. Default OFF. | 【实验性】AI 体力战斗效果：状态机、限速、意图过滤、战斗衰减、群组协同等；默认关闭")]
+    [Attribute("false", UIWidgets.CheckBox, "[Experimental] AI Fatigue Behaviors: FSM, movement tier cap, intent filter, combat decay, injury–stamina link. Needs drain On (Disable AI Stamina Drain=Off). Default OFF. | 【实验性】AI 疲劳行为：状态机、步态限速、意图过滤、战斗衰减、伤势联动；需关闭「禁用 AI 体力消耗」。默认关")]
     bool m_bEnableAIStaminaCombatEffects;
 
-    [Attribute("false", UIWidgets.CheckBox, "AI: disable ALL RSS calculations for AI. Engine handles stamina completely. Also disables AI combat effects. | 完全禁用 AI 的 RSS 计算，体力交还引擎处理。同时关闭 AI 战斗效果")]
+    [Attribute("false", UIWidgets.CheckBox, "Disable All AI RSS: stop entire AI RSS loop (limit/drain/behaviors). Engine stamina. Overrides other AI toggles. | 完全禁用 AI RSS（限速/消耗/行为全停），体力交还引擎；开启时覆盖另两项 AI 开关")]
     bool m_bDisableAIAllCalc;
 
-    [Attribute("true", UIWidgets.CheckBox, "AI: when On skip drain (lightest). When Off keep drain for combat FSM but always use cheap speed (no terrain/UpdateSpeed). | On=不算消耗最轻；Off=仍算消耗供战斗，限速始终廉价")]
+    [Attribute("true", UIWidgets.CheckBox, "Disable AI Stamina Drain: On=cheap speed limit only (default, best FPS). Off=AI stamina pipeline (accurate drain, higher CPU; never player UpdateSpeed). | 禁用 AI 体力消耗：On=仅廉价限速（默认、最省）；Off=AI 专用消耗管线（较准、更耗 CPU；不走玩家 UpdateSpeed）")]
     bool m_bDisableAIStaminaCalc;
 
     [Attribute("1000", UIWidgets.EditBox, "Data export interval (ms). 1000 = 1s. | 数据导出间隔（毫秒），1000=1秒")]
